@@ -1,0 +1,20 @@
+; Example showing different value types
+
+.constants 4
+  0: 42.5
+  1: 100i
+  2: true
+  3: null
+
+.code
+  LOADK r0 0        ; r0 = 42.5 (number)
+  LOADK r1 1        ; r1 = 100 (int)
+  LOADK r2 2        ; r2 = true (bool)
+  LOADK r3 3        ; r3 = null
+  LOADBOOL r4 false ; r4 = false
+  LOADNULL r5       ; r5 = null
+  RET r0            ; return 42.5
+
+.metadata
+  registers: 6
+  args: 0

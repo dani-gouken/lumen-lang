@@ -1,0 +1,16 @@
+; Simple addition example
+; Computes 10 + 20 and returns the result
+
+.constants 2
+  0: 10.0
+  1: 20.0
+
+.code
+  LOADK r0 0      ; load constant 0 (10.0) into r0
+  LOADK r1 1      ; load constant 1 (20.0) into r1
+  ADD r2 r0 r1    ; r2 = r0 + r1 = 30.0
+  RET r2          ; return r2
+
+.metadata
+  registers: 3
+  args: 0

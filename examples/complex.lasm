@@ -1,0 +1,24 @@
+; Complex example demonstrating various features
+; Computes (5 * 3) + (10 - 2) = 15 + 8 = 23
+
+.constants 4
+  0: 5i           ; integer 5
+  1: 3i           ; integer 3
+  2: 10i          ; integer 10
+  3: 2i           ; integer 2
+
+.code
+  LOADK r0 0      ; r0 = 5
+  LOADK r1 1      ; r1 = 3
+  MUL r2 r0 r1    ; r2 = 5 * 3 = 15
+
+  LOADK r3 2      ; r3 = 10
+  LOADK r4 3      ; r4 = 2
+  SUB r5 r3 r4    ; r5 = 10 - 2 = 8
+
+  ADD r6 r2 r5    ; r6 = 15 + 8 = 23
+  RET r6          ; return 23
+
+.metadata
+  registers: 7
+  args: 0
