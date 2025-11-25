@@ -173,6 +173,52 @@ result2=$($LUMEN exec "$OUTPUT_DIR/nested_roundtrip.lc" 2>&1)
 [ "$result1" = "$result2" ] || fail "round-trip produced different results"
 pass
 
+# Test 17: Function calls
+test_name "Execute function_call.lasm"
+$LUMEN asm "$EXAMPLES_DIR/function_call.lasm" "$OUTPUT_DIR/function_call.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/function_call.lc" 2>&1)
+echo "$result" | grep -q "Result: Int(15)" || fail "unexpected result: $result"
+pass
+
+# Test 18: Recursion (factorial)
+test_name "Execute recursion.lasm (factorial)"
+$LUMEN asm "$EXAMPLES_DIR/recursion.lasm" "$OUTPUT_DIR/recursion.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/recursion.lc" 2>&1)
+echo "$result" | grep -q "Result: Int(120)" || fail "unexpected result: $result (expected 120)"
+pass
+
+# Test 19: External function calls
+test_name "Execute extern_call.lasm"
+$LUMEN asm "$EXAMPLES_DIR/extern_call.lasm" "$OUTPUT_DIR/extern_call.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/extern_call.lc" 2>&1)
+echo "$result" | grep -q "Int(42)" || fail "println output not found"
+echo "$result" | grep -q "Int(100)" || fail "println output not found"
+pass
+
+# Test 20: Comprehensive functions
+test_name "Execute comprehensive_functions.lasm"
+$LUMEN asm "$EXAMPLES_DIR/comprehensive_functions.lasm" "$OUTPUT_DIR/comprehensive.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/comprehensive.lc" 2>&1)
+echo "$result" | grep -q "Int(6)" || fail "factorial(3) output not found"
+echo "$result" | grep -q "Int(4)" || fail "multiply(2,2) output not found"
+pass
+
+# Test 21: Disassemble function call bytecode
+test_name "Disassemble function call bytecode with labels"
+$LUMEN disasm "$OUTPUT_DIR/function_call.lc" "$OUTPUT_DIR/function_disasm.lasm" > /dev/null 2>&1 || fail "disassembly failed"
+grep -q "CALL" "$OUTPUT_DIR/function_disasm.lasm" || fail "missing CALL instruction"
+grep -q "RET" "$OUTPUT_DIR/function_disasm.lasm" || fail "missing RET instruction"
+pass
+
+# Test 22: Round-trip function bytecode
+test_name "Round-trip function bytecode with extern names"
+$LUMEN disasm "$OUTPUT_DIR/extern_call.lc" "$OUTPUT_DIR/extern_disasm.lasm" > /dev/null 2>&1 || fail "disassembly failed"
+$LUMEN asm "$OUTPUT_DIR/extern_disasm.lasm" "$OUTPUT_DIR/extern_roundtrip.lc" > /dev/null 2>&1 || fail "re-assembly failed"
+result1=$($LUMEN exec "$OUTPUT_DIR/extern_call.lc" 2>&1 | tail -1)
+result2=$($LUMEN exec "$OUTPUT_DIR/extern_roundtrip.lc" 2>&1 | tail -1)
+[ "$result1" = "$result2" ] || fail "round-trip produced different results"
+pass
+
 # Summary
 echo "========================================"
 echo -e "${GREEN}Tests passed: $TESTS_PASSED/$TESTS_RUN${NC}"

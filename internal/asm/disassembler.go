@@ -22,7 +22,7 @@ func Disassemble(chunk *vm.Chunk) string {
 	// Write code section
 	sb.WriteString(".code\n")
 	for i, instr := range chunk.Code {
-		sb.WriteString(fmt.Sprintf("  %04d: %s\n", i, formatInstruction(instr)))
+		sb.WriteString(fmt.Sprintf("  %04d: %s\n", i, formatInstruction(instr, chunk)))
 	}
 	sb.WriteString("\n")
 
@@ -56,7 +56,7 @@ func formatValue(val vm.Value) string {
 }
 
 // formatInstruction converts an instruction to assembly syntax.
-func formatInstruction(instr vm.Instr) string {
+func formatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 	switch instr.Op {
 	case vm.OpNOP:
 		return "NOP"
@@ -121,6 +121,13 @@ func formatInstruction(instr vm.Instr) string {
 
 	case vm.OpRET:
 		return fmt.Sprintf("RET r%d", instr.A)
+
+	case vm.OpCALLEXTERN:
+		externName := "unknown"
+		if int(instr.A) < len(chunk.ExternNames) {
+			externName = chunk.ExternNames[instr.A]
+		}
+		return fmt.Sprintf("CALLEXTERN %s %d", externName, instr.B)
 
 	case vm.OpNEWSTR:
 		return fmt.Sprintf("NEWSTR r%d %d", instr.A, instr.B)

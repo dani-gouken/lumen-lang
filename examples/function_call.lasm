@@ -1,0 +1,24 @@
+; Function call example
+; Defines a simple add function and calls it
+
+.constants 2
+  0: 5i
+  1: 10i
+
+.code
+  ; Main code
+  LOADK r0 0        ; r0 = 5
+  LOADK r1 1        ; r1 = 10
+  CALL add_func 2   ; Call add_func with 2 args (r0, r1)
+  ; Result is in r0
+  RET r0            ; Return the result
+
+add_func:
+  ; Function adds r0 + r1
+  ; Arguments: r0, r1
+  ADD r2 r0 r1      ; r2 = r0 + r1
+  RET r2            ; Return r2
+
+.metadata
+  registers: 3
+  args: 0

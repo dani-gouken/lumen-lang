@@ -13,7 +13,7 @@ const (
 )
 
 // SerializeChunk converts a Chunk to binary bytecode format.
-// Format: [Magic:4][Version:4][ConstCount:4][Constants...][CodeCount:4][Code...][RegCount:4][ArgCount:4]
+// Format: [Magic:4][Version:4][ConstCount:4][Constants...][CodeCount:4][Code...][RegCount:4][ArgCount:4][ExternCount:4][ExternNames...]
 func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	if chunk == nil {
 		return nil, fmt.Errorf("cannot serialize nil chunk")
@@ -24,7 +24,14 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	constSize := 4 + (len(chunk.Constants) * 8)
 	codeSize := 4 + (len(chunk.Code) * 4)
 	metaSize := 4 + 4 // registerCount + argCount
-	totalSize := headerSize + constSize + codeSize + metaSize
+
+	// Calculate extern names size
+	externSize := 4 // count
+	for _, name := range chunk.ExternNames {
+		externSize += 4 + len(name) // length + string data
+	}
+
+	totalSize := headerSize + constSize + codeSize + metaSize + externSize
 
 	buf := make([]byte, totalSize)
 	offset := 0
@@ -60,6 +67,17 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	binary.LittleEndian.PutUint32(buf[offset:], uint32(chunk.RegisterCount))
 	offset += 4
 	binary.LittleEndian.PutUint32(buf[offset:], uint32(chunk.ArgCount))
+	offset += 4
+
+	// Write extern names
+	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.ExternNames)))
+	offset += 4
+	for _, name := range chunk.ExternNames {
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(name)))
+		offset += 4
+		copy(buf[offset:], []byte(name))
+		offset += len(name)
+	}
 
 	return buf, nil
 }
@@ -133,6 +151,28 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 	chunk.RegisterCount = int(binary.LittleEndian.Uint32(data[offset:]))
 	offset += 4
 	chunk.ArgCount = int(binary.LittleEndian.Uint32(data[offset:]))
+	offset += 4
+
+	// Read extern names (if present in this version)
+	if offset+4 <= len(data) {
+		externCount := binary.LittleEndian.Uint32(data[offset:])
+		offset += 4
+
+		chunk.ExternNames = make([]string, externCount)
+		for i := uint32(0); i < externCount; i++ {
+			if offset+4 > len(data) {
+				return nil, fmt.Errorf("bytecode truncated: cannot read extern name length")
+			}
+			nameLen := binary.LittleEndian.Uint32(data[offset:])
+			offset += 4
+
+			if offset+int(nameLen) > len(data) {
+				return nil, fmt.Errorf("bytecode truncated: cannot read extern name")
+			}
+			chunk.ExternNames[i] = string(data[offset : offset+int(nameLen)])
+			offset += int(nameLen)
+		}
+	}
 
 	return chunk, nil
 }

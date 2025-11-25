@@ -14,7 +14,49 @@ func Assemble(source string) (*vm.Chunk, error) {
 	lines := strings.Split(source, "\n")
 
 	var mode string // "constants", "code", "metadata"
+	labels := make(map[string]int) // label name -> instruction index
 
+	// First pass: collect labels
+	codeLineNum := 0
+	for _, line := range lines {
+		// Remove comments
+		if idx := strings.Index(line, ";"); idx != -1 {
+			line = line[:idx]
+		}
+
+		// Trim whitespace
+		line = strings.TrimSpace(line)
+
+		// Skip empty lines
+		if line == "" {
+			continue
+		}
+
+		// Check for section directives
+		if strings.HasPrefix(line, ".") {
+			if line == ".code" {
+				mode = "code"
+			} else {
+				mode = ""
+			}
+			continue
+		}
+
+		// In code section, collect labels
+		if mode == "code" {
+			// Check if this is a label (ends with :)
+			if strings.HasSuffix(line, ":") {
+				labelName := strings.TrimSuffix(line, ":")
+				labels[labelName] = codeLineNum
+			} else {
+				// It's an instruction
+				codeLineNum++
+			}
+		}
+	}
+
+	// Second pass: assemble code
+	mode = ""
 	for lineNum, line := range lines {
 		// Remove comments
 		if idx := strings.Index(line, ";"); idx != -1 {
@@ -43,6 +85,11 @@ func Assemble(source string) (*vm.Chunk, error) {
 			}
 		}
 
+		// Skip labels in code section
+		if mode == "code" && strings.HasSuffix(line, ":") {
+			continue
+		}
+
 		// Process line based on current mode
 		switch mode {
 		case "constants":
@@ -50,7 +97,7 @@ func Assemble(source string) (*vm.Chunk, error) {
 				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
 			}
 		case "code":
-			if err := parseInstruction(chunk, line); err != nil {
+			if err := parseInstruction(chunk, line, labels); err != nil {
 				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
 			}
 		case "metadata":
@@ -122,7 +169,7 @@ func parseValue(s string) (vm.Value, error) {
 	}
 }
 
-func parseInstruction(chunk *vm.Chunk, line string) error {
+func parseInstruction(chunk *vm.Chunk, line string, labels map[string]int) error {
 	// Skip line numbers (format: "0001: INSTRUCTION")
 	if strings.Contains(line, ":") {
 		parts := strings.SplitN(line, ":", 2)
@@ -247,11 +294,19 @@ func parseInstruction(chunk *vm.Chunk, line string) error {
 		if len(args) != 1 {
 			return fmt.Errorf("JMP requires 1 argument, got %d", len(args))
 		}
-		a, err := parseImm(args[0])
-		if err != nil {
-			return err
+		// Try to parse as label first, then as immediate
+		if addr, ok := labels[args[0]]; ok {
+			if addr > 255 {
+				return fmt.Errorf("jump address out of range: %d", addr)
+			}
+			instr = vm.NewInstr(vm.OpJMP, byte(addr), 0, 0)
+		} else {
+			a, err := parseImm(args[0])
+			if err != nil {
+				return err
+			}
+			instr = vm.NewInstr(vm.OpJMP, a, 0, 0)
 		}
-		instr = vm.NewInstr(vm.OpJMP, a, 0, 0)
 
 	case "JMPIF", "JMPIFNOT":
 		if len(args) != 2 {
@@ -261,9 +316,19 @@ func parseInstruction(chunk *vm.Chunk, line string) error {
 		if err != nil {
 			return err
 		}
-		b, err := parseImm(args[1])
-		if err != nil {
-			return err
+
+		var b byte
+		// Try to parse as label first, then as immediate
+		if addr, ok := labels[args[1]]; ok {
+			if addr > 255 {
+				return fmt.Errorf("jump address out of range: %d", addr)
+			}
+			b = byte(addr)
+		} else {
+			b, err = parseImm(args[1])
+			if err != nil {
+				return err
+			}
 		}
 
 		op := vm.OpJMPIF
@@ -276,10 +341,24 @@ func parseInstruction(chunk *vm.Chunk, line string) error {
 		if len(args) != 2 {
 			return fmt.Errorf("CALL requires 2 arguments, got %d", len(args))
 		}
-		a, err := parseReg(args[0])
-		if err != nil {
-			return err
+
+		var a byte
+		// Try to parse first arg as label (function address) first
+		if addr, ok := labels[args[0]]; ok {
+			if addr > 255 {
+				return fmt.Errorf("call address out of range: %d", addr)
+			}
+			a = byte(addr)
+		} else {
+			// Try as register
+			var err error
+			a, err = parseReg(args[0])
+			if err != nil {
+				// Not a register either - probably undefined label
+				return fmt.Errorf("CALL target '%s' is not a valid label or register", args[0])
+			}
 		}
+
 		b, err := parseImm(args[1])
 		if err != nil {
 			return err
@@ -295,6 +374,25 @@ func parseInstruction(chunk *vm.Chunk, line string) error {
 			return err
 		}
 		instr = vm.NewInstr(vm.OpRET, a, 0, 0)
+
+	case "CALLEXTERN":
+		if len(args) != 2 {
+			return fmt.Errorf("CALLEXTERN requires 2 arguments, got %d", len(args))
+		}
+		// First arg is the extern function name
+		externName := args[0]
+		// Add to extern list and get index
+		externIdx := chunk.AddExtern(externName)
+		if externIdx > 255 {
+			return fmt.Errorf("too many extern functions")
+		}
+
+		// Second arg is argc
+		b, err := parseImm(args[1])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpCALLEXTERN, byte(externIdx), b, 0)
 
 	case "NEWSTR":
 		if len(args) != 2 {

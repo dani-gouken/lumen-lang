@@ -6,39 +6,96 @@ import (
 )
 
 const (
-	stackSize = 4096
+	stackSize    = 4096
+	maxCallDepth = 256
 )
+
+// CallFrame represents a function call frame.
+type CallFrame struct {
+	chunk *Chunk  // The function's bytecode
+	ip    int     // Return instruction pointer
+	fp    int     // Frame pointer (base of this frame in stack)
+	regs  []Value // Saved registers from caller
+}
+
+// ExternFunc is a function callable from bytecode.
+type ExternFunc func(*VM, []Value) (Value, error)
 
 // VM represents the Lumen virtual machine.
 type VM struct {
-	stack [stackSize]Value
-	fp    int // frame pointer
-	sp    int // stack pointer
-	ip    int // instruction pointer
-	regs  []Value
-	heap  *Heap
+	stack       [stackSize]Value
+	frames      [maxCallDepth]CallFrame
+	frameCount  int     // Number of active frames
+	fp          int     // frame pointer
+	sp          int     // stack pointer
+	ip          int     // instruction pointer
+	regs        []Value // Current registers
+	chunk       *Chunk  // Current chunk
+	heap        *Heap
+	externFuncs map[string]ExternFunc // External functions
 }
 
 // NewVM creates a new VM instance.
 func NewVM() *VM {
-	return &VM{
-		fp:   0,
-		sp:   0,
-		ip:   0,
-		regs: make([]Value, 0),
-		heap: NewHeap(DefaultHeapSize),
+	vm := &VM{
+		frameCount:  0,
+		fp:          0,
+		sp:          0,
+		ip:          0,
+		regs:        make([]Value, 0),
+		chunk:       nil,
+		heap:        NewHeap(DefaultHeapSize),
+		externFuncs: make(map[string]ExternFunc),
 	}
+	vm.registerBuiltins()
+	return vm
 }
 
 // NewVMWithHeapSize creates a new VM with a custom heap size.
 func NewVMWithHeapSize(heapSize uint64) *VM {
-	return &VM{
-		fp:   0,
-		sp:   0,
-		ip:   0,
-		regs: make([]Value, 0),
-		heap: NewHeap(heapSize),
+	vm := &VM{
+		frameCount:  0,
+		fp:          0,
+		sp:          0,
+		ip:          0,
+		regs:        make([]Value, 0),
+		chunk:       nil,
+		heap:        NewHeap(heapSize),
+		externFuncs: make(map[string]ExternFunc),
 	}
+	vm.registerBuiltins()
+	return vm
+}
+
+// RegisterExtern registers an external function.
+func (vm *VM) RegisterExtern(name string, fn ExternFunc) {
+	vm.externFuncs[name] = fn
+}
+
+// registerBuiltins registers built-in external functions.
+func (vm *VM) registerBuiltins() {
+	// print function
+	vm.RegisterExtern("print", func(vm *VM, args []Value) (Value, error) {
+		for i, arg := range args {
+			if i > 0 {
+				fmt.Print(" ")
+			}
+			fmt.Print(arg.String())
+		}
+		return NewNull(), nil
+	})
+
+	// println function
+	vm.RegisterExtern("println", func(vm *VM, args []Value) (Value, error) {
+		for i, arg := range args {
+			if i > 0 {
+				fmt.Print(" ")
+			}
+			fmt.Print(arg.String())
+		}
+		fmt.Println()
+		return NewNull(), nil
+	})
 }
 
 // GetHeap returns the VM's heap.
@@ -52,6 +109,9 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 		return NewNull(), fmt.Errorf("cannot execute nil chunk")
 	}
 
+	// Set current chunk
+	vm.chunk = chunk
+
 	// Allocate registers for this chunk
 	vm.regs = make([]Value, chunk.RegisterCount)
 	for i := range vm.regs {
@@ -59,9 +119,10 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 	}
 
 	vm.ip = 0
+	vm.frameCount = 0
 
-	for vm.ip < len(chunk.Code) {
-		instr := chunk.Code[vm.ip]
+	for vm.ip < len(vm.chunk.Code) {
+		instr := vm.chunk.Code[vm.ip]
 
 		switch instr.Op {
 		case OpNOP:
@@ -71,10 +132,10 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			vm.regs[instr.A] = vm.regs[instr.B]
 
 		case OpLOADK:
-			if int(instr.B) >= len(chunk.Constants) {
+			if int(instr.B) >= len(vm.chunk.Constants) {
 				return NewNull(), fmt.Errorf("constant index out of bounds: %d", instr.B)
 			}
-			vm.regs[instr.A] = chunk.Constants[instr.B]
+			vm.regs[instr.A] = vm.chunk.Constants[instr.B]
 
 		case OpLOADNULL:
 			vm.regs[instr.A] = NewNull()
@@ -126,15 +187,175 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				return NewNull(), fmt.Errorf("DIV requires numeric operands")
 			}
 
+		case OpEQ:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			vm.regs[instr.A] = NewBool(a == b)
+
+		case OpNE:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			vm.regs[instr.A] = NewBool(a != b)
+
+		case OpLT:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsNumber() && b.IsNumber() {
+				vm.regs[instr.A] = NewBool(a.AsNumber() < b.AsNumber())
+			} else if a.IsInt() && b.IsInt() {
+				vm.regs[instr.A] = NewBool(a.AsInt() < b.AsInt())
+			} else {
+				return NewNull(), fmt.Errorf("LT requires numeric operands")
+			}
+
+		case OpLE:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsNumber() && b.IsNumber() {
+				vm.regs[instr.A] = NewBool(a.AsNumber() <= b.AsNumber())
+			} else if a.IsInt() && b.IsInt() {
+				vm.regs[instr.A] = NewBool(a.AsInt() <= b.AsInt())
+			} else {
+				return NewNull(), fmt.Errorf("LE requires numeric operands")
+			}
+
+		case OpGT:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsNumber() && b.IsNumber() {
+				vm.regs[instr.A] = NewBool(a.AsNumber() > b.AsNumber())
+			} else if a.IsInt() && b.IsInt() {
+				vm.regs[instr.A] = NewBool(a.AsInt() > b.AsInt())
+			} else {
+				return NewNull(), fmt.Errorf("GT requires numeric operands")
+			}
+
+		case OpGE:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsNumber() && b.IsNumber() {
+				vm.regs[instr.A] = NewBool(a.AsNumber() >= b.AsNumber())
+			} else if a.IsInt() && b.IsInt() {
+				vm.regs[instr.A] = NewBool(a.AsInt() >= b.AsInt())
+			} else {
+				return NewNull(), fmt.Errorf("GE requires numeric operands")
+			}
+
+		case OpJMP:
+			// JMP: A = target instruction address
+			vm.ip = int(instr.A)
+			continue
+
+		case OpJMPIF:
+			// JMPIF: A = condition register, B = target address
+			cond := vm.regs[instr.A]
+			if cond.IsBool() && cond.AsBool() {
+				vm.ip = int(instr.B)
+				continue
+			}
+
+		case OpJMPIFNOT:
+			// JMPIFNOT: A = condition register, B = target address
+			cond := vm.regs[instr.A]
+			if cond.IsBool() && !cond.AsBool() {
+				vm.ip = int(instr.B)
+				continue
+			}
+
+		case OpCALL:
+			// CALL: A = function address (instruction pointer), B = argc
+			// Arguments are in r0, r1, r2, ... r(argc-1)
+			funcAddr := int(instr.A)
+			argc := int(instr.B)
+
+			// Check call depth
+			if vm.frameCount >= maxCallDepth {
+				return NewNull(), fmt.Errorf("stack overflow: max call depth %d exceeded", maxCallDepth)
+			}
+
+			// Save current frame
+			vm.frames[vm.frameCount] = CallFrame{
+				chunk: vm.chunk,
+				ip:    vm.ip,
+				fp:    vm.fp,
+				regs:  vm.regs,
+			}
+			vm.frameCount++
+
+			// Preserve arguments in new register set
+			newRegs := make([]Value, vm.chunk.RegisterCount)
+			for i := range newRegs {
+				newRegs[i] = NewNull()
+			}
+			// Copy arguments
+			for i := 0; i < argc && i < len(vm.regs); i++ {
+				newRegs[i] = vm.regs[i]
+			}
+			vm.regs = newRegs
+
+			// Jump to function
+			vm.ip = funcAddr
+			continue
+
 		case OpRET:
-			return vm.regs[instr.A], nil
+			// RET: A = register containing return value
+			retVal := vm.regs[instr.A]
+
+			// Check if we're in a nested call
+			if vm.frameCount == 0 {
+				// Top-level return
+				return retVal, nil
+			}
+
+			// Restore previous frame
+			vm.frameCount--
+			frame := vm.frames[vm.frameCount]
+			vm.chunk = frame.chunk
+			vm.ip = frame.ip
+			vm.fp = frame.fp
+
+			// Restore registers and put return value in r0
+			vm.regs = frame.regs
+			vm.regs[0] = retVal
+
+		case OpCALLEXTERN:
+			// CALLEXTERN: A = extern func index, B = argc
+			externIdx := int(instr.A)
+			argc := int(instr.B)
+
+			// Get extern function name
+			if externIdx >= len(vm.chunk.ExternNames) {
+				return NewNull(), fmt.Errorf("extern function index out of bounds: %d", externIdx)
+			}
+			externName := vm.chunk.ExternNames[externIdx]
+
+			// Look up the extern function
+			externFunc, ok := vm.externFuncs[externName]
+			if !ok {
+				return NewNull(), fmt.Errorf("unknown extern function: %s", externName)
+			}
+
+			// Collect arguments from registers
+			args := make([]Value, argc)
+			for i := 0; i < argc && i < len(vm.regs); i++ {
+				args[i] = vm.regs[i]
+			}
+
+			// Call the extern function
+			retVal, err := externFunc(vm, args)
+			if err != nil {
+				return NewNull(), fmt.Errorf("extern function %s failed: %v", externName, err)
+			}
+
+			// Store return value in r0
+			vm.regs[0] = retVal
 
 		case OpNEWSTR:
 			// Create a string from constant pool
-			if int(instr.B) >= len(chunk.Constants) {
+			if int(instr.B) >= len(vm.chunk.Constants) {
 				return NewNull(), fmt.Errorf("constant index out of bounds: %d", instr.B)
 			}
-			constVal := chunk.Constants[instr.B]
+			constVal := vm.chunk.Constants[instr.B]
 			if !constVal.IsHeapPtr() {
 				return NewNull(), fmt.Errorf("NEWSTR requires string constant")
 			}
@@ -203,12 +424,12 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				return NewNull(), fmt.Errorf("GETFIELD requires object")
 			}
 
-			if int(instr.C) >= len(chunk.Constants) {
+			if int(instr.C) >= len(vm.chunk.Constants) {
 				return NewNull(), fmt.Errorf("constant index out of bounds: %d", instr.C)
 			}
 
 			// Get field name from constant
-			fieldNameVal := chunk.Constants[instr.C]
+			fieldNameVal := vm.chunk.Constants[instr.C]
 			if !fieldNameVal.IsHeapPtr() {
 				return NewNull(), fmt.Errorf("GETFIELD requires string constant for field name")
 			}
@@ -230,12 +451,12 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				return NewNull(), fmt.Errorf("SETFIELD requires object")
 			}
 
-			if int(instr.B) >= len(chunk.Constants) {
+			if int(instr.B) >= len(vm.chunk.Constants) {
 				return NewNull(), fmt.Errorf("constant index out of bounds: %d", instr.B)
 			}
 
 			// Get field name from constant
-			fieldNameVal := chunk.Constants[instr.B]
+			fieldNameVal := vm.chunk.Constants[instr.B]
 			if !fieldNameVal.IsHeapPtr() {
 				return NewNull(), fmt.Errorf("SETFIELD requires string constant for field name")
 			}

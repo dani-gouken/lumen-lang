@@ -175,7 +175,8 @@ func TestVMExecuteLOADBOOL(t *testing.T) {
 
 func TestVMErrorOnUnimplementedOpcode(t *testing.T) {
 	chunk := NewChunk()
-	chunk.AddInstruction(NewInstr(OpJMP, 0, 0, 0))
+	// Use an invalid opcode (255)
+	chunk.AddInstruction(NewInstr(OpCode(255), 0, 0, 0))
 	chunk.RegisterCount = 0
 
 	v := NewVM()

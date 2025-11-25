@@ -1,0 +1,20 @@
+; Extern function call example
+; Uses built-in println function
+
+.constants 2
+  0: 42i
+  1: 100i
+
+.code
+  LOADK r0 0        ; r0 = 42
+  CALLEXTERN println 1  ; println(42)
+
+  LOADK r0 1        ; r0 = 100
+  CALLEXTERN println 1  ; println(100)
+
+  LOADNULL r0
+  RET r0
+
+.metadata
+  registers: 1
+  args: 0

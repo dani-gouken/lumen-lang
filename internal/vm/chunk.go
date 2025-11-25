@@ -6,6 +6,7 @@ type Chunk struct {
 	Code          []Instr
 	RegisterCount int
 	ArgCount      int
+	ExternNames   []string // Names of external functions
 }
 
 // NewChunk creates a new empty chunk.
@@ -15,6 +16,7 @@ func NewChunk() *Chunk {
 		Code:          make([]Instr, 0),
 		RegisterCount: 0,
 		ArgCount:      0,
+		ExternNames:   make([]string, 0),
 	}
 }
 
@@ -27,4 +29,10 @@ func (c *Chunk) AddConstant(val Value) int {
 // AddInstruction adds an instruction to the code array.
 func (c *Chunk) AddInstruction(instr Instr) {
 	c.Code = append(c.Code, instr)
+}
+
+// AddExtern adds an external function name and returns its index.
+func (c *Chunk) AddExtern(name string) int {
+	c.ExternNames = append(c.ExternNames, name)
+	return len(c.ExternNames) - 1
 }

@@ -1,0 +1,36 @@
+; Recursion example - Factorial
+; Computes factorial(5) = 120
+
+.constants 3
+  0: 5i             ; Input number
+  1: 1i             ; Base case value
+  2: 0i             ; For comparison
+
+.code
+  ; Main code
+  LOADK r0 0        ; r0 = 5
+  CALL factorial 1  ; Call factorial with 1 arg
+  RET r0            ; Return result
+
+factorial:
+  ; factorial(n) in r0
+  ; Returns result in r2
+  LOADK r1 2        ; r1 = 0 (for comparison)
+  LE r3 r0 r1       ; r3 = (r0 <= 0)
+  JMPIF r3 base_case
+
+  ; Recursive case: n * factorial(n-1)
+  MOV r4 r0         ; Save n in r4
+  LOADK r1 1        ; r1 = 1
+  SUB r0 r4 r1      ; r0 = n - 1
+  CALL factorial 1  ; factorial(n-1), result in r0
+  MUL r2 r4 r0      ; r2 = n * factorial(n-1)
+  RET r2
+
+base_case:
+  LOADK r2 1        ; Return 1
+  RET r2
+
+.metadata
+  registers: 5
+  args: 0

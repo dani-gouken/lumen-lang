@@ -1,0 +1,51 @@
+; Comprehensive function example
+; Shows labels, function calls, recursion, and extern functions
+
+.constants 4
+  0: 3i             ; Input for factorial
+  1: 1i             ; Base case and decrement value
+  2: 0i             ; For comparison
+  3: 2i             ; For multiply example
+
+.code
+  ; Main program
+  LOADK r0 0        ; r0 = 3
+  CALL factorial 1  ; result = factorial(3) = 6
+  CALLEXTERN println 1  ; println(6)
+
+  LOADK r0 3        ; r0 = 2
+  LOADK r1 3        ; r1 = 2
+  CALL multiply 2   ; result = multiply(2, 2) = 4
+  CALLEXTERN println 1  ; println(4)
+
+  LOADNULL r0
+  RET r0            ; Return null
+
+; Factorial function (recursive)
+factorial:
+  ; factorial(n) in r0
+  LOADK r1 2        ; r1 = 0
+  LE r3 r0 r1       ; r3 = (r0 <= 0)
+  JMPIF r3 fact_base
+
+  ; Recursive case
+  MOV r4 r0         ; Save n
+  LOADK r1 1        ; r1 = 1
+  SUB r0 r4 r1      ; r0 = n - 1
+  CALL factorial 1  ; factorial(n-1)
+  MUL r2 r4 r0      ; r2 = n * factorial(n-1)
+  RET r2
+
+fact_base:
+  LOADK r2 1        ; Return 1
+  RET r2
+
+; Multiply function (non-recursive)
+multiply:
+  ; multiply(a, b) in r0, r1
+  MUL r2 r0 r1      ; r2 = a * b
+  RET r2
+
+.metadata
+  registers: 5
+  args: 0

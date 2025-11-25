@@ -34,6 +34,7 @@ const (
 	// Function calls
 	OpCALL
 	OpRET
+	OpCALLEXTERN  // A = extern func index, B = argc
 
 	// Heap allocation
 	OpNEWSTR    // A = dest, B = const index (string constant)
@@ -108,6 +109,8 @@ func (i Instr) String() string {
 		return formatInstr("CALL", i.A, i.B)
 	case OpRET:
 		return formatInstr("RET", i.A)
+	case OpCALLEXTERN:
+		return formatInstr("CALLEXTERN", i.A, i.B)
 	case OpNEWSTR:
 		return formatInstr("NEWSTR", i.A, i.B)
 	case OpNEWARRAY:
