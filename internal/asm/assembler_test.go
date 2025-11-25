@@ -83,6 +83,109 @@ func TestAssembleValueTypes(t *testing.T) {
 	}
 }
 
+func TestAssembleStringLiterals(t *testing.T) {
+	tests := []struct {
+		name           string
+		constant       string
+		expectedString string
+	}{
+		{"simple string", `"Hello, World!"`, "Hello, World!"},
+		{"empty string", `""`, ""},
+		{"string with newline", `"Line1\nLine2"`, "Line1\nLine2"},
+		{"string with tab", `"Tab\there"`, "Tab\there"},
+		{"string with escape", `"Quote: \"Hello\""`, `Quote: "Hello"`},
+		{"string with backslash", `"Path\\to\\file"`, `Path\to\file`},
+		{"string with all escapes", `"Test:\n\t\r\\\""`, "Test:\n\t\r\\\""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			source := `.constants 1
+  0: ` + tt.constant + `
+
+.code
+  NEWSTR r0 0
+  RET r0
+
+.metadata
+  registers: 1
+  args: 0
+`
+			chunk, err := Assemble(source)
+			if err != nil {
+				t.Fatalf("assembly failed: %v", err)
+			}
+
+			// Check that the constant is an integer (string pool index)
+			if !chunk.Constants[0].IsInt() {
+				t.Fatalf("expected constant to be Int (string pool index), got %s", chunk.Constants[0].String())
+			}
+
+			// Check that the string was added to the string pool
+			if len(chunk.StringPool) != 1 {
+				t.Fatalf("expected 1 string in pool, got %d", len(chunk.StringPool))
+			}
+
+			if chunk.StringPool[0] != tt.expectedString {
+				t.Errorf("expected string %q, got %q", tt.expectedString, chunk.StringPool[0])
+			}
+
+			// Check that constant points to correct string pool index
+			strIdx := int(chunk.Constants[0].AsInt())
+			if strIdx != 0 {
+				t.Errorf("expected string pool index 0, got %d", strIdx)
+			}
+		})
+	}
+}
+
+func TestAssembleMultipleStrings(t *testing.T) {
+	source := `.constants 3
+  0: "First"
+  1: "Second"
+  2: "Third"
+
+.code
+  NEWSTR r0 0
+  NEWSTR r1 1
+  NEWSTR r2 2
+  RET r0
+
+.metadata
+  registers: 3
+  args: 0
+`
+
+	chunk, err := Assemble(source)
+	if err != nil {
+		t.Fatalf("assembly failed: %v", err)
+	}
+
+	// Should have 3 strings in the pool
+	if len(chunk.StringPool) != 3 {
+		t.Fatalf("expected 3 strings in pool, got %d", len(chunk.StringPool))
+	}
+
+	expectedStrings := []string{"First", "Second", "Third"}
+	for i, expected := range expectedStrings {
+		if chunk.StringPool[i] != expected {
+			t.Errorf("string %d: expected %q, got %q", i, expected, chunk.StringPool[i])
+		}
+	}
+
+	// Check that each constant points to the correct index
+	for i := 0; i < 3; i++ {
+		if !chunk.Constants[i].IsInt() {
+			t.Errorf("constant %d: expected Int, got %s", i, chunk.Constants[i].String())
+			continue
+		}
+		strIdx := int(chunk.Constants[i].AsInt())
+		if strIdx != i {
+			t.Errorf("constant %d: expected string pool index %d, got %d", i, i, strIdx)
+		}
+	}
+}
+
 func TestAssembleAllInstructions(t *testing.T) {
 	source := `.constants 2
   0: 10i

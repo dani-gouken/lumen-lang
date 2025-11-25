@@ -217,3 +217,103 @@ func TestDisassembleLineNumbers(t *testing.T) {
 		t.Error("missing line number 0002")
 	}
 }
+
+func TestDisassembleStringLiterals(t *testing.T) {
+	chunk := vm.NewChunk()
+
+	// Add strings to string pool
+	idx0 := chunk.AddString("Hello, World!")
+	idx1 := chunk.AddString("Test\nNewline")
+	idx2 := chunk.AddString("Quote: \"test\"")
+
+	// Add constants that reference string pool
+	chunk.AddConstant(vm.NewInt(int64(idx0)))
+	chunk.AddConstant(vm.NewInt(int64(idx1)))
+	chunk.AddConstant(vm.NewInt(int64(idx2)))
+
+	// Add NEWSTR instructions
+	chunk.AddInstruction(vm.NewInstr(vm.OpNEWSTR, 0, 0, 0))
+	chunk.AddInstruction(vm.NewInstr(vm.OpNEWSTR, 1, 1, 0))
+	chunk.AddInstruction(vm.NewInstr(vm.OpNEWSTR, 2, 2, 0))
+	chunk.AddInstruction(vm.NewInstr(vm.OpRET, 0, 0, 0))
+
+	chunk.RegisterCount = 3
+	chunk.ArgCount = 0
+
+	output := Disassemble(chunk)
+
+	// Check that strings appear in constants section with proper escaping
+	if !strings.Contains(output, `"Hello, World!"`) {
+		t.Error("missing simple string literal")
+	}
+	if !strings.Contains(output, `"Test\nNewline"`) {
+		t.Error("missing string with newline escape")
+	}
+	if !strings.Contains(output, `"Quote: \"test\""`) {
+		t.Error("missing string with quote escape")
+	}
+
+	// Check NEWSTR instructions
+	if !strings.Contains(output, "NEWSTR r0 0") {
+		t.Error("missing NEWSTR instruction for r0")
+	}
+	if !strings.Contains(output, "NEWSTR r1 1") {
+		t.Error("missing NEWSTR instruction for r1")
+	}
+	if !strings.Contains(output, "NEWSTR r2 2") {
+		t.Error("missing NEWSTR instruction for r2")
+	}
+}
+
+func TestRoundTripStringLiterals(t *testing.T) {
+	source := `.constants 2
+  0: "Hello, World!"
+  1: "Escape:\n\t\"\\"
+
+.code
+  NEWSTR r0 0
+  NEWSTR r1 1
+  RET r0
+
+.metadata
+  registers: 2
+  args: 0
+`
+
+	// Assemble
+	chunk1, err := Assemble(source)
+	if err != nil {
+		t.Fatalf("assembly failed: %v", err)
+	}
+
+	// Disassemble
+	disassembled := Disassemble(chunk1)
+
+	// Re-assemble
+	chunk2, err := Assemble(disassembled)
+	if err != nil {
+		t.Fatalf("re-assembly failed: %v", err)
+	}
+
+	// Compare string pools
+	if len(chunk1.StringPool) != len(chunk2.StringPool) {
+		t.Fatalf("string pool size mismatch: %d vs %d", len(chunk1.StringPool), len(chunk2.StringPool))
+	}
+
+	for i := range chunk1.StringPool {
+		if chunk1.StringPool[i] != chunk2.StringPool[i] {
+			t.Errorf("string %d mismatch: %q vs %q", i, chunk1.StringPool[i], chunk2.StringPool[i])
+		}
+	}
+
+	// Compare code
+	if len(chunk1.Code) != len(chunk2.Code) {
+		t.Fatalf("code count mismatch: %d vs %d", len(chunk1.Code), len(chunk2.Code))
+	}
+
+	for i := range chunk1.Code {
+		if chunk1.Code[i] != chunk2.Code[i] {
+			t.Errorf("instruction %d mismatch: %+v vs %+v", i, chunk1.Code[i], chunk2.Code[i])
+		}
+	}
+}

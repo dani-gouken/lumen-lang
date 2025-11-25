@@ -98,6 +98,40 @@ Range: -140,737,488,355,328 to 140,737,488,355,327
 0: null
 ```
 
+### Strings
+String literals enclosed in double quotes:
+```assembly
+0: "Hello, World!"
+1: "This is a string"
+2: ""  ; empty string
+```
+
+**Escape Sequences:**
+Strings support standard escape sequences:
+- `\n` - newline
+- `\t` - tab
+- `\r` - carriage return
+- `\\` - backslash
+- `\"` - double quote
+
+**Example:**
+```assembly
+0: "Line 1\nLine 2"
+1: "Tab\there"
+2: "Quote: \"Hello\""
+```
+
+**Usage with NEWSTR:**
+String constants are used with the `NEWSTR` instruction to create string objects on the heap:
+```assembly
+.constants 1
+  0: "Hello, World!"
+
+.code
+  NEWSTR r0 0    ; Create string from constant 0
+  RET r0
+```
+
 ## Instruction Set
 
 ### Data Movement
@@ -216,6 +250,61 @@ GT r2 r0 r1    ; r2 = (r0 > r1)
 #### GE - Greater or Equal
 ```assembly
 GE r2 r0 r1    ; r2 = (r0 >= r1)
+```
+
+### Heap Objects
+
+#### NEWSTR - Create String
+```assembly
+NEWSTR r_dest const_index
+```
+Create a heap-allocated string object from a string constant.
+
+**Arguments:**
+- `r_dest`: destination register for the string object
+- `const_index`: index of string constant in the constant pool
+
+**Behavior:**
+- Retrieves string literal from constant pool
+- Allocates string object on the heap
+- Stores heap pointer in `r_dest`
+- May trigger garbage collection if heap is full
+
+**Example:**
+```assembly
+.constants 1
+  0: "Hello, World!"
+
+.code
+  NEWSTR r0 0       ; r0 = pointer to "Hello, World!" string
+  RET r0
+```
+
+**Memory Management:**
+- String objects are garbage collected when no longer referenced
+- Strings are immutable
+- String data is stored on the heap
+
+#### NEWARRAY - Create Array
+```assembly
+NEWARRAY r_dest capacity
+```
+Create a heap-allocated array with the specified capacity.
+
+**Example:**
+```assembly
+NEWARRAY r0 10    ; Create array with capacity 10
+```
+
+#### NEWOBJ - Create Object
+```assembly
+NEWOBJ r_dest
+```
+Create a heap-allocated object (map/dictionary).
+
+**Example:**
+```assembly
+NEWOBJ r0         ; Create empty object
 ```
 
 ### Control Flow
@@ -383,13 +472,35 @@ The assembler produces compact binary `.lc` files with this structure:
 [ArgCount:4]           Number of arguments
 [ExternCount:4]        Number of extern functions
 [ExternNames...]       Extern function names (length-prefixed strings)
+[StringPoolCount:4]    Number of string literals
+[StringPool...]        String literals (length-prefixed strings)
+[DebugInfoCount:4]     Number of debug info entries
+[DebugInfo...]         Debug information for error messages
 ```
 
-**Extern Name Format:**
-Each extern name is stored as:
+**String Format:**
+Each string (extern names, string pool, debug strings) is stored as:
 ```
-[NameLength:4]         Length of function name
-[NameBytes...]         UTF-8 encoded function name
+[Length:4]             Length of string in bytes
+[Bytes...]             UTF-8 encoded string data
+```
+
+**Debug Info Format:**
+Each debug info entry is stored as:
+```
+[InstrIndex:4]         Instruction index
+[FilePathLen:4]        Length of file path
+[FilePath...]          Source file path
+[Line:4]               Line number in source
+[Column:4]             Column number in source
+[SourceLineLen:4]      Length of source line text
+[SourceLine...]        Original source line
+[FuncNameLen:4]        Length of function name
+[FuncName...]          Function name (if in function)
+[DescriptionLen:4]     Length of description
+[Description...]       Human-readable description
+[NotesLen:4]           Length of notes
+[Notes...]             Additional notes
 ```
 
 All multi-byte integers are little-endian.
@@ -555,7 +666,42 @@ base_case:
   args: 0
 ```
 
-### Example 4: External Functions
+### Example 4: String Literals
+
+**File: `strings.lasm`**
+```assembly
+; Working with string literals
+
+.constants 3
+  0: "Hello, World!"
+  1: "Lumen"
+  2: "Escape sequences:\n\tTab\n\tNewline"
+
+.code
+  ; Create first string
+  NEWSTR r0 0       ; r0 = "Hello, World!"
+
+  ; Create second string
+  NEWSTR r1 1       ; r1 = "Lumen"
+
+  ; Create string with escape sequences
+  NEWSTR r2 2       ; r2 = string with tabs and newlines
+
+  RET r0
+
+.metadata
+  registers: 3
+  args: 0
+```
+
+**Usage:**
+```bash
+lumen asm strings.lasm strings.lc
+lumen exec strings.lc
+# Output: Result: String("Hello, World!")
+```
+
+### Example 5: External Functions
 
 **File: `extern.lasm`**
 ```assembly

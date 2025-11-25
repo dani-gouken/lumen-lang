@@ -103,6 +103,15 @@ func (vm *VM) GetHeap() *Heap {
 	return vm.heap
 }
 
+// runtimeError creates a formatted error message with debug info.
+func (vm *VM) runtimeError(message string) error {
+	debugInfo := vm.chunk.GetDebugInfo(vm.ip)
+	if debugInfo != nil {
+		return fmt.Errorf("%s", debugInfo.FormatError(message))
+	}
+	return fmt.Errorf("runtime error: %s (at instruction %d)", message, vm.ip)
+}
+
 // Exec executes a chunk of bytecode.
 func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 	if chunk == nil {
@@ -133,7 +142,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 		case OpLOADK:
 			if int(instr.B) >= len(vm.chunk.Constants) {
-				return NewNull(), fmt.Errorf("constant index out of bounds: %d", instr.B)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.B))
 			}
 			vm.regs[instr.A] = vm.chunk.Constants[instr.B]
 
@@ -151,7 +160,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() + b.AsInt())
 			} else {
-				return NewNull(), fmt.Errorf("ADD requires numeric operands")
+				return NewNull(), vm.runtimeError("ADD requires numeric operands")
 			}
 
 		case OpSUB:
@@ -162,7 +171,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() - b.AsInt())
 			} else {
-				return NewNull(), fmt.Errorf("SUB requires numeric operands")
+				return NewNull(), vm.runtimeError("SUB requires numeric operands")
 			}
 
 		case OpMUL:
@@ -173,7 +182,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() * b.AsInt())
 			} else {
-				return NewNull(), fmt.Errorf("MUL requires numeric operands")
+				return NewNull(), vm.runtimeError("MUL requires numeric operands")
 			}
 
 		case OpDIV:
@@ -184,7 +193,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() / b.AsInt())
 			} else {
-				return NewNull(), fmt.Errorf("DIV requires numeric operands")
+				return NewNull(), vm.runtimeError("DIV requires numeric operands")
 			}
 
 		case OpEQ:
@@ -205,7 +214,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() < b.AsInt())
 			} else {
-				return NewNull(), fmt.Errorf("LT requires numeric operands")
+				return NewNull(), vm.runtimeError("LT requires numeric operands")
 			}
 
 		case OpLE:
@@ -216,7 +225,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() <= b.AsInt())
 			} else {
-				return NewNull(), fmt.Errorf("LE requires numeric operands")
+				return NewNull(), vm.runtimeError("LE requires numeric operands")
 			}
 
 		case OpGT:
@@ -227,7 +236,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() > b.AsInt())
 			} else {
-				return NewNull(), fmt.Errorf("GT requires numeric operands")
+				return NewNull(), vm.runtimeError("GT requires numeric operands")
 			}
 
 		case OpGE:
@@ -238,7 +247,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() >= b.AsInt())
 			} else {
-				return NewNull(), fmt.Errorf("GE requires numeric operands")
+				return NewNull(), vm.runtimeError("GE requires numeric operands")
 			}
 
 		case OpJMP:
@@ -270,7 +279,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 			// Check call depth
 			if vm.frameCount >= maxCallDepth {
-				return NewNull(), fmt.Errorf("stack overflow: max call depth %d exceeded", maxCallDepth)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", maxCallDepth))
 			}
 
 			// Save current frame
@@ -325,14 +334,14 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 			// Get extern function name
 			if externIdx >= len(vm.chunk.ExternNames) {
-				return NewNull(), fmt.Errorf("extern function index out of bounds: %d", externIdx)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("extern function index out of bounds: %d", externIdx))
 			}
 			externName := vm.chunk.ExternNames[externIdx]
 
 			// Look up the extern function
 			externFunc, ok := vm.externFuncs[externName]
 			if !ok {
-				return NewNull(), fmt.Errorf("unknown extern function: %s", externName)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("unknown extern function: %s", externName))
 			}
 
 			// Collect arguments from registers
@@ -344,29 +353,41 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			// Call the extern function
 			retVal, err := externFunc(vm, args)
 			if err != nil {
-				return NewNull(), fmt.Errorf("extern function %s failed: %v", externName, err)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s failed: %v", externName, err))
 			}
 
 			// Store return value in r0
 			vm.regs[0] = retVal
 
 		case OpNEWSTR:
-			// Create a string from constant pool
+			// Create a string from string pool
 			if int(instr.B) >= len(vm.chunk.Constants) {
-				return NewNull(), fmt.Errorf("constant index out of bounds: %d", instr.B)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.B))
 			}
 			constVal := vm.chunk.Constants[instr.B]
-			if !constVal.IsHeapPtr() {
-				return NewNull(), fmt.Errorf("NEWSTR requires string constant")
+			if !constVal.IsInt() {
+				return NewNull(), vm.runtimeError("NEWSTR requires string pool index")
 			}
-			vm.regs[instr.A] = constVal
+			strIdx := int(constVal.AsInt())
+			if strIdx < 0 || strIdx >= len(vm.chunk.StringPool) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("string pool index out of bounds: %d", strIdx))
+			}
+			// Allocate string on heap
+			strObj, shouldGC, err := vm.heap.AllocString(vm.chunk.StringPool[strIdx])
+			if err != nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
+			}
+			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(strObj)))
+			if shouldGC {
+				vm.CollectGarbage()
+			}
 
 		case OpNEWARRAY:
 			// Allocate a new array
 			capacity := int(instr.B)
 			obj, shouldGC, err := vm.heap.AllocArray(capacity)
 			if err != nil {
-				return NewNull(), fmt.Errorf("array allocation failed: %v", err)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("array allocation failed: %v", err))
 			}
 			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(obj)))
 			if shouldGC {
@@ -377,7 +398,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			// Allocate a new object
 			obj, shouldGC, err := vm.heap.AllocObject()
 			if err != nil {
-				return NewNull(), fmt.Errorf("object allocation failed: %v", err)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("object allocation failed: %v", err))
 			}
 			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(obj)))
 			if shouldGC {
@@ -390,10 +411,10 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			indexVal := vm.regs[instr.C]
 
 			if !arrayVal.IsHeapPtr() {
-				return NewNull(), fmt.Errorf("GETINDEX requires array")
+				return NewNull(), vm.runtimeError("GETINDEX requires array")
 			}
 			if !indexVal.IsInt() {
-				return NewNull(), fmt.Errorf("GETINDEX requires integer index")
+				return NewNull(), vm.runtimeError("GETINDEX requires integer index")
 			}
 
 			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
@@ -407,10 +428,10 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			value := vm.regs[instr.C]
 
 			if !arrayVal.IsHeapPtr() {
-				return NewNull(), fmt.Errorf("SETINDEX requires array")
+				return NewNull(), vm.runtimeError("SETINDEX requires array")
 			}
 			if !indexVal.IsInt() {
-				return NewNull(), fmt.Errorf("SETINDEX requires integer index")
+				return NewNull(), vm.runtimeError("SETINDEX requires integer index")
 			}
 
 			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
@@ -421,17 +442,17 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			// Get object field: A = dest, B = object, C = const index (field name)
 			objVal := vm.regs[instr.B]
 			if !objVal.IsHeapPtr() {
-				return NewNull(), fmt.Errorf("GETFIELD requires object")
+				return NewNull(), vm.runtimeError("GETFIELD requires object")
 			}
 
 			if int(instr.C) >= len(vm.chunk.Constants) {
-				return NewNull(), fmt.Errorf("constant index out of bounds: %d", instr.C)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.C))
 			}
 
 			// Get field name from constant
 			fieldNameVal := vm.chunk.Constants[instr.C]
 			if !fieldNameVal.IsHeapPtr() {
-				return NewNull(), fmt.Errorf("GETFIELD requires string constant for field name")
+				return NewNull(), vm.runtimeError("GETFIELD requires string constant for field name")
 			}
 
 			fieldNameObj := (*StringObj)(unsafe.Pointer(fieldNameVal.AsHeapPtr()))
@@ -448,17 +469,17 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			// Set object field: A = object, B = const index (field name), C = value
 			objVal := vm.regs[instr.A]
 			if !objVal.IsHeapPtr() {
-				return NewNull(), fmt.Errorf("SETFIELD requires object")
+				return NewNull(), vm.runtimeError("SETFIELD requires object")
 			}
 
 			if int(instr.B) >= len(vm.chunk.Constants) {
-				return NewNull(), fmt.Errorf("constant index out of bounds: %d", instr.B)
+				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.B))
 			}
 
 			// Get field name from constant
 			fieldNameVal := vm.chunk.Constants[instr.B]
 			if !fieldNameVal.IsHeapPtr() {
-				return NewNull(), fmt.Errorf("SETFIELD requires string constant for field name")
+				return NewNull(), vm.runtimeError("SETFIELD requires string constant for field name")
 			}
 
 			fieldNameObj := (*StringObj)(unsafe.Pointer(fieldNameVal.AsHeapPtr()))
@@ -473,7 +494,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			// Get array length: A = dest, B = array
 			arrayVal := vm.regs[instr.B]
 			if !arrayVal.IsHeapPtr() {
-				return NewNull(), fmt.Errorf("ARRLEN requires array")
+				return NewNull(), vm.runtimeError("ARRLEN requires array")
 			}
 
 			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
@@ -484,7 +505,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			vm.CollectGarbage()
 
 		default:
-			return NewNull(), fmt.Errorf("unimplemented opcode: %v", instr.Op)
+			return NewNull(), vm.runtimeError(fmt.Sprintf("unimplemented opcode: %v", instr.Op))
 		}
 
 		vm.ip++

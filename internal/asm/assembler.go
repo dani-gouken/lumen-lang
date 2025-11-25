@@ -8,13 +8,23 @@ import (
 	"github.com/yourname/lumen/internal/vm"
 )
 
+// AssembleFromFile converts assembly text into a Chunk with debug info.
+func AssembleFromFile(source, filePath string) (*vm.Chunk, error) {
+	return assembleInternal(source, filePath)
+}
+
 // Assemble converts assembly text into a Chunk.
 func Assemble(source string) (*vm.Chunk, error) {
+	return assembleInternal(source, "")
+}
+
+func assembleInternal(source, filePath string) (*vm.Chunk, error) {
 	chunk := vm.NewChunk()
 	lines := strings.Split(source, "\n")
 
 	var mode string // "constants", "code", "metadata"
 	labels := make(map[string]int) // label name -> instruction index
+	var currentFunc string // Track current function name
 
 	// First pass: collect labels
 	codeLineNum := 0
@@ -57,9 +67,14 @@ func Assemble(source string) (*vm.Chunk, error) {
 
 	// Second pass: assemble code
 	mode = ""
+	currentFunc = ""
 	for lineNum, line := range lines {
-		// Remove comments
+		originalLine := line // Keep original line for debug info
+
+		// Remove comments but keep them for debug info
+		var comment string
 		if idx := strings.Index(line, ";"); idx != -1 {
+			comment = strings.TrimSpace(line[idx+1:])
 			line = line[:idx]
 		}
 
@@ -78,6 +93,7 @@ func Assemble(source string) (*vm.Chunk, error) {
 				continue
 			} else if line == ".code" {
 				mode = "code"
+				currentFunc = "" // Reset function context when entering code section
 				continue
 			} else if line == ".metadata" {
 				mode = "metadata"
@@ -85,8 +101,10 @@ func Assemble(source string) (*vm.Chunk, error) {
 			}
 		}
 
-		// Skip labels in code section
+		// Check for labels in code section (these define functions)
 		if mode == "code" && strings.HasSuffix(line, ":") {
+			labelName := strings.TrimSuffix(line, ":")
+			currentFunc = labelName
 			continue
 		}
 
@@ -97,7 +115,15 @@ func Assemble(source string) (*vm.Chunk, error) {
 				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
 			}
 		case "code":
-			if err := parseInstruction(chunk, line, labels); err != nil {
+			// Create debug info for this instruction
+			debugInfo := vm.NewDebugInfo(filePath, lineNum+1, 1)
+			debugInfo.WithSourceLine(strings.TrimSpace(originalLine))
+			debugInfo.WithFuncName(currentFunc)
+			if comment != "" {
+				debugInfo.WithDescription(comment)
+			}
+
+			if err := parseInstructionWithDebug(chunk, line, labels, debugInfo); err != nil {
 				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
 			}
 		case "metadata":
@@ -127,7 +153,7 @@ func parseConstant(chunk *vm.Chunk, line string) error {
 		return fmt.Errorf("invalid constant index: %s", indexStr)
 	}
 
-	value, err := parseValue(valueStr)
+	value, err := parseValueWithChunk(valueStr, chunk)
 	if err != nil {
 		return err
 	}
@@ -142,6 +168,10 @@ func parseConstant(chunk *vm.Chunk, line string) error {
 }
 
 func parseValue(s string) (vm.Value, error) {
+	return parseValueWithChunk(s, nil)
+}
+
+func parseValueWithChunk(s string, chunk *vm.Chunk) (vm.Value, error) {
 	s = strings.TrimSpace(s)
 
 	switch {
@@ -151,6 +181,18 @@ func parseValue(s string) (vm.Value, error) {
 		return vm.NewBool(true), nil
 	case s == "false":
 		return vm.NewBool(false), nil
+	case strings.HasPrefix(s, "\"") && strings.HasSuffix(s, "\""):
+		// String literal
+		if chunk == nil {
+			return 0, fmt.Errorf("string literals require chunk context")
+		}
+		// Remove quotes and handle escape sequences
+		strValue := s[1 : len(s)-1]
+		strValue = unescapeString(strValue)
+
+		// Add to string pool and return the index as an Int
+		idx := chunk.AddString(strValue)
+		return vm.NewInt(int64(idx)), nil
 	case strings.HasSuffix(s, "i"):
 		// Integer value
 		intStr := strings.TrimSuffix(s, "i")
@@ -169,7 +211,49 @@ func parseValue(s string) (vm.Value, error) {
 	}
 }
 
+func unescapeString(s string) string {
+	// Handle common escape sequences in the correct order
+	// We must process \\ first, but we can't use ReplaceAll because
+	// it would interfere with other escapes. Instead, we'll process
+	// character by character.
+	result := strings.Builder{}
+	result.Grow(len(s))
+
+	for i := 0; i < len(s); i++ {
+		if s[i] == '\\' && i+1 < len(s) {
+			switch s[i+1] {
+			case 'n':
+				result.WriteByte('\n')
+				i++
+			case 't':
+				result.WriteByte('\t')
+				i++
+			case 'r':
+				result.WriteByte('\r')
+				i++
+			case '\\':
+				result.WriteByte('\\')
+				i++
+			case '"':
+				result.WriteByte('"')
+				i++
+			default:
+				// Unknown escape, keep as-is
+				result.WriteByte(s[i])
+			}
+		} else {
+			result.WriteByte(s[i])
+		}
+	}
+
+	return result.String()
+}
+
 func parseInstruction(chunk *vm.Chunk, line string, labels map[string]int) error {
+	return parseInstructionWithDebug(chunk, line, labels, nil)
+}
+
+func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]int, debugInfo *vm.DebugInfo) error {
 	// Skip line numbers (format: "0001: INSTRUCTION")
 	if strings.Contains(line, ":") {
 		parts := strings.SplitN(line, ":", 2)
@@ -528,7 +612,7 @@ func parseInstruction(chunk *vm.Chunk, line string, labels map[string]int) error
 		return fmt.Errorf("unknown instruction: %s", mnemonic)
 	}
 
-	chunk.AddInstruction(instr)
+	chunk.AddInstructionWithDebug(instr, debugInfo)
 	return nil
 }
 

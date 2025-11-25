@@ -11,10 +11,26 @@ import (
 func Disassemble(chunk *vm.Chunk) string {
 	var sb strings.Builder
 
+	// Build map of which constants are string pool indices
+	stringConstIndices := make(map[int]bool)
+	for _, instr := range chunk.Code {
+		if instr.Op == vm.OpNEWSTR {
+			stringConstIndices[int(instr.B)] = true
+		}
+	}
+
 	// Write constants section
 	sb.WriteString(".constants ")
 	sb.WriteString(fmt.Sprintf("%d\n", len(chunk.Constants)))
 	for i, val := range chunk.Constants {
+		// Check if this constant is a string pool index
+		if stringConstIndices[i] && val.IsInt() {
+			strIdx := int(val.AsInt())
+			if strIdx >= 0 && strIdx < len(chunk.StringPool) {
+				sb.WriteString(fmt.Sprintf("  %d: %s\n", i, escapeString(chunk.StringPool[strIdx])))
+				continue
+			}
+		}
 		sb.WriteString(fmt.Sprintf("  %d: %s\n", i, formatValue(val)))
 	}
 	sb.WriteString("\n")
@@ -32,6 +48,33 @@ func Disassemble(chunk *vm.Chunk) string {
 	sb.WriteString(fmt.Sprintf("  args: %d\n", chunk.ArgCount))
 
 	return sb.String()
+}
+
+// escapeString adds quotes and escapes special characters.
+func escapeString(s string) string {
+	result := strings.Builder{}
+	result.Grow(len(s) + 10) // Account for quotes and some escapes
+	result.WriteByte('"')
+
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '\\':
+			result.WriteString("\\\\")
+		case '"':
+			result.WriteString("\\\"")
+		case '\n':
+			result.WriteString("\\n")
+		case '\t':
+			result.WriteString("\\t")
+		case '\r':
+			result.WriteString("\\r")
+		default:
+			result.WriteByte(s[i])
+		}
+	}
+
+	result.WriteByte('"')
+	return result.String()
 }
 
 // formatValue converts a Value to its assembly representation.

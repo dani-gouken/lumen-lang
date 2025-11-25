@@ -6,7 +6,9 @@ type Chunk struct {
 	Code          []Instr
 	RegisterCount int
 	ArgCount      int
-	ExternNames   []string // Names of external functions
+	ExternNames   []string            // Names of external functions
+	StringPool    []string            // Pool of string literals
+	DebugInfo     map[int]*DebugInfo  // Map from instruction index to debug info
 }
 
 // NewChunk creates a new empty chunk.
@@ -17,6 +19,8 @@ func NewChunk() *Chunk {
 		RegisterCount: 0,
 		ArgCount:      0,
 		ExternNames:   make([]string, 0),
+		StringPool:    make([]string, 0),
+		DebugInfo:     make(map[int]*DebugInfo),
 	}
 }
 
@@ -31,8 +35,28 @@ func (c *Chunk) AddInstruction(instr Instr) {
 	c.Code = append(c.Code, instr)
 }
 
+// AddInstructionWithDebug adds an instruction with debug info to the code array.
+func (c *Chunk) AddInstructionWithDebug(instr Instr, debug *DebugInfo) {
+	index := len(c.Code)
+	c.Code = append(c.Code, instr)
+	if debug != nil {
+		c.DebugInfo[index] = debug
+	}
+}
+
+// GetDebugInfo returns the debug info for an instruction at the given index.
+func (c *Chunk) GetDebugInfo(index int) *DebugInfo {
+	return c.DebugInfo[index]
+}
+
 // AddExtern adds an external function name and returns its index.
 func (c *Chunk) AddExtern(name string) int {
 	c.ExternNames = append(c.ExternNames, name)
 	return len(c.ExternNames) - 1
+}
+
+// AddString adds a string literal to the string pool and returns its index.
+func (c *Chunk) AddString(str string) int {
+	c.StringPool = append(c.StringPool, str)
+	return len(c.StringPool) - 1
 }
