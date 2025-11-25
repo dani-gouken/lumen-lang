@@ -1,0 +1,39 @@
+; Example: Nested data structures (simplified for testing)
+;
+; This program demonstrates:
+; - Creating arrays
+; - Array indexing operations
+; - Manual garbage collection
+;
+; Note: Full nested object.array[0] syntax requires pre-allocated
+; string constants. This example shows array operations and GC.
+
+.constants 2
+0: 100i         ; Value to store
+1: 0i           ; Index 0
+
+.code
+  ; Create object (demonstrates heap allocation)
+  NEWOBJ r0
+
+  ; Create array
+  NEWARRAY r1 3
+
+  ; Store 100 at array[0]
+  LOADK r2 0      ; r2 = 100
+  LOADK r3 1      ; r3 = 0 (index)
+  SETINDEX r1 r3 r2
+
+  ; Retrieve value from array[0]
+  LOADK r3 1      ; r3 = 0 (index)
+  GETINDEX r4 r1 r3 ; r4 = r1[0]
+
+  ; Trigger garbage collection
+  GC
+
+  ; Return value (should be 100)
+  RET r4
+
+.metadata
+  registers: 5
+  args: 0

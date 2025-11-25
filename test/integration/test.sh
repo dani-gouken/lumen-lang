@@ -119,6 +119,60 @@ grep -q "5i" "$OUTPUT_DIR/complex_disasm.lasm" || fail "integer suffix not prese
 grep -q "MUL r2 r0 r1" "$OUTPUT_DIR/complex_disasm.lasm" || fail "MUL instruction missing"
 pass
 
+# Test 10: Array operations
+test_name "Execute array_example.lasm"
+$LUMEN asm "$EXAMPLES_DIR/array_example.lasm" "$OUTPUT_DIR/array.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/array.lc" 2>&1)
+echo "$result" | grep -q "Result: Int(20)" || fail "unexpected result: $result"
+pass
+
+# Test 11: Disassemble array bytecode
+test_name "Disassemble array bytecode with memory opcodes"
+$LUMEN disasm "$OUTPUT_DIR/array.lc" "$OUTPUT_DIR/array_disasm.lasm" > /dev/null 2>&1 || fail "disassembly failed"
+grep -q "NEWARRAY r0 5" "$OUTPUT_DIR/array_disasm.lasm" || fail "missing NEWARRAY instruction"
+grep -q "SETINDEX" "$OUTPUT_DIR/array_disasm.lasm" || fail "missing SETINDEX instruction"
+grep -q "GETINDEX" "$OUTPUT_DIR/array_disasm.lasm" || fail "missing GETINDEX instruction"
+grep -q "ARRLEN" "$OUTPUT_DIR/array_disasm.lasm" || fail "missing ARRLEN instruction"
+pass
+
+# Test 12: Object operations
+test_name "Execute object_example.lasm"
+$LUMEN asm "$EXAMPLES_DIR/object_example.lasm" "$OUTPUT_DIR/object.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/object.lc" 2>&1)
+echo "$result" | grep -q "Result: Int(25)" || fail "unexpected result: $result"
+pass
+
+# Test 13: Nested structures
+test_name "Execute nested_structures.lasm"
+$LUMEN asm "$EXAMPLES_DIR/nested_structures.lasm" "$OUTPUT_DIR/nested.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/nested.lc" 2>&1)
+echo "$result" | grep -q "Result: Int(100)" || fail "unexpected result: $result"
+pass
+
+# Test 14: Garbage collection
+test_name "Execute gc_demo.lasm"
+$LUMEN asm "$EXAMPLES_DIR/gc_demo.lasm" "$OUTPUT_DIR/gc.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/gc.lc" 2>&1)
+echo "$result" | grep -q "Result: Int(42)" || fail "unexpected result: $result"
+pass
+
+# Test 15: Disassemble GC bytecode
+test_name "Disassemble GC bytecode"
+$LUMEN disasm "$OUTPUT_DIR/gc.lc" "$OUTPUT_DIR/gc_disasm.lasm" > /dev/null 2>&1 || fail "disassembly failed"
+grep -q "NEWARRAY" "$OUTPUT_DIR/gc_disasm.lasm" || fail "missing NEWARRAY instruction"
+grep -q "NEWOBJ" "$OUTPUT_DIR/gc_disasm.lasm" || fail "missing NEWOBJ instruction"
+grep -q ": GC$" "$OUTPUT_DIR/gc_disasm.lasm" || fail "missing GC instruction"
+pass
+
+# Test 16: Memory round-trip
+test_name "Round-trip memory opcodes: asm → binary → disasm → asm"
+$LUMEN disasm "$OUTPUT_DIR/nested.lc" "$OUTPUT_DIR/nested_disasm.lasm" > /dev/null 2>&1 || fail "disassembly failed"
+$LUMEN asm "$OUTPUT_DIR/nested_disasm.lasm" "$OUTPUT_DIR/nested_roundtrip.lc" > /dev/null 2>&1 || fail "re-assembly failed"
+result1=$($LUMEN exec "$OUTPUT_DIR/nested.lc" 2>&1)
+result2=$($LUMEN exec "$OUTPUT_DIR/nested_roundtrip.lc" 2>&1)
+[ "$result1" = "$result2" ] || fail "round-trip produced different results"
+pass
+
 # Summary
 echo "========================================"
 echo -e "${GREEN}Tests passed: $TESTS_PASSED/$TESTS_RUN${NC}"

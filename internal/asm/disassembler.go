@@ -122,6 +122,33 @@ func formatInstruction(instr vm.Instr) string {
 	case vm.OpRET:
 		return fmt.Sprintf("RET r%d", instr.A)
 
+	case vm.OpNEWSTR:
+		return fmt.Sprintf("NEWSTR r%d %d", instr.A, instr.B)
+
+	case vm.OpNEWARRAY:
+		return fmt.Sprintf("NEWARRAY r%d %d", instr.A, instr.B)
+
+	case vm.OpNEWOBJ:
+		return fmt.Sprintf("NEWOBJ r%d", instr.A)
+
+	case vm.OpGETINDEX:
+		return fmt.Sprintf("GETINDEX r%d r%d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpSETINDEX:
+		return fmt.Sprintf("SETINDEX r%d r%d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpGETFIELD:
+		return fmt.Sprintf("GETFIELD r%d r%d %d", instr.A, instr.B, instr.C)
+
+	case vm.OpSETFIELD:
+		return fmt.Sprintf("SETFIELD r%d %d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpARRLEN:
+		return fmt.Sprintf("ARRLEN r%d r%d", instr.A, instr.B)
+
+	case vm.OpGC:
+		return "GC"
+
 	default:
 		return fmt.Sprintf("UNKNOWN(%d) %d %d %d", instr.Op, instr.A, instr.B, instr.C)
 	}

@@ -1,0 +1,48 @@
+; Example: Create an array, populate it, and return a value
+;
+; This program demonstrates:
+; - Array allocation with NEWARRAY
+; - Setting array elements with SETINDEX
+; - Reading array elements with GETINDEX
+; - Getting array length with ARRLEN
+
+.constants 4
+0: 10i          ; First value to store
+1: 20i          ; Second value to store
+2: 30i          ; Third value to store
+3: 1i           ; Index to retrieve
+
+.code
+  ; Create array with capacity 5
+  NEWARRAY r0 5
+
+  ; Store 10 at index 0
+  LOADK r1 0      ; r1 = 10
+  LOADK r2 3      ; r2 = 1 (reusing constant)
+  SUB r2 r2 r2    ; r2 = 0 (index)
+  SETINDEX r0 r2 r1
+
+  ; Store 20 at index 1
+  LOADK r1 1      ; r1 = 20
+  LOADK r2 3      ; r2 = 1 (index)
+  SETINDEX r0 r2 r1
+
+  ; Store 30 at index 2
+  LOADK r1 2      ; r1 = 30
+  LOADK r2 3      ; r2 = 1
+  ADD r2 r2 r2    ; r2 = 2 (index)
+  SETINDEX r0 r2 r1
+
+  ; Get element at index 1
+  LOADK r2 3      ; r2 = 1 (index)
+  GETINDEX r3 r0 r2
+
+  ; Get array length
+  ARRLEN r4 r0
+
+  ; Return the value at index 1 (should be 20)
+  RET r3
+
+.metadata
+  registers: 5
+  args: 0

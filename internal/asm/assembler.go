@@ -296,6 +296,136 @@ func parseInstruction(chunk *vm.Chunk, line string) error {
 		}
 		instr = vm.NewInstr(vm.OpRET, a, 0, 0)
 
+	case "NEWSTR":
+		if len(args) != 2 {
+			return fmt.Errorf("NEWSTR requires 2 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseImm(args[1])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpNEWSTR, a, b, 0)
+
+	case "NEWARRAY":
+		if len(args) != 2 {
+			return fmt.Errorf("NEWARRAY requires 2 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseImm(args[1])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpNEWARRAY, a, b, 0)
+
+	case "NEWOBJ":
+		if len(args) != 1 {
+			return fmt.Errorf("NEWOBJ requires 1 argument, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpNEWOBJ, a, 0, 0)
+
+	case "GETINDEX":
+		if len(args) != 3 {
+			return fmt.Errorf("GETINDEX requires 3 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+		c, err := parseReg(args[2])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpGETINDEX, a, b, c)
+
+	case "SETINDEX":
+		if len(args) != 3 {
+			return fmt.Errorf("SETINDEX requires 3 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+		c, err := parseReg(args[2])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpSETINDEX, a, b, c)
+
+	case "GETFIELD":
+		if len(args) != 3 {
+			return fmt.Errorf("GETFIELD requires 3 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+		c, err := parseImm(args[2])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpGETFIELD, a, b, c)
+
+	case "SETFIELD":
+		if len(args) != 3 {
+			return fmt.Errorf("SETFIELD requires 3 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseImm(args[1])
+		if err != nil {
+			return err
+		}
+		c, err := parseReg(args[2])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpSETFIELD, a, b, c)
+
+	case "ARRLEN":
+		if len(args) != 2 {
+			return fmt.Errorf("ARRLEN requires 2 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpARRLEN, a, b, 0)
+
+	case "GC":
+		if len(args) != 0 {
+			return fmt.Errorf("GC requires 0 arguments, got %d", len(args))
+		}
+		instr = vm.NewInstr(vm.OpGC, 0, 0, 0)
+
 	default:
 		return fmt.Errorf("unknown instruction: %s", mnemonic)
 	}

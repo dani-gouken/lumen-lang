@@ -1,0 +1,37 @@
+; Example: Garbage collection demonstration
+;
+; This program demonstrates:
+; - Allocating multiple objects
+; - Creating garbage by overwriting references
+; - Manual GC triggering
+; - Objects remaining in registers are kept alive
+
+.constants 1
+0: 42i
+
+.code
+  ; Allocate first array (will become garbage)
+  NEWARRAY r0 10
+
+  ; Allocate second array (will become garbage)
+  NEWARRAY r0 10
+
+  ; Allocate third array (overwrites r0, making prev arrays garbage)
+  NEWARRAY r0 10
+
+  ; Allocate object (will also become garbage)
+  NEWOBJ r1
+
+  ; Create final result that we'll keep
+  LOADK r2 0      ; r2 = 42
+
+  ; Trigger GC - should collect 3 arrays and 1 object
+  ; Only r2 (primitive) remains, all heap objects collected
+  GC
+
+  ; Return the value (42)
+  RET r2
+
+.metadata
+  registers: 3
+  args: 0

@@ -34,6 +34,21 @@ const (
 	// Function calls
 	OpCALL
 	OpRET
+
+	// Heap allocation
+	OpNEWSTR    // A = dest, B = const index (string constant)
+	OpNEWARRAY  // A = dest, B = capacity
+	OpNEWOBJ    // A = dest
+
+	// Array/Object access
+	OpGETINDEX  // A = dest, B = array, C = index
+	OpSETINDEX  // A = array, B = index, C = value
+	OpGETFIELD  // A = dest, B = object, C = const index (field name)
+	OpSETFIELD  // A = object, B = const index (field name), C = value
+	OpARRLEN    // A = dest, B = array
+
+	// Garbage collection
+	OpGC        // Trigger GC manually
 )
 
 // Instr represents a single bytecode instruction.
@@ -93,6 +108,24 @@ func (i Instr) String() string {
 		return formatInstr("CALL", i.A, i.B)
 	case OpRET:
 		return formatInstr("RET", i.A)
+	case OpNEWSTR:
+		return formatInstr("NEWSTR", i.A, i.B)
+	case OpNEWARRAY:
+		return formatInstr("NEWARRAY", i.A, i.B)
+	case OpNEWOBJ:
+		return formatInstr("NEWOBJ", i.A)
+	case OpGETINDEX:
+		return formatInstr("GETINDEX", i.A, i.B, i.C)
+	case OpSETINDEX:
+		return formatInstr("SETINDEX", i.A, i.B, i.C)
+	case OpGETFIELD:
+		return formatInstr("GETFIELD", i.A, i.B, i.C)
+	case OpSETFIELD:
+		return formatInstr("SETFIELD", i.A, i.B, i.C)
+	case OpARRLEN:
+		return formatInstr("ARRLEN", i.A, i.B)
+	case OpGC:
+		return "GC"
 	default:
 		return "UNKNOWN"
 	}

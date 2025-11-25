@@ -1,0 +1,26 @@
+; Example: Create an object (simplified for testing)
+;
+; This program demonstrates:
+; - Object allocation with NEWOBJ
+; - Simple arithmetic to return a value
+;
+; Note: Full SETFIELD/GETFIELD require pre-allocated string constants
+; which are not yet supported in the assembler. This example shows
+; object allocation and returns a test value.
+
+.constants 1
+0: 25i          ; Age value
+
+.code
+  ; Create new object (demonstrates heap allocation)
+  NEWOBJ r0
+
+  ; Load test value
+  LOADK r1 0      ; r1 = 25
+
+  ; Return the value
+  RET r1
+
+.metadata
+  registers: 2
+  args: 0

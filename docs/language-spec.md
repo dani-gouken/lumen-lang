@@ -18,6 +18,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Built-ins: `Int` (64-bit), `Float` (64-bit), `Bool`, `String`, `Any`, `Void`, `T?` (nullable).
 - Structs: `struct User { id: Int; name: String; email: String? }` (fields separated by newline or `;`).
 - Arrays: `[T]` dynamic length.
+- Generics (monomorphized per instantiation): type params on structs/functions: `struct Box<T> { value: T }`, `fn id<T>(x: T) -> T { x }`; instantiate with `Box[Int]`, `id[String]("hi")`. Type arg inference for calls is allowed when unambiguous; otherwise supply explicitly.
 - Minimal inference: `let x = 1;` infers `Int`; function params/returns must be annotated.
 
 ## 3. Declarations & Statements
@@ -45,6 +46,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Form: `fn add(a: Int, b: Int) -> Int { return a + b; }`.
 - Return type required (`Void` allowed). In `-> T`, all paths return `T`; in `-> Void`, `return;` only.
 - Entry point convention: `fn main() -> Int { ... }`.
+- Generics: `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { ... }`; instantiate with `map[Int, String](nums, toStr)`. No traits/interfaces in v0.
 
 ## 6. Modules & Imports
 - One module per `.lum` file; module name = path relative to a chosen root (TBD).
@@ -57,6 +59,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - `null` only fits `T?` or `Any`.
 - No implicit `Int`↔`Float` coercion.
 - `Any` accepts anything; assigning `Any` to specific `T` needs an explicit cast (future work).
+- Generic type args must be concrete types (no higher-kinded). Each instantiation gets its own monomorphized copy.
 
 ## 8. luvm Mapping (sketch)
 - Values: `Int`→TAG_INT, `Float`→double, `Bool`→TAG_BOOL, `String`/`Struct`/`Array`→heap ptr, `Null`→TAG_NULL, `Void`→none or TAG_UNDEF.
@@ -81,4 +84,51 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - `fn println(msg: String) -> Void;`
 - `fn toString(v: Any) -> String;`
 
-Next steps: formal EBNF grammar and/or typed IR between this spec and luvm.
+## 11. Grammar (EBNF sketch)
+```
+Program      = { Import | Decl } EOF ;
+Import       = "import" StringLiteral [ "as" Ident ] ";" ;
+Decl         = FnDecl | StructDecl ;
+
+FnDecl       = "fn" Ident [TypeParams] "(" [ParamList] ")" "->" Type Block ;
+TypeParams   = "<" TypeParam { "," TypeParam } ">" ;
+TypeParam    = Ident ;
+ParamList    = Param { "," Param } ;
+Param        = Ident ":" Type ;
+
+StructDecl   = "struct" Ident [TypeParams] "{" { Field [";" ] } "}" ;
+Field        = Ident ":" Type ;
+
+Block        = "{" { Stmt } "}" ;
+Stmt         = LetDecl | IfStmt | WhileStmt | ForStmt | ReturnStmt | ExprStmt ;
+LetDecl      = ("let" | "const") Ident [ ":" Type ] "=" Expr ";" ;
+IfStmt       = "if" Expr Block [ "else" (Block | IfStmt) ] ;
+WhileStmt    = "while" Expr Block ;
+ForStmt      = "for" Ident "in" Expr Block ;
+ReturnStmt   = "return" [ Expr ] ";" ;
+ExprStmt     = Expr ";" ;
+
+Expr         = OrExpr ;
+OrExpr       = AndExpr { "||" AndExpr } ;
+AndExpr      = NullCoalesceExpr { "&&" NullCoalesceExpr } ;
+NullCoalesceExpr = EqExpr { "??" EqExpr } ;
+EqExpr       = RelExpr { ("==" | "!=") RelExpr } ;
+RelExpr      = AddExpr { ("<" | "<=" | ">" | ">=") AddExpr } ;
+AddExpr      = MulExpr { ("+" | "-") MulExpr } ;
+MulExpr      = UnaryExpr { ("*" | "/" | "%") UnaryExpr } ;
+UnaryExpr    = ( "-" | "!" ) UnaryExpr | PostfixExpr ;
+PostfixExpr  = Primary { Call | Index | Member } ;
+Call         = "(" [ ArgList ] ")" ;
+ArgList      = Expr { "," Expr } ;
+Index        = "[" Expr "]" ;
+Member       = "." Ident ;
+Primary      = Literal | Ident [TypeArgs] | "(" Expr ")" ;
+TypeArgs     = "<" Type { "," Type } ">" ;
+
+Type         = SimpleType [ "?" ] ;
+SimpleType   = BuiltinType | Ident [TypeArgs] | "[" Type "]" | "(" Type ")" ;
+BuiltinType  = "Int" | "Float" | "Bool" | "String" | "Any" | "Void" ;
+
+Ident        = Letter { Letter | Digit | "_" } ;
+Literal      = IntLit | FloatLit | StringLit | "true" | "false" | "null" ;
+```
