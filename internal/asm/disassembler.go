@@ -142,6 +142,9 @@ func formatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 		}
 		return fmt.Sprintf("LOADBOOL r%d %s", instr.A, val)
 
+	case vm.OpLOADI:
+		return fmt.Sprintf("LOADI r%d %d", instr.A, instr.B)
+
 	case vm.OpADD:
 		return fmt.Sprintf("ADD r%d r%d r%d", instr.A, instr.B, instr.C)
 
@@ -153,6 +156,36 @@ func formatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 
 	case vm.OpDIV:
 		return fmt.Sprintf("DIV r%d r%d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpMOD:
+		return fmt.Sprintf("MOD r%d r%d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpNEG:
+		return fmt.Sprintf("NEG r%d r%d", instr.A, instr.B)
+
+	case vm.OpNOT:
+		return fmt.Sprintf("NOT r%d r%d", instr.A, instr.B)
+
+	case vm.OpTOINT:
+		return fmt.Sprintf("TOINT r%d r%d", instr.A, instr.B)
+
+	case vm.OpTONUM:
+		return fmt.Sprintf("TONUM r%d r%d", instr.A, instr.B)
+
+	case vm.OpBAND:
+		return fmt.Sprintf("BAND r%d r%d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpBOR:
+		return fmt.Sprintf("BOR r%d r%d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpBXOR:
+		return fmt.Sprintf("BXOR r%d r%d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpSHL:
+		return fmt.Sprintf("SHL r%d r%d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpSHR:
+		return fmt.Sprintf("SHR r%d r%d r%d", instr.A, instr.B, instr.C)
 
 	case vm.OpEQ:
 		return fmt.Sprintf("EQ r%d r%d r%d", instr.A, instr.B, instr.C)
@@ -232,6 +265,15 @@ func formatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 
 	case vm.OpARRLEN:
 		return fmt.Sprintf("ARRLEN r%d r%d", instr.A, instr.B)
+
+	case vm.OpARRPUSH:
+		return fmt.Sprintf("ARRPUSH r%d r%d", instr.A, instr.B)
+
+	case vm.OpHASFIELD:
+		return fmt.Sprintf("HASFIELD r%d r%d %d", instr.A, instr.B, instr.C)
+
+	case vm.OpDELFIELD:
+		return fmt.Sprintf("DELFIELD r%d r%d %d", instr.A, instr.B, instr.C)
 
 	case vm.OpGC:
 		return "GC"

@@ -197,16 +197,30 @@ func TestAssembleAllInstructions(t *testing.T) {
   LOADK r0 0
   LOADNULL r2
   LOADBOOL r3 true
+  LOADI r4 1
   ADD r4 r0 r1
   SUB r5 r0 r1
   MUL r6 r0 r1
   DIV r7 r0 r1
+  MOD r8 r0 r1
+  NEG r9 r0
+  NOT r10 r3
+  TOINT r11 r0
+  TONUM r12 r0
+  BAND r13 r0 r1
+  BOR r14 r0 r1
+  BXOR r15 r0 r1
+  SHL r16 r0 r4
+  SHR r17 r0 r4
   EQ r8 r0 r1
   NE r9 r0 r1
   LT r10 r0 r1
   LE r11 r0 r1
   GT r12 r0 r1
   GE r13 r0 r1
+  ARRPUSH r0 r4
+  HASFIELD r1 r0 0
+  DELFIELD r2 r0 1
   JMP 10
   JMPIF r0 5
   JMPIFNOT r0 5
@@ -214,7 +228,7 @@ func TestAssembleAllInstructions(t *testing.T) {
   RET r0
 
 .metadata
-  registers: 14
+  registers: 18
   args: 0
 `
 
@@ -224,9 +238,11 @@ func TestAssembleAllInstructions(t *testing.T) {
 	}
 
 	expectedOps := []vm.OpCode{
-		vm.OpNOP, vm.OpMOV, vm.OpLOADK, vm.OpLOADNULL, vm.OpLOADBOOL,
-		vm.OpADD, vm.OpSUB, vm.OpMUL, vm.OpDIV,
+		vm.OpNOP, vm.OpMOV, vm.OpLOADK, vm.OpLOADNULL, vm.OpLOADBOOL, vm.OpLOADI,
+		vm.OpADD, vm.OpSUB, vm.OpMUL, vm.OpDIV, vm.OpMOD, vm.OpNEG, vm.OpNOT, vm.OpTOINT, vm.OpTONUM,
+		vm.OpBAND, vm.OpBOR, vm.OpBXOR, vm.OpSHL, vm.OpSHR,
 		vm.OpEQ, vm.OpNE, vm.OpLT, vm.OpLE, vm.OpGT, vm.OpGE,
+		vm.OpARRPUSH, vm.OpHASFIELD, vm.OpDELFIELD,
 		vm.OpJMP, vm.OpJMPIF, vm.OpJMPIFNOT, vm.OpCALL, vm.OpRET,
 	}
 

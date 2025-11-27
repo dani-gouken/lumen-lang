@@ -22,9 +22,9 @@ func assembleInternal(source, filePath string) (*vm.Chunk, error) {
 	chunk := vm.NewChunk()
 	lines := strings.Split(source, "\n")
 
-	var mode string // "constants", "code", "metadata"
+	var mode string                // "constants", "code", "metadata"
 	labels := make(map[string]int) // label name -> instruction index
-	var currentFunc string // Track current function name
+	var currentFunc string         // Track current function name
 
 	// First pass: collect labels
 	codeLineNum := 0
@@ -362,7 +362,21 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 		}
 		instr = vm.NewInstr(vm.OpLOADBOOL, a, b, 0)
 
-	case "ADD", "SUB", "MUL", "DIV", "EQ", "NE", "LT", "LE", "GT", "GE":
+	case "LOADI":
+		if len(args) != 2 {
+			return fmt.Errorf("LOADI requires 2 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseImm(args[1])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpLOADI, a, b, 0)
+
+	case "ADD", "SUB", "MUL", "DIV", "MOD", "BAND", "BOR", "BXOR", "SHL", "SHR", "EQ", "NE", "LT", "LE", "GT", "GE":
 		if len(args) != 3 {
 			return fmt.Errorf("%s requires 3 arguments, got %d", mnemonic, len(args))
 		}
@@ -389,6 +403,18 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 			op = vm.OpMUL
 		case "DIV":
 			op = vm.OpDIV
+		case "MOD":
+			op = vm.OpMOD
+		case "BAND":
+			op = vm.OpBAND
+		case "BOR":
+			op = vm.OpBOR
+		case "BXOR":
+			op = vm.OpBXOR
+		case "SHL":
+			op = vm.OpSHL
+		case "SHR":
+			op = vm.OpSHR
 		case "EQ":
 			op = vm.OpEQ
 		case "NE":
@@ -403,6 +429,32 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 			op = vm.OpGE
 		}
 		instr = vm.NewInstr(op, a, b, c)
+
+	case "NEG", "NOT", "TOINT", "TONUM":
+		if len(args) != 2 {
+			return fmt.Errorf("%s requires 2 arguments, got %d", mnemonic, len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+
+		var op vm.OpCode
+		switch mnemonic {
+		case "NEG":
+			op = vm.OpNEG
+		case "NOT":
+			op = vm.OpNOT
+		case "TOINT":
+			op = vm.OpTOINT
+		case "TONUM":
+			op = vm.OpTONUM
+		}
+		instr = vm.NewInstr(op, a, b, 0)
 
 	case "JMP":
 		if len(args) != 1 {
@@ -685,6 +737,56 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 			return err
 		}
 		instr = vm.NewInstr(vm.OpSETFIELD, a, b, c)
+
+	case "ARRPUSH":
+		if len(args) != 2 {
+			return fmt.Errorf("ARRPUSH requires 2 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpARRPUSH, a, b, 0)
+
+	case "HASFIELD":
+		if len(args) != 3 {
+			return fmt.Errorf("HASFIELD requires 3 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+		c, err := parseImm(args[2])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpHASFIELD, a, b, c)
+
+	case "DELFIELD":
+		if len(args) != 3 {
+			return fmt.Errorf("DELFIELD requires 3 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+		c, err := parseImm(args[2])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpDELFIELD, a, b, c)
 
 	case "ARRLEN":
 		if len(args) != 2 {

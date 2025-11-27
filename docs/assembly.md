@@ -181,6 +181,17 @@ LOADBOOL r0 true   ; r0 = true
 LOADBOOL r1 false  ; r1 = false
 ```
 
+#### LOADI - Load Small Integer
+```assembly
+LOADI r_dest imm8
+```
+Load an unsigned 8-bit immediate as an Int into `r_dest`.
+
+**Example:**
+```assembly
+LOADI r0 42   ; r0 = 42i
+```
+
 ### Arithmetic Operations
 
 All arithmetic operations follow the pattern:
@@ -209,10 +220,53 @@ MUL r2 r0 r1   ; r2 = r0 * r1
 DIV r2 r0 r1   ; r2 = r0 / r1
 ```
 
+#### MOD - Remainder
+```assembly
+MOD r2 r0 r1   ; r2 = r0 % r1
+```
+
+#### NEG - Negation
+```assembly
+NEG r1 r0      ; r1 = -r0
+```
+Works for Number and Int, preserving the input type.
+
 **Type Rules:**
 - Number + Number → Number
 - Int + Int → Int
 - Mixing types is an error
+
+### Conversions
+
+#### TOINT - Truncate to Integer
+```assembly
+TOINT r_dest r_src   ; r_dest = trunc(r_src)
+```
+Accepts Number (truncated toward zero) or Int (passthrough). Other types error.
+
+#### TONUM - Convert to Number
+```assembly
+TONUM r_dest r_src   ; r_dest = float(r_src)
+```
+Accepts Int (converted to Number) or Number (passthrough). Other types error.
+
+### Logical
+
+#### NOT - Boolean Negation
+```assembly
+NOT r_dest r_src   ; r_dest = !r_src
+```
+Accepts Bool only.
+
+### Bitwise Operations (Int only)
+```assembly
+BAND r2 r0 r1   ; r2 = r0 & r1
+BOR  r2 r0 r1   ; r2 = r0 | r1
+BXOR r2 r0 r1   ; r2 = r0 ^ r1
+SHL  r2 r0 r1   ; r2 = r0 << r1
+SHR  r2 r0 r1   ; r2 = r0 >> r1
+```
+Shift counts must be non-negative. Mixing non-Int operands is an error.
 
 ### Comparison Operations
 
@@ -409,6 +463,15 @@ SETINDEX r0 r1 r2 ; array[2] = 30 (array[1] becomes null)
 - Runtime error if `r_index` is not an integer
 - Runtime error if index is negative
 
+#### ARRPUSH - Append to Array
+```assembly
+ARRPUSH r_array r_value
+```
+Append `r_value` to the end of `r_array`.
+
+**Error Conditions:**
+- Runtime error if `r_array` is not a heap pointer to an array
+
 #### ARRLEN - Get Array Length
 ```assembly
 ARRLEN r_dest r_array
@@ -504,6 +567,26 @@ Set field value in object.
   LOADK r2 2        ; r2 = 100
   SETFIELD r0 1 r2  ; obj["y"] = 100
 ```
+
+**Error Conditions:**
+- Runtime error if `r_object` is not a heap pointer to an object
+- Runtime error if constant at `const_index` is not a string
+
+#### HASFIELD - Check Object Field Presence
+```assembly
+HASFIELD r_dest r_object const_index
+```
+Store a boolean indicating whether the object has a field with the given name.
+
+**Error Conditions:**
+- Runtime error if `r_object` is not a heap pointer to an object
+- Runtime error if constant at `const_index` is not a string
+
+#### DELFIELD - Delete Object Field
+```assembly
+DELFIELD r_dest r_object const_index
+```
+Delete a field from an object, storing `true` in `r_dest` if it existed, `false` otherwise.
 
 **Error Conditions:**
 - Runtime error if `r_object` is not a heap pointer to an object

@@ -11,12 +11,23 @@ const (
 	OpLOADK
 	OpLOADNULL
 	OpLOADBOOL
+	OpLOADI
 
 	// Arithmetic
 	OpADD
 	OpSUB
 	OpMUL
 	OpDIV
+	OpMOD
+	OpNEG
+	OpNOT
+	OpTOINT
+	OpTONUM
+	OpBAND
+	OpBOR
+	OpBXOR
+	OpSHL
+	OpSHR
 
 	// Comparison
 	OpEQ
@@ -35,30 +46,33 @@ const (
 	OpLONG // Indicates next instruction uses 32-bit offset in following word
 
 	// 32-bit control flow (must follow OpLONG prefix)
-	OpJMP32       // A = unused, followed by 32-bit offset word
-	OpJMPIF32     // A = condition register, followed by 32-bit offset word
-	OpJMPIFNOT32  // A = condition register, followed by 32-bit offset word
-	OpCALL32      // A = nargs, followed by 32-bit offset word
+	OpJMP32      // A = unused, followed by 32-bit offset word
+	OpJMPIF32    // A = condition register, followed by 32-bit offset word
+	OpJMPIFNOT32 // A = condition register, followed by 32-bit offset word
+	OpCALL32     // A = nargs, followed by 32-bit offset word
 
 	// Function calls
 	OpCALL
 	OpRET
-	OpCALLEXTERN  // A = extern func index, B = argc
+	OpCALLEXTERN // A = extern func index, B = argc
 
 	// Heap allocation
-	OpNEWSTR    // A = dest, B = const index (string constant)
-	OpNEWARRAY  // A = dest, B = capacity
-	OpNEWOBJ    // A = dest
+	OpNEWSTR   // A = dest, B = const index (string constant)
+	OpNEWARRAY // A = dest, B = capacity
+	OpNEWOBJ   // A = dest
 
 	// Array/Object access
-	OpGETINDEX  // A = dest, B = array, C = index
-	OpSETINDEX  // A = array, B = index, C = value
-	OpGETFIELD  // A = dest, B = object, C = const index (field name)
-	OpSETFIELD  // A = object, B = const index (field name), C = value
-	OpARRLEN    // A = dest, B = array
+	OpGETINDEX // A = dest, B = array, C = index
+	OpSETINDEX // A = array, B = index, C = value
+	OpGETFIELD // A = dest, B = object, C = const index (field name)
+	OpSETFIELD // A = object, B = const index (field name), C = value
+	OpARRLEN   // A = dest, B = array
+	OpARRPUSH  // A = array, B = value
+	OpHASFIELD // A = dest bool, B = object, C = const index
+	OpDELFIELD // A = dest bool, B = object, C = const index
 
 	// Garbage collection
-	OpGC        // Trigger GC manually
+	OpGC // Trigger GC manually
 )
 
 // Instr represents a single bytecode instruction.
@@ -88,6 +102,8 @@ func (i Instr) String() string {
 		return formatInstr("LOADNULL", i.A)
 	case OpLOADBOOL:
 		return formatInstr("LOADBOOL", i.A, i.B)
+	case OpLOADI:
+		return formatInstr("LOADI", i.A, i.B)
 	case OpADD:
 		return formatInstr("ADD", i.A, i.B, i.C)
 	case OpSUB:
@@ -96,6 +112,26 @@ func (i Instr) String() string {
 		return formatInstr("MUL", i.A, i.B, i.C)
 	case OpDIV:
 		return formatInstr("DIV", i.A, i.B, i.C)
+	case OpMOD:
+		return formatInstr("MOD", i.A, i.B, i.C)
+	case OpNEG:
+		return formatInstr("NEG", i.A, i.B)
+	case OpNOT:
+		return formatInstr("NOT", i.A, i.B)
+	case OpTOINT:
+		return formatInstr("TOINT", i.A, i.B)
+	case OpTONUM:
+		return formatInstr("TONUM", i.A, i.B)
+	case OpBAND:
+		return formatInstr("BAND", i.A, i.B, i.C)
+	case OpBOR:
+		return formatInstr("BOR", i.A, i.B, i.C)
+	case OpBXOR:
+		return formatInstr("BXOR", i.A, i.B, i.C)
+	case OpSHL:
+		return formatInstr("SHL", i.A, i.B, i.C)
+	case OpSHR:
+		return formatInstr("SHR", i.A, i.B, i.C)
 	case OpEQ:
 		return formatInstr("EQ", i.A, i.B, i.C)
 	case OpNE:
@@ -146,6 +182,12 @@ func (i Instr) String() string {
 		return formatInstr("SETFIELD", i.A, i.B, i.C)
 	case OpARRLEN:
 		return formatInstr("ARRLEN", i.A, i.B)
+	case OpARRPUSH:
+		return formatInstr("ARRPUSH", i.A, i.B)
+	case OpHASFIELD:
+		return formatInstr("HASFIELD", i.A, i.B, i.C)
+	case OpDELFIELD:
+		return formatInstr("DELFIELD", i.A, i.B, i.C)
 	case OpGC:
 		return "GC"
 	default:

@@ -2,6 +2,7 @@ package vm
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 )
 
@@ -218,6 +219,9 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 		case OpLOADBOOL:
 			vm.regs[instr.A] = NewBool(instr.B != 0)
 
+		case OpLOADI:
+			vm.regs[instr.A] = NewInt(int64(instr.B))
+
 		case OpADD:
 			a := vm.regs[instr.B]
 			b := vm.regs[instr.C]
@@ -260,6 +264,110 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				vm.regs[instr.A] = NewInt(a.AsInt() / b.AsInt())
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("DIV requires numeric operands, got: %s / %s", a.String(), b.String()))
+			}
+
+		case OpMOD:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsNumber() && b.IsNumber() {
+				vm.regs[instr.A] = NewNumber(math.Mod(a.AsNumber(), b.AsNumber()))
+			} else if a.IsInt() && b.IsInt() {
+				vm.regs[instr.A] = NewInt(a.AsInt() % b.AsInt())
+			} else {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("MOD requires numeric operands, got: %s %% %s", a.String(), b.String()))
+			}
+
+		case OpNEG:
+			a := vm.regs[instr.B]
+			switch {
+			case a.IsNumber():
+				vm.regs[instr.A] = NewNumber(-a.AsNumber())
+			case a.IsInt():
+				vm.regs[instr.A] = NewInt(-a.AsInt())
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("NEG requires numeric operand, got: %s", a.String()))
+			}
+
+		case OpNOT:
+			a := vm.regs[instr.B]
+			if !a.IsBool() {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("NOT requires boolean operand, got: %s", a.String()))
+			}
+			vm.regs[instr.A] = NewBool(!a.AsBool())
+
+		case OpTOINT:
+			a := vm.regs[instr.B]
+			switch {
+			case a.IsInt():
+				vm.regs[instr.A] = a
+			case a.IsNumber():
+				vm.regs[instr.A] = NewInt(int64(math.Trunc(a.AsNumber())))
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("TOINT requires number or int, got: %s", a.String()))
+			}
+
+		case OpTONUM:
+			a := vm.regs[instr.B]
+			switch {
+			case a.IsNumber():
+				vm.regs[instr.A] = a
+			case a.IsInt():
+				vm.regs[instr.A] = NewNumber(float64(a.AsInt()))
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("TONUM requires int or number, got: %s", a.String()))
+			}
+
+		case OpBAND:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsInt() && b.IsInt() {
+				vm.regs[instr.A] = NewInt(a.AsInt() & b.AsInt())
+			} else {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("BAND requires integer operands, got: %s & %s", a.String(), b.String()))
+			}
+
+		case OpBOR:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsInt() && b.IsInt() {
+				vm.regs[instr.A] = NewInt(a.AsInt() | b.AsInt())
+			} else {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("BOR requires integer operands, got: %s | %s", a.String(), b.String()))
+			}
+
+		case OpBXOR:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsInt() && b.IsInt() {
+				vm.regs[instr.A] = NewInt(a.AsInt() ^ b.AsInt())
+			} else {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("BXOR requires integer operands, got: %s ^ %s", a.String(), b.String()))
+			}
+
+		case OpSHL:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsInt() && b.IsInt() {
+				shift := b.AsInt()
+				if shift < 0 {
+					return NewNull(), vm.runtimeError("SHL shift count must be non-negative")
+				}
+				vm.regs[instr.A] = NewInt(a.AsInt() << shift)
+			} else {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("SHL requires integer operands, got: %s << %s", a.String(), b.String()))
+			}
+
+		case OpSHR:
+			a := vm.regs[instr.B]
+			b := vm.regs[instr.C]
+			if a.IsInt() && b.IsInt() {
+				shift := b.AsInt()
+				if shift < 0 {
+					return NewNull(), vm.runtimeError("SHR shift count must be non-negative")
+				}
+				vm.regs[instr.A] = NewInt(a.AsInt() >> shift)
+			} else {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("SHR requires integer operands, got: %s >> %s", a.String(), b.String()))
 			}
 
 		case OpEQ:
@@ -640,6 +748,60 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
 			vm.regs[instr.A] = NewInt(int64(arrayObj.Len()))
+
+		case OpARRPUSH:
+			// Push value into array: A = array, B = value
+			arrayVal := vm.regs[instr.A]
+			if !arrayVal.IsHeapPtr() {
+				return NewNull(), vm.runtimeError("ARRPUSH requires array")
+			}
+			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
+			arrayObj.Append(vm.regs[instr.B])
+
+		case OpHASFIELD:
+			// Check if object has field: A = dest bool, B = object, C = const index
+			objVal := vm.regs[instr.B]
+			if !objVal.IsHeapPtr() {
+				return NewNull(), vm.runtimeError("HASFIELD requires object")
+			}
+
+			if int(instr.C) >= len(vm.chunk.Constants) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.C))
+			}
+
+			fieldNameVal := vm.chunk.Constants[instr.C]
+			if !fieldNameVal.IsHeapPtr() {
+				return NewNull(), vm.runtimeError("HASFIELD requires string constant for field name")
+			}
+			fieldNameObj := (*StringObj)(unsafe.Pointer(fieldNameVal.AsHeapPtr()))
+			fieldName := fieldNameObj.Data()
+
+			objObj := (*ObjectObj)(unsafe.Pointer(objVal.AsHeapPtr()))
+			_, ok := objObj.Get(fieldName)
+			vm.regs[instr.A] = NewBool(ok)
+
+		case OpDELFIELD:
+			// Delete object field: A = dest bool, B = object, C = const index
+			objVal := vm.regs[instr.B]
+			if !objVal.IsHeapPtr() {
+				return NewNull(), vm.runtimeError("DELFIELD requires object")
+			}
+
+			if int(instr.C) >= len(vm.chunk.Constants) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.C))
+			}
+
+			fieldNameVal := vm.chunk.Constants[instr.C]
+			if !fieldNameVal.IsHeapPtr() {
+				return NewNull(), vm.runtimeError("DELFIELD requires string constant for field name")
+			}
+			fieldNameObj := (*StringObj)(unsafe.Pointer(fieldNameVal.AsHeapPtr()))
+			fieldName := fieldNameObj.Data()
+
+			objObj := (*ObjectObj)(unsafe.Pointer(objVal.AsHeapPtr()))
+			_, existed := objObj.fields[fieldName]
+			delete(objObj.fields, fieldName)
+			vm.regs[instr.A] = NewBool(existed)
 
 		case OpGC:
 			// Manually trigger garbage collection

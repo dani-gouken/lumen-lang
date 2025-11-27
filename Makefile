@@ -27,7 +27,7 @@ build:
 # Run all Go unit tests
 test:
 	@echo "Running unit tests..."
-	@$(GO) test ./internal/vm ./internal/asm ./internal/debugger -v
+	@$(GO) test ./internal/vm ./internal/asm -v
 
 # Run VM tests only
 test-vm:

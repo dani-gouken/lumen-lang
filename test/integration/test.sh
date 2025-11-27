@@ -262,6 +262,75 @@ EOF
 $LUMEN asm "$OUTPUT_DIR/short_jump_overflow.lasm" "$OUTPUT_DIR/overflow.lc" 2>&1 | grep -q "out of range" || fail "should error on short jump overflow"
 pass
 
+# Test 26: Execute new integer and bitwise ops
+test_name "Execute new integer/bitwise ops"
+cat > "$OUTPUT_DIR/new_int_ops.lasm" <<'EOF'
+.constants 1
+  0: 4.9
+
+.code
+  LOADI r0 10
+  LOADI r1 3
+  MOD r2 r0 r1
+  BAND r3 r0 r1
+  BOR  r4 r0 r1
+  BXOR r5 r0 r1
+  SHL  r6 r1 r1
+  SHR  r7 r6 r1
+  NEG  r8 r1
+  LOADBOOL r9 true
+  NOT  r10 r9
+  LOADK r11 0
+  TOINT r12 r11
+  TONUM r13 r12
+  RET r2
+
+.metadata
+  registers: 14
+  args: 0
+EOF
+$LUMEN asm "$OUTPUT_DIR/new_int_ops.lasm" "$OUTPUT_DIR/new_int_ops.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/new_int_ops.lc" 2>&1)
+echo "$result" | grep -q "Result: Int(1)" || fail "unexpected result from int ops: $result"
+pass
+
+# Test 27: Disassemble new integer/bitwise ops
+test_name "Disassemble new integer/bitwise ops"
+$LUMEN disasm "$OUTPUT_DIR/new_int_ops.lc" "$OUTPUT_DIR/new_int_ops_disasm.lasm" > /dev/null 2>&1 || fail "disassembly failed"
+grep -q "LOADI" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing LOADI"
+grep -q "MOD" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing MOD"
+grep -q "BAND" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing BAND"
+grep -q "BOR" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing BOR"
+grep -q "BXOR" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing BXOR"
+grep -q "SHL" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing SHL"
+grep -q "SHR" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing SHR"
+grep -q "NEG" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing NEG"
+grep -q "NOT" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing NOT"
+grep -q "TOINT" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing TOINT"
+grep -q "TONUM" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing TONUM"
+pass
+
+# Test 28: Execute conversions
+test_name "Execute TOINT/TONUM conversion"
+cat > "$OUTPUT_DIR/conversion_ops.lasm" <<'EOF'
+.constants 1
+  0: 4.9
+
+.code
+  LOADK r0 0
+  TOINT r1 r0
+  TONUM r2 r1
+  RET r2
+
+.metadata
+  registers: 3
+  args: 0
+EOF
+$LUMEN asm "$OUTPUT_DIR/conversion_ops.lasm" "$OUTPUT_DIR/conversion_ops.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/conversion_ops.lc" 2>&1)
+echo "$result" | grep -q "Result: Number(4)" || fail "unexpected conversion result: $result"
+pass
+
 # Summary
 echo "========================================"
 echo -e "${GREEN}Tests passed: $TESTS_PASSED/$TESTS_RUN${NC}"
