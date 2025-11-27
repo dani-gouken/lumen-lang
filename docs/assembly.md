@@ -610,12 +610,57 @@ JMPIFNOT r0 else_branch ; if r0 is false, jump to label
 JMPIFNOT r0 3           ; if r0 is false, jump forward 3 instructions
 ```
 
+#### Long Instructions (32-bit Offsets)
+
+For large programs where jump targets exceed 255 instructions, long instruction variants are available. These use a `.L` suffix and support 32-bit signed offsets, allowing jumps to any location in the code.
+
+**Long Instruction Format:**
+Long instructions are encoded as 3 consecutive instruction words:
+1. `LONG` prefix (indicates the next instruction uses a 32-bit offset)
+2. Opcode instruction (JMP32, JMPIF32, JMPIFNOT32, or CALL32)
+3. 32-bit offset word (signed, relative to position after the 3-word block)
+
+**Supported Long Instructions:**
+```assembly
+JMP.L label              ; Long unconditional jump
+JMPIF.L r_cond label     ; Long conditional jump if true
+JMPIFNOT.L r_cond label  ; Long conditional jump if false
+CALL.L label nargs       ; Long function call
+```
+
+**When to Use Long Instructions:**
+- When the target label is more than 255 instructions away
+- The assembler will report an error if a short jump/call is out of range
+- Long instructions take 3× the space of short instructions (12 bytes vs 4 bytes)
+
+**Example:**
+```assembly
+.code
+  LOADK r0 0
+  JMP.L far_away_label  ; Assembled as: LONG + JMP32 + offset
+
+  ; ... many instructions (256+) ...
+
+far_away_label:
+  LOADK r1 1
+  JMP.L back_to_start   ; Can jump backwards too
+
+back_to_start:
+  RET r0
+```
+
+**Implementation Details:**
+- Offset calculation: `target_address - (current_position + 3)`
+- Offsets are signed 32-bit integers (range: -2,147,483,648 to 2,147,483,647)
+- The VM automatically handles the 3-word sequence when encountering a LONG prefix
+
 ### Function Calls
 
 #### CALL - Call Function
 ```assembly
-CALL label nargs
-CALL r_func nargs
+CALL label nargs     ; Short call (label must be within 255 instructions)
+CALL r_func nargs    ; Indirect call via register
+CALL.L label nargs   ; Long call (supports 32-bit offsets for distant functions)
 ```
 Call function at `label` or in `r_func` with `nargs` arguments.
 
@@ -637,6 +682,21 @@ Call function at `label` or in `r_func` with `nargs` arguments.
 add:
   ADD r2 r0 r1      ; r2 = r0 + r1
   RET r2            ; return r2
+```
+
+For functions that are more than 255 instructions away, use `CALL.L`:
+```assembly
+.code
+  LOADK r0 0
+  LOADK r1 1
+  CALL.L distant_function 2  ; Long call to distant function
+  RET r0
+
+  ; ... many instructions (256+) ...
+
+distant_function:
+  ADD r2 r0 r1
+  RET r2
 ```
 
 #### CALLEXTERN - Call External Function

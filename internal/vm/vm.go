@@ -316,6 +316,81 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("GE requires numeric operands, got: %s >= %s", a.String(), b.String()))
 			}
 
+		case OpLONG:
+			// LONG prefix: next instruction uses 32-bit offset
+			// Read the opcode instruction
+			vm.ip++
+			if vm.ip >= len(vm.chunk.Code) {
+				return NewNull(), vm.runtimeError("LONG: unexpected end of code")
+			}
+			opcodeInstr := vm.chunk.Code[vm.ip]
+
+			// Read the offset instruction
+			vm.ip++
+			if vm.ip >= len(vm.chunk.Code) {
+				return NewNull(), vm.runtimeError("LONG: missing offset word")
+			}
+			offsetInstr := vm.chunk.Code[vm.ip]
+			offset := DecodeOffset32(offsetInstr)
+
+			// Calculate target: current position (after the 3-word block) + offset
+			targetIP := vm.ip + 1 + int(offset)
+
+			switch opcodeInstr.Op {
+			case OpJMP32:
+				vm.ip = targetIP
+				continue
+
+			case OpJMPIF32:
+				cond := vm.regs[opcodeInstr.A]
+				if cond.IsBool() && cond.AsBool() {
+					vm.ip = targetIP
+					continue
+				}
+
+			case OpJMPIFNOT32:
+				cond := vm.regs[opcodeInstr.A]
+				if cond.IsBool() && !cond.AsBool() {
+					vm.ip = targetIP
+					continue
+				}
+
+			case OpCALL32:
+				argc := int(opcodeInstr.A)
+
+				// Check call depth
+				if vm.frameCount >= maxCallDepth {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", maxCallDepth))
+				}
+
+				// Save current frame (IP points to instruction after LONG block)
+				vm.frames[vm.frameCount] = CallFrame{
+					chunk: vm.chunk,
+					ip:    vm.ip,
+					fp:    vm.fp,
+					regs:  vm.regs,
+				}
+				vm.frameCount++
+
+				// Preserve arguments in new register set
+				newRegs := make([]Value, vm.chunk.RegisterCount)
+				for i := range newRegs {
+					newRegs[i] = NewNull()
+				}
+				// Copy arguments
+				for i := 0; i < argc && i < len(vm.regs); i++ {
+					newRegs[i] = vm.regs[i]
+				}
+				vm.regs = newRegs
+
+				// Jump to function
+				vm.ip = targetIP
+				continue
+
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("LONG: invalid opcode %v", opcodeInstr.Op))
+			}
+
 		case OpJMP:
 			// JMP: A = target instruction address
 			vm.ip = int(instr.A)

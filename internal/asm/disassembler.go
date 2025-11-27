@@ -37,8 +37,30 @@ func Disassemble(chunk *vm.Chunk) string {
 
 	// Write code section
 	sb.WriteString(".code\n")
-	for i, instr := range chunk.Code {
-		sb.WriteString(fmt.Sprintf("  %04d: %s\n", i, formatInstruction(instr, chunk)))
+	for i := 0; i < len(chunk.Code); i++ {
+		instr := chunk.Code[i]
+
+		// Check for LONG prefix
+		if instr.Op == vm.OpLONG {
+			if i+2 >= len(chunk.Code) {
+				sb.WriteString(fmt.Sprintf("  %04d: LONG (incomplete)\n", i))
+				break
+			}
+
+			opcodeInstr := chunk.Code[i+1]
+			offsetInstr := chunk.Code[i+2]
+			offset := vm.DecodeOffset32(offsetInstr)
+			targetIP := i + 3 + int(offset)
+
+			sb.WriteString(fmt.Sprintf("  %04d: LONG\n", i))
+			sb.WriteString(fmt.Sprintf("  %04d: %s (target: %d, offset: %d)\n", i+1,
+				formatLongInstruction(opcodeInstr, targetIP, offset), targetIP, offset))
+			sb.WriteString(fmt.Sprintf("  %04d: [offset word]\n", i+2))
+
+			i += 2 // Skip the opcode and offset words
+		} else {
+			sb.WriteString(fmt.Sprintf("  %04d: %s\n", i, formatInstruction(instr, chunk)))
+		}
 	}
 	sb.WriteString("\n")
 
@@ -159,6 +181,21 @@ func formatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 	case vm.OpJMPIFNOT:
 		return fmt.Sprintf("JMPIFNOT r%d %d", instr.A, instr.B)
 
+	case vm.OpLONG:
+		return "LONG"
+
+	case vm.OpJMP32:
+		return "JMP32"
+
+	case vm.OpJMPIF32:
+		return fmt.Sprintf("JMPIF32 r%d", instr.A)
+
+	case vm.OpJMPIFNOT32:
+		return fmt.Sprintf("JMPIFNOT32 r%d", instr.A)
+
+	case vm.OpCALL32:
+		return fmt.Sprintf("CALL32 %d", instr.A)
+
 	case vm.OpCALL:
 		return fmt.Sprintf("CALL r%d %d", instr.A, instr.B)
 
@@ -201,5 +238,21 @@ func formatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 
 	default:
 		return fmt.Sprintf("UNKNOWN(%d) %d %d %d", instr.Op, instr.A, instr.B, instr.C)
+	}
+}
+
+// formatLongInstruction formats a long instruction (after LONG prefix).
+func formatLongInstruction(instr vm.Instr, targetIP int, offset int32) string {
+	switch instr.Op {
+	case vm.OpJMP32:
+		return fmt.Sprintf("JMP32")
+	case vm.OpJMPIF32:
+		return fmt.Sprintf("JMPIF32 r%d", instr.A)
+	case vm.OpJMPIFNOT32:
+		return fmt.Sprintf("JMPIFNOT32 r%d", instr.A)
+	case vm.OpCALL32:
+		return fmt.Sprintf("CALL32 %d", instr.A)
+	default:
+		return fmt.Sprintf("UNKNOWN_LONG(%d)", instr.Op)
 	}
 }

@@ -219,6 +219,49 @@ result2=$($LUMEN exec "$OUTPUT_DIR/extern_roundtrip.lc" 2>&1 | tail -1)
 [ "$result1" = "$result2" ] || fail "round-trip produced different results"
 pass
 
+# Test 23: Long jump instructions
+test_name "Execute long_jump.lasm with LONG prefix instructions"
+$LUMEN asm "$EXAMPLES_DIR/long_jump.lasm" "$OUTPUT_DIR/long_jump.lc" > /dev/null 2>&1 || fail "assembly failed"
+result=$($LUMEN exec "$OUTPUT_DIR/long_jump.lc" 2>&1)
+echo "$result" | grep -q "Result: Int(30)" || fail "unexpected result: $result (expected 30)"
+pass
+
+# Test 24: Disassemble long jump bytecode
+test_name "Disassemble long jump bytecode shows LONG prefix"
+$LUMEN disasm "$OUTPUT_DIR/long_jump.lc" "$OUTPUT_DIR/long_jump_disasm.lasm" > /dev/null 2>&1 || fail "disassembly failed"
+grep -q "LONG" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing LONG prefix in disassembly"
+grep -q "JMP32" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing JMP32 instruction"
+grep -qE "JMPIF32|JMPIFNOT32" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing JMPIF32/JMPIFNOT32 instruction"
+grep -q "CALL32" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing CALL32 instruction"
+grep -q "target:" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing target information"
+grep -q "offset:" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing offset information"
+pass
+
+# Test 25: Short jump out of range error
+test_name "Error when short jump target exceeds 255 instructions"
+cat > "$OUTPUT_DIR/short_jump_overflow.lasm" <<'EOF'
+.constants 1
+  0: 1i
+
+.code
+  JMP far_away
+EOF
+# Add 300 NOPs to exceed short jump range
+for i in {1..300}; do
+    echo "  NOP" >> "$OUTPUT_DIR/short_jump_overflow.lasm"
+done
+cat >> "$OUTPUT_DIR/short_jump_overflow.lasm" <<'EOF'
+far_away:
+  LOADK r0 0
+  RET r0
+
+.metadata
+  registers: 1
+  args: 0
+EOF
+$LUMEN asm "$OUTPUT_DIR/short_jump_overflow.lasm" "$OUTPUT_DIR/overflow.lc" 2>&1 | grep -q "out of range" || fail "should error on short jump overflow"
+pass
+
 # Summary
 echo "========================================"
 echo -e "${GREEN}Tests passed: $TESTS_PASSED/$TESTS_RUN${NC}"

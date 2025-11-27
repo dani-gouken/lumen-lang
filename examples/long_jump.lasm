@@ -1,0 +1,57 @@
+; Example demonstrating long jump instructions
+; This program tests JMP.L, JMPIF.L, and CALL.L for large code blocks
+
+.constants 3
+  0: 10i
+  1: 20i
+  2: 100i
+
+.code
+  ; Load initial value
+  LOADK r0 0
+
+  ; Jump forward with long jump to skip NOPs
+  JMP.L compute_result
+
+  ; Fill space with NOPs to simulate large code block
+  NOP
+  NOP
+  NOP
+  NOP
+  NOP
+  NOP
+  NOP
+  NOP
+  NOP
+  NOP
+
+compute_result:
+  ; Test conditional long jump
+  LOADBOOL r1 true
+  JMPIFNOT.L r1 error_case
+
+  ; Load arguments for function call
+  LOADK r0 0
+  LOADK r1 1
+
+  ; Call helper function with long call
+  CALL.L add_values 2
+
+  ; r0 now contains result
+  RET r0
+
+error_case:
+  ; Should not reach here
+  LOADK r0 2
+  RET r0
+
+; Helper function (far from the call site)
+add_values:
+  ; r0 = 10, r1 = 20
+  ADD r2 r0 r1
+  ; Return 30
+  RET r2
+
+.metadata
+  registers: 3
+  args: 0

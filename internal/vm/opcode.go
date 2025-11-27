@@ -31,6 +31,15 @@ const (
 	OpJMPIF
 	OpJMPIFNOT
 
+	// Long instruction prefix
+	OpLONG // Indicates next instruction uses 32-bit offset in following word
+
+	// 32-bit control flow (must follow OpLONG prefix)
+	OpJMP32       // A = unused, followed by 32-bit offset word
+	OpJMPIF32     // A = condition register, followed by 32-bit offset word
+	OpJMPIFNOT32  // A = condition register, followed by 32-bit offset word
+	OpCALL32      // A = nargs, followed by 32-bit offset word
+
 	// Function calls
 	OpCALL
 	OpRET
@@ -105,6 +114,16 @@ func (i Instr) String() string {
 		return formatInstr("JMPIF", i.A, i.B)
 	case OpJMPIFNOT:
 		return formatInstr("JMPIFNOT", i.A, i.B)
+	case OpLONG:
+		return "LONG"
+	case OpJMP32:
+		return "JMP32"
+	case OpJMPIF32:
+		return formatInstr("JMPIF32", i.A)
+	case OpJMPIFNOT32:
+		return formatInstr("JMPIFNOT32", i.A)
+	case OpCALL32:
+		return formatInstr("CALL32", i.A)
 	case OpCALL:
 		return formatInstr("CALL", i.A, i.B)
 	case OpRET:
@@ -140,4 +159,20 @@ func formatInstr(name string, args ...byte) string {
 		s += " r" + string(rune('0'+arg))
 	}
 	return s
+}
+
+// EncodeOffset32 encodes a 32-bit signed offset as an Instr.
+// The offset is stored across all 4 bytes of the instruction.
+func EncodeOffset32(offset int32) Instr {
+	return Instr{
+		Op: OpCode(byte(offset >> 24)),
+		A:  byte(offset >> 16),
+		B:  byte(offset >> 8),
+		C:  byte(offset),
+	}
+}
+
+// DecodeOffset32 decodes a 32-bit signed offset from an Instr.
+func DecodeOffset32(instr Instr) int32 {
+	return int32(instr.Op)<<24 | int32(instr.A)<<16 | int32(instr.B)<<8 | int32(instr.C)
 }

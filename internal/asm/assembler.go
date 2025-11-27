@@ -59,8 +59,17 @@ func assembleInternal(source, filePath string) (*vm.Chunk, error) {
 				labelName := strings.TrimSuffix(line, ":")
 				labels[labelName] = codeLineNum
 			} else {
-				// It's an instruction
-				codeLineNum++
+				// It's an instruction - check if it's a long instruction
+				fields := strings.Fields(line)
+				if len(fields) > 0 {
+					mnemonic := strings.ToUpper(fields[0])
+					// Long instructions (with .L suffix) take 3 instruction words
+					if strings.HasSuffix(mnemonic, ".L") {
+						codeLineNum += 3
+					} else {
+						codeLineNum++
+					}
+				}
 			}
 		}
 	}
@@ -285,6 +294,12 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 	mnemonic := strings.ToUpper(fields[0])
 	args := fields[1:]
 
+	// Check for .L suffix (long instruction)
+	isLong := strings.HasSuffix(mnemonic, ".L")
+	if isLong {
+		mnemonic = strings.TrimSuffix(mnemonic, ".L")
+	}
+
 	var instr vm.Instr
 
 	switch mnemonic {
@@ -393,10 +408,30 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 		if len(args) != 1 {
 			return fmt.Errorf("JMP requires 1 argument, got %d", len(args))
 		}
-		// Try to parse as label first, then as immediate
+
+		if isLong {
+			// Long JMP: emit LONG prefix + JMP32 + 32-bit offset
+			if addr, ok := labels[args[0]]; ok {
+				// Calculate offset: target - (current_position + 3)
+				currentPos := len(chunk.Code)
+				offset := int32(addr - (currentPos + 3))
+
+				// Emit LONG prefix
+				chunk.AddInstructionWithDebug(vm.NewInstr(vm.OpLONG, 0, 0, 0), debugInfo)
+				// Emit JMP32 opcode
+				chunk.AddInstruction(vm.NewInstr(vm.OpJMP32, 0, 0, 0))
+				// Emit 32-bit offset
+				chunk.AddInstruction(vm.EncodeOffset32(offset))
+				return nil
+			} else {
+				return fmt.Errorf("JMP.L requires a label, got: %s", args[0])
+			}
+		}
+
+		// Short JMP
 		if addr, ok := labels[args[0]]; ok {
 			if addr > 255 {
-				return fmt.Errorf("jump address out of range: %d", addr)
+				return fmt.Errorf("jump address out of range: %d (use JMP.L for long jumps)", addr)
 			}
 			instr = vm.NewInstr(vm.OpJMP, byte(addr), 0, 0)
 		} else {
@@ -416,11 +451,35 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 			return err
 		}
 
+		if isLong {
+			// Long JMPIF/JMPIFNOT: emit LONG prefix + JMPIF32/JMPIFNOT32 + 32-bit offset
+			if addr, ok := labels[args[1]]; ok {
+				// Calculate offset: target - (current_position + 3)
+				currentPos := len(chunk.Code)
+				offset := int32(addr - (currentPos + 3))
+
+				op := vm.OpJMPIF32
+				if mnemonic == "JMPIFNOT" {
+					op = vm.OpJMPIFNOT32
+				}
+
+				// Emit LONG prefix
+				chunk.AddInstructionWithDebug(vm.NewInstr(vm.OpLONG, 0, 0, 0), debugInfo)
+				// Emit JMPIF32/JMPIFNOT32 opcode with condition register
+				chunk.AddInstruction(vm.NewInstr(op, a, 0, 0))
+				// Emit 32-bit offset
+				chunk.AddInstruction(vm.EncodeOffset32(offset))
+				return nil
+			} else {
+				return fmt.Errorf("%s.L requires a label, got: %s", mnemonic, args[1])
+			}
+		}
+
+		// Short JMPIF/JMPIFNOT
 		var b byte
-		// Try to parse as label first, then as immediate
 		if addr, ok := labels[args[1]]; ok {
 			if addr > 255 {
-				return fmt.Errorf("jump address out of range: %d", addr)
+				return fmt.Errorf("jump address out of range: %d (use %s.L for long jumps)", addr, mnemonic)
 			}
 			b = byte(addr)
 		} else {
@@ -441,11 +500,36 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 			return fmt.Errorf("CALL requires 2 arguments, got %d", len(args))
 		}
 
+		if isLong {
+			// Long CALL: emit LONG prefix + CALL32 + 32-bit offset
+			if addr, ok := labels[args[0]]; ok {
+				// Calculate offset: target - (current_position + 3)
+				currentPos := len(chunk.Code)
+				offset := int32(addr - (currentPos + 3))
+
+				// Parse nargs
+				nargs, err := parseImm(args[1])
+				if err != nil {
+					return err
+				}
+
+				// Emit LONG prefix
+				chunk.AddInstructionWithDebug(vm.NewInstr(vm.OpLONG, 0, 0, 0), debugInfo)
+				// Emit CALL32 opcode with nargs
+				chunk.AddInstruction(vm.NewInstr(vm.OpCALL32, nargs, 0, 0))
+				// Emit 32-bit offset
+				chunk.AddInstruction(vm.EncodeOffset32(offset))
+				return nil
+			} else {
+				return fmt.Errorf("CALL.L requires a label, got: %s", args[0])
+			}
+		}
+
+		// Short CALL
 		var a byte
-		// Try to parse first arg as label (function address) first
 		if addr, ok := labels[args[0]]; ok {
 			if addr > 255 {
-				return fmt.Errorf("call address out of range: %d", addr)
+				return fmt.Errorf("call address out of range: %d (use CALL.L for long calls)", addr)
 			}
 			a = byte(addr)
 		} else {
@@ -453,7 +537,6 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 			var err error
 			a, err = parseReg(args[0])
 			if err != nil {
-				// Not a register either - probably undefined label
 				return fmt.Errorf("CALL target '%s' is not a valid label or register", args[0])
 			}
 		}
