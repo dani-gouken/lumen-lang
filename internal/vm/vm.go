@@ -21,6 +21,10 @@ type CallFrame struct {
 // ExternFunc is a function callable from bytecode.
 type ExternFunc func(*VM, []Value) (Value, error)
 
+// DebugHook is a function called before each instruction execution.
+// It receives a snapshot of the VM state and returns true if execution should pause.
+type DebugHook func(snapshot interface{}) bool
+
 // VM represents the Lumen virtual machine.
 type VM struct {
 	stack       [stackSize]Value
@@ -33,6 +37,7 @@ type VM struct {
 	chunk       *Chunk  // Current chunk
 	heap        *Heap
 	externFuncs map[string]ExternFunc // External functions
+	debugHook   DebugHook             // Optional debug hook
 }
 
 // NewVM creates a new VM instance.
@@ -103,6 +108,58 @@ func (vm *VM) GetHeap() *Heap {
 	return vm.heap
 }
 
+// SetDebugHook sets the debug hook function.
+func (vm *VM) SetDebugHook(hook DebugHook) {
+	vm.debugHook = hook
+}
+
+// Snapshot returns a snapshot of the current VM state.
+// The snapshot interface{} is actually a struct containing all VM state.
+func (vm *VM) Snapshot() interface{} {
+	// Create a copy of registers
+	regsCopy := make([]Value, len(vm.regs))
+	copy(regsCopy, vm.regs)
+
+	// Create snapshot struct (defined in debugger package to avoid circular dependency)
+	snapshot := struct {
+		IP            int
+		Instr         Instr
+		DebugInfo     *DebugInfo
+		Registers     []Value
+		Constants     []Value
+		Code          []Instr
+		StackPointer  int
+		FramePointer  int
+		FrameCount    int
+		HeapAllocated uint64
+		HeapMax       uint64
+		RegisterCount int
+		ArgCount      int
+	}{
+		IP:            vm.ip,
+		Instr:         Instr{},
+		DebugInfo:     nil,
+		Registers:     regsCopy,
+		Constants:     vm.chunk.Constants,
+		Code:          vm.chunk.Code,
+		StackPointer:  vm.sp,
+		FramePointer:  vm.fp,
+		FrameCount:    vm.frameCount,
+		HeapAllocated: vm.heap.bytesAllocated,
+		HeapMax:       vm.heap.maxBytes,
+		RegisterCount: vm.chunk.RegisterCount,
+		ArgCount:      vm.chunk.ArgCount,
+	}
+
+	// Add current instruction if in valid range
+	if vm.ip < len(vm.chunk.Code) {
+		snapshot.Instr = vm.chunk.Code[vm.ip]
+		snapshot.DebugInfo = vm.chunk.GetDebugInfo(vm.ip)
+	}
+
+	return snapshot
+}
+
 // runtimeError creates a formatted error message with debug info.
 func (vm *VM) runtimeError(message string) error {
 	debugInfo := vm.chunk.GetDebugInfo(vm.ip)
@@ -131,6 +188,15 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 	vm.frameCount = 0
 
 	for vm.ip < len(vm.chunk.Code) {
+		// Call debug hook if set
+		if vm.debugHook != nil {
+			snapshot := vm.Snapshot()
+			if vm.debugHook(snapshot) {
+				// Debug hook requested pause - this would be handled by debugger
+				// For now, we just continue
+			}
+		}
+
 		instr := vm.chunk.Code[vm.ip]
 
 		switch instr.Op {
@@ -160,7 +226,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() + b.AsInt())
 			} else {
-				return NewNull(), vm.runtimeError("ADD requires numeric operands")
+				return NewNull(), vm.runtimeError(fmt.Sprintf("ADD requires numeric operands, got: %s + %s", a.String(), b.String()))
 			}
 
 		case OpSUB:
@@ -171,7 +237,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() - b.AsInt())
 			} else {
-				return NewNull(), vm.runtimeError("SUB requires numeric operands")
+				return NewNull(), vm.runtimeError(fmt.Sprintf("SUB requires numeric operands, got: %s - %s", a.String(), b.String()))
 			}
 
 		case OpMUL:
@@ -182,7 +248,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() * b.AsInt())
 			} else {
-				return NewNull(), vm.runtimeError("MUL requires numeric operands")
+				return NewNull(), vm.runtimeError(fmt.Sprintf("MUL requires numeric operands, got: %s * %s", a.String(), b.String()))
 			}
 
 		case OpDIV:
@@ -193,7 +259,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() / b.AsInt())
 			} else {
-				return NewNull(), vm.runtimeError("DIV requires numeric operands")
+				return NewNull(), vm.runtimeError(fmt.Sprintf("DIV requires numeric operands, got: %s / %s", a.String(), b.String()))
 			}
 
 		case OpEQ:
@@ -214,7 +280,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() < b.AsInt())
 			} else {
-				return NewNull(), vm.runtimeError("LT requires numeric operands")
+				return NewNull(), vm.runtimeError(fmt.Sprintf("LT requires numeric operands, got: %s < %s", a.String(), b.String()))
 			}
 
 		case OpLE:
@@ -225,7 +291,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() <= b.AsInt())
 			} else {
-				return NewNull(), vm.runtimeError("LE requires numeric operands")
+				return NewNull(), vm.runtimeError(fmt.Sprintf("LE requires numeric operands, got: %s <= %s", a.String(), b.String()))
 			}
 
 		case OpGT:
@@ -236,7 +302,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() > b.AsInt())
 			} else {
-				return NewNull(), vm.runtimeError("GT requires numeric operands")
+				return NewNull(), vm.runtimeError(fmt.Sprintf("GT requires numeric operands, got: %s > %s", a.String(), b.String()))
 			}
 
 		case OpGE:
@@ -247,7 +313,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() >= b.AsInt())
 			} else {
-				return NewNull(), vm.runtimeError("GE requires numeric operands")
+				return NewNull(), vm.runtimeError(fmt.Sprintf("GE requires numeric operands, got: %s >= %s", a.String(), b.String()))
 			}
 
 		case OpJMP:

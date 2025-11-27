@@ -111,3 +111,12 @@ func (o *ObjectObj) Keys() []string {
 	}
 	return keys
 }
+
+// Fields returns a copy of all fields (for debugging/inspection).
+func (o *ObjectObj) Fields() map[string]Value {
+	fieldsCopy := make(map[string]Value, len(o.fields))
+	for k, v := range o.fields {
+		fieldsCopy[k] = v
+	}
+	return fieldsCopy
+}

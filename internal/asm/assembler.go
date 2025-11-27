@@ -68,6 +68,7 @@ func assembleInternal(source, filePath string) (*vm.Chunk, error) {
 	// Second pass: assemble code
 	mode = ""
 	currentFunc = ""
+	nextInstrHasBreakpoint := false
 	for lineNum, line := range lines {
 		originalLine := line // Keep original line for debug info
 
@@ -80,6 +81,11 @@ func assembleInternal(source, filePath string) (*vm.Chunk, error) {
 
 		// Trim whitespace
 		line = strings.TrimSpace(line)
+
+		// Check if comment contains BREAK directive
+		if comment != "" && (strings.ToUpper(comment) == "BREAK" || strings.HasPrefix(strings.ToUpper(comment), "BREAK ")) {
+			nextInstrHasBreakpoint = true
+		}
 
 		// Skip empty lines
 		if line == "" {
@@ -123,8 +129,17 @@ func assembleInternal(source, filePath string) (*vm.Chunk, error) {
 				debugInfo.WithDescription(comment)
 			}
 
+			// Record current instruction index before adding
+			currentIP := len(chunk.Code)
+
 			if err := parseInstructionWithDebug(chunk, line, labels, debugInfo); err != nil {
 				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
+			}
+
+			// If this instruction should have a breakpoint, mark it
+			if nextInstrHasBreakpoint {
+				chunk.AddBreakpoint(currentIP)
+				nextInstrHasBreakpoint = false
 			}
 		case "metadata":
 			if err := parseMetadata(chunk, line); err != nil {

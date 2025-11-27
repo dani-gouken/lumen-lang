@@ -9,6 +9,7 @@ type Chunk struct {
 	ExternNames   []string            // Names of external functions
 	StringPool    []string            // Pool of string literals
 	DebugInfo     map[int]*DebugInfo  // Map from instruction index to debug info
+	Breakpoints   []int               // Instruction pointers marked with ;BREAK in source
 }
 
 // NewChunk creates a new empty chunk.
@@ -21,7 +22,13 @@ func NewChunk() *Chunk {
 		ExternNames:   make([]string, 0),
 		StringPool:    make([]string, 0),
 		DebugInfo:     make(map[int]*DebugInfo),
+		Breakpoints:   make([]int, 0),
 	}
+}
+
+// AddBreakpoint marks an instruction pointer as having a breakpoint.
+func (c *Chunk) AddBreakpoint(ip int) {
+	c.Breakpoints = append(c.Breakpoints, ip)
 }
 
 // AddConstant adds a constant to the constant pool and returns its index.
