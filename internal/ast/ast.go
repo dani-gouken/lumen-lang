@@ -1,3 +1,519 @@
 package ast
 
-// Placeholder for Lumen AST definitions.
+import (
+	"fmt"
+	"strings"
+)
+
+// Node is the base interface for all AST nodes.
+type Node interface {
+	String() string
+}
+
+// Expr is the interface for all expression nodes.
+type Expr interface {
+	Node
+	exprNode()
+}
+
+// Stmt is the interface for all statement nodes.
+type Stmt interface {
+	Node
+	stmtNode()
+}
+
+// Decl is the interface for all declaration nodes.
+type Decl interface {
+	Node
+	declNode()
+}
+
+// Program represents a full Lumen source file.
+type Program struct {
+	Imports []*ImportDecl
+	Decls   []Decl
+}
+
+func (p *Program) String() string {
+	var sb strings.Builder
+	for _, imp := range p.Imports {
+		sb.WriteString(imp.String() + "\n")
+	}
+	for _, decl := range p.Decls {
+		sb.WriteString(decl.String() + "\n\n")
+	}
+	return sb.String()
+}
+
+// ImportDecl represents an import statement.
+type ImportDecl struct {
+	Path  string
+	Alias string
+}
+
+func (d *ImportDecl) String() string {
+	if d.Alias != "" {
+		return fmt.Sprintf("import %q as %s;", d.Path, d.Alias)
+	}
+	return fmt.Sprintf("import %q;", d.Path)
+}
+
+// TypeKind distinguishes different kinds of types.
+type TypeKind int
+
+const (
+	TypeBasic TypeKind = iota
+	TypeArray
+	TypeOption
+	TypeUnion
+	TypeFunction
+	TypeVariadic
+)
+
+// Type represents a type annotation.
+type Type struct {
+	Kind TypeKind
+
+	// For Basic (e.g. Int, MyStruct<T>)
+	Name     string
+	Generics []*Type
+
+	// For Array, Option, Variadic
+	ElemType *Type
+
+	// For Union
+	UnionTypes []*Type
+
+	// For Function
+	ParamTypes []*Type
+	ReturnType *Type
+}
+
+func (t *Type) String() string {
+	switch t.Kind {
+	case TypeArray:
+		return "[" + t.ElemType.String() + "]"
+	case TypeOption:
+		return t.ElemType.String() + "?"
+	case TypeVariadic:
+		return "..." + t.ElemType.String()
+	case TypeUnion:
+		var parts []string
+		for _, u := range t.UnionTypes {
+			parts = append(parts, u.String())
+		}
+		return strings.Join(parts, " | ")
+	case TypeFunction:
+		var params []string
+		for _, p := range t.ParamTypes {
+			params = append(params, p.String())
+		}
+		ret := "Void"
+		if t.ReturnType != nil {
+			ret = t.ReturnType.String()
+		}
+		return fmt.Sprintf("fn(%s) -> %s", strings.Join(params, ", "), ret)
+	case TypeBasic:
+		s := t.Name
+		if len(t.Generics) > 0 {
+			var args []string
+			for _, g := range t.Generics {
+				args = append(args, g.String())
+			}
+			s += "<" + strings.Join(args, ", ") + ">"
+		}
+		return s
+	default:
+		return "unknown_type"
+	}
+}
+
+// --- Declarations ---
+
+type FnDecl struct {
+	Name          string
+	TypeParams    []string
+	Params        []*Param
+	ReturnType    *Type
+	Body          *BlockStmt
+	IsTraitMethod bool
+}
+
+func (d *FnDecl) declNode() {}
+func (d *FnDecl) String() string {
+	var sb strings.Builder
+	sb.WriteString("fn " + d.Name)
+	if len(d.TypeParams) > 0 {
+		sb.WriteString("<" + strings.Join(d.TypeParams, ", ") + ">")
+	}
+	sb.WriteString("(")
+	var params []string
+	for _, p := range d.Params {
+		params = append(params, p.String())
+	}
+	sb.WriteString(strings.Join(params, ", "))
+	sb.WriteString(")")
+	if d.ReturnType != nil {
+		sb.WriteString(" -> " + d.ReturnType.String())
+	}
+	if d.Body != nil {
+		sb.WriteString(" " + d.Body.String())
+	} else {
+		sb.WriteString(";")
+	}
+	return sb.String()
+}
+
+type Param struct {
+	Name string
+	Type *Type
+}
+
+func (p *Param) String() string {
+	return fmt.Sprintf("%s: %s", p.Name, p.Type.String())
+}
+
+type StructDecl struct {
+	Name       string
+	TypeParams []string
+	Fields     []*Field
+}
+
+func (d *StructDecl) declNode() {}
+func (d *StructDecl) String() string {
+	var sb strings.Builder
+	sb.WriteString("struct " + d.Name)
+	if len(d.TypeParams) > 0 {
+		sb.WriteString("<" + strings.Join(d.TypeParams, ", ") + ">")
+	}
+	sb.WriteString(" { ")
+	var fields []string
+	for _, f := range d.Fields {
+		fields = append(fields, f.String())
+	}
+	sb.WriteString(strings.Join(fields, ", "))
+	sb.WriteString(" }")
+	return sb.String()
+}
+
+type EnumDecl struct {
+	Name       string
+	TypeParams []string
+	Variants   []*EnumVariant
+}
+
+func (d *EnumDecl) declNode() {}
+func (d *EnumDecl) String() string {
+	var sb strings.Builder
+	sb.WriteString("enum " + d.Name)
+	if len(d.TypeParams) > 0 {
+		sb.WriteString("<" + strings.Join(d.TypeParams, ", ") + ">")
+	}
+	sb.WriteString(" { ")
+	var variants []string
+	for _, v := range d.Variants {
+		variants = append(variants, v.String())
+	}
+	sb.WriteString(strings.Join(variants, ", "))
+	sb.WriteString(" }")
+	return sb.String()
+}
+
+type EnumVariant struct {
+	Name   string
+	Values []*Type
+}
+
+func (v *EnumVariant) String() string {
+	if len(v.Values) == 0 {
+		return v.Name
+	}
+	var types []string
+	for _, t := range v.Values {
+		types = append(types, t.String())
+	}
+	return fmt.Sprintf("%s(%s)", v.Name, strings.Join(types, ", "))
+}
+
+type Field struct {
+	Name string
+	Type *Type
+}
+
+func (f *Field) String() string {
+	return fmt.Sprintf("%s: %s", f.Name, f.Type.String())
+}
+
+type TraitDecl struct {
+	Name    string
+	Methods []*FnDecl
+}
+
+func (d *TraitDecl) declNode() {}
+func (d *TraitDecl) String() string {
+	var sb strings.Builder
+	sb.WriteString("trait " + d.Name + " { ")
+	for _, m := range d.Methods {
+		sb.WriteString(m.String() + " ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+type ImplDecl struct {
+	StructName string
+	TraitName  string
+	Methods    []*FnDecl
+}
+
+func (d *ImplDecl) declNode() {}
+func (d *ImplDecl) String() string {
+	var sb strings.Builder
+	sb.WriteString("impl " + d.TraitName + " for " + d.StructName + " { ")
+	for _, m := range d.Methods {
+		sb.WriteString(m.String() + " ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+// --- Statements ---
+
+type BlockStmt struct {
+	Stmts []Stmt
+}
+
+func (s *BlockStmt) stmtNode() {}
+func (s *BlockStmt) String() string {
+	var sb strings.Builder
+	sb.WriteString("{ ")
+	for _, stmt := range s.Stmts {
+		sb.WriteString(stmt.String() + " ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+type LetStmt struct {
+	Name    string
+	Type    *Type
+	Value   Expr
+	IsConst bool
+}
+
+func (s *LetStmt) stmtNode() {}
+func (s *LetStmt) String() string {
+	kind := "let"
+	if s.IsConst {
+		kind = "const"
+	}
+	t := ""
+	if s.Type != nil {
+		t = ": " + s.Type.String()
+	}
+	return fmt.Sprintf("%s %s%s = %s;", kind, s.Name, t, s.Value.String())
+}
+
+type ReturnStmt struct {
+	Value Expr
+}
+
+func (s *ReturnStmt) stmtNode() {}
+func (s *ReturnStmt) String() string {
+	if s.Value != nil {
+		return fmt.Sprintf("return %s;", s.Value.String())
+	}
+	return "return;"
+}
+
+type IfStmt struct {
+	Cond Expr
+	Then *BlockStmt
+	Else Stmt // Can be BlockStmt or IfStmt
+}
+
+func (s *IfStmt) stmtNode() {}
+func (s *IfStmt) String() string {
+	str := fmt.Sprintf("if %s %s", s.Cond.String(), s.Then.String())
+	if s.Else != nil {
+		str += " else " + s.Else.String()
+	}
+	return str
+}
+
+type WhileStmt struct {
+	Cond Expr
+	Body *BlockStmt
+}
+
+func (s *WhileStmt) stmtNode() {}
+func (s *WhileStmt) String() string {
+	return fmt.Sprintf("while %s %s", s.Cond.String(), s.Body.String())
+}
+
+type ForStmt struct {
+	Var      string
+	Iterable Expr
+	Body     *BlockStmt
+}
+
+func (s *ForStmt) stmtNode() {}
+func (s *ForStmt) String() string {
+	return fmt.Sprintf("for %s in %s %s", s.Var, s.Iterable.String(), s.Body.String())
+}
+
+type BreakStmt struct{}
+
+func (s *BreakStmt) stmtNode()      {}
+func (s *BreakStmt) String() string { return "break;" }
+
+type ContinueStmt struct{}
+
+func (s *ContinueStmt) stmtNode()      {}
+func (s *ContinueStmt) String() string { return "continue;" }
+
+type MatchStmt struct {
+	Cond  Expr
+	Cases []*MatchCase
+}
+
+func (s *MatchStmt) stmtNode() {}
+func (s *MatchStmt) String() string {
+	var sb strings.Builder
+	sb.WriteString("match " + s.Cond.String() + " { ")
+	for _, c := range s.Cases {
+		sb.WriteString(c.String() + " ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+type MatchCase struct {
+	Pattern Node // Can be Expr (value) or Type (type check)
+	Body    *BlockStmt
+}
+
+func (c *MatchCase) String() string {
+	return fmt.Sprintf("case %s: %s", c.Pattern.String(), c.Body.String())
+}
+
+type ExprStmt struct {
+	Expr Expr
+}
+
+func (s *ExprStmt) stmtNode() {}
+func (s *ExprStmt) String() string {
+	return s.Expr.String() + ";"
+}
+
+// --- Expressions ---
+
+type BinaryExpr struct {
+	Left  Expr
+	Op    string
+	Right Expr
+}
+
+func (e *BinaryExpr) exprNode() {}
+func (e *BinaryExpr) String() string {
+	return fmt.Sprintf("(%s %s %s)", e.Left.String(), e.Op, e.Right.String())
+}
+
+type UnaryExpr struct {
+	Op   string
+	Expr Expr
+}
+
+func (e *UnaryExpr) exprNode() {}
+func (e *UnaryExpr) String() string {
+	return fmt.Sprintf("(%s%s)", e.Op, e.Expr.String())
+}
+
+type CallExpr struct {
+	Func Expr
+	Args []Expr
+}
+
+func (e *CallExpr) exprNode() {}
+func (e *CallExpr) String() string {
+	var args []string
+	for _, a := range e.Args {
+		args = append(args, a.String())
+	}
+	return fmt.Sprintf("%s(%s)", e.Func.String(), strings.Join(args, ", "))
+}
+
+type MemberExpr struct {
+	Expr Expr
+	Name string
+}
+
+func (e *MemberExpr) exprNode() {}
+func (e *MemberExpr) String() string {
+	return fmt.Sprintf("%s.%s", e.Expr.String(), e.Name)
+}
+
+type IndexExpr struct {
+	Expr  Expr
+	Index Expr
+}
+
+func (e *IndexExpr) exprNode() {}
+func (e *IndexExpr) String() string {
+	return fmt.Sprintf("%s[%s]", e.Expr.String(), e.Index.String())
+}
+
+type Literal struct {
+	Value string
+	Kind  string // "int", "float", "string", "bool", "null"
+}
+
+func (e *Literal) exprNode() {}
+func (e *Literal) String() string {
+	if e.Kind == "string" {
+		return fmt.Sprintf("%q", e.Value)
+	}
+	return e.Value
+}
+
+type Ident struct {
+	Name     string
+	TypeArgs []*Type
+}
+
+func (e *Ident) exprNode() {}
+func (e *Ident) String() string {
+	s := e.Name
+	if len(e.TypeArgs) > 0 {
+		var args []string
+		for _, t := range e.TypeArgs {
+			args = append(args, t.String())
+		}
+		s += "<" + strings.Join(args, ", ") + ">"
+	}
+	return s
+}
+
+type StructInitExpr struct {
+	Name     string
+	TypeArgs []*Type
+	Fields   map[string]Expr
+}
+
+func (e *StructInitExpr) exprNode() {}
+func (e *StructInitExpr) String() string {
+	name := e.Name
+	if len(e.TypeArgs) > 0 {
+		var args []string
+		for _, t := range e.TypeArgs {
+			args = append(args, t.String())
+		}
+		name += "<" + strings.Join(args, ", ") + ">"
+	}
+
+	var fields []string
+	for k, v := range e.Fields {
+		fields = append(fields, fmt.Sprintf("%s: %s", k, v.String()))
+	}
+	return fmt.Sprintf("%s { %s }", name, strings.Join(fields, ", "))
+}

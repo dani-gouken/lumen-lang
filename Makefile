@@ -21,7 +21,7 @@ build:
 
 test-unit:
 	@echo "Running unit tests..."
-	@$(GO) test ./internal/vm ./internal/asm ./internal/types -v
+	@$(GO) test ./internal/vm ./internal/asm ./internal/types  ./internal/ir  ./internal/ast -v
 
 
 test-integration:
