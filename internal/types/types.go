@@ -15,6 +15,7 @@ const (
 	KindUnion
 	KindBehavior
 	KindIntersection
+	KindTypeParam
 )
 
 // Type represents any type in the Lumen language.
@@ -22,6 +23,23 @@ type Type interface {
 	Kind() TypeKind
 	String() string
 	Equals(other Type) bool
+}
+
+// --- Type Parameters ---
+
+type TypeParam struct {
+	Name string
+}
+
+func NewTypeParam(name string) *TypeParam {
+	return &TypeParam{Name: name}
+}
+
+func (t *TypeParam) Kind() TypeKind { return KindTypeParam }
+func (t *TypeParam) String() string { return t.Name }
+func (t *TypeParam) Equals(other Type) bool {
+	o, ok := other.(*TypeParam)
+	return ok && t.Name == o.Name
 }
 
 // --- Primitives ---
@@ -66,16 +84,32 @@ type Field struct {
 }
 
 type StructType struct {
-	Name   string
-	Fields []Field
+	Name       string
+	BaseName   string
+	Fields     []Field
+	TypeParams []string
+	TypeArgs   []Type
 }
 
 func NewStruct(name string, fields []Field) *StructType {
-	return &StructType{Name: name, Fields: fields}
+	return &StructType{Name: name, BaseName: name, Fields: fields}
+}
+
+func NewGenericStruct(name string, typeParams []string, fields []Field) *StructType {
+	return &StructType{Name: name, BaseName: name, Fields: fields, TypeParams: typeParams}
 }
 
 func (t *StructType) Kind() TypeKind { return KindStruct }
 func (t *StructType) String() string {
+	if len(t.TypeArgs) > 0 && len(t.TypeParams) == 0 {
+		return t.Name
+	}
+
+	name := t.Name
+	if len(t.TypeParams) > 0 {
+		name = fmt.Sprintf("%s<%s>", t.Name, strings.Join(t.TypeParams, ", "))
+	}
+
 	var fields []string
 	for _, f := range t.Fields {
 		prefix := ""
@@ -84,7 +118,7 @@ func (t *StructType) String() string {
 		}
 		fields = append(fields, fmt.Sprintf("%s%s: %s", prefix, f.Name, f.Type.String()))
 	}
-	return fmt.Sprintf("struct %s { %s }", t.Name, strings.Join(fields, ", "))
+	return fmt.Sprintf("struct %s { %s }", name, strings.Join(fields, ", "))
 }
 func (t *StructType) Equals(other Type) bool {
 	o, ok := other.(*StructType)
@@ -98,19 +132,28 @@ func (t *StructType) Equals(other Type) bool {
 type FunctionType struct {
 	Params     []Type
 	ReturnType Type
+	TypeParams []string
 }
 
 func NewFunction(params []Type, returnType Type) *FunctionType {
 	return &FunctionType{Params: params, ReturnType: returnType}
 }
 
+func NewGenericFunction(typeParams []string, params []Type, returnType Type) *FunctionType {
+	return &FunctionType{Params: params, ReturnType: returnType, TypeParams: typeParams}
+}
+
 func (t *FunctionType) Kind() TypeKind { return KindFunction }
 func (t *FunctionType) String() string {
+	prefix := "fn"
+	if len(t.TypeParams) > 0 {
+		prefix += fmt.Sprintf("<%s>", strings.Join(t.TypeParams, ", "))
+	}
 	var params []string
 	for _, p := range t.Params {
 		params = append(params, p.String())
 	}
-	return fmt.Sprintf("fn(%s) -> %s", strings.Join(params, ", "), t.ReturnType.String())
+	return fmt.Sprintf("%s(%s) -> %s", prefix, strings.Join(params, ", "), t.ReturnType.String())
 }
 func (t *FunctionType) Equals(other Type) bool {
 	o, ok := other.(*FunctionType)
@@ -236,4 +279,153 @@ func (t *IntersectionType) Equals(other Type) bool {
 		}
 	}
 	return true
+}
+
+// Instantiate replaces type parameters in a generic type with concrete types.
+func Instantiate(t Type, bindings map[string]Type) Type {
+	switch t := t.(type) {
+	case *TypeParam:
+		if concrete, ok := bindings[t.Name]; ok {
+			return concrete
+		}
+		return t
+
+	case *StructType:
+		// Instantiate fields
+		newFields := make([]Field, len(t.Fields))
+		changed := false
+		for i, f := range t.Fields {
+			newType := Instantiate(f.Type, bindings)
+			newFields[i] = Field{
+				Name:   f.Name,
+				Type:   newType,
+				Public: f.Public,
+			}
+			if newType != f.Type {
+				changed = true
+			}
+		}
+
+		// Resolve type parameters
+		newTypeParams := []string{}
+		newTypeArgs := []Type{}
+
+		if len(t.TypeParams) > 0 {
+			// Definition -> Instantiation
+			for _, tp := range t.TypeParams {
+				if val, ok := bindings[tp]; ok {
+					newTypeArgs = append(newTypeArgs, val)
+					changed = true
+				} else {
+					newTypeParams = append(newTypeParams, tp)
+					// Keep as TypeParam in args
+					newTypeArgs = append(newTypeArgs, NewTypeParam(tp))
+				}
+			}
+		} else if len(t.TypeArgs) > 0 {
+			// Instantiation -> Instantiation
+			for _, arg := range t.TypeArgs {
+				newArg := Instantiate(arg, bindings)
+				newTypeArgs = append(newTypeArgs, newArg)
+				if newArg != arg {
+					changed = true
+				}
+			}
+		}
+
+		if !changed {
+			return t
+		}
+
+		base := t.BaseName
+		if base == "" {
+			base = t.Name
+		}
+
+		newName := base
+		if len(newTypeArgs) > 0 {
+			args := []string{}
+			for _, a := range newTypeArgs {
+				args = append(args, a.String())
+			}
+			newName = fmt.Sprintf("%s[%s]", base, strings.Join(args, ", "))
+		}
+
+		return &StructType{
+			Name:       newName,
+			BaseName:   base,
+			Fields:     newFields,
+			TypeParams: newTypeParams,
+			TypeArgs:   newTypeArgs,
+		}
+
+	case *FunctionType:
+		newParams := make([]Type, len(t.Params))
+		changed := false
+		for i, p := range t.Params {
+			newParams[i] = Instantiate(p, bindings)
+			if newParams[i] != p {
+				changed = true
+			}
+		}
+		newRet := Instantiate(t.ReturnType, bindings)
+		if newRet != t.ReturnType {
+			changed = true
+		}
+
+		// Handle function type params?
+		// Usually we instantiate a generic function when we call it.
+		// But here we are instantiating a TYPE.
+		// If we have `fn<T>(T) -> T`, and we instantiate T=Int, we get `fn(Int) -> Int`.
+		// The resulting function type is NOT generic anymore.
+
+		newTypeParams := []string{}
+		if len(t.TypeParams) > 0 {
+			for _, tp := range t.TypeParams {
+				if _, ok := bindings[tp]; !ok {
+					newTypeParams = append(newTypeParams, tp)
+				} else {
+					changed = true
+				}
+			}
+		}
+
+		if !changed {
+			return t
+		}
+
+		return &FunctionType{
+			Params:     newParams,
+			ReturnType: newRet,
+			TypeParams: newTypeParams,
+		}
+
+	case *ArrayType:
+		newElem := Instantiate(t.ElementType, bindings)
+		if newElem != t.ElementType {
+			return NewArray(newElem)
+		}
+		return t
+
+	case *UnionType:
+		newTypes := make([]Type, len(t.Types))
+		changed := false
+		for i, sub := range t.Types {
+			newTypes[i] = Instantiate(sub, bindings)
+			if newTypes[i] != sub {
+				changed = true
+			}
+		}
+		if changed {
+			return NewUnion(newTypes...)
+		}
+		return t
+
+	case *IntersectionType:
+		// Intersections of behaviors. Behaviors might be generic too?
+		// For now assuming behaviors are not generic or handled similarly.
+		// If behaviors are generic, we need to update BehaviorType too.
+		return t
+	}
+	return t
 }
