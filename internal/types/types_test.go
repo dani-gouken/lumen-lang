@@ -18,15 +18,15 @@ func TestPrimitives(t *testing.T) {
 
 func TestStructs(t *testing.T) {
 	s1 := NewStruct("Point", []Field{
-		{"x", Int},
-		{"y", Int},
+		{"x", Int, true},
+		{"y", Int, true},
 	})
 	s2 := NewStruct("Point", []Field{
-		{"x", Int},
-		{"y", Int},
+		{"x", Int, true},
+		{"y", Int, true},
 	})
 	s3 := NewStruct("Person", []Field{
-		{"name", String},
+		{"name", String, false},
 	})
 
 	if !s1.Equals(s2) {
@@ -35,19 +35,31 @@ func TestStructs(t *testing.T) {
 	if s1.Equals(s3) {
 		t.Error("Structs with different names should not be equal")
 	}
+
+	// Test String representation with visibility
+	expected := "struct Point { pub x: int, pub y: int }"
+	if s1.String() != expected {
+		t.Errorf("String() = %s; want %s", s1.String(), expected)
+	}
+
+	expectedPrivate := "struct Person { name: string }"
+	if s3.String() != expectedPrivate {
+		t.Errorf("String() = %s; want %s", s3.String(), expectedPrivate)
+	}
 }
 
 func TestIsAssignable(t *testing.T) {
 	registry := NewImplRegistry()
 
-	myError := NewStruct("MyError", []Field{{"message", String}})
+	// Define types
+	myError := NewStruct("MyError", []Field{{"message", String, true}})
 	otherStruct := NewStruct("Other", nil)
 
 	errorLike := NewBehavior("ErrorLike", []Method{
-		{"Error", NewFunction(nil, String)},
+		{"Error", NewFunction(nil, String), true},
 	})
 	stringable := NewBehavior("Stringable", []Method{
-		{"ToString", NewFunction(nil, String)},
+		{"ToString", NewFunction(nil, String), true},
 	})
 
 	// Register implementations
@@ -99,14 +111,14 @@ func TestIsCastable(t *testing.T) {
 	registry := NewImplRegistry()
 
 	// Define types
-	myError := NewStruct("MyError", []Field{{"message", String}})
+	myError := NewStruct("MyError", []Field{{"message", String, true}})
 	otherStruct := NewStruct("Other", nil)
 
 	errorLike := NewBehavior("ErrorLike", []Method{
-		{"Error", NewFunction(nil, String)},
+		{"Error", NewFunction(nil, String), true},
 	})
 	stringable := NewBehavior("Stringable", []Method{
-		{"ToString", NewFunction(nil, String)},
+		{"ToString", NewFunction(nil, String), true},
 	})
 
 	// Register implementations

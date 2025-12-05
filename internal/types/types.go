@@ -60,8 +60,9 @@ var (
 // --- Structs ---
 
 type Field struct {
-	Name string
-	Type Type
+	Name   string
+	Type   Type
+	Public bool
 }
 
 type StructType struct {
@@ -77,7 +78,11 @@ func (t *StructType) Kind() TypeKind { return KindStruct }
 func (t *StructType) String() string {
 	var fields []string
 	for _, f := range t.Fields {
-		fields = append(fields, fmt.Sprintf("%s: %s", f.Name, f.Type.String()))
+		prefix := ""
+		if f.Public {
+			prefix = "pub "
+		}
+		fields = append(fields, fmt.Sprintf("%s%s: %s", prefix, f.Name, f.Type.String()))
 	}
 	return fmt.Sprintf("struct %s { %s }", t.Name, strings.Join(fields, ", "))
 }
@@ -179,8 +184,9 @@ func (t *UnionType) Equals(other Type) bool {
 // --- Behaviors (Interfaces) ---
 
 type Method struct {
-	Name string
-	Type *FunctionType
+	Name   string
+	Type   *FunctionType
+	Public bool
 }
 
 type BehaviorType struct {
