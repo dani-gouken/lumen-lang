@@ -38,6 +38,28 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
   - `for item in items { ... }` over arrays or strings (iteration unit TBD).
   - `break`/`continue` only in loops.
 
+### Behaviors (Traits)
+- Definition:
+  ```
+  trait ErrorLike {
+      fn Error() -> String;
+  }
+  ```
+- Implementation:
+  ```
+  struct MyStruct {}
+  impl ErrorLike for MyStruct {
+      fn Error() -> String { return "error"; }
+  }
+  ```
+- Usage: Behaviors define a set of methods that a type must implement. They are similar to interfaces in other languages.
+- Self Type: `Self` can be used in trait definitions and implementations to refer to the implementing type.
+  ```
+  trait Cloneable {
+      fn clone() -> Self;
+  }
+  ```
+
 ## 4. Expressions
 - Primary: literals, identifiers, grouping `(expr)`.
 - Unary: `-` on `Int`/`Float`, `!` on `Bool`.
@@ -54,6 +76,8 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Return type required (`Void` allowed). In `-> T`, all paths return `T`; in `-> Void`, `return;` only.
 - Entry point convention: `fn main() -> Int { ... }`.
 - Generics: `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { ... }`; instantiate with `map[Int, String](nums, toStr)`. No traits/interfaces in v0.
+- Variadic arguments: `fn printf(fmt: String, args: ...Any) -> Void { ... }`. The last parameter can be prefixed with `...` to accept zero or more arguments of that type.
+- Generic Variadic: `fn collect<T>(...T) -> [T] { ... }`.
 
 ## 6. Modules & Imports
 - One module per `.lum` file; module name = path relative to a chosen root (TBD).
@@ -95,13 +119,19 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 ```
 Program      = { Import | Decl } EOF ;
 Import       = "import" StringLiteral [ "as" Ident ] ";" ;
-Decl         = FnDecl | StructDecl ;
+Decl         = FnDecl | StructDecl | TraitDecl | ImplDecl ;
+
+TraitDecl    = "trait" Ident "{" { TraitMethod } "}" ;
+TraitMethod  = "fn" Ident "(" [ParamList] ")" "->" Type ";" ;
+
+ImplDecl     = "impl" Ident "for" Ident "{" { FnDecl } "}" ;
 
 FnDecl       = "fn" Ident [TypeParams] "(" [ParamList] ")" "->" Type Block ;
 TypeParams   = "<" TypeParam { "," TypeParam } ">" ;
 TypeParam    = Ident ;
-ParamList    = Param { "," Param } ;
+ParamList    = Param { "," Param } [ "," VariadicParam ] | VariadicParam ;
 Param        = Ident ":" Type ;
+VariadicParam = Ident ":" "..." Type ;
 
 StructDecl   = "struct" Ident [TypeParams] "{" { Field [";" ] } "}" ;
 Field        = Ident ":" Type ;
@@ -133,8 +163,10 @@ Primary      = Literal | Ident [TypeArgs] | "(" Expr ")" ;
 TypeArgs     = "<" Type { "," Type } ">" ;
 
 Type         = SimpleType [ "?" ] ;
-SimpleType   = BuiltinType | Ident [TypeArgs] | "[" Type "]" | "(" Type ")" ;
-BuiltinType  = "Int" | "Float" | "Bool" | "String" | "Any" | "Void" ;
+SimpleType   = BuiltinType | Ident [TypeArgs] | "[" Type "]" | "(" Type ")" | FunctionType ;
+BuiltinType  = "Int" | "Float" | "Bool" | "String" | "Any" | "Void" | "Self" ;
+FunctionType = "fn" [TypeParams] "(" [TypeList] ")" "->" Type ;
+TypeList     = Type { "," Type } [ "," "..." Type ] | "..." Type ;
 
 Ident        = Letter { Letter | Digit | "_" } ;
 Literal      = IntLit | FloatLit | StringLit | "true" | "false" | "null" ;

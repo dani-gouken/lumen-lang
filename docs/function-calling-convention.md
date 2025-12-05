@@ -239,7 +239,7 @@ CALL r0 2          ; Callee receives: r0=5, r1=10
 **Constraints:**
 - Maximum 256 arguments (limited by register count)
 - No argument type checking (caller's responsibility)
-- No variadic functions (argc must be known at call site)
+- Variadic functions: The compiler handles variadic arguments by ensuring the correct number of arguments are passed at the call site, or by constructing an array/slice if the language semantics require it (implementation detail). The VM sees them as normal arguments.
 
 ### Return Values
 

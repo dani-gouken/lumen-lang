@@ -53,6 +53,7 @@ const (
 	PrimitiveString PrimitiveKind = "string"
 	PrimitiveVoid   PrimitiveKind = "void"
 	PrimitiveAny    PrimitiveKind = "any"
+	PrimitiveSelf   PrimitiveKind = "Self"
 )
 
 type PrimitiveType struct {
@@ -73,6 +74,7 @@ var (
 	String = &PrimitiveType{Name: PrimitiveString}
 	Void   = &PrimitiveType{Name: PrimitiveVoid}
 	Any    = &PrimitiveType{Name: PrimitiveAny}
+	Self   = &PrimitiveType{Name: PrimitiveSelf}
 )
 
 // --- Structs ---
@@ -133,14 +135,23 @@ type FunctionType struct {
 	Params     []Type
 	ReturnType Type
 	TypeParams []string
+	IsVariadic bool
 }
 
 func NewFunction(params []Type, returnType Type) *FunctionType {
 	return &FunctionType{Params: params, ReturnType: returnType}
 }
 
+func NewVariadicFunction(params []Type, returnType Type) *FunctionType {
+	return &FunctionType{Params: params, ReturnType: returnType, IsVariadic: true}
+}
+
 func NewGenericFunction(typeParams []string, params []Type, returnType Type) *FunctionType {
 	return &FunctionType{Params: params, ReturnType: returnType, TypeParams: typeParams}
+}
+
+func NewGenericVariadicFunction(typeParams []string, params []Type, returnType Type) *FunctionType {
+	return &FunctionType{Params: params, ReturnType: returnType, TypeParams: typeParams, IsVariadic: true}
 }
 
 func (t *FunctionType) Kind() TypeKind { return KindFunction }
@@ -150,14 +161,21 @@ func (t *FunctionType) String() string {
 		prefix += fmt.Sprintf("<%s>", strings.Join(t.TypeParams, ", "))
 	}
 	var params []string
-	for _, p := range t.Params {
-		params = append(params, p.String())
+	for i, p := range t.Params {
+		s := p.String()
+		if t.IsVariadic && i == len(t.Params)-1 {
+			s = "..." + s
+		}
+		params = append(params, s)
 	}
 	return fmt.Sprintf("%s(%s) -> %s", prefix, strings.Join(params, ", "), t.ReturnType.String())
 }
 func (t *FunctionType) Equals(other Type) bool {
 	o, ok := other.(*FunctionType)
 	if !ok {
+		return false
+	}
+	if t.IsVariadic != o.IsVariadic {
 		return false
 	}
 	if len(t.Params) != len(o.Params) {

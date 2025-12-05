@@ -1,0 +1,53 @@
+// Example demonstrating new language features:
+// - Variadic arguments
+// - Generic variadic functions
+// - Traits (Behaviors)
+// - Self type
+
+// 1. Traits and Self type
+trait Cloneable {
+    fn clone() -> Self;
+}
+
+struct Point {
+    x: Int;
+    y: Int;
+}
+
+impl Cloneable for Point {
+    fn clone() -> Self {
+        return Point { x: self.x, y: self.y };
+    }
+}
+
+// 2. Variadic function
+fn print_all(prefix: String, items: ...Any) -> Void {
+    print(prefix);
+    for item in items {
+        print(" ");
+        print(toString(item));
+    }
+    println("");
+    return;
+}
+
+// 3. Generic variadic function
+fn collect<T>(items: ...T) -> [T] {
+    return items;
+}
+
+fn main() -> Int {
+    let p1 = Point { x: 10, y: 20 };
+    let p2 = p1.clone();
+
+    print_all("Values:", 1, "two", true);
+    
+    let numbers = collect<Int>(1, 2, 3, 4);
+    
+    // Verify results
+    if numbers[0] != 1 {
+        return 1;
+    }
+    
+    return 0;
+}

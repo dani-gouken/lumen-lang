@@ -161,3 +161,50 @@ func TestIsCastable(t *testing.T) {
 		})
 	}
 }
+
+func TestVariadicFunctions(t *testing.T) {
+	// fn(int, ...string) -> void
+	v1 := NewVariadicFunction([]Type{Int, String}, Void)
+	// fn(int, string) -> void
+	n1 := NewFunction([]Type{Int, String}, Void)
+
+	if v1.Equals(n1) {
+		t.Error("Variadic function should not equal non-variadic function with same params")
+	}
+
+	expected := "fn(int, ...string) -> void"
+	if v1.String() != expected {
+		t.Errorf("String() = %s; want %s", v1.String(), expected)
+	}
+}
+
+func TestGenericVariadicFunctions(t *testing.T) {
+	// fn<T>(...T) -> void
+	T := NewTypeParam("T")
+	v1 := NewGenericVariadicFunction([]string{"T"}, []Type{T}, Void)
+
+	expected := "fn<T>(...T) -> void"
+	if v1.String() != expected {
+		t.Errorf("String() = %s; want %s", v1.String(), expected)
+	}
+
+	if !v1.IsVariadic {
+		t.Error("Should be variadic")
+	}
+
+	if len(v1.TypeParams) != 1 || v1.TypeParams[0] != "T" {
+		t.Error("Should have type param T")
+	}
+}
+
+func TestSelfType(t *testing.T) {
+	if !Self.Equals(Self) {
+		t.Error("Self should equal Self")
+	}
+	if Self.String() != "Self" {
+		t.Errorf("String() = %s; want Self", Self.String())
+	}
+	if Self.Equals(Int) {
+		t.Error("Self should not equal Int")
+	}
+}
