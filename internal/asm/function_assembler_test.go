@@ -40,7 +40,6 @@ func TestAssembleFuncBlock(t *testing.T) {
 	}
 }
 
-
 // TestAssembleNEWFUNC tests NEWFUNC instruction assembly
 func TestAssembleNEWFUNC(t *testing.T) {
 	source := `.constants 0

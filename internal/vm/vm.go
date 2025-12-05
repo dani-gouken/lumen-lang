@@ -670,7 +670,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if !destVal.IsHeapPtr() {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("CAPLOCAL requires function object in r%d", destReg))
 			}
-			
+
 			// We assume it's a function object because the assembler/compiler should ensure it.
 			// But for safety we could check type.
 			funcObj := (*FunctionObj)(unsafe.Pointer(uintptr(destVal.AsHeapPtr())))
@@ -694,7 +694,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if !destVal.IsHeapPtr() {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("CAPUPVAL requires function object in r%d", destReg))
 			}
-			
+
 			funcObj := (*FunctionObj)(unsafe.Pointer(uintptr(destVal.AsHeapPtr())))
 
 			if upvalIdx >= len(funcObj.Upvalues()) {
@@ -706,7 +706,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if parentUpvalIdx >= len(parentFunc.Upvalues()) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("parent upvalue index out of bounds: %d", parentUpvalIdx))
 			}
-			
+
 			funcObj.SetUpvalue(upvalIdx, parentFunc.Upvalues()[parentUpvalIdx])
 
 		case OpNEWEXFUNC:
@@ -1050,4 +1050,3 @@ func (vm *VM) closeUpvalues(lastSlot int) {
 		i++
 	}
 }
-

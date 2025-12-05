@@ -56,11 +56,11 @@ func TestSimpleClosure(t *testing.T) {
 
 	// Code for outer function (IP 2-10)
 	chunk.Code = append(chunk.Code,
-		NewInstr(OpLOADK, 1, 0, 0),   // r1 = 10
-		NewInstr(OpNEWFUNC, 0, 0, 0), // r0 = closure(inner)
+		NewInstr(OpLOADK, 1, 0, 0),    // r1 = 10
+		NewInstr(OpNEWFUNC, 0, 0, 0),  // r0 = closure(inner)
 		NewInstr(OpCAPLOCAL, 0, 0, 1), // capture r1 as upvalue[0] of r0
-		NewInstr(OpMOV, 2, 0, 0),     // r2 = r0 (save closure)
-		NewInstr(OpCALL, 2, 0, 0),    // call r2()
+		NewInstr(OpMOV, 2, 0, 0),      // r2 = r0 (save closure)
+		NewInstr(OpCALL, 2, 0, 0),     // call r2()
 		// Result is in r0
 		NewInstr(OpRET, 0, 0, 0), // return r0
 	)
@@ -141,10 +141,10 @@ func TestClosureModification(t *testing.T) {
 
 	// Code for counter function (IP 5-15)
 	chunk.Code = append(chunk.Code,
-		NewInstr(OpLOADK, 1, 0, 0),   // r1 = 0 (count)
-		NewInstr(OpNEWFUNC, 2, 0, 0), // r2 = closure(inc)
+		NewInstr(OpLOADK, 1, 0, 0),    // r1 = 0 (count)
+		NewInstr(OpNEWFUNC, 2, 0, 0),  // r2 = closure(inc)
 		NewInstr(OpCAPLOCAL, 2, 0, 1), // capture r1 as upvalue[0] of r2
-		NewInstr(OpCALL, 2, 0, 0),    // call inc() - returns 1
+		NewInstr(OpCALL, 2, 0, 0),     // call inc() - returns 1
 		// Result is now in r0, but closure is still in r2
 		NewInstr(OpCALL, 2, 0, 0), // call inc() again - returns 2
 		NewInstr(OpRET, 0, 0, 0),  // return r0
@@ -227,9 +227,9 @@ func TestNestedClosures(t *testing.T) {
 	// Code for makeAdder function (IP 3-6)
 	// r0 = x (argument)
 	chunk.Code = append(chunk.Code,
-		NewInstr(OpNEWFUNC, 1, 0, 0), // r1 = closure(addX)
+		NewInstr(OpNEWFUNC, 1, 0, 0),  // r1 = closure(addX)
 		NewInstr(OpCAPLOCAL, 1, 0, 0), // capture r0 (arg x) as upvalue[0] of r1
-		NewInstr(OpRET, 1, 0, 0),     // return r1
+		NewInstr(OpRET, 1, 0, 0),      // return r1
 	)
 
 	// Code for main function (IP 7-14)

@@ -13,12 +13,12 @@ type FunctionPrototype struct {
 // Chunk represents a compiled module containing bytecode and metadata.
 type Chunk struct {
 	Constants   []Value
-	Code        []Instr                 // Flat instruction array (all functions concatenated)
-	Prototypes  []FunctionPrototype     // Function metadata table
-	ExternNames []string                // Names of external functions
-	StringPool  []string                // Pool of string literals
-	DebugInfo   map[int]*DebugInfo      // Map from instruction index to debug info
-	Breakpoints []int                   // Instruction pointers marked with ;BREAK in source
+	Code        []Instr             // Flat instruction array (all functions concatenated)
+	Prototypes  []FunctionPrototype // Function metadata table
+	ExternNames []string            // Names of external functions
+	StringPool  []string            // Pool of string literals
+	DebugInfo   map[int]*DebugInfo  // Map from instruction index to debug info
+	Breakpoints []int               // Instruction pointers marked with ;BREAK in source
 	// NOTE: RegisterCount and ArgCount removed - now per-function in Prototypes
 }
 
