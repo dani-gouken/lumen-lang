@@ -2,6 +2,8 @@ package errors
 
 import (
 	"testing"
+
+	"github.com/yourname/lumen/internal/token"
 )
 
 func TestDiagnosticString(t *testing.T) {
@@ -16,7 +18,7 @@ func TestDiagnosticString(t *testing.T) {
 				Severity: SeverityError,
 				Code:     "E1001",
 				Message:  "undefined variable 'count'",
-				Pos: Position{
+				Pos: token.Position{
 					File: "src/main.lum",
 					Line: 10,
 					Col:  5,
@@ -32,7 +34,7 @@ func TestDiagnosticString(t *testing.T) {
 				Severity: SeverityError,
 				Code:     "E1001",
 				Message:  "undefined variable 'count'",
-				Pos: Position{
+				Pos: token.Position{
 					File: "src/main.lum",
 					Line: 10,
 					Col:  5,
@@ -58,7 +60,7 @@ func TestDiagnosticString(t *testing.T) {
 				Severity: SeverityError,
 				Code:     "P0001",
 				Message:  "unexpected token",
-				Pos: Position{
+				Pos: token.Position{
 					File: "src/main.lum",
 					Line: 5,
 					Col:  10,
@@ -93,7 +95,7 @@ func TestHandler(t *testing.T) {
 		t.Error("New handler should not have errors")
 	}
 
-	h.ReportError(Position{File: "test.lum", Line: 1, Col: 1}, "E001", "Test Error")
+	h.ReportError(token.Position{File: "test.lum", Line: 1, Col: 1}, "E001", "Test Error")
 
 	if !h.HasErrors() {
 		t.Error("Handler should have errors after ReportError")

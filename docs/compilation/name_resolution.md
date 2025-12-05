@@ -1,0 +1,150 @@
+# Name Resolution Specification
+
+This document details the design and implementation of the Name Resolution phase in the Lumen compiler.
+
+## Objective
+
+The Name Resolution phase is responsible for linking every identifier usage (variable, function call, type name) to its corresponding declaration. It ensures that the program follows the scoping rules of the language and detects errors such as undefined variables or invalid redeclarations.
+
+## Data Structures
+
+The core of the resolution process relies on a Symbol Table that manages scopes and symbols.
+
+### 1. Symbol
+
+A `Symbol` represents a named entity in the program.
+
+```go
+type SymbolKind int
+
+const (
+    SymbolVar SymbolKind = iota
+    SymbolFunc
+    SymbolStruct
+    SymbolEnum
+    SymbolTrait
+    SymbolTypeParam
+)
+
+type Symbol struct {
+    Name string
+    Kind SymbolKind
+    Decl ast.Node // Pointer to the AST node where it is declared (e.g., *ast.LetStmt, *ast.FnDecl)
+    // Optional: Type information if available early, or location info
+}
+```
+
+### 2. Scope
+
+A `Scope` represents a lexical region where names are valid. Scopes are nested.
+
+```go
+type Scope struct {
+    Parent  *Scope
+    Symbols map[string]*Symbol
+}
+
+func NewScope(parent *Scope) *Scope
+func (s *Scope) Insert(name string, sym *Symbol) error
+func (s *Scope) Lookup(name string) *Symbol
+```
+
+### 3. Resolution Table (Output)
+
+The result of this phase is a mapping that links AST nodes (specifically `*ast.Ident`) to their resolved `Symbol`.
+
+```go
+type Table struct {
+    // Maps a usage identifier to its definition symbol
+    Defs map[*ast.Ident]*Symbol
+    
+    // Maps a declaration node to the scope it introduces (optional, useful for type checking)
+    Scopes map[ast.Node]*Scope
+}
+```
+
+## Scoping Rules
+
+1.  **Lexical Scoping**: Inner scopes can access variables from outer scopes.
+2.  **Shadowing**:
+    *   **Local Shadowing**: Allowed. A variable declared in an inner block can shadow a variable with the same name in an outer block.
+    *   **Global Shadowing**: Disallowed? (TBD: Usually top-level names must be unique).
+3.  **Forward References**:
+    *   **Top-Level**: Allowed. Functions and types can be used before they are defined in the file.
+    *   **Local Variables**: Disallowed. A variable must be declared before use.
+
+## Algorithm
+
+The resolution process is performed in two passes to support forward references for top-level declarations.
+
+### Pass 1: Top-Level Declaration Collection
+
+Traverse the `ast.Program` to collect all top-level declarations into the Global Scope.
+
+*   Register `struct`, `enum`, `trait` names.
+*   Register `fn` names.
+*   Register `import` aliases.
+*   **Error Check**: Detect duplicate top-level names.
+
+### Pass 2: Body Resolution
+
+Traverse the AST again to resolve function bodies and variable initializers.
+
+*   **Scopes**:
+    *   Enter a new scope when entering a `FnDecl` (add parameters to this scope).
+    *   Enter a new scope when entering a `BlockStmt`.
+    *   Enter a new scope for `ForStmt` (loop variable) and `MatchCase` (pattern variables).
+*   **Declarations**:
+    *   When encountering `LetStmt`, add the variable to the current scope.
+    *   Ensure the initializer expression is resolved *before* the variable is added (prevents `let x = x;`).
+*   **Usages**:
+    *   When encountering an `Ident` (in an expression context), look it up in the current scope chain.
+    *   If found, record the link in the `Table`.
+    *   If not found, report an "Undefined identifier" error.
+*   **Member Access**:
+    *   `MemberExpr` (e.g., `obj.prop`) is **NOT** fully resolved here. We resolve `obj`. The property `prop` depends on the type of `obj`, which is determined during Type Checking.
+
+## Implementation Details
+
+The implementation will reside in `internal/resolve`.
+
+### `Resolver` Struct
+
+The resolver should utilize the centralized error handling system.
+
+```go
+import "lumen/internal/errors"
+
+type Resolver struct {
+    table   *Table
+    current *Scope
+    errs    *errors.Handler
+}
+```
+
+### Visitor Pattern
+
+Use a recursive walk or a visitor pattern to traverse the AST.
+
+*   `VisitProgram`
+*   `VisitFnDecl`
+*   `VisitBlockStmt`
+*   `VisitLetStmt`
+*   `VisitExpr`...
+
+## Error Handling
+
+Errors should be reported using the `internal/errors` package, ensuring rich diagnostics with error codes and source context.
+
+*   **E1001 Undefined Identifier**: "Variable 'x' is not defined."
+    *   *Suggestion*: "Did you mean 'y'?" (if close match found).
+*   **E1002 Redeclaration**: "Variable 'x' is already declared in this scope."
+    *   *Context*: Point to the previous declaration.
+*   **E1003 Invalid Shadowing**: If we decide to disallow certain shadowing (e.g. global).
+
+The `Resolver` should continue processing after an error to report as many issues as possible (error recovery).
+
+## Integration
+
+*   **Input**: The `Resolver` takes the `*ast.Program` produced by the Parser.
+*   **Output**: Returns a `*resolve.Table` which is passed to the Type Checker.

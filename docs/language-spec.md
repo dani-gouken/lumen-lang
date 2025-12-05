@@ -17,18 +17,18 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 ## 2. Types
 
 ### Union Types
-- Syntaxe : `T1 | T2 | ... | Tn` (ex : `Int | String`)
-- Un type union accepte une valeur de n'importe quel type listé.
-- Utilisation :
-  - Déclaration de variable : `let x: Int | String = ...`
-  - Paramètre de fonction : `fn foo(val: Int | Float) -> String { ... }`
-  - Retour de fonction : `fn parse(val: String) -> Int | Error { ... }`
-- Compatibilité :
-  - Une valeur de type `T` peut être assignée à une variable de type union si `T` est inclus dans l'union.
-  - Les opérations sur une variable de type union nécessitent une vérification de type (ex : via `match` ou une future syntaxe d'affinage).
-  - Les unions peuvent être combinées avec les types optionnels : `Int | String?`.
-  - Les unions ne sont pas implicitement converties : une valeur doit correspondre explicitement à l'un des types.
-  - Les unions sont statiquement vérifiées.
+- Syntax: `T1 | T2 | ... | Tn` (e.g. `Int | String`)
+- A union type accepts a value of any listed type.
+- Usage:
+  - Variable declaration: `let x: Int | String = ...`
+  - Function parameter: `fn foo(val: Int | Float) -> String { ... }`
+  - Function return: `fn parse(val: String) -> Int | Error { ... }`
+- Compatibility:
+  - A value of type `T` can be assigned to a union type variable if `T` is included in the union.
+  - Operations on a union type variable require type checking (e.g. via `match` or future refinement syntax).
+  - Unions can be combined with optional types: `Int | String?`.
+  - Unions are not implicitly converted: a value must explicitly correspond to one of the types.
+  - Unions are statically checked.
 - `let` mutable, `const` immutable; must initialize at declaration. Reassigning a `const` is a static error.
 - Assignment: `x = x + 1;`.
 - Blocks create scope: `{ let x = 1; }`.
@@ -137,12 +137,15 @@ StructDecl   = "struct" Ident [TypeParams] "{" { Field [";" ] } "}" ;
 Field        = Ident ":" Type ;
 
 Block        = "{" { Stmt } "}" ;
-Stmt         = LetDecl | IfStmt | WhileStmt | ForStmt | ReturnStmt | ExprStmt ;
+Stmt         = LetDecl | IfStmt | WhileStmt | ForStmt | ReturnStmt | MatchStmt | ExprStmt ;
 LetDecl      = ("let" | "const") Ident [ ":" Type ] "=" Expr ";" ;
 IfStmt       = "if" Expr Block [ "else" (Block | IfStmt) ] ;
 WhileStmt    = "while" Expr Block ;
 ForStmt      = "for" Ident "in" Expr Block ;
 ReturnStmt   = "return" [ Expr ] ";" ;
+MatchStmt    = "match" Expr "{" { MatchCase } "}" ;
+MatchCase    = "case" Pattern ":" Block ;
+Pattern      = Expr | Type ;
 ExprStmt     = Expr ";" ;
 
 Expr         = OrExpr ;

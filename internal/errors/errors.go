@@ -3,6 +3,8 @@ package errors
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yourname/lumen/internal/token"
 )
 
 // Severity indicates the seriousness of the diagnostic.
@@ -27,17 +29,6 @@ func (s Severity) String() string {
 	}
 }
 
-// Position represents a location in a source file.
-type Position struct {
-	File string
-	Line int
-	Col  int
-}
-
-func (p Position) String() string {
-	return fmt.Sprintf("%s:%d:%d", p.File, p.Line, p.Col)
-}
-
 // Highlight represents a range of text to underline in the context.
 type Highlight struct {
 	StartCol int
@@ -49,7 +40,7 @@ type Diagnostic struct {
 	Severity   Severity
 	Code       string
 	Message    string
-	Pos        Position
+	Pos        token.Position
 	Context    string      // The source line content
 	Highlights []Highlight // Specific ranges to underline
 	Suggestion string      // Optional fix suggestion
@@ -142,7 +133,7 @@ func (h *Handler) Add(d Diagnostic) {
 }
 
 // ReportError adds an error diagnostic with a code.
-func (h *Handler) ReportError(pos Position, code, msg string) {
+func (h *Handler) ReportError(pos token.Position, code, msg string) {
 	h.Add(Diagnostic{
 		Severity: SeverityError,
 		Code:     code,
@@ -151,7 +142,7 @@ func (h *Handler) ReportError(pos Position, code, msg string) {
 	})
 }
 
-func (h *Handler) Error(pos Position, msg string) {
+func (h *Handler) Error(pos token.Position, msg string) {
 	h.Add(Diagnostic{
 		Severity: SeverityError,
 		Message:  msg,
@@ -166,4 +157,39 @@ func (h *Handler) HasErrors() bool {
 		}
 	}
 	return false
+}
+
+// NewDiagnosticFromToken creates a diagnostic from a token with automatic context extraction.
+// sourceLines should contain all source lines indexed by line number (1-based).
+func NewDiagnosticFromToken(severity Severity, code, msg string, tok token.Token, sourceLines map[int]string) Diagnostic {
+	d := Diagnostic{
+		Severity: severity,
+		Code:     code,
+		Message:  msg,
+		Pos:      tok.Pos,
+	}
+
+	// Extract context line
+	if line, ok := sourceLines[tok.Pos.Line]; ok {
+		d.Context = line
+
+		// Calculate highlights from token span
+		if tok.EndPos.Line == tok.Pos.Line {
+			d.Highlights = []Highlight{
+				{StartCol: tok.Pos.Col, EndCol: tok.EndPos.Col},
+			}
+		}
+	}
+
+	return d
+}
+
+// ReportErrorFromToken adds an error diagnostic with automatic context from a token.
+func (h *Handler) ReportErrorFromToken(code, msg string, tok token.Token, sourceLines map[int]string) {
+	h.Add(NewDiagnosticFromToken(SeverityError, code, msg, tok, sourceLines))
+}
+
+// ReportWarningFromToken adds a warning diagnostic with automatic context from a token.
+func (h *Handler) ReportWarningFromToken(code, msg string, tok token.Token, sourceLines map[int]string) {
+	h.Add(NewDiagnosticFromToken(SeverityWarning, code, msg, tok, sourceLines))
 }

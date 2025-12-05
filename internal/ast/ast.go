@@ -3,11 +3,28 @@ package ast
 import (
 	"fmt"
 	"strings"
+
+	"github.com/yourname/lumen/internal/token"
 )
 
 // Node is the base interface for all AST nodes.
 type Node interface {
 	String() string
+	Position() token.Position
+}
+
+// BaseNode provides common functionality for all AST nodes.
+type BaseNode struct {
+	Pos token.Position
+	Tok token.Token // Original token (for rich diagnostics)
+}
+
+func (n *BaseNode) Position() token.Position {
+	return n.Pos
+}
+
+func (n *BaseNode) Token() token.Token {
+	return n.Tok
 }
 
 // Expr is the interface for all expression nodes.
@@ -30,6 +47,7 @@ type Decl interface {
 
 // Program represents a full Lumen source file.
 type Program struct {
+	BaseNode
 	Imports []*ImportDecl
 	Decls   []Decl
 }
@@ -47,6 +65,7 @@ func (p *Program) String() string {
 
 // ImportDecl represents an import statement.
 type ImportDecl struct {
+	BaseNode
 	Path  string
 	Alias string
 }
@@ -72,6 +91,7 @@ const (
 
 // Type represents a type annotation.
 type Type struct {
+	BaseNode
 	Kind TypeKind
 
 	// For Basic (e.g. Int, MyStruct<T>)
@@ -129,8 +149,8 @@ func (t *Type) String() string {
 }
 
 // --- Declarations ---
-
 type FnDecl struct {
+	BaseNode
 	Name          string
 	TypeParams    []string
 	Params        []*Param
@@ -165,6 +185,7 @@ func (d *FnDecl) String() string {
 }
 
 type Param struct {
+	BaseNode
 	Name string
 	Type *Type
 }
@@ -174,6 +195,7 @@ func (p *Param) String() string {
 }
 
 type StructDecl struct {
+	BaseNode
 	Name       string
 	TypeParams []string
 	Fields     []*Field
@@ -197,6 +219,7 @@ func (d *StructDecl) String() string {
 }
 
 type EnumDecl struct {
+	BaseNode
 	Name       string
 	TypeParams []string
 	Variants   []*EnumVariant
@@ -220,6 +243,7 @@ func (d *EnumDecl) String() string {
 }
 
 type EnumVariant struct {
+	BaseNode
 	Name   string
 	Values []*Type
 }
@@ -236,6 +260,7 @@ func (v *EnumVariant) String() string {
 }
 
 type Field struct {
+	BaseNode
 	Name string
 	Type *Type
 }
@@ -245,6 +270,7 @@ func (f *Field) String() string {
 }
 
 type TraitDecl struct {
+	BaseNode
 	Name    string
 	Methods []*FnDecl
 }
@@ -261,6 +287,7 @@ func (d *TraitDecl) String() string {
 }
 
 type ImplDecl struct {
+	BaseNode
 	StructName string
 	TraitName  string
 	Methods    []*FnDecl
@@ -280,6 +307,7 @@ func (d *ImplDecl) String() string {
 // --- Statements ---
 
 type BlockStmt struct {
+	BaseNode
 	Stmts []Stmt
 }
 
@@ -295,6 +323,7 @@ func (s *BlockStmt) String() string {
 }
 
 type LetStmt struct {
+	BaseNode
 	Name    string
 	Type    *Type
 	Value   Expr
@@ -315,6 +344,7 @@ func (s *LetStmt) String() string {
 }
 
 type ReturnStmt struct {
+	BaseNode
 	Value Expr
 }
 
@@ -327,6 +357,7 @@ func (s *ReturnStmt) String() string {
 }
 
 type IfStmt struct {
+	BaseNode
 	Cond Expr
 	Then *BlockStmt
 	Else Stmt // Can be BlockStmt or IfStmt
@@ -342,6 +373,7 @@ func (s *IfStmt) String() string {
 }
 
 type WhileStmt struct {
+	BaseNode
 	Cond Expr
 	Body *BlockStmt
 }
@@ -352,6 +384,7 @@ func (s *WhileStmt) String() string {
 }
 
 type ForStmt struct {
+	BaseNode
 	Var      string
 	Iterable Expr
 	Body     *BlockStmt
@@ -362,17 +395,18 @@ func (s *ForStmt) String() string {
 	return fmt.Sprintf("for %s in %s %s", s.Var, s.Iterable.String(), s.Body.String())
 }
 
-type BreakStmt struct{}
+type BreakStmt struct{ BaseNode }
 
 func (s *BreakStmt) stmtNode()      {}
 func (s *BreakStmt) String() string { return "break;" }
 
-type ContinueStmt struct{}
+type ContinueStmt struct{ BaseNode }
 
 func (s *ContinueStmt) stmtNode()      {}
 func (s *ContinueStmt) String() string { return "continue;" }
 
 type MatchStmt struct {
+	BaseNode
 	Cond  Expr
 	Cases []*MatchCase
 }
@@ -389,8 +423,9 @@ func (s *MatchStmt) String() string {
 }
 
 type MatchCase struct {
+	BaseNode
 	Pattern Node // Can be Expr (value) or Type (type check)
-	Body    *BlockStmt
+	Body    Node // Can be *BlockStmt or Expr
 }
 
 func (c *MatchCase) String() string {
@@ -398,6 +433,7 @@ func (c *MatchCase) String() string {
 }
 
 type ExprStmt struct {
+	BaseNode
 	Expr Expr
 }
 
@@ -409,6 +445,7 @@ func (s *ExprStmt) String() string {
 // --- Expressions ---
 
 type BinaryExpr struct {
+	BaseNode
 	Left  Expr
 	Op    string
 	Right Expr
@@ -420,6 +457,7 @@ func (e *BinaryExpr) String() string {
 }
 
 type UnaryExpr struct {
+	BaseNode
 	Op   string
 	Expr Expr
 }
@@ -430,6 +468,7 @@ func (e *UnaryExpr) String() string {
 }
 
 type CallExpr struct {
+	BaseNode
 	Func Expr
 	Args []Expr
 }
@@ -444,6 +483,7 @@ func (e *CallExpr) String() string {
 }
 
 type MemberExpr struct {
+	BaseNode
 	Expr Expr
 	Name string
 }
@@ -454,6 +494,7 @@ func (e *MemberExpr) String() string {
 }
 
 type IndexExpr struct {
+	BaseNode
 	Expr  Expr
 	Index Expr
 }
@@ -464,6 +505,7 @@ func (e *IndexExpr) String() string {
 }
 
 type Literal struct {
+	BaseNode
 	Value string
 	Kind  string // "int", "float", "string", "bool", "null"
 }
@@ -477,6 +519,7 @@ func (e *Literal) String() string {
 }
 
 type Ident struct {
+	BaseNode
 	Name     string
 	TypeArgs []*Type
 }
@@ -495,6 +538,7 @@ func (e *Ident) String() string {
 }
 
 type StructInitExpr struct {
+	BaseNode
 	Name     string
 	TypeArgs []*Type
 	Fields   map[string]Expr
