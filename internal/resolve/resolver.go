@@ -5,7 +5,12 @@ import (
 
 	"github.com/yourname/lumen/internal/ast"
 	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/token"
+)
+
+// Error codes for name resolution
+const (
+	ErrUndefined     = "E1001" // Undefined identifier, type, or trait
+	ErrRedeclaration = "E1002" // Redeclaration of a name in the same scope
 )
 
 type Resolver struct {
@@ -64,11 +69,7 @@ func (r *Resolver) declare(name string, kind SymbolKind, node ast.Node) {
 		Decl: node,
 	}
 	if err := r.current.Insert(name, sym); err != nil {
-		if baseNode, ok := node.(interface{ Token() token.Token }); ok {
-			r.errs.ReportErrorFromToken("E1002", err.Error(), baseNode.Token(), r.sourceLines)
-		} else {
-			r.errs.ReportError(node.Position(), "E1002", err.Error())
-		}
+		r.errs.ReportErrorFromToken(ErrRedeclaration, err.Error(), node.Token(), r.sourceLines)
 	}
 }
 
@@ -158,20 +159,24 @@ func (r *Resolver) visitImplDecl(d *ast.ImplDecl) {
 	if sym := r.current.Lookup(d.StructName); sym == nil {
 		// Check if it's a built-in type (e.g. impl MyTrait for Int)
 		if !isBuiltinType(d.StructName) {
-			if tok := d.Token(); tok.Type != 0 {
-				r.errs.ReportErrorFromToken("E1001", fmt.Sprintf("undefined type '%s'", d.StructName), tok, r.sourceLines)
+			suggestion := r.findSimilarName(d.StructName)
+			msg := fmt.Sprintf("undefined type '%s'", d.StructName)
+			if suggestion != "" {
+				r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, fmt.Sprintf("Did you mean '%s'?", suggestion), d.Token(), r.sourceLines)
 			} else {
-				r.errs.ReportError(d.Position(), "E1001", fmt.Sprintf("undefined type '%s'", d.StructName))
+				r.errs.ReportErrorFromToken(ErrUndefined, msg, d.Token(), r.sourceLines)
 			}
 		}
 	}
 
 	if d.TraitName != "" {
 		if sym := r.current.Lookup(d.TraitName); sym == nil {
-			if tok := d.Token(); tok.Type != 0 {
-				r.errs.ReportErrorFromToken("E1001", fmt.Sprintf("undefined trait '%s'", d.TraitName), tok, r.sourceLines)
+			suggestion := r.findSimilarName(d.TraitName)
+			msg := fmt.Sprintf("undefined trait '%s'", d.TraitName)
+			if suggestion != "" {
+				r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, fmt.Sprintf("Did you mean '%s'?", suggestion), d.Token(), r.sourceLines)
 			} else {
-				r.errs.ReportError(d.Position(), "E1001", fmt.Sprintf("undefined trait '%s'", d.TraitName))
+				r.errs.ReportErrorFromToken(ErrUndefined, msg, d.Token(), r.sourceLines)
 			}
 		}
 	}
@@ -242,11 +247,7 @@ func (r *Resolver) visitForStmt(s *ast.ForStmt) {
 	// We don't have a separate node for the variable name, so we use the ForStmt
 	sym := &Symbol{Name: s.Var, Kind: SymbolVar, Decl: s}
 	if err := r.current.Insert(s.Var, sym); err != nil {
-		if tok := s.Token(); tok.Type != 0 {
-			r.errs.ReportErrorFromToken("E1002", err.Error(), tok, r.sourceLines)
-		} else {
-			r.errs.ReportError(s.Position(), "E1002", err.Error())
-		}
+		r.errs.ReportErrorFromToken(ErrRedeclaration, err.Error(), s.Token(), r.sourceLines)
 	}
 
 	r.visitBlockStmt(s.Body)
@@ -264,12 +265,8 @@ func (r *Resolver) visitMatchCase(c *ast.MatchCase) {
 	r.pushScope(c)
 	defer r.popScope()
 
-	// TODO: Implement pattern matching variable binding.
-	// Currently, patterns are visited as expressions, which means identifiers
-	// are looked up rather than declared.
-	if expr, ok := c.Pattern.(ast.Expr); ok {
-		r.visitExpr(expr)
-	}
+	// Visit pattern - this handles pattern matching variable binding
+	r.visitPattern(c.Pattern)
 
 	// Body can be either BlockStmt or Expr
 	switch body := c.Body.(type) {
@@ -277,6 +274,53 @@ func (r *Resolver) visitMatchCase(c *ast.MatchCase) {
 		r.visitBlockStmt(body)
 	case ast.Expr:
 		r.visitExpr(body)
+	}
+}
+
+// visitPattern handles pattern matching, including variable binding.
+// Currently supports:
+// - Literal patterns (e.g., 1, "hello")
+// - Identifier patterns (e.g., x - binds a new variable)
+// - Enum variant patterns (e.g., Some(x) - not fully implemented)
+// - Struct patterns (e.g., Point { x, y } - not fully implemented)
+func (r *Resolver) visitPattern(pattern ast.Node) {
+	switch p := pattern.(type) {
+	case *ast.Ident:
+		// Special case: underscore is a wildcard, not a binding
+		if p.Name == "_" {
+			return
+		}
+		// This is a variable binding pattern - declare a new variable
+		// instead of looking it up
+		r.declare(p.Name, SymbolVar, p)
+
+	case *ast.Literal:
+		// Literal patterns don't bind variables, just match values
+		// Nothing to resolve
+
+	case *ast.CallExpr:
+		// This could be an enum variant pattern like Some(x)
+		// The function name should be resolved (it's the variant name)
+		r.visitExpr(p.Func)
+		// Arguments could be patterns that bind variables
+		for _, arg := range p.Args {
+			r.visitPattern(arg)
+		}
+
+	case *ast.StructInitExpr:
+		// This could be a struct pattern like Point { x, y }
+		// Field values could be patterns that bind variables
+		for _, field := range p.Fields {
+			r.visitPattern(field)
+		}
+
+	case ast.Expr:
+		// Fallback: treat as expression (for backwards compatibility)
+		// This handles other expression types that might appear in patterns
+		r.visitExpr(p)
+
+	default:
+		// Unknown pattern type - ignore
 	}
 }
 
@@ -314,10 +358,12 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 func (r *Resolver) resolveIdent(id *ast.Ident) {
 	sym := r.current.Lookup(id.Name)
 	if sym == nil {
-		if tok := id.Token(); tok.Type != 0 {
-			r.errs.ReportErrorFromToken("E1001", fmt.Sprintf("undefined identifier '%s'", id.Name), tok, r.sourceLines)
+		suggestion := r.findSimilarName(id.Name)
+		msg := fmt.Sprintf("undefined identifier '%s'", id.Name)
+		if suggestion != "" {
+			r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, fmt.Sprintf("Did you mean '%s'?", suggestion), id.Token(), r.sourceLines)
 		} else {
-			r.errs.ReportError(id.Position(), "E1001", fmt.Sprintf("undefined identifier '%s'", id.Name))
+			r.errs.ReportErrorFromToken(ErrUndefined, msg, id.Token(), r.sourceLines)
 		}
 		return
 	}
@@ -335,10 +381,12 @@ func (r *Resolver) visitType(t *ast.Type) {
 		if sym == nil {
 			// Is it a built-in type?
 			if !isBuiltinType(t.Name) {
-				if tok := t.Token(); tok.Type != 0 {
-					r.errs.ReportErrorFromToken("E1001", fmt.Sprintf("undefined type '%s'", t.Name), tok, r.sourceLines)
+				suggestion := r.findSimilarName(t.Name)
+				msg := fmt.Sprintf("undefined type '%s'", t.Name)
+				if suggestion != "" {
+					r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, fmt.Sprintf("Did you mean '%s'?", suggestion), t.Token(), r.sourceLines)
 				} else {
-					r.errs.ReportError(t.Position(), "E1001", fmt.Sprintf("undefined type '%s'", t.Name))
+					r.errs.ReportErrorFromToken(ErrUndefined, msg, t.Token(), r.sourceLines)
 				}
 			}
 		}
@@ -369,4 +417,88 @@ func isBuiltinType(name string) bool {
 		return true
 	}
 	return false
+}
+
+// findSimilarName finds a similar name in scope using Levenshtein distance.
+func (r *Resolver) findSimilarName(target string) string {
+	bestDist := 1000
+	bestName := ""
+
+	// Walk scopes
+	curr := r.current
+	seen := make(map[string]bool)
+
+	for curr != nil {
+		for name := range curr.Symbols {
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			dist := levenshtein(target, name)
+			if dist < bestDist {
+				bestDist = dist
+				bestName = name
+			}
+		}
+		curr = curr.Parent
+	}
+
+	// Check built-ins too
+	builtins := []string{"Int", "Float", "String", "Bool", "Void", "Any"}
+	for _, name := range builtins {
+		dist := levenshtein(target, name)
+		if dist < bestDist {
+			bestDist = dist
+			bestName = name
+		}
+	}
+
+	// Threshold: distance <= 3 or distance is less than half the target length
+	if bestDist <= 3 || (bestDist < len(target)/2 && bestDist < 5) {
+		return bestName
+	}
+
+	return ""
+}
+
+// levenshtein computes the Levenshtein distance between two strings.
+func levenshtein(s1, s2 string) int {
+	r1, r2 := []rune(s1), []rune(s2)
+	n, m := len(r1), len(r2)
+
+	if n == 0 {
+		return m
+	}
+	if m == 0 {
+		return n
+	}
+
+	row := make([]int, m+1)
+	for i := 0; i <= m; i++ {
+		row[i] = i
+	}
+
+	for i := 1; i <= n; i++ {
+		prev := i
+		var current int
+		for j := 1; j <= m; j++ {
+			cost := 0
+			if r1[i-1] != r2[j-1] {
+				cost = 1
+			}
+			current = min(min(row[j]+1, prev+1), row[j-1]+cost)
+			row[j-1] = prev
+			prev = current
+		}
+		row[m] = prev
+	}
+
+	return row[m]
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }

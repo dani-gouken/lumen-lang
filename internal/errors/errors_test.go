@@ -95,7 +95,9 @@ func TestHandler(t *testing.T) {
 		t.Error("New handler should not have errors")
 	}
 
-	h.ReportError(token.Position{File: "test.lum", Line: 1, Col: 1}, "E001", "Test Error")
+	h.ReportErrorFromToken("E001", "Test Error", token.Token{
+		Pos: token.Position{File: "test.lum", Line: 1, Col: 1},
+	}, nil)
 
 	if !h.HasErrors() {
 		t.Error("Handler should have errors after ReportError")

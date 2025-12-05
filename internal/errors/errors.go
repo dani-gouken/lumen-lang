@@ -132,24 +132,6 @@ func (h *Handler) Add(d Diagnostic) {
 	h.Diagnostics = append(h.Diagnostics, d)
 }
 
-// ReportError adds an error diagnostic with a code.
-func (h *Handler) ReportError(pos token.Position, code, msg string) {
-	h.Add(Diagnostic{
-		Severity: SeverityError,
-		Code:     code,
-		Message:  msg,
-		Pos:      pos,
-	})
-}
-
-func (h *Handler) Error(pos token.Position, msg string) {
-	h.Add(Diagnostic{
-		Severity: SeverityError,
-		Message:  msg,
-		Pos:      pos,
-	})
-}
-
 func (h *Handler) HasErrors() bool {
 	for _, d := range h.Diagnostics {
 		if d.Severity == SeverityError {
@@ -157,6 +139,23 @@ func (h *Handler) HasErrors() bool {
 		}
 	}
 	return false
+}
+
+// ReportErrorFromToken adds an error diagnostic with automatic context from a token.
+func (h *Handler) ReportErrorFromToken(code, msg string, tok token.Token, sourceLines map[int]string) {
+	h.Add(NewDiagnosticFromToken(SeverityError, code, msg, tok, sourceLines))
+}
+
+// ReportWarningFromToken adds a warning diagnostic with automatic context from a token.
+func (h *Handler) ReportWarningFromToken(code, msg string, tok token.Token, sourceLines map[int]string) {
+	h.Add(NewDiagnosticFromToken(SeverityWarning, code, msg, tok, sourceLines))
+}
+
+// ReportErrorWithSuggestion adds an error diagnostic with a suggestion.
+func (h *Handler) ReportErrorWithSuggestion(code, msg, suggestion string, tok token.Token, sourceLines map[int]string) {
+	d := NewDiagnosticFromToken(SeverityError, code, msg, tok, sourceLines)
+	d.Suggestion = suggestion
+	h.Add(d)
 }
 
 // NewDiagnosticFromToken creates a diagnostic from a token with automatic context extraction.
@@ -182,14 +181,4 @@ func NewDiagnosticFromToken(severity Severity, code, msg string, tok token.Token
 	}
 
 	return d
-}
-
-// ReportErrorFromToken adds an error diagnostic with automatic context from a token.
-func (h *Handler) ReportErrorFromToken(code, msg string, tok token.Token, sourceLines map[int]string) {
-	h.Add(NewDiagnosticFromToken(SeverityError, code, msg, tok, sourceLines))
-}
-
-// ReportWarningFromToken adds a warning diagnostic with automatic context from a token.
-func (h *Handler) ReportWarningFromToken(code, msg string, tok token.Token, sourceLines map[int]string) {
-	h.Add(NewDiagnosticFromToken(SeverityWarning, code, msg, tok, sourceLines))
 }

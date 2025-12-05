@@ -11,6 +11,7 @@ import (
 type Node interface {
 	String() string
 	Position() token.Position
+	Token() token.Token
 }
 
 // BaseNode provides common functionality for all AST nodes.
@@ -560,4 +561,18 @@ func (e *StructInitExpr) String() string {
 		fields = append(fields, fmt.Sprintf("%s: %s", k, v.String()))
 	}
 	return fmt.Sprintf("%s { %s }", name, strings.Join(fields, ", "))
+}
+
+type ArrayLiteralExpr struct {
+	BaseNode
+	Elements []Expr
+}
+
+func (e *ArrayLiteralExpr) exprNode() {}
+func (e *ArrayLiteralExpr) String() string {
+	var elems []string
+	for _, elem := range e.Elements {
+		elems = append(elems, elem.String())
+	}
+	return fmt.Sprintf("[%s]", strings.Join(elems, ", "))
 }
