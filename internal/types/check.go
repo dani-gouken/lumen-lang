@@ -91,3 +91,57 @@ func IsAssignable(target, source Type, registry *ImplRegistry) bool {
 
 	return false
 }
+
+// IsCastable checks if an explicit cast (val as Type) is allowed.
+// This includes safe upcasts, runtime-checked downcasts, and primitive conversions.
+func IsCastable(target, source Type, registry *ImplRegistry) bool {
+	// 1. Safe casts (Upcasts) are always allowed
+	if IsAssignable(target, source, registry) {
+		return true
+	}
+
+	// 2. Downcasts (Runtime checks required)
+
+	// Any -> Anything is allowed (checked at runtime)
+	if source == Any {
+		return true
+	}
+
+	// Behavior -> Struct
+	// Allowed ONLY if the target struct implements the source behavior.
+	// If it doesn't, the behavior variable could never hold this struct.
+	if srcBehavior, ok := source.(*BehaviorType); ok {
+		if targetStruct, ok := target.(*StructType); ok {
+			return registry.Implements(targetStruct.Name, srcBehavior.Name)
+		}
+	}
+
+	// Behavior -> Behavior (Side-cast)
+	// We allow casting between behaviors. In a more advanced system,
+	// we could check if there is ANY struct that implements both.
+	if _, ok := source.(*BehaviorType); ok {
+		if _, ok := target.(*BehaviorType); ok {
+			return true
+		}
+	}
+
+	// Union -> Member (or subset)
+	// Allowed if the target is assignable from AT LEAST ONE member of the source union.
+	if srcUnion, ok := source.(*UnionType); ok {
+		for _, member := range srcUnion.Types {
+			if IsAssignable(target, member, registry) {
+				return true
+			}
+		}
+	}
+
+	// 3. Primitive Conversions
+	if source == Int && target == Float {
+		return true
+	}
+	if source == Float && target == Int {
+		return true
+	}
+
+	return false
+}

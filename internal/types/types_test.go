@@ -94,3 +94,58 @@ func TestIsAssignable(t *testing.T) {
 		})
 	}
 }
+
+func TestIsCastable(t *testing.T) {
+	registry := NewImplRegistry()
+
+	// Define types
+	myError := NewStruct("MyError", []Field{{"message", String}})
+	otherStruct := NewStruct("Other", nil)
+
+	errorLike := NewBehavior("ErrorLike", []Method{
+		{"Error", NewFunction(nil, String)},
+	})
+	stringable := NewBehavior("Stringable", []Method{
+		{"ToString", NewFunction(nil, String)},
+	})
+
+	// Register implementations
+	registry.Register("MyError", "ErrorLike")
+	registry.Register("MyError", "Stringable")
+
+	tests := []struct {
+		name     string
+		target   Type
+		source   Type
+		expected bool
+	}{
+		// Upcasts (Safe)
+		{"MyError -> ErrorLike", errorLike, myError, true},
+		{"Int -> Any", Any, Int, true},
+
+		// Downcasts (Unsafe but allowed)
+		{"Any -> Int", Int, Any, true},
+		{"ErrorLike -> MyError", myError, errorLike, true}, // Allowed because MyError implements ErrorLike
+		{"ErrorLike -> Other", otherStruct, errorLike, false}, // Not allowed: Other doesn't implement ErrorLike
+
+		// Side-casts
+		{"ErrorLike -> Stringable", stringable, errorLike, true}, // Allowed (runtime check)
+
+		// Unions
+		{"(MyError | Int) -> MyError", myError, NewUnion(myError, Int), true},
+		{"(MyError | Int) -> Float", Float, NewUnion(myError, Int), false},
+
+		// Primitives
+		{"Int -> Float", Float, Int, true},
+		{"Float -> Int", Int, Float, true},
+		{"Int -> Bool", Bool, Int, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsCastable(tt.target, tt.source, registry); got != tt.expected {
+				t.Errorf("IsCastable(%s, %s) = %v; want %v", tt.target, tt.source, got, tt.expected)
+			}
+		})
+	}
+}
