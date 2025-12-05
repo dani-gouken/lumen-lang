@@ -13,7 +13,7 @@ const (
 )
 
 // SerializeChunk converts a Chunk to binary bytecode format.
-// Format: [Magic:4][Version:4][ConstCount:4][Constants...][CodeCount:4][Code...][RegCount:4][ArgCount:4][ExternCount:4][ExternNames...][StringPoolCount:4][StringPool...][DebugInfoCount:4][DebugInfo...]
+// Format: [Magic:4][Version:4][ConstCount:4][Constants...][CodeCount:4][Code...][ProtoCount:4][Prototypes...][ExternCount:4][ExternNames...][StringPoolCount:4][StringPool...][DebugInfoCount:4][DebugInfo...]
 func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	if chunk == nil {
 		return nil, fmt.Errorf("cannot serialize nil chunk")
@@ -23,7 +23,13 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	headerSize := 4 + 4 // magic + version
 	constSize := 4 + (len(chunk.Constants) * 8)
 	codeSize := 4 + (len(chunk.Code) * 4)
-	metaSize := 4 + 4 // registerCount + argCount
+
+	// Calculate prototypes size
+	protoSize := 4 // count
+	for _, proto := range chunk.Prototypes {
+		// Each prototype: NameLen + Name + CodeStart + CodeSize + RegisterCount + ArgCount + UpvalueCount
+		protoSize += 4 + len(proto.Name) + 4 + 4 + 4 + 4 + 4
+	}
 
 	// Calculate extern names size
 	externSize := 4 // count
@@ -50,7 +56,7 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 		}
 	}
 
-	totalSize := headerSize + constSize + codeSize + metaSize + externSize + stringPoolSize + debugSize
+	totalSize := headerSize + constSize + codeSize + protoSize + externSize + stringPoolSize + debugSize
 
 	buf := make([]byte, totalSize)
 	offset := 0
@@ -82,11 +88,28 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 		offset += 4
 	}
 
-	// Write metadata
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(chunk.RegisterCount))
+	// Write function prototypes
+	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.Prototypes)))
 	offset += 4
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(chunk.ArgCount))
-	offset += 4
+	for _, proto := range chunk.Prototypes {
+		// Write function name
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(proto.Name)))
+		offset += 4
+		copy(buf[offset:], []byte(proto.Name))
+		offset += len(proto.Name)
+
+		// Write metadata
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.CodeStart))
+		offset += 4
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.CodeSize))
+		offset += 4
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.RegisterCount))
+		offset += 4
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.ArgCount))
+		offset += 4
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.UpvalueCount))
+		offset += 4
+	}
 
 	// Write extern names
 	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.ExternNames)))
@@ -220,14 +243,52 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 		offset += 4
 	}
 
-	// Read metadata
-	if offset+8 > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read metadata")
+	// Read function prototypes
+	if offset+4 > len(data) {
+		return nil, fmt.Errorf("bytecode truncated: cannot read prototype count")
 	}
-	chunk.RegisterCount = int(binary.LittleEndian.Uint32(data[offset:]))
+	protoCount := binary.LittleEndian.Uint32(data[offset:])
 	offset += 4
-	chunk.ArgCount = int(binary.LittleEndian.Uint32(data[offset:]))
-	offset += 4
+
+	chunk.Prototypes = make([]FunctionPrototype, protoCount)
+	for i := uint32(0); i < protoCount; i++ {
+		// Read function name
+		if offset+4 > len(data) {
+			return nil, fmt.Errorf("bytecode truncated: cannot read function name length")
+		}
+		nameLen := binary.LittleEndian.Uint32(data[offset:])
+		offset += 4
+
+		if offset+int(nameLen) > len(data) {
+			return nil, fmt.Errorf("bytecode truncated: cannot read function name")
+		}
+		name := string(data[offset : offset+int(nameLen)])
+		offset += int(nameLen)
+
+		// Read metadata
+		if offset+20 > len(data) {
+			return nil, fmt.Errorf("bytecode truncated: cannot read function metadata")
+		}
+		codeStart := int(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
+		codeSize := int(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
+		registerCount := int(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
+		argCount := int(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
+		upvalueCount := int(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
+
+		chunk.Prototypes[i] = FunctionPrototype{
+			Name:          name,
+			CodeStart:     codeStart,
+			CodeSize:      codeSize,
+			RegisterCount: registerCount,
+			ArgCount:      argCount,
+			UpvalueCount:  upvalueCount,
+		}
+	}
 
 	// Read extern names
 	if offset+4 > len(data) {

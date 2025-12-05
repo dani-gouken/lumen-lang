@@ -11,7 +11,7 @@ func TestAssembleLongJump(t *testing.T) {
 	source := `.constants 1
   0: 42i
 
-.code
+.func main 1 0
   LOADK r0 0
   JMP.L far_label
   NOP
@@ -20,9 +20,7 @@ func TestAssembleLongJump(t *testing.T) {
 far_label:
   RET r0
 
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -73,7 +71,7 @@ func TestAssembleLongJumpIf(t *testing.T) {
   0: 100i
   1: 200i
 
-.code
+.func main 2 0
   LOADBOOL r0 true
   LOADK r1 0
   JMPIF.L r0 then_label
@@ -81,9 +79,7 @@ func TestAssembleLongJumpIf(t *testing.T) {
 then_label:
   RET r1
 
-.metadata
-  registers: 2
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -125,7 +121,7 @@ func TestAssembleLongJumpIfNot(t *testing.T) {
   0: 100i
   1: 200i
 
-.code
+.func main 2 0
   LOADBOOL r0 false
   LOADK r1 0
   JMPIFNOT.L r0 else_label
@@ -133,9 +129,7 @@ func TestAssembleLongJumpIfNot(t *testing.T) {
 else_label:
   RET r1
 
-.metadata
-  registers: 2
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -167,65 +161,12 @@ else_label:
 	}
 }
 
-func TestAssembleLongCall(t *testing.T) {
-	source := `.constants 2
-  0: 5i
-  1: 10i
-
-.code
-  LOADK r0 0
-  LOADK r1 1
-  CALL.L add_func 2
-  RET r0
-
-add_func:
-  ADD r2 r0 r1
-  RET r2
-
-.metadata
-  registers: 3
-  args: 0
-`
-
-	chunk, err := Assemble(source)
-	if err != nil {
-		t.Fatalf("assembly failed: %v", err)
-	}
-
-	// Verify LONG prefix for CALL
-	foundCall32 := false
-	for i, instr := range chunk.Code {
-		if instr.Op == vm.OpLONG && i+1 < len(chunk.Code) && chunk.Code[i+1].Op == vm.OpCALL32 {
-			foundCall32 = true
-			// Verify nargs is stored in A field
-			if chunk.Code[i+1].A != 2 {
-				t.Errorf("expected nargs=2 in CALL32, got %d", chunk.Code[i+1].A)
-			}
-			break
-		}
-	}
-
-	if !foundCall32 {
-		t.Error("expected OpCALL32 in code")
-	}
-
-	// Execute and verify
-	v := vm.NewVM()
-	result, err := v.Exec(chunk)
-	if err != nil {
-		t.Fatalf("execution failed: %v", err)
-	}
-	if !result.IsInt() || result.AsInt() != 15 {
-		t.Errorf("expected Int(15), got %s", result.String())
-	}
-}
-
 func TestLongInstructionBackwardJump(t *testing.T) {
 	source := `.constants 2
   0: 0i
   1: 5i
 
-.code
+.func main 3 0
   LOADK r0 0
 loop_start:
   LOADK r1 1
@@ -234,9 +175,7 @@ loop_start:
   JMPIF.L r2 loop_start
   RET r0
 
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -271,7 +210,7 @@ func TestLongInstructionDisassembly(t *testing.T) {
 	source := `.constants 1
   0: 99i
 
-.code
+.func main 1 0
   LOADK r0 0
   JMP.L end_label
   LOADK r0 0
@@ -279,9 +218,7 @@ func TestLongInstructionDisassembly(t *testing.T) {
 end_label:
   RET r0
 
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -323,7 +260,7 @@ func TestShortJumpOutOfRangeError(t *testing.T) {
 	sb.WriteString(`.constants 1
   0: 1i
 
-.code
+.func main 1 0
   JMP far_label
 `)
 
@@ -336,9 +273,7 @@ func TestShortJumpOutOfRangeError(t *testing.T) {
   LOADK r0 0
   RET r0
 
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `)
 
 	_, err := Assemble(sb.String())
@@ -356,7 +291,7 @@ func TestLongJumpLargeOffset(t *testing.T) {
 	sb.WriteString(`.constants 1
   0: 42i
 
-.code
+.func main 1 0
   LOADK r0 0
   JMP.L far_label
 `)
@@ -369,9 +304,7 @@ func TestLongJumpLargeOffset(t *testing.T) {
 	sb.WriteString(`far_label:
   RET r0
 
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `)
 
 	chunk, err := Assemble(sb.String())

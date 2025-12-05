@@ -8,7 +8,7 @@ Lumen assembly is a human-readable text format for writing bytecode programs tha
 
 ## File Format
 
-A Lumen assembly file consists of three sections:
+A Lumen assembly file consists of a constants section followed by one or more function definitions:
 
 ### 1. Constants Section
 
@@ -29,42 +29,58 @@ Defines the constant pool used by LOADK instructions.
   3: null        ; null value
 ```
 
-### 2. Code Section
+### 2. Function Definitions
 
 ```assembly
-.code
+.func <name> <registers> <args> [upvalue_count]
   <instruction> <operands>...
   ...
+.endfunc
 ```
 
-Contains the bytecode instructions. Each instruction consists of an opcode mnemonic followed by operands.
+Defines a function with its bytecode instructions.
+
+**Parameters:**
+- `<name>`: Function identifier (e.g., `main`, `add`, `factorial`)
+- `<registers>`: Number of registers needed by this function
+- `<args>`: Number of function arguments
+- `[upvalue_count]`: (Optional) Number of upvalues (captured variables) this function uses. Defaults to 0.
 
 **Example:**
 ```assembly
-.code
+.func main 3 0
   LOADK r0 0
   LOADK r1 1
   ADD r2 r0 r1
   RET r2
+.endfunc
 ```
 
-### 3. Metadata Section
+**Closures:**
+Functions that capture variables from their enclosing scope must specify the `upvalue_count`.
 
 ```assembly
-.metadata
-  registers: <count>
-  args: <count>
+.func inner 2 0 1    ; 1 upvalue
+  LDCAP r0 0         ; Load upvalue 0
+  RET r0
+.endfunc
 ```
 
-Specifies runtime metadata:
-- `registers`: Number of registers needed by this function
-- `args`: Number of function arguments
+**Multiple Functions:**
+A file can contain multiple function definitions. The `main` function is the entry point:
 
-**Example:**
 ```assembly
-.metadata
-  registers: 3
-  args: 0
+.func main 2 0
+  NEWFUNC r0 helper
+  LOADK r1 0
+  CALL r0 1
+  RET r0
+.endfunc
+
+.func helper 2 1
+  ADD r1 r0 r0
+  RET r1
+.endfunc
 ```
 
 ## Value Types
@@ -127,12 +143,15 @@ String constants are used with the `NEWSTR` instruction to create string objects
 .constants 1
   0: "Hello, World!"
 
-.code
+
+.func main 1 0
   NEWSTR r0 0    ; Create string from constant 0
   RET r0
+.endfunc
 ```
 
 ## Instruction Set
+
 
 ### Data Movement
 
@@ -329,9 +348,11 @@ Create a heap-allocated string object from a string constant.
 .constants 1
   0: "Hello, World!"
 
-.code
+
+.func main 1 0
   NEWSTR r0 0       ; r0 = pointer to "Hello, World!" string
   RET r0
+.endfunc
 ```
 
 **Memory Management:**
@@ -523,13 +544,15 @@ Get field value from object.
   0: "name"
   1: "age"
 
-.code
+
+.func main 4 0
   NEWOBJ r0         ; Create object
   NEWSTR r1 0       ; r1 = "name"
   LOADK r2 1        ; r2 = "John"
   SETFIELD r0 0 r2  ; obj["name"] = "John"
   
   GETFIELD r3 r0 0  ; r3 = obj["name"] ("John")
+.endfunc
 ```
 
 **Error Conditions:**
@@ -559,13 +582,15 @@ Set field value in object.
   1: "y"
   2: 100i
 
-.code
+
+.func main 3 0
   NEWOBJ r0         ; Create object
   LOADK r1 2        ; r1 = 100
   SETFIELD r0 0 r1  ; obj["x"] = 100
   
   LOADK r2 2        ; r2 = 100
   SETFIELD r0 1 r2  ; obj["y"] = 100
+.endfunc
 ```
 
 **Error Conditions:**
@@ -700,7 +725,7 @@ For large programs where jump targets exceed 255 instructions, long instruction 
 **Long Instruction Format:**
 Long instructions are encoded as 3 consecutive instruction words:
 1. `LONG` prefix (indicates the next instruction uses a 32-bit offset)
-2. Opcode instruction (JMP32, JMPIF32, JMPIFNOT32, or CALL32)
+2. Opcode instruction (JMP32, JMPIF32, JMPIFNOT32)
 3. 32-bit offset word (signed, relative to position after the 3-word block)
 
 **Supported Long Instructions:**
@@ -708,17 +733,16 @@ Long instructions are encoded as 3 consecutive instruction words:
 JMP.L label              ; Long unconditional jump
 JMPIF.L r_cond label     ; Long conditional jump if true
 JMPIFNOT.L r_cond label  ; Long conditional jump if false
-CALL.L label nargs       ; Long function call
 ```
 
 **When to Use Long Instructions:**
 - When the target label is more than 255 instructions away
-- The assembler will report an error if a short jump/call is out of range
+- The assembler will report an error if a short jump is out of range
 - Long instructions take 3× the space of short instructions (12 bytes vs 4 bytes)
 
 **Example:**
 ```assembly
-.code
+.func main 2 0
   LOADK r0 0
   JMP.L far_away_label  ; Assembled as: LONG + JMP32 + offset
 
@@ -730,6 +754,7 @@ far_away_label:
 
 back_to_start:
   RET r0
+.endfunc
 ```
 
 **Implementation Details:**
@@ -737,632 +762,4 @@ back_to_start:
 - Offsets are signed 32-bit integers (range: -2,147,483,648 to 2,147,483,647)
 - The VM automatically handles the 3-word sequence when encountering a LONG prefix
 
-### Function Calls
 
-#### CALL - Call Function
-```assembly
-CALL label nargs     ; Short call (label must be within 255 instructions)
-CALL r_func nargs    ; Indirect call via register
-CALL.L label nargs   ; Long call (supports 32-bit offsets for distant functions)
-```
-Call function at `label` or in `r_func` with `nargs` arguments.
-
-**Calling Convention:**
-- Arguments passed in registers r0, r1, r2, ..., r(nargs-1)
-- Return value placed in r0
-- Callee gets fresh register set
-- Caller's registers restored after return
-
-**Example:**
-```assembly
-.code
-  LOADK r0 0        ; r0 = 5 (first arg)
-  LOADK r1 1        ; r1 = 10 (second arg)
-  CALL add 2        ; call add(5, 10)
-  ; Result is now in r0
-  RET r0
-
-add:
-  ADD r2 r0 r1      ; r2 = r0 + r1
-  RET r2            ; return r2
-```
-
-For functions that are more than 255 instructions away, use `CALL.L`:
-```assembly
-.code
-  LOADK r0 0
-  LOADK r1 1
-  CALL.L distant_function 2  ; Long call to distant function
-  RET r0
-
-  ; ... many instructions (256+) ...
-
-distant_function:
-  ADD r2 r0 r1
-  RET r2
-```
-
-#### CALLEXTERN - Call External Function
-```assembly
-CALLEXTERN name nargs
-```
-Call external (host) function `name` with `nargs` arguments.
-
-**Built-in External Functions:**
-- `print` - Print values without newline
-- `println` - Print values with newline
-
-**Arguments:**
-- Passed in registers r0, r1, r2, ..., r(nargs-1)
-- Return value placed in r0
-
-**Example:**
-```assembly
-.code
-  LOADK r0 0        ; r0 = 42
-  CALLEXTERN println 1   ; println(42)
-```
-
-#### RET - Return
-```assembly
-RET r_value
-```
-Return `r_value` from the current function.
-
-**Behavior:**
-- If in nested call: restores caller's frame and places return value in caller's r0
-- If at top level: exits execution with return value
-
-**Example:**
-```assembly
-RET r0         ; return value in r0
-```
-
-### NOP - No Operation
-```assembly
-NOP
-```
-Does nothing. Used for padding or debugging.
-
-## Comments
-
-Comments start with `;` and continue to end of line:
-
-```assembly
-LOADK r0 0     ; load constant 0
-ADD r1 r0 r0   ; double the value
-```
-
-## Register Naming
-
-Registers are named `r0` through `r255`:
-- `r0`, `r1`, `r2`, etc.
-- Maximum 256 registers per function
-
-By convention:
-- `r0-r7`: commonly used for local variables
-- Higher registers: temporaries and spills
-
-## Binary Format (.lc)
-
-The assembler produces compact binary `.lc` files with this structure:
-
-```
-[Magic:4]              0x4C554D4E ("LUMN")
-[Version:4]            Format version (currently 1)
-[ConstCount:4]         Number of constants
-[Constants...]         Constants (8 bytes each, NaN-boxed)
-[CodeCount:4]          Number of instructions
-[Code...]              Instructions (4 bytes each)
-[RegisterCount:4]      Number of registers
-[ArgCount:4]           Number of arguments
-[ExternCount:4]        Number of extern functions
-[ExternNames...]       Extern function names (length-prefixed strings)
-[StringPoolCount:4]    Number of string literals
-[StringPool...]        String literals (length-prefixed strings)
-[DebugInfoCount:4]     Number of debug info entries
-[DebugInfo...]         Debug information for error messages
-```
-
-**String Format:**
-Each string (extern names, string pool, debug strings) is stored as:
-```
-[Length:4]             Length of string in bytes
-[Bytes...]             UTF-8 encoded string data
-```
-
-**Debug Info Format:**
-Each debug info entry is stored as:
-```
-[InstrIndex:4]         Instruction index
-[FilePathLen:4]        Length of file path
-[FilePath...]          Source file path
-[Line:4]               Line number in source
-[Column:4]             Column number in source
-[SourceLineLen:4]      Length of source line text
-[SourceLine...]        Original source line
-[FuncNameLen:4]        Length of function name
-[FuncName...]          Function name (if in function)
-[DescriptionLen:4]     Length of description
-[Description...]       Human-readable description
-[NotesLen:4]           Length of notes
-[Notes...]             Additional notes
-```
-
-All multi-byte integers are little-endian.
-
-## Command-Line Tools
-
-### Assembler
-
-Convert assembly text to binary bytecode:
-
-```bash
-lumen asm <input.lasm> <output.lc>
-```
-
-**Example:**
-```bash
-lumen asm program.lasm program.lc
-```
-
-**Error Handling:**
-- Syntax errors show line numbers
-- Invalid opcodes are rejected
-- Register/immediate values must be in range [0-255]
-
-### Disassembler
-
-Convert binary bytecode to assembly text:
-
-```bash
-lumen disasm <input.lc> <output.lasm>
-```
-
-**Example:**
-```bash
-lumen disasm program.lc program.lasm
-```
-
-The disassembler output includes:
-- Line numbers for each instruction (e.g., `0000:`)
-- All constants with their types
-- Metadata section
-
-### Executor
-
-Execute binary bytecode:
-
-```bash
-lumen exec <program.lc>
-```
-
-**Example:**
-```bash
-lumen exec program.lc
-# Output: Result: Number(42)
-```
-
-## Complete Examples
-
-### Example 1: Simple Arithmetic
-
-**File: `arithmetic.lasm`**
-```assembly
-; Calculate (10 + 5) * 2
-
-.constants 3
-  0: 10i
-  1: 5i
-  2: 2i
-
-.code
-  LOADK r0 0      ; r0 = 10
-  LOADK r1 1      ; r1 = 5
-  ADD r2 r0 r1    ; r2 = 10 + 5 = 15
-  LOADK r3 2      ; r3 = 2
-  MUL r4 r2 r3    ; r4 = 15 * 2 = 30
-  RET r4          ; return 30
-
-.metadata
-  registers: 5
-  args: 0
-```
-
-**Usage:**
-```bash
-# Assemble
-lumen asm arithmetic.lasm arithmetic.lc
-# Output: Assembled arithmetic.lasm -> arithmetic.lc (68 bytes)
-
-# Execute
-lumen exec arithmetic.lc
-# Output: Result: Int(30)
-
-# Disassemble
-lumen disasm arithmetic.lc output.lasm
-# Creates readable assembly with line numbers
-```
-
-### Example 2: Function Calls
-
-**File: `functions.lasm`**
-```assembly
-; Function call example
-
-.constants 2
-  0: 5i
-  1: 10i
-
-.code
-  ; Main code
-  LOADK r0 0        ; r0 = 5
-  LOADK r1 1        ; r1 = 10
-  CALL add 2        ; Call add(5, 10)
-  RET r0            ; Return result (15)
-
-add:
-  ; add(a, b) returns a + b
-  ; Arguments: r0 = a, r1 = b
-  ADD r2 r0 r1      ; r2 = r0 + r1
-  RET r2            ; Return r2
-
-.metadata
-  registers: 3
-  args: 0
-```
-
-### Example 3: Recursion
-
-**File: `factorial.lasm`**
-```assembly
-; Factorial using recursion
-; Computes factorial(5) = 120
-
-.constants 3
-  0: 5i             ; Input number
-  1: 1i             ; Base case and decrement
-  2: 0i             ; For comparison
-
-.code
-  LOADK r0 0        ; r0 = 5
-  CALL factorial 1  ; Call factorial(5)
-  RET r0            ; Return result
-
-factorial:
-  ; factorial(n) in r0
-  LOADK r1 2        ; r1 = 0
-  LE r3 r0 r1       ; r3 = (r0 <= 0)
-  JMPIF r3 base_case
-
-  ; Recursive case: n * factorial(n-1)
-  MOV r4 r0         ; Save n
-  LOADK r1 1        ; r1 = 1
-  SUB r0 r4 r1      ; r0 = n - 1
-  CALL factorial 1  ; factorial(n-1)
-  MUL r2 r4 r0      ; r2 = n * factorial(n-1)
-  RET r2
-
-base_case:
-  LOADK r2 1        ; Return 1
-  RET r2
-
-.metadata
-  registers: 5
-  args: 0
-```
-
-### Example 4: String Literals
-
-**File: `strings.lasm`**
-```assembly
-; Working with string literals
-
-.constants 3
-  0: "Hello, World!"
-  1: "Lumen"
-  2: "Escape sequences:\n\tTab\n\tNewline"
-
-.code
-  ; Create first string
-  NEWSTR r0 0       ; r0 = "Hello, World!"
-
-  ; Create second string
-  NEWSTR r1 1       ; r1 = "Lumen"
-
-  ; Create string with escape sequences
-  NEWSTR r2 2       ; r2 = string with tabs and newlines
-
-  RET r0
-
-.metadata
-  registers: 3
-  args: 0
-```
-
-**Usage:**
-```bash
-lumen asm strings.lasm strings.lc
-lumen exec strings.lc
-# Output: Result: String("Hello, World!")
-```
-
-### Example 5: External Functions
-
-**File: `extern.lasm`**
-```assembly
-; Using external functions
-
-.constants 2
-  0: 42i
-  1: 100i
-
-.code
-  LOADK r0 0        ; r0 = 42
-  CALLEXTERN println 1  ; println(42)
-
-  LOADK r0 1        ; r0 = 100
-  CALLEXTERN println 1  ; println(100)
-
-  LOADNULL r0
-  RET r0
-
-.metadata
-  registers: 1
-  args: 0
-```
-
-### Example 6: Array Operations
-
-**File: `arrays.lasm`**
-```assembly
-; Working with arrays
-
-.constants 5
-  0: 10i
-  1: 20i
-  2: 30i
-  3: 0i         ; index 0
-  4: 1i         ; increment
-
-.code
-  ; Create array with capacity 5
-  NEWARRAY r0 5
-  
-  ; Store values in array
-  LOADK r1 3        ; r1 = index 0
-  LOADK r2 0        ; r2 = value 10
-  SETINDEX r0 r1 r2 ; array[0] = 10
-  
-  LOADK r1 4        ; r1 = 1 (for increment)
-  LOADK r3 3        ; r3 = index 0
-  ADD r3 r3 r1      ; r3 = 1
-  LOADK r2 1        ; r2 = value 20
-  SETINDEX r0 r3 r2 ; array[1] = 20
-  
-  ADD r3 r3 r1      ; r3 = 2
-  LOADK r2 2        ; r2 = value 30
-  SETINDEX r0 r3 r2 ; array[2] = 30
-  
-  ; Get array length
-  ARRLEN r4 r0      ; r4 = 3
-  
-  ; Read from array
-  LOADK r1 3        ; r1 = index 0
-  GETINDEX r5 r0 r1 ; r5 = array[0] (10)
-  
-  RET r5
-
-.metadata
-  registers: 6
-  args: 0
-```
-
-### Example 7: Object Fields
-
-**File: `objects.lasm`**
-```assembly
-; Working with objects
-
-.constants 4
-  0: "name"
-  1: "age"
-  2: "city"
-  3: 25i
-
-.code
-  ; Create object
-  NEWOBJ r0
-  
-  ; Set fields using string constants
-  NEWSTR r1 0       ; r1 = "name" (for display)
-  NEWSTR r2 0       ; r2 = string value "name"
-  SETFIELD r0 0 r2  ; obj["name"] = "name"
-  
-  LOADK r3 3        ; r3 = 25
-  SETFIELD r0 1 r3  ; obj["age"] = 25
-  
-  NEWSTR r4 2       ; r4 = "city"
-  SETFIELD r0 2 r4  ; obj["city"] = "city"
-  
-  ; Get field values
-  GETFIELD r5 r0 0  ; r5 = obj["name"]
-  GETFIELD r6 r0 1  ; r6 = obj["age"] (25)
-  
-  RET r6
-
-.metadata
-  registers: 7
-  args: 0
-```
-
-### Example 8: Nested Structures
-
-**File: `nested.lasm`**
-```assembly
-; Nested arrays and objects
-
-.constants 5
-  0: "data"
-  1: "count"
-  2: 10i
-  3: 20i
-  4: 0i
-
-.code
-  ; Create outer object
-  NEWOBJ r0
-  
-  ; Create inner array
-  NEWARRAY r1 2
-  LOADK r2 4        ; r2 = index 0
-  LOADK r3 2        ; r3 = value 10
-  SETINDEX r1 r2 r3 ; array[0] = 10
-  
-  LOADK r2 4
-  LOADK r4 1
-  ADD r2 r2 r4      ; r2 = index 1
-  LOADK r3 3        ; r3 = value 20
-  SETINDEX r1 r2 r3 ; array[1] = 20
-  
-  ; Store array in object
-  SETFIELD r0 0 r1  ; obj["data"] = array
-  
-  ; Store count
-  ARRLEN r5 r1      ; r5 = array length (2)
-  SETFIELD r0 1 r5  ; obj["count"] = 2
-  
-  ; Retrieve nested data
-  GETFIELD r6 r0 0  ; r6 = obj["data"] (array)
-  LOADK r7 4        ; r7 = index 0
-  GETINDEX r8 r6 r7 ; r8 = array[0] (10)
-  
-  RET r8
-
-.metadata
-  registers: 9
-  args: 0
-```
-
-### Example 9: Garbage Collection
-
-**File: `gc_demo.lasm`**
-```assembly
-; Demonstrating garbage collection
-
-.constants 2
-  0: 1000i      ; Large array size
-  1: 42i        ; Final value
-
-.code
-  ; Allocate several large arrays
-  LOADK r1 0
-  NEWARRAY r0 r1    ; Create array[1000]
-  NEWARRAY r2 r1    ; Create array[1000]
-  NEWARRAY r3 r1    ; Create array[1000]
-  
-  ; Drop references to r0 and r2
-  LOADNULL r0
-  LOADNULL r2
-  
-  ; Manually trigger GC to free r0 and r2
-  GC
-  
-  ; r3 is still valid
-  LOADK r4 1        ; r4 = 42
-  RET r4
-
-.metadata
-  registers: 5
-  args: 0
-```
-
-### Example 10: Array Iteration
-
-**File: `array_sum.lasm`**
-```assembly
-; Sum elements of an array
-
-.constants 6
-  0: 10i
-  1: 20i
-  2: 30i
-  3: 40i
-  4: 50i
-  5: 0i         ; index/sum
-
-.code
-  ; Create and populate array
-  NEWARRAY r0 5
-  
-  LOADK r1 5        ; r1 = index 0
-  LOADK r2 0        ; r2 = 10
-  SETINDEX r0 r1 r2
-  
-  LOADK r3 1        ; r3 = 1 (increment)
-  ADD r1 r1 r3      ; r1 = 1
-  LOADK r2 1        ; r2 = 20
-  SETINDEX r0 r1 r2
-  
-  ADD r1 r1 r3      ; r1 = 2
-  LOADK r2 2        ; r2 = 30
-  SETINDEX r0 r1 r2
-  
-  ADD r1 r1 r3      ; r1 = 3
-  LOADK r2 3        ; r2 = 40
-  SETINDEX r0 r1 r2
-  
-  ADD r1 r1 r3      ; r1 = 4
-  LOADK r2 4        ; r2 = 50
-  SETINDEX r0 r1 r2
-  
-  ; Sum array elements
-  LOADK r4 5        ; r4 = sum (0)
-  LOADK r1 5        ; r1 = index (0)
-  ARRLEN r5 r0      ; r5 = length (5)
-  
-loop:
-  LT r6 r1 r5       ; r6 = (index < length)
-  JMPIFNOT r6 done
-  
-  GETINDEX r7 r0 r1 ; r7 = array[index]
-  ADD r4 r4 r7      ; sum += array[index]
-  ADD r1 r1 r3      ; index++
-  
-  JMP loop
-  
-done:
-  RET r4            ; Return sum (150)
-
-.metadata
-  registers: 8
-  args: 0
-```
-
-## Best Practices
-
-1. **Use meaningful register allocations**: Keep related values in nearby registers
-2. **Comment your code**: Explain non-obvious operations
-3. **Minimize register count**: Use only as many registers as needed
-4. **Type consistency**: Keep operations on same types (int vs number)
-5. **Constant pool**: Reuse constants when possible to reduce file size
-
-## Limitations
-
-- **No macros**: Each instruction must be written explicitly
-- **No symbolic constants**: All values must be literals in constant pool
-- **Single chunk per file**: Each file represents one chunk with multiple functions
-- **48-bit integers**: Larger values require using floats
-- **255 instruction limit**: JMP/CALL targets limited to byte range (can be extended with indirect jumps)
-- **256 register limit**: Maximum 256 registers per function
-- **256 call depth**: Maximum recursion/call nesting depth
-
-## Future Enhancements
-
-Planned features:
-- Symbolic constant definitions
-- Multi-chunk files (separate compilation units)
-- Macro system
-- Include directive for code reuse
-- Extended addressing modes for large programs
-- Optimization passes in assembler

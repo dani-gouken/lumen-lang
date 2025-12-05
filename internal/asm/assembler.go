@@ -18,148 +18,257 @@ func Assemble(source string) (*vm.Chunk, error) {
 	return assembleInternal(source, "")
 }
 
+// funcBuilder holds parsed function information during assembly
+type funcBuilder struct {
+	name          string
+	registerCount int
+	argCount      int
+	upvalueCount  int
+	instructions  []instructionLine
+	startLine     int
+}
+
+type instructionLine struct {
+	line       string
+	lineNum    int
+	sourceText string
+	comment    string
+	hasBreak   bool
+}
+
 func assembleInternal(source, filePath string) (*vm.Chunk, error) {
 	chunk := vm.NewChunk()
 	lines := strings.Split(source, "\n")
 
-	var mode string                // "constants", "code", "metadata"
-	labels := make(map[string]int) // label name -> instruction index
-	var currentFunc string         // Track current function name
-
-	// First pass: collect labels
-	codeLineNum := 0
-	for _, line := range lines {
+	// Parse constants first
+	var mode string
+	for lineNum, line := range lines {
 		// Remove comments
 		if idx := strings.Index(line, ";"); idx != -1 {
 			line = line[:idx]
 		}
-
-		// Trim whitespace
 		line = strings.TrimSpace(line)
-
-		// Skip empty lines
 		if line == "" {
 			continue
 		}
 
-		// Check for section directives
 		if strings.HasPrefix(line, ".") {
-			if line == ".code" {
-				mode = "code"
+			if strings.HasPrefix(line, ".constants") {
+				mode = "constants"
 			} else {
 				mode = ""
 			}
 			continue
 		}
 
-		// In code section, collect labels
-		if mode == "code" {
-			// Check if this is a label (ends with :)
-			if strings.HasSuffix(line, ":") {
-				labelName := strings.TrimSuffix(line, ":")
-				labels[labelName] = codeLineNum
-			} else {
-				// It's an instruction - check if it's a long instruction
-				fields := strings.Fields(line)
-				if len(fields) > 0 {
-					mnemonic := strings.ToUpper(fields[0])
-					// Long instructions (with .L suffix) take 3 instruction words
-					if strings.HasSuffix(mnemonic, ".L") {
-						codeLineNum += 3
-					} else {
-						codeLineNum++
-					}
-				}
+		if mode == "constants" {
+			if err := parseConstant(chunk, line); err != nil {
+				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
 			}
 		}
 	}
 
-	// Second pass: assemble code
-	mode = ""
-	currentFunc = ""
-	nextInstrHasBreakpoint := false
-	for lineNum, line := range lines {
-		originalLine := line // Keep original line for debug info
+	// First pass: Parse all .func blocks
+	var functions []funcBuilder
+	funcNameToIndex := make(map[string]int)
+	var currentFunc *funcBuilder
 
-		// Remove comments but keep them for debug info
+	inConstantsBlock := false
+
+	for lineNum, line := range lines {
+		originalLine := line
+
+		// Extract comment
 		var comment string
 		if idx := strings.Index(line, ";"); idx != -1 {
 			comment = strings.TrimSpace(line[idx+1:])
 			line = line[:idx]
 		}
 
-		// Trim whitespace
 		line = strings.TrimSpace(line)
-
-		// Check if comment contains BREAK directive
-		if comment != "" && (strings.ToUpper(comment) == "BREAK" || strings.HasPrefix(strings.ToUpper(comment), "BREAK ")) {
-			nextInstrHasBreakpoint = true
-		}
-
-		// Skip empty lines
 		if line == "" {
 			continue
 		}
 
-		// Check for section directives
-		if strings.HasPrefix(line, ".") {
-			if strings.HasPrefix(line, ".constants") {
-				mode = "constants"
-				continue
-			} else if line == ".code" {
-				mode = "code"
-				currentFunc = "" // Reset function context when entering code section
-				continue
-			} else if line == ".metadata" {
-				mode = "metadata"
-				continue
+		// Skip constants section, it's already parsed
+		if strings.HasPrefix(line, ".constants") {
+			inConstantsBlock = true
+			continue
+		}
+		if inConstantsBlock {
+			if strings.HasPrefix(line, ".") {
+				inConstantsBlock = false // End of constants section
+			} else {
+				continue // Inside constants section
 			}
 		}
 
-		// Check for labels in code section (these define functions)
-		if mode == "code" && strings.HasSuffix(line, ":") {
-			labelName := strings.TrimSuffix(line, ":")
-			currentFunc = labelName
+		// Check for .func directive
+		if strings.HasPrefix(line, ".func ") {
+			if currentFunc != nil {
+				return nil, fmt.Errorf("line %d: nested .func blocks not allowed", lineNum+1)
+			}
+
+			// Parse: .func <name> <reg_count> <arg_count> [upvalue_count]
+			fields := strings.Fields(line)
+			if len(fields) < 4 || len(fields) > 5 {
+				return nil, fmt.Errorf("line %d: .func requires 3 or 4 arguments: name reg_count arg_count [upvalue_count]", lineNum+1)
+			}
+
+			name := fields[1]
+			regCount, err := strconv.Atoi(fields[2])
+			if err != nil {
+				return nil, fmt.Errorf("line %d: invalid register count: %v", lineNum+1, err)
+			}
+			argCount, err := strconv.Atoi(fields[3])
+			if err != nil {
+				return nil, fmt.Errorf("line %d: invalid arg count: %v", lineNum+1, err)
+			}
+
+			upvalueCount := 0
+			if len(fields) == 5 {
+				upvalueCount, err = strconv.Atoi(fields[4])
+				if err != nil {
+					return nil, fmt.Errorf("line %d: invalid upvalue count: %v", lineNum+1, err)
+				}
+			}
+
+			currentFunc = &funcBuilder{
+				name:          name,
+				registerCount: regCount,
+				argCount:      argCount,
+				upvalueCount:  upvalueCount,
+				instructions:  make([]instructionLine, 0),
+				startLine:     lineNum + 1,
+			}
 			continue
 		}
 
-		// Process line based on current mode
-		switch mode {
-		case "constants":
-			if err := parseConstant(chunk, line); err != nil {
-				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
-			}
-		case "code":
-			// Create debug info for this instruction
-			debugInfo := vm.NewDebugInfo(filePath, lineNum+1, 1)
-			debugInfo.WithSourceLine(strings.TrimSpace(originalLine))
-			debugInfo.WithFuncName(currentFunc)
-			if comment != "" {
-				debugInfo.WithDescription(comment)
+		// Check for .endfunc directive
+		if line == ".endfunc" {
+			if currentFunc == nil {
+				return nil, fmt.Errorf("line %d: .endfunc without matching .func", lineNum+1)
 			}
 
-			// Record current instruction index before adding
-			currentIP := len(chunk.Code)
+			// Save function
+			funcNameToIndex[currentFunc.name] = len(functions)
+			functions = append(functions, *currentFunc)
+			currentFunc = nil
+			continue
+		}
 
-			if err := parseInstructionWithDebug(chunk, line, labels, debugInfo); err != nil {
-				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
-			}
-
-			// If this instruction should have a breakpoint, mark it
-			if nextInstrHasBreakpoint {
-				chunk.AddBreakpoint(currentIP)
-				nextInstrHasBreakpoint = false
-			}
-		case "metadata":
-			if err := parseMetadata(chunk, line); err != nil {
-				return nil, fmt.Errorf("line %d: %v", lineNum+1, err)
-			}
-		default:
-			return nil, fmt.Errorf("line %d: no section specified", lineNum+1)
+		// If inside a function, collect instructions
+		if currentFunc != nil {
+			hasBreak := comment != "" && (strings.ToUpper(comment) == "BREAK" || strings.HasPrefix(strings.ToUpper(comment), "BREAK "))
+			currentFunc.instructions = append(currentFunc.instructions, instructionLine{
+				line:       line,
+				lineNum:    lineNum + 1,
+				sourceText: strings.TrimSpace(originalLine),
+				comment:    comment,
+				hasBreak:   hasBreak,
+			})
+		} else {
+			return nil, fmt.Errorf("line %d: instruction '%s' found outside of a .func block", lineNum+1, line)
 		}
 	}
 
+	if currentFunc != nil {
+		return nil, fmt.Errorf("line %d: .func %s missing .endfunc", currentFunc.startLine, currentFunc.name)
+	}
+
+	// Second pass: Assemble all functions and build prototypes
+	labels := make(map[string]int) // For local labels within functions
+
+	for funcIdx, fn := range functions {
+		// Create prototype
+		proto := vm.FunctionPrototype{
+			Name:          fn.name,
+			CodeStart:     len(chunk.Code),
+			RegisterCount: fn.registerCount,
+			ArgCount:      fn.argCount,
+			UpvalueCount:  fn.upvalueCount,
+		}
+
+		// Clear labels for this function (labels are local to each function)
+		labels = make(map[string]int)
+
+		// First sub-pass: collect labels
+		currentIP := len(chunk.Code)
+		for _, instrLine := range fn.instructions {
+			// Check if this is a label (ends with ':')
+			if strings.HasSuffix(instrLine.line, ":") {
+				labelName := strings.TrimSuffix(instrLine.line, ":")
+				labels[labelName] = currentIP
+			} else {
+				// Count how many instructions this line will emit
+				instrCount := countInstructionsForLine(instrLine.line)
+				currentIP += instrCount
+			}
+		}
+
+		// Second sub-pass: Assemble instructions
+		for _, instrLine := range fn.instructions {
+			// Skip label-only lines
+			if strings.HasSuffix(instrLine.line, ":") {
+				continue
+			}
+
+			currentIP := len(chunk.Code)
+
+			// Create debug info
+			debugInfo := vm.NewDebugInfo(filePath, instrLine.lineNum, 1)
+			debugInfo.WithSourceLine(instrLine.sourceText)
+			debugInfo.WithFuncName(fn.name)
+			if instrLine.comment != "" {
+				debugInfo.WithDescription(instrLine.comment)
+			}
+
+			// Parse and add instruction (pass funcNameToIndex for NEWFUNC resolution)
+			if err := parseInstructionWithFuncTable(chunk, instrLine.line, labels, funcNameToIndex, debugInfo); err != nil {
+				return nil, fmt.Errorf("line %d: %v", instrLine.lineNum, err)
+			}
+
+			// Add breakpoint if needed
+			if instrLine.hasBreak {
+				chunk.AddBreakpoint(currentIP)
+			}
+		}
+
+		proto.CodeSize = len(chunk.Code) - proto.CodeStart
+		chunk.Prototypes = append(chunk.Prototypes, proto)
+		_ = funcIdx // Keep for debugging if needed
+	}
+
 	return chunk, nil
+}
+
+// countInstructionsForLine returns how many VM instructions a source line will emit
+// This is used during the label collection pass to accurately compute label positions
+func countInstructionsForLine(line string) int {
+	// Skip line numbers if present
+	if strings.Contains(line, ":") {
+		parts := strings.SplitN(line, ":", 2)
+		if len(parts) == 2 && !strings.HasSuffix(line, ":") {
+			line = strings.TrimSpace(parts[1])
+		}
+	}
+
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return 0
+	}
+
+	mnemonic := strings.ToUpper(fields[0])
+
+	// Check for .L suffix (long instructions)
+	isLong := strings.HasSuffix(mnemonic, ".L")
+	if isLong {
+		// Long instructions emit: LONG prefix + 32-bit opcode + 32-bit offset = 3 instructions
+		return 3
+	}
+
+	// All other instructions emit 1 VM instruction
+	return 1
 }
 
 func parseConstant(chunk *vm.Chunk, line string) error {
@@ -277,7 +386,16 @@ func parseInstruction(chunk *vm.Chunk, line string, labels map[string]int) error
 	return parseInstructionWithDebug(chunk, line, labels, nil)
 }
 
+// parseInstructionWithFuncTable parses an instruction with function name resolution for NEWFUNC
+func parseInstructionWithFuncTable(chunk *vm.Chunk, line string, labels map[string]int, funcTable map[string]int, debugInfo *vm.DebugInfo) error {
+	return parseInstructionWithDebugAndFuncTable(chunk, line, labels, funcTable, debugInfo)
+}
+
 func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]int, debugInfo *vm.DebugInfo) error {
+	return parseInstructionWithDebugAndFuncTable(chunk, line, labels, nil, debugInfo)
+}
+
+func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels map[string]int, funcTable map[string]int, debugInfo *vm.DebugInfo) error {
 	// Skip line numbers (format: "0001: INSTRUCTION")
 	if strings.Contains(line, ":") {
 		parts := strings.SplitN(line, ":", 2)
@@ -294,7 +412,6 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 	mnemonic := strings.ToUpper(fields[0])
 	args := fields[1:]
 
-	// Check for .L suffix (long instruction)
 	isLong := strings.HasSuffix(mnemonic, ".L")
 	if isLong {
 		mnemonic = strings.TrimSuffix(mnemonic, ".L")
@@ -375,7 +492,6 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 			return err
 		}
 		instr = vm.NewInstr(vm.OpLOADI, a, b, 0)
-
 	case "ADD", "SUB", "MUL", "DIV", "MOD", "BAND", "BOR", "BXOR", "SHL", "SHR", "EQ", "NE", "LT", "LE", "GT", "GE":
 		if len(args) != 3 {
 			return fmt.Errorf("%s requires 3 arguments, got %d", mnemonic, len(args))
@@ -547,57 +663,77 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 		}
 		instr = vm.NewInstr(op, a, b, 0)
 
-	case "CALL":
+	case "NEWFUNC":
+		// NEWFUNC r_dest func_name
 		if len(args) != 2 {
-			return fmt.Errorf("CALL requires 2 arguments, got %d", len(args))
+			return fmt.Errorf("NEWFUNC requires 2 arguments (dest_reg func_name), got %d", len(args))
 		}
 
-		if isLong {
-			// Long CALL: emit LONG prefix + CALL32 + 32-bit offset
-			if addr, ok := labels[args[0]]; ok {
-				// Calculate offset: target - (current_position + 3)
-				currentPos := len(chunk.Code)
-				offset := int32(addr - (currentPos + 3))
-
-				// Parse nargs
-				nargs, err := parseImm(args[1])
-				if err != nil {
-					return err
-				}
-
-				// Emit LONG prefix
-				chunk.AddInstructionWithDebug(vm.NewInstr(vm.OpLONG, 0, 0, 0), debugInfo)
-				// Emit CALL32 opcode with nargs
-				chunk.AddInstruction(vm.NewInstr(vm.OpCALL32, nargs, 0, 0))
-				// Emit 32-bit offset
-				chunk.AddInstruction(vm.EncodeOffset32(offset))
-				return nil
-			} else {
-				return fmt.Errorf("CALL.L requires a label, got: %s", args[0])
-			}
-		}
-
-		// Short CALL
-		var a byte
-		if addr, ok := labels[args[0]]; ok {
-			if addr > 255 {
-				return fmt.Errorf("call address out of range: %d (use CALL.L for long calls)", addr)
-			}
-			a = byte(addr)
-		} else {
-			// Try as register
-			var err error
-			a, err = parseReg(args[0])
-			if err != nil {
-				return fmt.Errorf("CALL target '%s' is not a valid label or register", args[0])
-			}
-		}
-
-		b, err := parseImm(args[1])
+		// Parse destination register
+		destReg, err := parseReg(args[0])
 		if err != nil {
-			return err
+			return fmt.Errorf("NEWFUNC first argument must be a register: %v", err)
 		}
-		instr = vm.NewInstr(vm.OpCALL, a, b, 0)
+
+		// Resolve function name to prototype index
+		funcName := args[1]
+		protoIdx, ok := funcTable[funcName]
+		if !ok {
+			return fmt.Errorf("unknown function: %s", funcName)
+		}
+
+		// Validate proto index fits in 8 bits
+		if protoIdx > 255 {
+			return fmt.Errorf("function prototype index %d out of range (max 255)", protoIdx)
+		}
+
+		instr = vm.NewInstr(vm.OpNEWFUNC, destReg, byte(protoIdx), 0)
+
+	case "NEWEXFUNC":
+		// NEWEXFUNC r_dest extern_name
+		if len(args) != 2 {
+			return fmt.Errorf("NEWEXFUNC requires 2 arguments (dest_reg extern_name), got %d", len(args))
+		}
+
+		// Parse destination register
+		destReg, err := parseReg(args[0])
+		if err != nil {
+			return fmt.Errorf("NEWEXFUNC first argument must be a register: %v", err)
+		}
+
+		// Get extern function name
+		externName := args[1]
+		// Add to extern list and get index
+		externIdx := chunk.AddExtern(externName)
+		if externIdx > 255 {
+			return fmt.Errorf("too many extern functions")
+		}
+
+		instr = vm.NewInstr(vm.OpNEWEXFUNC, destReg, byte(externIdx), 0)
+
+	case "CALL":
+		// New CALL: register-based only (CALL r_func nargs)
+		if len(args) != 2 {
+			return fmt.Errorf("CALL requires 2 arguments (func_reg nargs), got %d", len(args))
+		}
+
+		// Parse function register
+		funcReg, err := parseReg(args[0])
+		if err != nil {
+			// Check if it looks like a label (old syntax)
+			if !strings.HasPrefix(args[0], "r") {
+				return fmt.Errorf("CALL no longer accepts labels; use NEWFUNC + CALL: %v", err)
+			}
+			return fmt.Errorf("CALL first argument must be a register: %v", err)
+		}
+
+		// Parse nargs
+		nargs, err := parseImm(args[1])
+		if err != nil {
+			return fmt.Errorf("CALL second argument must be argument count: %v", err)
+		}
+
+		instr = vm.NewInstr(vm.OpCALL, funcReg, nargs, 0)
 
 	case "RET":
 		if len(args) != 1 {
@@ -609,24 +745,87 @@ func parseInstructionWithDebug(chunk *vm.Chunk, line string, labels map[string]i
 		}
 		instr = vm.NewInstr(vm.OpRET, a, 0, 0)
 
-	case "CALLEXTERN":
-		if len(args) != 2 {
-			return fmt.Errorf("CALLEXTERN requires 2 arguments, got %d", len(args))
-		}
-		// First arg is the extern function name
-		externName := args[0]
-		// Add to extern list and get index
-		externIdx := chunk.AddExtern(externName)
-		if externIdx > 255 {
-			return fmt.Errorf("too many extern functions")
+	case "CAPLOCAL":
+		// CAPLOCAL r_dest_func upvalue_idx local_reg
+		if len(args) != 3 {
+			return fmt.Errorf("CAPLOCAL requires 3 arguments (dest_func_reg upvalue_idx local_reg), got %d", len(args))
 		}
 
-		// Second arg is argc
-		b, err := parseImm(args[1])
+		destReg, err := parseReg(args[0])
 		if err != nil {
 			return err
 		}
-		instr = vm.NewInstr(vm.OpCALLEXTERN, byte(externIdx), b, 0)
+
+		upvalIdx, err := parseImm(args[1])
+		if err != nil {
+			return fmt.Errorf("CAPLOCAL second argument must be upvalue index: %v", err)
+		}
+
+		localReg, err := parseReg(args[2])
+		if err != nil {
+			return fmt.Errorf("CAPLOCAL third argument must be local register: %v", err)
+		}
+
+		instr = vm.NewInstr(vm.OpCAPLOCAL, destReg, upvalIdx, localReg)
+
+	case "CAPUPVAL":
+		// CAPUPVAL r_dest_func upvalue_idx parent_upval_idx
+		if len(args) != 3 {
+			return fmt.Errorf("CAPUPVAL requires 3 arguments (dest_func_reg upvalue_idx parent_upval_idx), got %d", len(args))
+		}
+
+		destReg, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+
+		upvalIdx, err := parseImm(args[1])
+		if err != nil {
+			return fmt.Errorf("CAPUPVAL second argument must be upvalue index: %v", err)
+		}
+
+		parentUpvalIdx, err := parseImm(args[2])
+		if err != nil {
+			return fmt.Errorf("CAPUPVAL third argument must be parent upvalue index: %v", err)
+		}
+
+		instr = vm.NewInstr(vm.OpCAPUPVAL, destReg, upvalIdx, parentUpvalIdx)
+
+	case "LDCAP":
+		// LDCAP r_dest upvalue_idx
+		if len(args) != 2 {
+			return fmt.Errorf("LDCAP requires 2 arguments (dest_reg upvalue_idx), got %d", len(args))
+		}
+
+		destReg, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+
+		upvalIdx, err := parseImm(args[1])
+		if err != nil {
+			return fmt.Errorf("LDCAP second argument must be upvalue index: %v", err)
+		}
+
+		instr = vm.NewInstr(vm.OpLDCAP, destReg, upvalIdx, 0)
+
+	case "STCAP":
+		// STCAP upvalue_idx r_src
+		if len(args) != 2 {
+			return fmt.Errorf("STCAP requires 2 arguments (upvalue_idx src_reg), got %d", len(args))
+		}
+
+		upvalIdx, err := parseImm(args[0])
+		if err != nil {
+			return fmt.Errorf("STCAP first argument must be upvalue index: %v", err)
+		}
+
+		srcReg, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+
+		instr = vm.NewInstr(vm.OpSTCAP, upvalIdx, srcReg, 0)
 
 	case "NEWSTR":
 		if len(args) != 2 {
@@ -844,30 +1043,4 @@ func parseImm(s string) (byte, error) {
 	}
 
 	return byte(val), nil
-}
-
-func parseMetadata(chunk *vm.Chunk, line string) error {
-	parts := strings.SplitN(line, ":", 2)
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid metadata format: %s", line)
-	}
-
-	key := strings.TrimSpace(parts[0])
-	valueStr := strings.TrimSpace(parts[1])
-
-	value, err := strconv.Atoi(valueStr)
-	if err != nil {
-		return fmt.Errorf("invalid metadata value: %s", valueStr)
-	}
-
-	switch key {
-	case "registers":
-		chunk.RegisterCount = value
-	case "args":
-		chunk.ArgCount = value
-	default:
-		return fmt.Errorf("unknown metadata key: %s", key)
-	}
-
-	return nil
 }

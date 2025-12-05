@@ -1,28 +1,37 @@
 package vm
 
-// Chunk represents a compiled function containing bytecode and metadata.
+// FunctionPrototype represents metadata for a compiled function.
+type FunctionPrototype struct {
+	Name          string // Function name for debugging and entry point lookup
+	CodeStart     int    // Instruction index where function begins
+	CodeSize      int    // Number of instructions in function body
+	RegisterCount int    // Number of registers needed by this function
+	ArgCount      int    // Number of parameters this function accepts
+	UpvalueCount  int    // Number of upvalues this function captures
+}
+
+// Chunk represents a compiled module containing bytecode and metadata.
 type Chunk struct {
-	Constants     []Value
-	Code          []Instr
-	RegisterCount int
-	ArgCount      int
-	ExternNames   []string            // Names of external functions
-	StringPool    []string            // Pool of string literals
-	DebugInfo     map[int]*DebugInfo  // Map from instruction index to debug info
-	Breakpoints   []int               // Instruction pointers marked with ;BREAK in source
+	Constants   []Value
+	Code        []Instr                 // Flat instruction array (all functions concatenated)
+	Prototypes  []FunctionPrototype     // Function metadata table
+	ExternNames []string                // Names of external functions
+	StringPool  []string                // Pool of string literals
+	DebugInfo   map[int]*DebugInfo      // Map from instruction index to debug info
+	Breakpoints []int                   // Instruction pointers marked with ;BREAK in source
+	// NOTE: RegisterCount and ArgCount removed - now per-function in Prototypes
 }
 
 // NewChunk creates a new empty chunk.
 func NewChunk() *Chunk {
 	return &Chunk{
-		Constants:     make([]Value, 0),
-		Code:          make([]Instr, 0),
-		RegisterCount: 0,
-		ArgCount:      0,
-		ExternNames:   make([]string, 0),
-		StringPool:    make([]string, 0),
-		DebugInfo:     make(map[int]*DebugInfo),
-		Breakpoints:   make([]int, 0),
+		Constants:   make([]Value, 0),
+		Code:        make([]Instr, 0),
+		Prototypes:  make([]FunctionPrototype, 0),
+		ExternNames: make([]string, 0),
+		StringPool:  make([]string, 0),
+		DebugInfo:   make(map[int]*DebugInfo),
+		Breakpoints: make([]int, 0),
 	}
 }
 
@@ -66,4 +75,15 @@ func (c *Chunk) AddExtern(name string) int {
 func (c *Chunk) AddString(str string) int {
 	c.StringPool = append(c.StringPool, str)
 	return len(c.StringPool) - 1
+}
+
+// FindPrototype finds a function prototype by name and returns its index.
+// Returns -1 if not found.
+func (c *Chunk) FindPrototype(name string) int {
+	for i, proto := range c.Prototypes {
+		if proto.Name == name {
+			return i
+		}
+	}
+	return -1
 }

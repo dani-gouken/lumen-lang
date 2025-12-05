@@ -12,7 +12,7 @@
 2: 30i          ; Third value to store
 3: 1i           ; Index to retrieve
 
-.code
+.func main 5 0
   ; Create array with capacity 5
   NEWARRAY r0 5
 
@@ -42,7 +42,4 @@
 
   ; Return the value at index 1 (should be 20)
   RET r3
-
-.metadata
-  registers: 5
-  args: 0
+.endfunc

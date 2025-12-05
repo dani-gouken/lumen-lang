@@ -79,32 +79,43 @@ Maximum call depth: **256 frames**
 
 ### Function Declaration
 
-Functions are declared using labels in the code section:
+Functions are declared using `.func` blocks:
 
 ```assembly
-function_name:
+.func function_name registers args [upvalue_count]
   ; function body
   RET rX    ; return value from register X
+.endfunc
 ```
 
+**Function Block Parameters:**
+- `function_name`: Function identifier
+- `registers`: Number of registers needed by this function
+- `args`: Number of function arguments
+- `upvalue_count` (optional): Number of upvalues captured by this function (default 0)
+
 **Label Rules:**
-- Label names must be valid identifiers
+- Labels can be used within functions for jumps
 - Label must end with colon (`:`)
 - Label defines entry point at next instruction
 - Labels can be referenced before definition (forward references)
 
 **Example:**
 ```assembly
-.code
+.func main 2 0
   ; Main code
-  LOADK r0 0
-  CALL my_function 1
+  NEWFUNC r0 my_function  ; Create function object
+  LOADK r1 0              ; Load argument
+  CALL r0 1               ; Call function with 1 arg
   RET r0
+.endfunc
 
-my_function:
+.func my_function 2 1
   ; Function implementation
+  ; Argument in r0
   ADD r1 r0 r0
   RET r1
+.endfunc
 ```
 
 ### Function Body
@@ -118,16 +129,36 @@ A function body consists of:
 
 ## Calling Convention
 
+### NEWFUNC Instruction
+
+**Syntax:**
+```assembly
+NEWFUNC r_dest func_name
+```
+
+**Parameters:**
+- `r_dest`: Destination register for the function object
+- `func_name`: Name of the function to reference
+
+**Behavior:**
+- Creates a function object referencing the named function
+- Stores the function object in the destination register
+- Function object can be called using CALL instruction
+
+**Example:**
+```assembly
+NEWFUNC r0 my_function  ; r0 = function object for my_function
+```
+
 ### CALL Instruction
 
 **Syntax:**
 ```assembly
-CALL label argc
-CALL rX argc      ; indirect call (register contains address)
+CALL r_func argc
 ```
 
 **Parameters:**
-- `label`: Function label or instruction address
+- `r_func`: Register containing function object (created by NEWFUNC)
 - `argc`: Number of arguments (0-255)
 
 **Behavior:**
@@ -137,7 +168,7 @@ CALL rX argc      ; indirect call (register contains address)
    - Save current frame pointer
    - Save all current registers
 2. Create new register file for callee
-3. Copy arguments from r0..r(argc-1) to new register file
+3. Copy arguments from r(func_reg+1)..r(func_reg+argc) to callee's r0..r(argc-1)
 4. Initialize remaining registers to Null
 5. Jump to function address
 6. Increment frame counter
@@ -145,10 +176,11 @@ CALL rX argc      ; indirect call (register contains address)
 **Example:**
 ```assembly
 ; Caller side
-LOADK r0 0        ; r0 = 5 (first argument)
-LOADK r1 1        ; r1 = 10 (second argument)
-LOADK r2 2        ; r2 = 3 (third argument)
-CALL sum 3        ; Call sum(5, 10, 3)
+NEWFUNC r0 sum    ; r0 = function object
+LOADK r1 0        ; r1 = 5 (first argument)
+LOADK r2 1        ; r2 = 10 (second argument)
+LOADK r3 2        ; r3 = 3 (third argument)
+CALL r0 3         ; Call sum(5, 10, 3) - args are r1, r2, r3
 ; After return, r0 contains result
 MOV r5 r0         ; Save result
 ```
@@ -190,10 +222,19 @@ sum:
 ### Argument Passing
 
 **Convention:**
-- Arguments passed in registers: **r0, r1, r2, ..., r(argc-1)**
+- Function object placed in register (e.g., r0)
+- Arguments passed in **consecutive registers after function register**: r(func_reg+1), r(func_reg+2), ..., r(func_reg+argc)
 - Caller places arguments in these registers before CALL
-- Callee receives arguments in same registers
+- Callee receives arguments in **r0, r1, r2, ..., r(argc-1)** (arguments are remapped)
 - Arguments are **copied** to callee's register file
+
+**Example:**
+```assembly
+NEWFUNC r0 add     ; Function in r0
+LOADK r1 5         ; First arg in r1 (r0+1)
+LOADK r2 10        ; Second arg in r2 (r0+2)
+CALL r0 2          ; Callee receives: r0=5, r1=10
+```
 
 **Constraints:**
 - Maximum 256 arguments (limited by register count)
@@ -307,32 +348,43 @@ vm.RegisterExtern("function_name", func(vm *VM, args []Value) (Value, error) {
 - `print` - Print values without newline
 - `println` - Print values with newline
 
-### CALLEXTERN Instruction
+### NEWEXFUNC Instruction
 
 **Syntax:**
 ```assembly
-CALLEXTERN function_name argc
+NEWEXFUNC r_dest extern_name
 ```
 
 **Parameters:**
-- `function_name`: Name of external function (identifier)
-- `argc`: Number of arguments
+- `r_dest`: Destination register for the external function object
+- `extern_name`: Name of the external function (identifier)
 
 **Behavior:**
-1. Look up function name in extern function table
-2. Collect arguments from registers r0..r(argc-1)
-3. Call Go function with VM reference and arguments
-4. Place return value in r0
-5. Continue execution
+1. Look up external function name in the extern function table
+2. Create an `ExternFunctionObj` on the heap containing:
+   - Function name
+   - Go function pointer
+   - Argument count (optional)
+3. Store the function object pointer in the destination register
+4. The function object can be called using the `CALL` instruction
 
 **Example:**
 ```assembly
-.code
-  LOADK r0 0        ; r0 = 42
-  LOADK r1 1        ; r1 = "Hello"
-  CALLEXTERN print 2    ; print(42, "Hello")
+.func main 3 0
+  NEWEXFUNC r0 print  ; r0 = print function object
+  LOADK r1 0          ; r1 = 42
+  LOADK r2 1          ; r2 = "Hello"
+  CALL r0 2           ; print(42, "Hello") - args in r1, r2
   ; r0 now contains return value (typically Null)
+  LOADNULL r0
+  RET r0
+.endfunc
 ```
+
+**Note:** External functions are now first-class objects in memory:
+- They are allocated on the heap like user-defined functions
+- They participate in garbage collection
+- They use the exact same calling convention as `CALL`
 
 ### Extern Function Signature
 
@@ -392,13 +444,16 @@ Recursion is **fully supported** through automatic frame management.
   1: 1i
   2: 0i
 
-.code
-  LOADK r0 0        ; r0 = 5
-  CALL factorial 1  ; factorial(5)
-  RET r0            ; Return result (120)
+.func main 2 0
+  NEWFUNC r0 factorial  ; Create function object
+  LOADK r1 0            ; r1 = 5
+  CALL r0 1             ; factorial(5)
+  RET r0                ; Return result (120)
+.endfunc
 
-factorial:
+.func factorial 5 1
   ; factorial(n) = n * factorial(n-1), base case: factorial(0) = 1
+  ; Argument n in r0
   LOADK r1 2        ; r1 = 0
   LE r3 r0 r1       ; r3 = (n <= 0)
   JMPIF r3 base_case
@@ -406,18 +461,16 @@ factorial:
   ; Recursive case
   MOV r4 r0         ; Save n in r4
   LOADK r1 1        ; r1 = 1
-  SUB r0 r4 r1      ; r0 = n - 1
-  CALL factorial 1  ; recursive call
+  SUB r1 r4 r1      ; r1 = n - 1
+  NEWFUNC r0 factorial  ; Create function object for recursive call
+  CALL r0 1         ; recursive call, result in r0
   MUL r2 r4 r0      ; r2 = n * factorial(n-1)
   RET r2
 
 base_case:
   LOADK r2 1        ; Return 1
   RET r2
-
-.metadata
-  registers: 5
-  args: 0
+.endfunc
 ```
 
 ### Stack Overflow
@@ -456,15 +509,17 @@ Fields:
   C = Unused
 ```
 
-**CALLEXTERN Instruction:**
+**NEWEXFUNC Instruction:**
 ```
-Opcode: OpCALLEXTERN (0x15)
-Format: [OpCALLEXTERN:8][A:8][B:8][C:8]
+Opcode: OpNEWEXFUNC
+Format: [OpNEWEXFUNC:8][A:8][B:8][C:8]
 Fields:
-  A = Extern function index in chunk's ExternNames array
-  B = Argument count (argc)
-  C = Unused
+  A = Destination register
+  B = Extern function index in chunk's ExternNames array
+  C = Unused (reserved)
 ```
+
+**Note:** `CALL` handles both user-defined and external functions uniformly.
 
 ### Assembly Process
 
@@ -528,11 +583,12 @@ while ip < len(chunk.Code):
             regs = frame.regs
             regs[0] = retVal
 
-        case OpCALLEXTERN:
-            externFunc = externFuncs[chunk.ExternNames[instr.A]]
-            args = regs[0:instr.B]
-            retVal = externFunc(vm, args)
-            regs[0] = retVal
+        case OpNEWEXFUNC:
+            externIdx = instr.B
+            externName = chunk.ExternNames[externIdx]
+            externFunc = externFuncs[externName]
+            funcObj = heap.AllocExternFunction(externName, externFunc, -1)
+            regs[instr.A] = funcObj
 
     ip++
 ```
@@ -592,22 +648,22 @@ Plus register data: 256 * 256 * 8 bytes = 524,288 bytes (worst case)
   1: 20i
   2: 30i
 
-.code
-  LOADK r0 0        ; r0 = 10
-  LOADK r1 1        ; r1 = 20
-  LOADK r2 2        ; r2 = 30
-  CALL sum3 3       ; sum3(10, 20, 30)
+.func main 4 0
+  NEWFUNC r0 sum3   ; r0 = function object
+  LOADK r1 0        ; r1 = 10
+  LOADK r2 1        ; r2 = 20
+  LOADK r3 2        ; r3 = 30
+  CALL r0 3         ; sum3(10, 20, 30)
   RET r0            ; Return 60
+.endfunc
 
-sum3:
+.func sum3 5 3
   ; sum3(a, b, c) = a + b + c
+  ; Arguments: r0=a, r1=b, r2=c
   ADD r3 r0 r1      ; r3 = a + b
   ADD r4 r3 r2      ; r4 = (a + b) + c
   RET r4
-
-.metadata
-  registers: 5
-  args: 0
+.endfunc
 ```
 
 ### Example 2: Nested Calls
@@ -621,32 +677,35 @@ sum3:
   2: 2i
   3: 4i
 
-.code
-  LOADK r0 0        ; r0 = 5
-  LOADK r1 1        ; r1 = 3
-  CALL add 2        ; add(5, 3) = 8
+.func main 5 0
+  NEWFUNC r0 add    ; r0 = add function
+  LOADK r1 0        ; r1 = 5
+  LOADK r2 1        ; r2 = 3
+  CALL r0 2         ; add(5, 3) = 8
   MOV r4 r0         ; Save result
 
-  LOADK r0 2        ; r0 = 2
-  LOADK r1 3        ; r1 = 4
-  CALL add 2        ; add(2, 4) = 6
-
+  NEWFUNC r0 add    ; r0 = add function
+  LOADK r1 2        ; r1 = 2
+  LOADK r2 3        ; r2 = 4
+  CALL r0 2         ; add(2, 4) = 6
   MOV r1 r0         ; r1 = 6
-  MOV r0 r4         ; r0 = 8
-  CALL mul 2        ; mul(8, 6) = 48
-  RET r0
 
-add:
+  NEWFUNC r0 mul    ; r0 = mul function
+  MOV r2 r1         ; r2 = 6
+  MOV r1 r4         ; r1 = 8
+  CALL r0 2         ; mul(8, 6) = 48
+  RET r0
+.endfunc
+
+.func add 3 2
   ADD r2 r0 r1
   RET r2
+.endfunc
 
-mul:
+.func mul 3 2
   MUL r2 r0 r1
   RET r2
-
-.metadata
-  registers: 5
-  args: 0
+.endfunc
 ```
 
 ### Example 3: Fibonacci (Recursive)
@@ -659,14 +718,17 @@ mul:
   1: 2i
   2: 1i
 
-.code
-  LOADK r0 0        ; r0 = 7
-  CALL fib 1        ; fib(7)
+.func main 2 0
+  NEWFUNC r0 fib    ; r0 = fib function
+  LOADK r1 0        ; r1 = 7
+  CALL r0 1         ; fib(7)
   RET r0            ; Return 13
+.endfunc
 
-fib:
+.func fib 6 1
   ; fib(n) = fib(n-1) + fib(n-2)
   ; Base: fib(0)=0, fib(1)=1
+  ; Argument n in r0
   LOADK r1 1        ; r1 = 2
   LT r3 r0 r1       ; r3 = (n < 2)
   JMPIF r3 fib_base
@@ -674,13 +736,17 @@ fib:
   ; Recursive case
   MOV r4 r0         ; Save n
   LOADK r1 2        ; r1 = 1
-  SUB r0 r4 r1      ; r0 = n - 1
-  CALL fib 1        ; fib(n-1)
+  SUB r1 r4 r1      ; r1 = n - 1
+  NEWFUNC r0 fib    ; Create function object
+  CALL r0 1         ; fib(n-1)
   MOV r5 r0         ; Save fib(n-1)
 
-  LOADK r1 1
-  SUB r0 r4 r1      ; r0 = n - 2
-  CALL fib 1        ; fib(n-2)
+  LOADK r1 1        ; r1 = 1
+  LOADK r2 1        ; r2 = 1
+  SUB r1 r4 r2      ; r1 = n - 2
+  SUB r1 r1 r2      ; r1 = n - 2
+  NEWFUNC r0 fib    ; Create function object
+  CALL r0 1         ; fib(n-2)
 
   ADD r2 r5 r0      ; r2 = fib(n-1) + fib(n-2)
   RET r2
@@ -688,10 +754,7 @@ fib:
 fib_base:
   MOV r2 r0         ; Return n (0 or 1)
   RET r2
-
-.metadata
-  registers: 6
-  args: 0
+.endfunc
 ```
 
 ### Example 4: External Functions
@@ -703,22 +766,23 @@ fib_base:
   0: 10i
   1: 20i
 
-.code
-  LOADK r0 0        ; r0 = 10
-  LOADK r1 1        ; r1 = 20
-  CALL add 2        ; add(10, 20) = 30
-  CALLEXTERN println 1  ; println(30)
+.func main 4 0
+  NEWFUNC r0 add       ; r0 = add function
+  LOADK r1 0           ; r1 = 10
+  LOADK r2 1           ; r2 = 20
+  CALL r0 2            ; add(10, 20) = 30
+  MOV r1 r0            ; r1 = 30
+  NEWEXFUNC r0 println ; r0 = println function
+  CALL r0 1            ; println(30) - arg in r1
 
   LOADNULL r0
   RET r0
+.endfunc
 
-add:
+.func add 3 2
   ADD r2 r0 r1
   RET r2
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 ```
 
 ## See Also

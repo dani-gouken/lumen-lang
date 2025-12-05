@@ -7,13 +7,20 @@ import (
 
 func TestIntegerAndBitwiseOps(t *testing.T) {
 	chunk := NewChunk()
-	chunk.RegisterCount = 4
 
 	chunk.AddInstruction(NewInstr(OpLOADI, 0, 10, 0))
 	chunk.AddInstruction(NewInstr(OpLOADI, 1, 3, 0))
 	chunk.AddInstruction(NewInstr(OpMOD, 2, 0, 1))
 	chunk.AddInstruction(NewInstr(OpBAND, 3, 0, 1))
 	chunk.AddInstruction(NewInstr(OpRET, 2, 0, 0))
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      5,
+		RegisterCount: 4,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	vm := NewVM()
 	val, err := vm.Exec(chunk)
@@ -38,11 +45,18 @@ func TestIntegerAndBitwiseOps(t *testing.T) {
 
 func TestShiftOps(t *testing.T) {
 	chunk := NewChunk()
-	chunk.RegisterCount = 3
 	chunk.AddInstruction(NewInstr(OpLOADI, 0, 1, 0))
 	chunk.AddInstruction(NewInstr(OpLOADI, 1, 3, 0))
 	chunk.AddInstruction(NewInstr(OpSHL, 2, 0, 1))
 	chunk.AddInstruction(NewInstr(OpRET, 2, 0, 0))
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      4,
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	vm := NewVM()
 	val, err := vm.Exec(chunk)
@@ -54,11 +68,18 @@ func TestShiftOps(t *testing.T) {
 	}
 
 	chunk2 := NewChunk()
-	chunk2.RegisterCount = 3
 	chunk2.AddInstruction(NewInstr(OpLOADI, 0, 8, 0))
 	chunk2.AddInstruction(NewInstr(OpLOADI, 1, 3, 0))
 	chunk2.AddInstruction(NewInstr(OpSHR, 2, 0, 1))
 	chunk2.AddInstruction(NewInstr(OpRET, 2, 0, 0))
+	mainProto2 := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      4,
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	chunk2.Prototypes = append(chunk2.Prototypes, mainProto2)
 
 	val, err = vm.Exec(chunk2)
 	if err != nil {
@@ -71,7 +92,6 @@ func TestShiftOps(t *testing.T) {
 
 func TestNegNotAndConversions(t *testing.T) {
 	chunk := NewChunk()
-	chunk.RegisterCount = 4
 
 	numConst := chunk.AddConstant(NewNumber(4.9))
 	chunk.AddInstruction(NewInstr(OpLOADK, 0, byte(numConst), 0))
@@ -79,6 +99,14 @@ func TestNegNotAndConversions(t *testing.T) {
 	chunk.AddInstruction(NewInstr(OpTOINT, 2, 0, 0))
 	chunk.AddInstruction(NewInstr(OpTONUM, 3, 2, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 3, 0, 0))
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      5,
+		RegisterCount: 4,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	vm := NewVM()
 	val, err := vm.Exec(chunk)
@@ -105,7 +133,8 @@ func TestNegNotAndConversions(t *testing.T) {
 		NewInstr(OpNOT, 1, 0, 0),
 		NewInstr(OpRET, 1, 0, 0),
 	}
-	chunk.RegisterCount = 2
+	chunk.Prototypes[0].CodeSize = 3
+	chunk.Prototypes[0].RegisterCount = 2
 	if _, err := vm.Exec(chunk); err == nil {
 		t.Fatalf("expected NOT on number to fail")
 	}
@@ -113,9 +142,16 @@ func TestNegNotAndConversions(t *testing.T) {
 
 func TestLoadI(t *testing.T) {
 	chunk := NewChunk()
-	chunk.RegisterCount = 1
 	chunk.AddInstruction(NewInstr(OpLOADI, 0, 42, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	vm := NewVM()
 	val, err := vm.Exec(chunk)
@@ -132,12 +168,19 @@ func TestArrayAndObjectHelpers(t *testing.T) {
 
 	// Array push path
 	arrayChunk := NewChunk()
-	arrayChunk.RegisterCount = 3
 	arrayChunk.AddInstruction(NewInstr(OpNEWARRAY, 0, 0, 0))
 	arrayChunk.AddInstruction(NewInstr(OpLOADI, 1, 7, 0))
 	arrayChunk.AddInstruction(NewInstr(OpARRPUSH, 0, 1, 0))
 	arrayChunk.AddInstruction(NewInstr(OpARRLEN, 2, 0, 0))
 	arrayChunk.AddInstruction(NewInstr(OpRET, 2, 0, 0))
+	arrayProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      5,
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	arrayChunk.Prototypes = append(arrayChunk.Prototypes, arrayProto)
 
 	val, err := vm.Exec(arrayChunk)
 	if err != nil {
@@ -149,7 +192,6 @@ func TestArrayAndObjectHelpers(t *testing.T) {
 
 	// Object helpers path
 	objChunk := NewChunk()
-	objChunk.RegisterCount = 5
 
 	strObj, _, err := vm.GetHeap().AllocString("foo")
 	if err != nil {
@@ -164,6 +206,14 @@ func TestArrayAndObjectHelpers(t *testing.T) {
 	objChunk.AddInstruction(NewInstr(OpDELFIELD, 3, 0, byte(fieldConst)))
 	objChunk.AddInstruction(NewInstr(OpHASFIELD, 4, 0, byte(fieldConst)))
 	objChunk.AddInstruction(NewInstr(OpRET, 4, 0, 0))
+	objProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      7,
+		RegisterCount: 5,
+		ArgCount:      0,
+	}
+	objChunk.Prototypes = append(objChunk.Prototypes, objProto)
 
 	val, err = vm.Exec(objChunk)
 	if err != nil {

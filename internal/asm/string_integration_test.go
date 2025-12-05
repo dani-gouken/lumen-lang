@@ -13,13 +13,10 @@ func TestStringIntegrationEndToEnd(t *testing.T) {
 	source := `.constants 1
   0: "Hello, Integration Test!"
 
-.code
+.func main 1 0
   NEWSTR r0 0
   RET r0
-
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	// Step 1: Assemble
@@ -83,15 +80,12 @@ func TestStringIntegrationEscapeSequences(t *testing.T) {
   1: "Tab\there"
   2: "Quote: \"test\""
 
-.code
+.func main 3 0
   NEWSTR r0 0
   NEWSTR r1 1
   NEWSTR r2 2
   RET r0
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 `
 
 	// Assemble
@@ -134,14 +128,11 @@ func TestStringIntegrationRoundTrip(t *testing.T) {
   0: "First String"
   1: "Second String with\nnewline"
 
-.code
+.func main 2 0
   NEWSTR r0 0
   NEWSTR r1 1
   RET r0
-
-.metadata
-  registers: 2
-  args: 0
+.endfunc
 `
 
 	// Assemble
@@ -214,16 +205,12 @@ func TestStringIntegrationMultipleStrings(t *testing.T) {
   0: "Alpha"
   1: "Beta"
   2: "Gamma"
-
-.code
+.func main 3 0
   NEWSTR r0 0
   NEWSTR r1 1
   NEWSTR r2 2
   RET r2
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -249,14 +236,10 @@ func TestStringIntegrationMultipleStrings(t *testing.T) {
 func TestStringIntegrationEmptyString(t *testing.T) {
 	source := `.constants 1
   0: ""
-
-.code
+.func main 1 0
   NEWSTR r0 0
   RET r0
-
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)

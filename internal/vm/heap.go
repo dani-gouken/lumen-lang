@@ -117,6 +117,77 @@ func (h *Heap) AllocObject() (*ObjectObj, bool, error) {
 	return obj, h.ShouldCollect(), nil
 }
 
+// AllocFunction allocates a function object.
+// Returns the object and a boolean indicating if GC should run.
+func (h *Heap) AllocFunction(chunk *Chunk, protoIdx int, upvalueCount int) (*FunctionObj, bool, error) {
+	// Validate proto index
+	if protoIdx < 0 || protoIdx >= len(chunk.Prototypes) {
+		return nil, false, fmt.Errorf("invalid prototype index: %d (chunk has %d prototypes)", protoIdx, len(chunk.Prototypes))
+	}
+
+	obj := &FunctionObj{
+		header: ObjHeader{
+			Type:   ObjTypeFunction,
+			Marked: false,
+			Next:   nil,
+		},
+		chunk:    chunk,
+		protoIdx: protoIdx,
+		upvalues: make([]*UpvalueObj, upvalueCount),
+	}
+
+	size := uint64(unsafe.Sizeof(FunctionObj{})) + uint64(upvalueCount)*uint64(unsafe.Sizeof(&UpvalueObj{}))
+	if err := h.allocate(obj, size); err != nil {
+		return nil, false, err
+	}
+
+	return obj, h.ShouldCollect(), nil
+}
+
+// AllocExternFunction allocates an external function object.
+// Returns the object and a boolean indicating if GC should run.
+func (h *Heap) AllocExternFunction(name string, function ExternFunc, argCount int) (*ExternFunctionObj, bool, error) {
+	obj := &ExternFunctionObj{
+		header: ObjHeader{
+			Type:   ObjTypeExternFunction,
+			Marked: false,
+			Next:   nil,
+		},
+		name:     name,
+		function: function,
+		argCount: argCount,
+	}
+
+	size := uint64(unsafe.Sizeof(ExternFunctionObj{})) + uint64(len(name))
+	if err := h.allocate(obj, size); err != nil {
+		return nil, false, err
+	}
+
+	return obj, h.ShouldCollect(), nil
+}
+
+// AllocUpvalue allocates an upvalue object.
+// Returns the object and a boolean indicating if GC should run.
+// The upvalue starts in the "open" state, pointing to a stack location.
+func (h *Heap) AllocUpvalue(location *Value) (*UpvalueObj, bool, error) {
+	obj := &UpvalueObj{
+		header: ObjHeader{
+			Type:   ObjTypeUpvalue,
+			Marked: false,
+			Next:   nil,
+		},
+		location: location,
+		closed:   NewNull(),
+	}
+
+	size := uint64(unsafe.Sizeof(UpvalueObj{}))
+	if err := h.allocate(obj, size); err != nil {
+		return nil, false, err
+	}
+
+	return obj, h.ShouldCollect(), nil
+}
+
 // ShouldCollect returns true if GC should run.
 func (h *Heap) ShouldCollect() bool {
 	return h.bytesAllocated >= h.nextGC

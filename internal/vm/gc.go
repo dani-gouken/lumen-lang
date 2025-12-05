@@ -13,6 +13,11 @@ func (vm *VM) CollectGarbage() {
 
 // markRoots marks all objects reachable from GC roots.
 func (vm *VM) markRoots() {
+	// Mark current function
+	if vm.currentFunction != nil {
+		vm.markFunction(vm.currentFunction)
+	}
+
 	// Mark objects in registers
 	for i := 0; i < len(vm.regs); i++ {
 		vm.markValue(vm.regs[i])
@@ -21,6 +26,25 @@ func (vm *VM) markRoots() {
 	// Mark objects on the stack
 	for i := 0; i < vm.sp; i++ {
 		vm.markValue(vm.stack[i])
+	}
+
+	// Mark saved registers and functions in call frames
+	for i := 0; i < vm.frameCount; i++ {
+		frame := &vm.frames[i]
+		if frame.function != nil {
+			vm.markFunction(frame.function)
+		}
+		for j := 0; j < len(frame.regs); j++ {
+			vm.markValue(frame.regs[j])
+		}
+	}
+
+	// Mark open upvalues (they are roots because they point to stack)
+	for _, upval := range vm.openUpvalues {
+		if upval != nil && !upval.header.Marked {
+			upval.header.Marked = true
+			// Open upvalues point to stack, which is marked by stack scan.
+		}
 	}
 }
 
@@ -65,8 +89,50 @@ func (vm *VM) markValue(v Value) {
 			vm.markValue(value)
 		}
 
-	case ObjTypeClosure, ObjTypeUpvalue:
-		// TODO: Implement when closures and upvalues are added
+	case ObjTypeFunction:
+		// Mark function object
+		funcObj := (*FunctionObj)(unsafe.Pointer(ptr))
+		vm.markFunction(funcObj)
+
+	case ObjTypeExternFunction:
+		// Extern functions have no children
+
+	case ObjTypeUpvalue:
+		// Mark upvalue object
+		upval := (*UpvalueObj)(unsafe.Pointer(ptr))
+		// If closed, mark the closed value
+		if upval.location == nil {
+			vm.markValue(upval.closed)
+		}
+	}
+}
+
+// markFunction marks a function object.
+func (vm *VM) markFunction(funcObj *FunctionObj) {
+	if funcObj == nil {
+		return
+	}
+
+	header := funcObj.Header()
+	if header.Marked {
+		return
+	}
+
+	// Mark the function object
+	header.Marked = true
+
+	// Mark upvalues
+	for _, upval := range funcObj.upvalues {
+		if upval != nil {
+			// Mark the upvalue object itself
+			if !upval.header.Marked {
+				upval.header.Marked = true
+				// If closed, mark the closed value
+				if upval.location == nil {
+					vm.markValue(upval.closed)
+				}
+			}
+		}
 	}
 }
 
@@ -122,6 +188,15 @@ func (h *Heap) freeObject(header *ObjHeader) {
 		size = uint64(unsafe.Sizeof(ObjectObj{}))
 		// Approximate map overhead
 		size += uint64(len(obj.fields)) * 32
+
+	case ObjTypeFunction:
+		// Phase A: Just the function object size (no upvalue array yet)
+		size = uint64(unsafe.Sizeof(FunctionObj{}))
+		// Phase B will add: upvalue array size
+
+	case ObjTypeExternFunction:
+		obj := (*ExternFunctionObj)(unsafe.Pointer(header))
+		size = uint64(unsafe.Sizeof(ExternFunctionObj{})) + uint64(len(obj.name))
 
 	default:
 		size = uint64(unsafe.Sizeof(ObjHeader{}))

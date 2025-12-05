@@ -11,7 +11,7 @@
 .constants 1
 0: 25i          ; Age value
 
-.code
+.func main 2 0
   ; Create new object (demonstrates heap allocation)
   NEWOBJ r0
 
@@ -20,7 +20,4 @@
 
   ; Return the value
   RET r1
-
-.metadata
-  registers: 2
-  args: 0
+.endfunc

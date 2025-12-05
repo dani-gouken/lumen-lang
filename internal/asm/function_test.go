@@ -11,19 +11,18 @@ func TestAssembleFunctionCall(t *testing.T) {
   0: 5i
   1: 10i
 
-.code
-  LOADK r0 0
-  LOADK r1 1
-  CALL add_func 2
-  RET r0
-
-add_func:
+.func add_func 3 2
   ADD r2 r0 r1
   RET r2
+.endfunc
 
-.metadata
-  registers: 3
-  args: 0
+.func main 4 0
+  NEWFUNC r0 add_func
+  LOADK r1 0
+  LOADK r2 1
+  CALL r0 2
+  RET r0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -32,8 +31,8 @@ add_func:
 	}
 
 	// Execute the code
-	vm := vm.NewVM()
-	result, err := vm.Exec(chunk)
+	v := vm.NewVM()
+	result, err := v.Exec(chunk)
 	if err != nil {
 		t.Fatalf("execution failed: %v", err)
 	}
@@ -54,30 +53,30 @@ func TestAssembleRecursion(t *testing.T) {
   1: 1i
   2: 0i
 
-.code
-  LOADK r0 0
-  CALL factorial 1
-  RET r0
-
-factorial:
+.func factorial 5 1
   LOADK r1 2
   LE r3 r0 r1
   JMPIF r3 base_case
 
   MOV r4 r0
   LOADK r1 1
-  SUB r0 r4 r1
-  CALL factorial 1
+  SUB r1 r4 r1
+  NEWFUNC r0 factorial
+  CALL r0 1
   MUL r2 r4 r0
   RET r2
 
 base_case:
   LOADK r2 1
   RET r2
+.endfunc
 
-.metadata
-  registers: 5
-  args: 0
+.func main 2 0
+  NEWFUNC r0 factorial
+  LOADK r1 0
+  CALL r0 1
+  RET r0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -86,8 +85,8 @@ base_case:
 	}
 
 	// Execute the code
-	vm := vm.NewVM()
-	result, err := vm.Exec(chunk)
+	v := vm.NewVM()
+	result, err := v.Exec(chunk)
 	if err != nil {
 		t.Fatalf("execution failed: %v", err)
 	}
@@ -107,15 +106,14 @@ func TestAssembleExternCall(t *testing.T) {
 	source := `.constants 1
   0: 42i
 
-.code
-  LOADK r0 0
-  CALLEXTERN println 1
+.func main 2 0
+  NEWEXFUNC r0 println
+  LOADK r1 0
+  CALL r0 1
   LOADK r0 0
   RET r0
 
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -145,7 +143,7 @@ func TestAssembleLabels(t *testing.T) {
   0: 1i
   1: 2i
 
-.code
+.func main 1 0
   LOADK r0 0
   JMP skip_this
 
@@ -154,9 +152,7 @@ func TestAssembleLabels(t *testing.T) {
 skip_this:
   RET r0
 
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -188,20 +184,21 @@ func TestAssembleNestedCalls(t *testing.T) {
   1: 3i
   2: 4i
 
-.code
-  LOADK r0 0
-  CALL double 1
-  CALL double 1
-  RET r0
-
-double:
+.func double 2 1
   ADD r1 r0 r0
   MOV r0 r1
   RET r0
+.endfunc
 
-.metadata
-  registers: 2
-  args: 0
+.func main 3 0
+  NEWFUNC r0 double
+  LOADK r1 0
+  CALL r0 1
+  NEWFUNC r1 double
+  MOV r2 r0
+  CALL r1 1
+  RET r0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -210,8 +207,8 @@ double:
 	}
 
 	// Execute the code
-	vm := vm.NewVM()
-	result, err := vm.Exec(chunk)
+	v := vm.NewVM()
+	result, err := v.Exec(chunk)
 	if err != nil {
 		t.Fatalf("execution failed: %v", err)
 	}

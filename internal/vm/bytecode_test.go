@@ -11,8 +11,14 @@ func TestSerializeDeserializeSimpleChunk(t *testing.T) {
 	chunk.AddConstant(NewNumber(3.14))
 	chunk.AddInstruction(NewInstr(OpLOADK, 0, 0, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
-	chunk.ArgCount = 0
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	// Serialize
 	data, err := SerializeChunk(chunk)
@@ -43,11 +49,14 @@ func TestSerializeDeserializeSimpleChunk(t *testing.T) {
 	}
 
 	// Verify metadata
-	if decoded.RegisterCount != 1 {
-		t.Errorf("expected RegisterCount=1, got %d", decoded.RegisterCount)
+	if len(decoded.Prototypes) != 1 {
+		t.Errorf("expected 1 prototype, got %d", len(decoded.Prototypes))
 	}
-	if decoded.ArgCount != 0 {
-		t.Errorf("expected ArgCount=0, got %d", decoded.ArgCount)
+	if decoded.Prototypes[0].RegisterCount != 1 {
+		t.Errorf("expected RegisterCount=1, got %d", decoded.Prototypes[0].RegisterCount)
+	}
+	if decoded.Prototypes[0].ArgCount != 0 {
+		t.Errorf("expected ArgCount=0, got %d", decoded.Prototypes[0].ArgCount)
 	}
 }
 
@@ -58,8 +67,14 @@ func TestSerializeAllValueTypes(t *testing.T) {
 	chunk.AddConstant(NewBool(true))
 	chunk.AddConstant(NewBool(false))
 	chunk.AddConstant(NewNull())
-	chunk.RegisterCount = 0
-	chunk.ArgCount = 0
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      0,
+		RegisterCount: 0,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	data, err := SerializeChunk(chunk)
 	if err != nil {
@@ -95,8 +110,14 @@ func TestSerializeAllValueTypes(t *testing.T) {
 
 func TestSerializeEmptyChunk(t *testing.T) {
 	chunk := NewChunk()
-	chunk.RegisterCount = 0
-	chunk.ArgCount = 0
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      0,
+		RegisterCount: 0,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	data, err := SerializeChunk(chunk)
 	if err != nil {
@@ -165,8 +186,14 @@ func TestRoundTripPreservesExactBytecode(t *testing.T) {
 	chunk.AddInstruction(NewInstr(OpLOADK, 1, 1, 0))
 	chunk.AddInstruction(NewInstr(OpADD, 2, 0, 1))
 	chunk.AddInstruction(NewInstr(OpRET, 2, 0, 0))
-	chunk.RegisterCount = 3
-	chunk.ArgCount = 0
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      4,
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	// First serialization
 	data1, err := SerializeChunk(chunk)

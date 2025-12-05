@@ -6,13 +6,15 @@
   1: 1i             ; Base case value
   2: 0i             ; For comparison
 
-.code
+.func main 5 0
   ; Main code
-  LOADK r0 0        ; r0 = 5
-  CALL factorial 1  ; Call factorial with 1 arg
+  NEWFUNC r0 factorial  ; Create function object
+  LOADK r1 0        ; r1 = 5
+  CALL r0 1         ; Call factorial with 1 arg
   RET r0            ; Return result
+.endfunc
 
-factorial:
+.func factorial 5 1
   ; factorial(n) in r0
   ; Returns result in r2
   LOADK r1 2        ; r1 = 0 (for comparison)
@@ -22,15 +24,13 @@ factorial:
   ; Recursive case: n * factorial(n-1)
   MOV r4 r0         ; Save n in r4
   LOADK r1 1        ; r1 = 1
-  SUB r0 r4 r1      ; r0 = n - 1
-  CALL factorial 1  ; factorial(n-1), result in r0
+  SUB r1 r4 r1      ; r1 = n - 1
+  NEWFUNC r0 factorial  ; Create function object for recursive call
+  CALL r0 1         ; factorial(n-1), result in r0
   MUL r2 r4 r0      ; r2 = n * factorial(n-1)
   RET r2
 
 base_case:
   LOADK r2 1        ; Return 1
   RET r2
-
-.metadata
-  registers: 5
-  args: 0
+.endfunc

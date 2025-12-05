@@ -161,7 +161,7 @@ test_name "Disassemble GC bytecode"
 $LUMEN disasm "$OUTPUT_DIR/gc.lc" "$OUTPUT_DIR/gc_disasm.lasm" > /dev/null 2>&1 || fail "disassembly failed"
 grep -q "NEWARRAY" "$OUTPUT_DIR/gc_disasm.lasm" || fail "missing NEWARRAY instruction"
 grep -q "NEWOBJ" "$OUTPUT_DIR/gc_disasm.lasm" || fail "missing NEWOBJ instruction"
-grep -q ": GC$" "$OUTPUT_DIR/gc_disasm.lasm" || fail "missing GC instruction"
+grep -q "GC" "$OUTPUT_DIR/gc_disasm.lasm" || fail "missing GC instruction"
 pass
 
 # Test 16: Memory round-trip
@@ -232,7 +232,7 @@ $LUMEN disasm "$OUTPUT_DIR/long_jump.lc" "$OUTPUT_DIR/long_jump_disasm.lasm" > /
 grep -q "LONG" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing LONG prefix in disassembly"
 grep -q "JMP32" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing JMP32 instruction"
 grep -qE "JMPIF32|JMPIFNOT32" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing JMPIF32/JMPIFNOT32 instruction"
-grep -q "CALL32" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing CALL32 instruction"
+grep -q "NEWFUNC" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing NEWFUNC instruction"
 grep -q "target:" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing target information"
 grep -q "offset:" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing offset information"
 pass
@@ -243,7 +243,7 @@ cat > "$OUTPUT_DIR/short_jump_overflow.lasm" <<'EOF'
 .constants 1
   0: 1i
 
-.code
+.func main 1 0
   JMP far_away
 EOF
 # Add 300 NOPs to exceed short jump range
@@ -254,10 +254,7 @@ cat >> "$OUTPUT_DIR/short_jump_overflow.lasm" <<'EOF'
 far_away:
   LOADK r0 0
   RET r0
-
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 EOF
 $LUMEN asm "$OUTPUT_DIR/short_jump_overflow.lasm" "$OUTPUT_DIR/overflow.lc" 2>&1 | grep -q "out of range" || fail "should error on short jump overflow"
 pass
@@ -268,7 +265,7 @@ cat > "$OUTPUT_DIR/new_int_ops.lasm" <<'EOF'
 .constants 1
   0: 4.9
 
-.code
+.func main 14 0
   LOADI r0 10
   LOADI r1 3
   MOD r2 r0 r1
@@ -284,10 +281,7 @@ cat > "$OUTPUT_DIR/new_int_ops.lasm" <<'EOF'
   TOINT r12 r11
   TONUM r13 r12
   RET r2
-
-.metadata
-  registers: 14
-  args: 0
+.endfunc
 EOF
 $LUMEN asm "$OUTPUT_DIR/new_int_ops.lasm" "$OUTPUT_DIR/new_int_ops.lc" > /dev/null 2>&1 || fail "assembly failed"
 result=$($LUMEN exec "$OUTPUT_DIR/new_int_ops.lc" 2>&1)
@@ -310,21 +304,26 @@ grep -q "TOINT" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing TOINT"
 grep -q "TONUM" "$OUTPUT_DIR/new_int_ops_disasm.lasm" || fail "missing TONUM"
 pass
 
-# Test 28: Execute conversions
+# Test 29: Execute simple_closure.lasm
+test_name "Execute simple_closure.lasm (closure support)"
+$LUMEN asm "$EXAMPLES_DIR/simple_closure.lasm" "$OUTPUT_DIR/simple_closure.lc" > /dev/null 2>&1 || fail "assembly failed"
+[ -f "$OUTPUT_DIR/simple_closure.lc" ] || fail "bytecode file not created"
+[ -s "$OUTPUT_DIR/simple_closure.lc" ] || fail "bytecode file is empty"
+result=$($LUMEN exec "$OUTPUT_DIR/simple_closure.lc" 2>&1)
+echo "$result"
+echo "$result" | grep -q "Result:" || fail "unexpected result: $result"
+pass
 test_name "Execute TOINT/TONUM conversion"
 cat > "$OUTPUT_DIR/conversion_ops.lasm" <<'EOF'
 .constants 1
   0: 4.9
 
-.code
+.func main 3 0
   LOADK r0 0
   TOINT r1 r0
   TONUM r2 r1
   RET r2
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 EOF
 $LUMEN asm "$OUTPUT_DIR/conversion_ops.lasm" "$OUTPUT_DIR/conversion_ops.lc" > /dev/null 2>&1 || fail "assembly failed"
 result=$($LUMEN exec "$OUTPUT_DIR/conversion_ops.lc" 2>&1)

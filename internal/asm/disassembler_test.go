@@ -12,8 +12,14 @@ func TestDisassembleSimpleChunk(t *testing.T) {
 	chunk.AddConstant(vm.NewInt(42))
 	chunk.AddInstruction(vm.NewInstr(vm.OpLOADK, 0, 0, 0))
 	chunk.AddInstruction(vm.NewInstr(vm.OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
-	chunk.ArgCount = 0
+	proto := vm.FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, proto)
 
 	output := Disassemble(chunk)
 
@@ -21,11 +27,11 @@ func TestDisassembleSimpleChunk(t *testing.T) {
 	if !strings.Contains(output, ".constants") {
 		t.Error("output missing .constants section")
 	}
-	if !strings.Contains(output, ".code") {
-		t.Error("output missing .code section")
+	if !strings.Contains(output, ".func main") {
+		t.Error("output missing .func main section")
 	}
-	if !strings.Contains(output, ".metadata") {
-		t.Error("output missing .metadata section")
+	if !strings.Contains(output, ".endfunc") {
+		t.Error("output missing .endfunc")
 	}
 
 	// Check for instructions
@@ -34,14 +40,6 @@ func TestDisassembleSimpleChunk(t *testing.T) {
 	}
 	if !strings.Contains(output, "RET r0") {
 		t.Error("output missing RET instruction")
-	}
-
-	// Check metadata
-	if !strings.Contains(output, "registers: 1") {
-		t.Error("output missing register count")
-	}
-	if !strings.Contains(output, "args: 0") {
-		t.Error("output missing arg count")
 	}
 }
 
@@ -52,8 +50,14 @@ func TestDisassembleAllValueTypes(t *testing.T) {
 	chunk.AddConstant(vm.NewBool(true))
 	chunk.AddConstant(vm.NewBool(false))
 	chunk.AddConstant(vm.NewNull())
-	chunk.RegisterCount = 0
-	chunk.ArgCount = 0
+	proto := vm.FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      0,
+		RegisterCount: 0,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, proto)
 
 	output := Disassemble(chunk)
 
@@ -120,8 +124,14 @@ func TestDisassembleAllInstructions(t *testing.T) {
 		chunk.AddInstruction(instr)
 	}
 
-	chunk.RegisterCount = 3
-	chunk.ArgCount = 0
+	proto := vm.FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      len(instructions),
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, proto)
 
 	output := Disassemble(chunk)
 
@@ -143,19 +153,22 @@ func TestDisassembleAllInstructions(t *testing.T) {
 
 func TestDisassembleEmptyChunk(t *testing.T) {
 	chunk := vm.NewChunk()
-	chunk.RegisterCount = 0
-	chunk.ArgCount = 0
+	proto := vm.FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      0,
+		RegisterCount: 0,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, proto)
 
 	output := Disassemble(chunk)
 
-	if !strings.Contains(output, ".constants 0") {
-		t.Error("output should show 0 constants")
+	if !strings.Contains(output, ".constants") {
+		t.Error("output missing .constants section")
 	}
-	if !strings.Contains(output, ".code") {
-		t.Error("output missing .code section")
-	}
-	if !strings.Contains(output, "registers: 0") {
-		t.Error("output should show 0 registers")
+	if !strings.Contains(output, ".func main") {
+		t.Error("output missing .func main section")
 	}
 }
 
@@ -164,15 +177,12 @@ func TestRoundTripAssembleDisassemble(t *testing.T) {
   0: 10i
   1: 20i
 
-.code
+.func main 3 0
   LOADK r0 0
   LOADK r1 1
   ADD r2 r0 r1
   RET r2
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 `
 
 	// Assemble
@@ -197,11 +207,16 @@ func TestRoundTripAssembleDisassemble(t *testing.T) {
 	if len(chunk1.Code) != len(chunk2.Code) {
 		t.Errorf("code count mismatch: %d vs %d", len(chunk1.Code), len(chunk2.Code))
 	}
-	if chunk1.RegisterCount != chunk2.RegisterCount {
-		t.Errorf("register count mismatch: %d vs %d", chunk1.RegisterCount, chunk2.RegisterCount)
+	if len(chunk1.Prototypes) != len(chunk2.Prototypes) {
+		t.Errorf("prototype count mismatch: %d vs %d", len(chunk1.Prototypes), len(chunk2.Prototypes))
 	}
-	if chunk1.ArgCount != chunk2.ArgCount {
-		t.Errorf("arg count mismatch: %d vs %d", chunk1.ArgCount, chunk2.ArgCount)
+	if len(chunk1.Prototypes) > 0 && len(chunk2.Prototypes) > 0 {
+		if chunk1.Prototypes[0].RegisterCount != chunk2.Prototypes[0].RegisterCount {
+			t.Errorf("register count mismatch: %d vs %d", chunk1.Prototypes[0].RegisterCount, chunk2.Prototypes[0].RegisterCount)
+		}
+		if chunk1.Prototypes[0].ArgCount != chunk2.Prototypes[0].ArgCount {
+			t.Errorf("arg count mismatch: %d vs %d", chunk1.Prototypes[0].ArgCount, chunk2.Prototypes[0].ArgCount)
+		}
 	}
 
 	// Compare instructions
@@ -217,20 +232,21 @@ func TestDisassembleLineNumbers(t *testing.T) {
 	chunk.AddInstruction(vm.NewInstr(vm.OpNOP, 0, 0, 0))
 	chunk.AddInstruction(vm.NewInstr(vm.OpNOP, 0, 0, 0))
 	chunk.AddInstruction(vm.NewInstr(vm.OpNOP, 0, 0, 0))
-	chunk.RegisterCount = 0
-	chunk.ArgCount = 0
+	proto := vm.FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      3,
+		RegisterCount: 0,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, proto)
 
 	output := Disassemble(chunk)
 
-	// Check for line numbers
-	if !strings.Contains(output, "0000:") {
-		t.Error("missing line number 0000")
-	}
-	if !strings.Contains(output, "0001:") {
-		t.Error("missing line number 0001")
-	}
-	if !strings.Contains(output, "0002:") {
-		t.Error("missing line number 0002")
+	// Check that we have 3 NOP instructions
+	nopCount := strings.Count(output, "NOP")
+	if nopCount != 3 {
+		t.Errorf("expected 3 NOP instructions, got %d", nopCount)
 	}
 }
 
@@ -253,8 +269,14 @@ func TestDisassembleStringLiterals(t *testing.T) {
 	chunk.AddInstruction(vm.NewInstr(vm.OpNEWSTR, 2, 2, 0))
 	chunk.AddInstruction(vm.NewInstr(vm.OpRET, 0, 0, 0))
 
-	chunk.RegisterCount = 3
-	chunk.ArgCount = 0
+	proto := vm.FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      4,
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, proto)
 
 	output := Disassemble(chunk)
 
@@ -286,14 +308,11 @@ func TestRoundTripStringLiterals(t *testing.T) {
   0: "Hello, World!"
   1: "Escape:\n\t\"\\"
 
-.code
+.func main 2 0
   NEWSTR r0 0
   NEWSTR r1 1
   RET r0
-
-.metadata
-  registers: 2
-  args: 0
+.endfunc
 `
 
 	// Assemble

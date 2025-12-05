@@ -15,13 +15,20 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Comments: `// line`, `/* block */` (non-nested).
 
 ## 2. Types
-- Built-ins: `Int` (64-bit), `Float` (64-bit), `Bool`, `String`, `Any`, `Void`, `T?` (nullable).
-- Structs: `struct User { id: Int; name: String; email: String? }` (fields separated by newline or `;`).
-- Arrays: `[T]` dynamic length.
-- Generics (monomorphized per instantiation): type params on structs/functions: `struct Box<T> { value: T }`, `fn id<T>(x: T) -> T { x }`; instantiate with `Box[Int]`, `id[String]("hi")`. Type arg inference for calls is allowed when unambiguous; otherwise supply explicitly.
-- Minimal inference: `let x = 1;` infers `Int`; function params/returns must be annotated.
 
-## 3. Declarations & Statements
+### Union Types
+- Syntaxe : `T1 | T2 | ... | Tn` (ex : `Int | String`)
+- Un type union accepte une valeur de n'importe quel type listé.
+- Utilisation :
+  - Déclaration de variable : `let x: Int | String = ...`
+  - Paramètre de fonction : `fn foo(val: Int | Float) -> String { ... }`
+  - Retour de fonction : `fn parse(val: String) -> Int | Error { ... }`
+- Compatibilité :
+  - Une valeur de type `T` peut être assignée à une variable de type union si `T` est inclus dans l'union.
+  - Les opérations sur une variable de type union nécessitent une vérification de type (ex : via `match` ou une future syntaxe d'affinage).
+  - Les unions peuvent être combinées avec les types optionnels : `Int | String?`.
+  - Les unions ne sont pas implicitement converties : une valeur doit correspondre explicitement à l'un des types.
+  - Les unions sont statiquement vérifiées.
 - `let` mutable, `const` immutable; must initialize at declaration. Reassigning a `const` is a static error.
 - Assignment: `x = x + 1;`.
 - Blocks create scope: `{ let x = 1; }`.

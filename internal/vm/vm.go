@@ -13,10 +13,11 @@ const (
 
 // CallFrame represents a function call frame.
 type CallFrame struct {
-	chunk *Chunk  // The function's bytecode
-	ip    int     // Return instruction pointer
-	fp    int     // Frame pointer (base of this frame in stack)
-	regs  []Value // Saved registers from caller
+	function *FunctionObj // NEW: Current executing function (for GC and captures)
+	chunk    *Chunk       // The function's bytecode (kept during transition)
+	ip       int          // Return instruction pointer
+	fp       int          // Frame pointer (base of this frame in stack)
+	regs     []Value      // Saved registers from caller
 }
 
 // ExternFunc is a function callable from bytecode.
@@ -28,17 +29,19 @@ type DebugHook func(snapshot interface{}) bool
 
 // VM represents the Lumen virtual machine.
 type VM struct {
-	stack       [stackSize]Value
-	frames      [maxCallDepth]CallFrame
-	frameCount  int     // Number of active frames
-	fp          int     // frame pointer
-	sp          int     // stack pointer
-	ip          int     // instruction pointer
-	regs        []Value // Current registers
-	chunk       *Chunk  // Current chunk
-	heap        *Heap
-	externFuncs map[string]ExternFunc // External functions
-	debugHook   DebugHook             // Optional debug hook
+	stack           [stackSize]Value
+	frames          [maxCallDepth]CallFrame
+	frameCount      int          // Number of active frames
+	fp              int          // frame pointer
+	sp              int          // stack pointer
+	ip              int          // instruction pointer
+	regs            []Value      // Current registers
+	currentFunction *FunctionObj // NEW: Current executing function (for GC root and LDCAP)
+	chunk           *Chunk       // Current chunk
+	heap            *Heap
+	externFuncs     map[string]ExternFunc // External functions
+	debugHook       DebugHook             // Optional debug hook
+	openUpvalues    []*UpvalueObj         // Linked list of open upvalues (for closure support)
 }
 
 // NewVM creates a new VM instance.
@@ -148,8 +151,8 @@ func (vm *VM) Snapshot() interface{} {
 		FrameCount:    vm.frameCount,
 		HeapAllocated: vm.heap.bytesAllocated,
 		HeapMax:       vm.heap.maxBytes,
-		RegisterCount: vm.chunk.RegisterCount,
-		ArgCount:      vm.chunk.ArgCount,
+		RegisterCount: len(vm.regs),
+		ArgCount:      0,
 	}
 
 	// Add current instruction if in valid range
@@ -179,13 +182,38 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 	// Set current chunk
 	vm.chunk = chunk
 
-	// Allocate registers for this chunk
-	vm.regs = make([]Value, chunk.RegisterCount)
+	mainIdx := -1
+	for i, proto := range chunk.Prototypes {
+		if proto.Name == "main" {
+			mainIdx = i
+			break
+		}
+	}
+
+	if mainIdx == -1 {
+		return NewNull(), fmt.Errorf("entry function 'main' not found")
+	}
+
+	mainProto := chunk.Prototypes[mainIdx]
+
+	// Main function doesn't capture any upvalues (upvalueCount = 0)
+	mainFunc, shouldGC, err := vm.heap.AllocFunction(chunk, mainIdx, 0)
+	if err != nil {
+		return NewNull(), fmt.Errorf("failed to allocate main function: %v", err)
+	}
+	if shouldGC {
+		vm.CollectGarbage()
+	}
+
+	// Allocate registers for main function
+	vm.regs = make([]Value, mainProto.RegisterCount)
 	for i := range vm.regs {
 		vm.regs[i] = NewNull()
 	}
 
-	vm.ip = 0
+	// Set instruction pointer to main's code start
+	vm.ip = mainProto.CodeStart
+	vm.currentFunction = mainFunc
 	vm.frameCount = 0
 
 	for vm.ip < len(vm.chunk.Code) {
@@ -463,38 +491,6 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 					continue
 				}
 
-			case OpCALL32:
-				argc := int(opcodeInstr.A)
-
-				// Check call depth
-				if vm.frameCount >= maxCallDepth {
-					return NewNull(), vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", maxCallDepth))
-				}
-
-				// Save current frame (IP points to instruction after LONG block)
-				vm.frames[vm.frameCount] = CallFrame{
-					chunk: vm.chunk,
-					ip:    vm.ip,
-					fp:    vm.fp,
-					regs:  vm.regs,
-				}
-				vm.frameCount++
-
-				// Preserve arguments in new register set
-				newRegs := make([]Value, vm.chunk.RegisterCount)
-				for i := range newRegs {
-					newRegs[i] = NewNull()
-				}
-				// Copy arguments
-				for i := 0; i < argc && i < len(vm.regs); i++ {
-					newRegs[i] = vm.regs[i]
-				}
-				vm.regs = newRegs
-
-				// Jump to function
-				vm.ip = targetIP
-				continue
-
 			default:
 				return NewNull(), vm.runtimeError(fmt.Sprintf("LONG: invalid opcode %v", opcodeInstr.Op))
 			}
@@ -521,43 +517,102 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			}
 
 		case OpCALL:
-			// CALL: A = function address (instruction pointer), B = argc
-			// Arguments are in r0, r1, r2, ... r(argc-1)
-			funcAddr := int(instr.A)
-			argc := int(instr.B)
+			// CALL: A = func_reg (register containing FunctionObj or ExternFunctionObj), B = nargs
+			// Arguments are in r(func_reg+1), r(func_reg+2), ... r(func_reg+nargs)
+			funcReg := int(instr.A)
+			nargs := int(instr.B)
 
-			// Check call depth
-			if vm.frameCount >= maxCallDepth {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", maxCallDepth))
+			// Get function object from register
+			funcVal := vm.regs[funcReg]
+			if !funcVal.IsHeapPtr() {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("CALL requires function object in register r%d, got %v", funcReg, funcVal))
 			}
 
-			// Save current frame
-			vm.frames[vm.frameCount] = CallFrame{
-				chunk: vm.chunk,
-				ip:    vm.ip,
-				fp:    vm.fp,
-				regs:  vm.regs,
-			}
-			vm.frameCount++
+			// Get object header to determine type
+			objHeader := (*ObjHeader)(unsafe.Pointer(uintptr(funcVal.AsHeapPtr())))
 
-			// Preserve arguments in new register set
-			newRegs := make([]Value, vm.chunk.RegisterCount)
-			for i := range newRegs {
-				newRegs[i] = NewNull()
-			}
-			// Copy arguments
-			for i := 0; i < argc && i < len(vm.regs); i++ {
-				newRegs[i] = vm.regs[i]
-			}
-			vm.regs = newRegs
+			switch objHeader.Type {
+			case ObjTypeFunction:
+				// User-defined function
+				funcObj := (*FunctionObj)(unsafe.Pointer(uintptr(funcVal.AsHeapPtr())))
 
-			// Jump to function
-			vm.ip = funcAddr
-			continue
+				// Get function prototype
+				proto := funcObj.Proto()
+
+				// STRICT validation: argument count must match exactly
+				if nargs != proto.ArgCount {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("function %s expects %d arguments, got %d", proto.Name, proto.ArgCount, nargs))
+				}
+
+				// Check call depth
+				if vm.frameCount >= maxCallDepth {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", maxCallDepth))
+				}
+
+				// Save current frame
+				vm.frames[vm.frameCount] = CallFrame{
+					function: vm.currentFunction,
+					chunk:    vm.chunk,
+					ip:       vm.ip,
+					fp:       vm.fp,
+					regs:     vm.regs,
+				}
+				vm.frameCount++
+
+				// Allocate new register set for called function
+				newRegs := make([]Value, proto.RegisterCount)
+				for i := range newRegs {
+					newRegs[i] = NewNull()
+				}
+
+				// Copy arguments to new register set
+				// Arguments are in caller's registers: r(funcReg+1) through r(funcReg+nargs)
+				for i := 0; i < nargs; i++ {
+					newRegs[i] = vm.regs[funcReg+1+i]
+				}
+
+				// Set up VM state for called function
+				vm.currentFunction = funcObj
+				vm.chunk = funcObj.chunk
+				vm.regs = newRegs
+				vm.ip = proto.CodeStart
+				continue
+
+			case ObjTypeExternFunction:
+				// External (host) function
+				externObj := (*ExternFunctionObj)(unsafe.Pointer(uintptr(funcVal.AsHeapPtr())))
+
+				// Optional argument count validation (if argCount >= 0)
+				if externObj.ArgCount() >= 0 && nargs != externObj.ArgCount() {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s expects %d arguments, got %d", externObj.Name(), externObj.ArgCount(), nargs))
+				}
+
+				// Collect arguments from registers
+				args := make([]Value, nargs)
+				for i := 0; i < nargs; i++ {
+					args[i] = vm.regs[funcReg+1+i]
+				}
+
+				// Call the extern function
+				retVal, err := externObj.Function()(vm, args)
+				if err != nil {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s failed: %v", externObj.Name(), err))
+				}
+
+				// Store return value in r0
+				vm.regs[0] = retVal
+
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("CALL requires function object, got %v", objHeader.Type))
+			}
 
 		case OpRET:
 			// RET: A = register containing return value
 			retVal := vm.regs[instr.A]
+
+			// Close any upvalues that were pointing to this frame's registers
+			// This moves captured variables from stack to heap
+			vm.closeUpvalues(0)
 
 			// Check if we're in a nested call
 			if vm.frameCount == 0 {
@@ -568,6 +623,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			// Restore previous frame
 			vm.frameCount--
 			frame := vm.frames[vm.frameCount]
+			vm.currentFunction = frame.function
 			vm.chunk = frame.chunk
 			vm.ip = frame.ip
 			vm.fp = frame.fp
@@ -576,10 +632,86 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			vm.regs = frame.regs
 			vm.regs[0] = retVal
 
-		case OpCALLEXTERN:
-			// CALLEXTERN: A = extern func index, B = argc
-			externIdx := int(instr.A)
-			argc := int(instr.B)
+		case OpNEWFUNC:
+			// NEWFUNC: A = dest_reg, B = proto_idx
+			// Creates a function object. If the prototype specifies upvalues,
+			// they are allocated but not initialized.
+			protoIdx := int(instr.B)
+
+			// Validate proto index
+			if protoIdx < 0 || protoIdx >= len(vm.chunk.Prototypes) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("invalid prototype index: %d (chunk has %d prototypes)", protoIdx, len(vm.chunk.Prototypes)))
+			}
+
+			proto := vm.chunk.Prototypes[protoIdx]
+
+			// Allocate function object on heap
+			funcObj, shouldGC, err := vm.heap.AllocFunction(vm.chunk, protoIdx, proto.UpvalueCount)
+			if err != nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("function allocation failed: %v", err))
+			}
+
+			// Store function object pointer in destination register
+			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(funcObj)))
+
+			// Trigger GC if needed
+			if shouldGC {
+				vm.CollectGarbage()
+			}
+
+		case OpCAPLOCAL:
+			// CAPLOCAL: A = dest_func_reg, B = upvalue_idx, C = local_reg_idx
+			destReg := int(instr.A)
+			upvalIdx := int(instr.B)
+			localReg := int(instr.C)
+
+			// Get destination function
+			destVal := vm.regs[destReg]
+			if !destVal.IsHeapPtr() {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("CAPLOCAL requires function object in r%d", destReg))
+			}
+			
+			// We assume it's a function object because the assembler/compiler should ensure it.
+			// But for safety we could check type.
+			funcObj := (*FunctionObj)(unsafe.Pointer(uintptr(destVal.AsHeapPtr())))
+
+			if upvalIdx >= len(funcObj.Upvalues()) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("upvalue index out of bounds: %d", upvalIdx))
+			}
+
+			// Capture local variable
+			upval := vm.findOrCreateUpvalue(&vm.regs[localReg])
+			funcObj.SetUpvalue(upvalIdx, upval)
+
+		case OpCAPUPVAL:
+			// CAPUPVAL: A = dest_func_reg, B = upvalue_idx, C = parent_upval_idx
+			destReg := int(instr.A)
+			upvalIdx := int(instr.B)
+			parentUpvalIdx := int(instr.C)
+
+			// Get destination function
+			destVal := vm.regs[destReg]
+			if !destVal.IsHeapPtr() {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("CAPUPVAL requires function object in r%d", destReg))
+			}
+			
+			funcObj := (*FunctionObj)(unsafe.Pointer(uintptr(destVal.AsHeapPtr())))
+
+			if upvalIdx >= len(funcObj.Upvalues()) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("upvalue index out of bounds: %d", upvalIdx))
+			}
+
+			// Capture from parent upvalues
+			parentFunc := vm.currentFunction
+			if parentUpvalIdx >= len(parentFunc.Upvalues()) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("parent upvalue index out of bounds: %d", parentUpvalIdx))
+			}
+			
+			funcObj.SetUpvalue(upvalIdx, parentFunc.Upvalues()[parentUpvalIdx])
+
+		case OpNEWEXFUNC:
+			// NEWEXFUNC: A = dest_reg, B = extern_idx
+			externIdx := int(instr.B)
 
 			// Get extern function name
 			if externIdx >= len(vm.chunk.ExternNames) {
@@ -593,20 +725,56 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("unknown extern function: %s", externName))
 			}
 
-			// Collect arguments from registers
-			args := make([]Value, argc)
-			for i := 0; i < argc && i < len(vm.regs); i++ {
-				args[i] = vm.regs[i]
-			}
-
-			// Call the extern function
-			retVal, err := externFunc(vm, args)
+			// Allocate external function object on heap
+			// Note: argCount is set to -1 to indicate variadic (no strict check)
+			// In the future, we could add metadata to specify exact arg count
+			funcObj, shouldGC, err := vm.heap.AllocExternFunction(externName, externFunc, -1)
 			if err != nil {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s failed: %v", externName, err))
+				return NewNull(), vm.runtimeError(fmt.Sprintf("extern function allocation failed: %v", err))
 			}
 
-			// Store return value in r0
-			vm.regs[0] = retVal
+			// Store function object pointer in destination register
+			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(funcObj)))
+
+			// Trigger GC if needed
+			if shouldGC {
+				vm.CollectGarbage()
+			}
+
+		case OpLDCAP:
+			// LDCAP: A = dest_reg, B = upvalue_idx
+			// Load value from captured upvalue
+			upvalIdx := int(instr.B)
+
+			currentFunc := vm.currentFunction
+			if upvalIdx >= len(currentFunc.Upvalues()) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("LDCAP: upvalue index out of bounds: %d", upvalIdx))
+			}
+
+			upval := currentFunc.Upvalues()[upvalIdx]
+			if upval == nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("LDCAP: uninitialized upvalue at index %d", upvalIdx))
+			}
+
+			vm.regs[instr.A] = upval.Get()
+
+		case OpSTCAP:
+			// STCAP: A = upvalue_idx, B = src_reg
+			// Store value to captured upvalue
+			upvalIdx := int(instr.A)
+			srcReg := int(instr.B)
+
+			currentFunc := vm.currentFunction
+			if upvalIdx >= len(currentFunc.Upvalues()) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("STCAP: upvalue index out of bounds: %d", upvalIdx))
+			}
+
+			upval := currentFunc.Upvalues()[upvalIdx]
+			if upval == nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("STCAP: uninitialized upvalue at index %d", upvalIdx))
+			}
+
+			upval.Set(vm.regs[srcReg])
 
 		case OpNEWSTR:
 			// Create a string from string pool
@@ -816,3 +984,70 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 	return NewNull(), nil
 }
+
+// currentFrame returns the current call frame, or nil if there are no active frames.
+func (vm *VM) currentFrame() *CallFrame {
+	if vm.frameCount == 0 {
+		return nil
+	}
+	return &vm.frames[vm.frameCount-1]
+}
+
+// findOrCreateUpvalue finds an existing open upvalue for the given stack location,
+// or creates a new one if it doesn't exist.
+// This ensures that multiple closures capturing the same variable share the same upvalue.
+func (vm *VM) findOrCreateUpvalue(location *Value) *UpvalueObj {
+	// Search for existing open upvalue for this location
+	for _, upval := range vm.openUpvalues {
+		if upval.location == location {
+			return upval
+		}
+	}
+
+	// Create new upvalue
+	upval, shouldGC, err := vm.heap.AllocUpvalue(location)
+	if err != nil {
+		// If allocation fails, we can't recover gracefully here
+		// In a real implementation, this would need better error handling
+		panic(fmt.Sprintf("failed to allocate upvalue: %v", err))
+	}
+
+	// Add to open upvalues list
+	vm.openUpvalues = append(vm.openUpvalues, upval)
+
+	if shouldGC {
+		vm.CollectGarbage()
+	}
+
+	return upval
+}
+
+// closeUpvalues closes all upvalues that point to stack slots at or above the given index.
+// This is called when a function returns to move captured variables from stack to heap.
+func (vm *VM) closeUpvalues(lastSlot int) {
+	i := 0
+	for i < len(vm.openUpvalues) {
+		upval := vm.openUpvalues[i]
+		if upval.IsOpen() {
+			// Check if this upvalue points to a register that's being closed
+			// We need to compare pointers to determine if it's in the range being closed
+			regIndex := -1
+			for idx := range vm.regs {
+				if &vm.regs[idx] == upval.location {
+					regIndex = idx
+					break
+				}
+			}
+
+			if regIndex >= lastSlot {
+				// Close this upvalue
+				upval.Close()
+				// Remove from open list
+				vm.openUpvalues = append(vm.openUpvalues[:i], vm.openUpvalues[i+1:]...)
+				continue
+			}
+		}
+		i++
+	}
+}
+

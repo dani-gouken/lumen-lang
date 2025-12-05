@@ -1,0 +1,43 @@
+; Example demonstrating both closure capture types
+; 1. Capture a local variable (CAPTURE local rX)
+; 2. Capture an existing upvalue (CAPTURE upval X)
+
+; Function inner: finally uses the value
+.func inner 2 0 1
+    LDCAP r0 0      ; Load upvalue[0]
+    RET r0
+.endfunc
+
+; Function middle: captures an upvalue from its parent and passes it to its child
+.func middle 2 0 1
+    ; Create closure 'inner' with 1 upvalue
+    NEWFUNC r0 inner
+    
+    ; CASE 2: Capture an existing upvalue
+    ; Format: CAPUPVAL <dest_func> <upval_idx> <parent_upval_idx>
+    CAPUPVAL r0 0 0       
+    
+    RET r0
+.endfunc
+
+; Function main: defines the local variable
+.func main 3 0
+    LOADI r1 42     ; r1 = 42 (Local variable)
+
+    ; Create closure 'middle' with 1 upvalue
+    NEWFUNC r0 middle
+    
+    ; CASE 1: Capture a local variable
+    ; Format: CAPLOCAL <dest_func> <upval_idx> <local_reg>
+    CAPLOCAL r0 0 r1       
+
+    ; Call middle to get inner
+    MOV r2 r0       ; r2 = closure middle
+    CALL r2 0       ; Call middle(), returns closure inner in r0
+    
+    ; Call inner
+    MOV r2 r0       ; r2 = closure inner
+    CALL r2 0       ; Call inner(), returns 42
+    
+    RET r0
+.endfunc

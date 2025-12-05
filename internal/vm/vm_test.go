@@ -7,7 +7,14 @@ func TestVMExecuteLoadAndReturn(t *testing.T) {
 	chunk.AddConstant(NewInt(42))
 	chunk.AddInstruction(NewInstr(OpLOADK, 0, 0, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	v := NewVM()
 	result, err := v.Exec(chunk)
@@ -31,7 +38,14 @@ func TestVMExecuteAddIntegers(t *testing.T) {
 	chunk.AddInstruction(NewInstr(OpLOADK, 1, 1, 0))
 	chunk.AddInstruction(NewInstr(OpADD, 2, 0, 1))
 	chunk.AddInstruction(NewInstr(OpRET, 2, 0, 0))
-	chunk.RegisterCount = 3
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      4,
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	v := NewVM()
 	result, err := v.Exec(chunk)
@@ -55,7 +69,14 @@ func TestVMExecuteAddNumbers(t *testing.T) {
 	chunk.AddInstruction(NewInstr(OpLOADK, 1, 1, 0))
 	chunk.AddInstruction(NewInstr(OpADD, 2, 0, 1))
 	chunk.AddInstruction(NewInstr(OpRET, 2, 0, 0))
-	chunk.RegisterCount = 3
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      4,
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	v := NewVM()
 	result, err := v.Exec(chunk)
@@ -92,7 +113,14 @@ func TestVMExecuteArithmetic(t *testing.T) {
 			chunk.AddInstruction(NewInstr(OpLOADK, 1, 1, 0))
 			chunk.AddInstruction(NewInstr(tt.op, 2, 0, 1))
 			chunk.AddInstruction(NewInstr(OpRET, 2, 0, 0))
-			chunk.RegisterCount = 3
+			mainProto := FunctionPrototype{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      4,
+				RegisterCount: 3,
+				ArgCount:      0,
+			}
+			chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 			v := NewVM()
 			result, err := v.Exec(chunk)
@@ -113,7 +141,14 @@ func TestVMExecuteMOV(t *testing.T) {
 	chunk.AddInstruction(NewInstr(OpLOADK, 0, 0, 0))
 	chunk.AddInstruction(NewInstr(OpMOV, 1, 0, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 1, 0, 0))
-	chunk.RegisterCount = 2
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      3,
+		RegisterCount: 2,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	v := NewVM()
 	result, err := v.Exec(chunk)
@@ -130,7 +165,14 @@ func TestVMExecuteLOADNULL(t *testing.T) {
 	chunk := NewChunk()
 	chunk.AddInstruction(NewInstr(OpLOADNULL, 0, 0, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	v := NewVM()
 	result, err := v.Exec(chunk)
@@ -156,7 +198,14 @@ func TestVMExecuteLOADBOOL(t *testing.T) {
 		chunk := NewChunk()
 		chunk.AddInstruction(NewInstr(OpLOADBOOL, 0, tt.value, 0))
 		chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-		chunk.RegisterCount = 1
+		mainProto := FunctionPrototype{
+			Name:          "main",
+			CodeStart:     0,
+			CodeSize:      2,
+			RegisterCount: 1,
+			ArgCount:      0,
+		}
+		chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 		v := NewVM()
 		result, err := v.Exec(chunk)
@@ -177,7 +226,14 @@ func TestVMErrorOnUnimplementedOpcode(t *testing.T) {
 	chunk := NewChunk()
 	// Use an invalid opcode (255)
 	chunk.AddInstruction(NewInstr(OpCode(255), 0, 0, 0))
-	chunk.RegisterCount = 0
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      1,
+		RegisterCount: 0,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	v := NewVM()
 	_, err := v.Exec(chunk)
@@ -191,7 +247,14 @@ func TestVMErrorOnConstantOutOfBounds(t *testing.T) {
 	chunk := NewChunk()
 	chunk.AddInstruction(NewInstr(OpLOADK, 0, 99, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	v := NewVM()
 	_, err := v.Exec(chunk)

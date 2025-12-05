@@ -17,23 +17,31 @@ func TestMemoryIntegrationArrayManipulation(t *testing.T) {
 
 	chunk := &Chunk{
 		Code: []Instr{
-			NewInstr(OpNEWARRAY, 0, 5, 0),   // r0 = new array(5)
-			NewInstr(OpLOADK, 1, 0, 0),      // r1 = 10
-			NewInstr(OpLOADK, 2, 0, 0),      // r2 = 0 (index)
-			NewInstr(OpSETINDEX, 0, 2, 1),   // r0[r2] = r1
-			NewInstr(OpLOADK, 1, 1, 0),      // r1 = 20
-			NewInstr(OpLOADK, 2, 2, 0),      // r2 = 1 (index)
-			NewInstr(OpSETINDEX, 0, 2, 1),   // r0[r2] = r1
-			NewInstr(OpLOADK, 2, 2, 0),      // r2 = 1 (index)
-			NewInstr(OpGETINDEX, 3, 0, 2),   // r3 = r0[r2]
-			NewInstr(OpRET, 3, 0, 0),        // return r3
+			NewInstr(OpNEWARRAY, 0, 5, 0), // r0 = new array(5)
+			NewInstr(OpLOADK, 1, 0, 0),    // r1 = 10
+			NewInstr(OpLOADK, 2, 0, 0),    // r2 = 0 (index)
+			NewInstr(OpSETINDEX, 0, 2, 1), // r0[r2] = r1
+			NewInstr(OpLOADK, 1, 1, 0),    // r1 = 20
+			NewInstr(OpLOADK, 2, 2, 0),    // r2 = 1 (index)
+			NewInstr(OpSETINDEX, 0, 2, 1), // r0[r2] = r1
+			NewInstr(OpLOADK, 2, 2, 0),    // r2 = 1 (index)
+			NewInstr(OpGETINDEX, 3, 0, 2), // r3 = r0[r2]
+			NewInstr(OpRET, 3, 0, 0),      // return r3
 		},
 		Constants: []Value{
 			NewInt(10),
 			NewInt(20),
 			NewInt(1),
 		},
-		RegisterCount: 4,
+		Prototypes: []FunctionPrototype{
+			{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      10,
+				RegisterCount: 4,
+				ArgCount:      0,
+			},
+		},
 	}
 
 	result, err := vm.Exec(chunk)
@@ -62,13 +70,13 @@ func TestMemoryIntegrationObjectFields(t *testing.T) {
 
 	chunk := &Chunk{
 		Code: []Instr{
-			NewInstr(OpNEWOBJ, 0, 0, 0),     // r0 = new object
-			NewInstr(OpLOADK, 1, 2, 0),      // r1 = 123
-			NewInstr(OpSETFIELD, 0, 0, 1),   // r0["name"] = r1
-			NewInstr(OpLOADK, 1, 3, 0),      // r1 = 25
-			NewInstr(OpSETFIELD, 0, 1, 1),   // r0["age"] = r1
-			NewInstr(OpGETFIELD, 2, 0, 1),   // r2 = r0["age"]
-			NewInstr(OpRET, 2, 0, 0),        // return r2
+			NewInstr(OpNEWOBJ, 0, 0, 0),   // r0 = new object
+			NewInstr(OpLOADK, 1, 2, 0),    // r1 = 123
+			NewInstr(OpSETFIELD, 0, 0, 1), // r0["name"] = r1
+			NewInstr(OpLOADK, 1, 3, 0),    // r1 = 25
+			NewInstr(OpSETFIELD, 0, 1, 1), // r0["age"] = r1
+			NewInstr(OpGETFIELD, 2, 0, 1), // r2 = r0["age"]
+			NewInstr(OpRET, 2, 0, 0),      // return r2
 		},
 		Constants: []Value{
 			NewHeapPtr(uintptr(unsafe.Pointer(nameStr))),
@@ -76,7 +84,15 @@ func TestMemoryIntegrationObjectFields(t *testing.T) {
 			NewInt(123),
 			NewInt(25),
 		},
-		RegisterCount: 3,
+		Prototypes: []FunctionPrototype{
+			{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      7,
+				RegisterCount: 3,
+				ArgCount:      0,
+			},
+		},
 	}
 
 	result, err := vm.Exec(chunk)
@@ -103,8 +119,16 @@ func TestMemoryIntegrationGCDuringExecution(t *testing.T) {
 			NewInstr(OpARRLEN, 1, 0, 0),    // r1 = len(r0)
 			NewInstr(OpRET, 1, 0, 0),       // return r1
 		},
-		Constants:     []Value{},
-		RegisterCount: 2,
+		Constants: []Value{},
+		Prototypes: []FunctionPrototype{
+			{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      6,
+				RegisterCount: 2,
+				ArgCount:      0,
+			},
+		},
 	}
 
 	result, err := vm.Exec(chunk)
@@ -134,23 +158,31 @@ func TestMemoryIntegrationNestedStructures(t *testing.T) {
 	// Create: object with field "data" pointing to an array of numbers
 	chunk := &Chunk{
 		Code: []Instr{
-			NewInstr(OpNEWOBJ, 0, 0, 0),     // r0 = new object
-			NewInstr(OpNEWARRAY, 1, 3, 0),   // r1 = new array(3)
-			NewInstr(OpLOADK, 2, 1, 0),      // r2 = 100
-			NewInstr(OpLOADK, 3, 2, 0),      // r3 = 0
-			NewInstr(OpSETINDEX, 1, 3, 2),   // r1[0] = 100
-			NewInstr(OpSETFIELD, 0, 0, 1),   // r0["data"] = r1
-			NewInstr(OpGETFIELD, 4, 0, 0),   // r4 = r0["data"]
-			NewInstr(OpLOADK, 3, 2, 0),      // r3 = 0
-			NewInstr(OpGETINDEX, 5, 4, 3),   // r5 = r4[0]
-			NewInstr(OpRET, 5, 0, 0),        // return r5
+			NewInstr(OpNEWOBJ, 0, 0, 0),   // r0 = new object
+			NewInstr(OpNEWARRAY, 1, 3, 0), // r1 = new array(3)
+			NewInstr(OpLOADK, 2, 1, 0),    // r2 = 100
+			NewInstr(OpLOADK, 3, 2, 0),    // r3 = 0
+			NewInstr(OpSETINDEX, 1, 3, 2), // r1[0] = 100
+			NewInstr(OpSETFIELD, 0, 0, 1), // r0["data"] = r1
+			NewInstr(OpGETFIELD, 4, 0, 0), // r4 = r0["data"]
+			NewInstr(OpLOADK, 3, 2, 0),    // r3 = 0
+			NewInstr(OpGETINDEX, 5, 4, 3), // r5 = r4[0]
+			NewInstr(OpRET, 5, 0, 0),      // return r5
 		},
 		Constants: []Value{
 			NewHeapPtr(uintptr(unsafe.Pointer(dataStr))),
 			NewInt(100),
 			NewInt(0),
 		},
-		RegisterCount: 6,
+		Prototypes: []FunctionPrototype{
+			{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      10,
+				RegisterCount: 6,
+				ArgCount:      0,
+			},
+		},
 	}
 
 	result, err := vm.Exec(chunk)
@@ -180,7 +212,15 @@ func TestMemoryIntegrationManualGC(t *testing.T) {
 		Constants: []Value{
 			NewInt(42),
 		},
-		RegisterCount: 3,
+		Prototypes: []FunctionPrototype{
+			{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      6,
+				RegisterCount: 3,
+				ArgCount:      0,
+			},
+		},
 	}
 
 	bytesBefore := vm.heap.BytesAllocated()
@@ -209,21 +249,29 @@ func TestMemoryIntegrationArrayLength(t *testing.T) {
 
 	chunk := &Chunk{
 		Code: []Instr{
-			NewInstr(OpNEWARRAY, 0, 5, 0),  // r0 = new array(5)
-			NewInstr(OpLOADK, 1, 0, 0),     // r1 = 10
-			NewInstr(OpLOADK, 2, 1, 0),     // r2 = 0
-			NewInstr(OpSETINDEX, 0, 2, 1),  // r0[0] = 10
-			NewInstr(OpLOADK, 2, 2, 0),     // r2 = 1
-			NewInstr(OpSETINDEX, 0, 2, 1),  // r0[1] = 10
-			NewInstr(OpARRLEN, 3, 0, 0),    // r3 = len(r0)
-			NewInstr(OpRET, 3, 0, 0),       // return r3
+			NewInstr(OpNEWARRAY, 0, 5, 0), // r0 = new array(5)
+			NewInstr(OpLOADK, 1, 0, 0),    // r1 = 10
+			NewInstr(OpLOADK, 2, 1, 0),    // r2 = 0
+			NewInstr(OpSETINDEX, 0, 2, 1), // r0[0] = 10
+			NewInstr(OpLOADK, 2, 2, 0),    // r2 = 1
+			NewInstr(OpSETINDEX, 0, 2, 1), // r0[1] = 10
+			NewInstr(OpARRLEN, 3, 0, 0),   // r3 = len(r0)
+			NewInstr(OpRET, 3, 0, 0),      // return r3
 		},
 		Constants: []Value{
 			NewInt(10),
 			NewInt(0),
 			NewInt(1),
 		},
-		RegisterCount: 4,
+		Prototypes: []FunctionPrototype{
+			{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      8,
+				RegisterCount: 4,
+				ArgCount:      0,
+			},
+		},
 	}
 
 	result, err := vm.Exec(chunk)

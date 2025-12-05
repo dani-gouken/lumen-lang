@@ -1,0 +1,19 @@
+.func inner 2 0 1
+    LDCAP r0 0         ; r0 = upvalue[0] (x)
+    RET r0
+.endfunc
+
+.func outer 2 0
+    LOADI r1 42         ; r1 = x
+    NEWFUNC r0 inner    ; r0 = closure of inner (allocates 1 upvalue)
+    CAPLOCAL r0 0 r1    ; capture r1 (local) as upvalue[0] of r0
+    RET r0
+.endfunc
+
+.func main 2 0
+    NEWFUNC r0 outer
+    CALL r0 0
+    MOV r1 r0
+    CALL r1 0
+    RET r0
+.endfunc

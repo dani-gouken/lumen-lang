@@ -6,7 +6,7 @@
   2: true
   3: null
 
-.code
+.func main 6 0
   LOADK r0 0        ; r0 = 42.5 (number)
   LOADK r1 1        ; r1 = 100 (int)
   LOADK r2 2        ; r2 = true (bool)
@@ -14,7 +14,4 @@
   LOADBOOL r4 false ; r4 = false
   LOADNULL r5       ; r5 = null
   RET r0            ; return 42.5
-
-.metadata
-  registers: 6
-  args: 0
+.endfunc

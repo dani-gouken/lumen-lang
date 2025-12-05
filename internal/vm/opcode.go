@@ -49,12 +49,20 @@ const (
 	OpJMP32      // A = unused, followed by 32-bit offset word
 	OpJMPIF32    // A = condition register, followed by 32-bit offset word
 	OpJMPIFNOT32 // A = condition register, followed by 32-bit offset word
-	OpCALL32     // A = nargs, followed by 32-bit offset word
 
 	// Function calls
-	OpCALL
-	OpRET
-	OpCALLEXTERN // A = extern func index, B = argc
+	OpNEWFUNC   // A = dest_reg, B = proto_idx, C = unused
+	OpNEWEXFUNC // A = dest_reg, B = extern_idx, C = unused
+	OpCALL      // A = func_reg, B = nargs, C = unused (handles both user and extern functions)
+	OpRET       // A = return register
+
+	// Closure initialization
+	OpCAPLOCAL // A = dest_func_reg, B = upvalue_idx, C = local_reg_idx
+	OpCAPUPVAL // A = dest_func_reg, B = upvalue_idx, C = parent_upval_idx
+
+	// Upvalue operations (Access)
+	OpLDCAP // A = dest_reg, B = upvalue_idx, C = unused (load from upvalue)
+	OpSTCAP // A = upvalue_idx, B = src_reg, C = unused (store to upvalue)
 
 	// Heap allocation
 	OpNEWSTR   // A = dest, B = const index (string constant)
@@ -158,14 +166,22 @@ func (i Instr) String() string {
 		return formatInstr("JMPIF32", i.A)
 	case OpJMPIFNOT32:
 		return formatInstr("JMPIFNOT32", i.A)
-	case OpCALL32:
-		return formatInstr("CALL32", i.A)
+	case OpNEWFUNC:
+		return formatInstr("NEWFUNC", i.A, i.B)
+	case OpNEWEXFUNC:
+		return formatInstr("NEWEXFUNC", i.A, i.B)
 	case OpCALL:
 		return formatInstr("CALL", i.A, i.B)
 	case OpRET:
 		return formatInstr("RET", i.A)
-	case OpCALLEXTERN:
-		return formatInstr("CALLEXTERN", i.A, i.B)
+	case OpCAPLOCAL:
+		return formatInstr("CAPLOCAL", i.A, i.B, i.C)
+	case OpCAPUPVAL:
+		return formatInstr("CAPUPVAL", i.A, i.B, i.C)
+	case OpLDCAP:
+		return formatInstr("LDCAP", i.A, i.B)
+	case OpSTCAP:
+		return formatInstr("STCAP", i.A, i.B)
 	case OpNEWSTR:
 		return formatInstr("NEWSTR", i.A, i.B)
 	case OpNEWARRAY:

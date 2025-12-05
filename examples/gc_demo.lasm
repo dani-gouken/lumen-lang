@@ -9,7 +9,7 @@
 .constants 1
 0: 42i
 
-.code
+.func main 3 0
   ; Allocate first array (will become garbage)
   NEWARRAY r0 10
 
@@ -31,7 +31,4 @@
 
   ; Return the value (42)
   RET r2
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc

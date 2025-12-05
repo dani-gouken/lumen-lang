@@ -26,7 +26,7 @@ func TestAssembleMemoryOpcodes(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			source := ".code\n" + tt.code
+			source := ".func main 1 0\n" + tt.code + "\n.endfunc"
 			chunk, err := Assemble(source)
 			if err != nil {
 				t.Fatalf("Assemble failed: %v", err)
@@ -50,7 +50,7 @@ func TestAssembleArrayProgram(t *testing.T) {
 1: 0i
 2: 20i
 
-.code
+.func main 4 0
 NEWARRAY r0 5
 LOADK r1 0
 LOADK r2 1
@@ -58,10 +58,7 @@ SETINDEX r0 r2 r1
 LOADK r1 2
 GETINDEX r3 r0 r2
 RET r3
-
-.metadata
-registers: 4
-args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -96,23 +93,24 @@ args: 0
 	}
 
 	// Check metadata
-	if chunk.RegisterCount != 4 {
-		t.Errorf("Expected 4 registers, got %d", chunk.RegisterCount)
+	if len(chunk.Prototypes) == 0 || chunk.Prototypes[0].RegisterCount != 4 {
+		regCount := 0
+		if len(chunk.Prototypes) > 0 {
+			regCount = chunk.Prototypes[0].RegisterCount
+		}
+		t.Errorf("Expected 4 registers, got %d", regCount)
 	}
 }
 
 func TestAssembleObjectProgram(t *testing.T) {
 	source := `
-.code
+.func main 3 0
 NEWOBJ r0
 LOADK r1 0
 SETFIELD r0 1 r1
 GETFIELD r2 r0 1
 RET r2
-
-.metadata
-registers: 3
-args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -141,9 +139,8 @@ args: 0
 
 func TestDisassembleMemoryOpcodes(t *testing.T) {
 	chunk := vm.NewChunk()
-	chunk.RegisterCount = 3
-
 	// Add memory opcodes
+	codeStart := len(chunk.Code)
 	chunk.AddInstruction(vm.NewInstr(vm.OpNEWSTR, 0, 1, 0))
 	chunk.AddInstruction(vm.NewInstr(vm.OpNEWARRAY, 1, 10, 0))
 	chunk.AddInstruction(vm.NewInstr(vm.OpNEWOBJ, 2, 0, 0))
@@ -153,6 +150,16 @@ func TestDisassembleMemoryOpcodes(t *testing.T) {
 	chunk.AddInstruction(vm.NewInstr(vm.OpSETFIELD, 0, 3, 1))
 	chunk.AddInstruction(vm.NewInstr(vm.OpARRLEN, 0, 1, 0))
 	chunk.AddInstruction(vm.NewInstr(vm.OpGC, 0, 0, 0))
+	codeSize := len(chunk.Code) - codeStart
+
+	mainProto := vm.FunctionPrototype{
+		Name:          "main",
+		CodeStart:     codeStart,
+		CodeSize:      codeSize,
+		RegisterCount: 3,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	output := Disassemble(chunk)
 
@@ -180,7 +187,7 @@ func TestRoundTripMemoryProgram(t *testing.T) {
 0: 100i
 1: 0i
 
-.code
+.func main 5 0
   NEWARRAY r0 5
   LOADK r1 0
   LOADK r2 1
@@ -189,10 +196,7 @@ func TestRoundTripMemoryProgram(t *testing.T) {
   ARRLEN r4 r0
   GC
   RET r3
-
-.metadata
-  registers: 5
-  args: 0
+.endfunc
 `
 
 	// Assemble
@@ -221,8 +225,12 @@ func TestRoundTripMemoryProgram(t *testing.T) {
 		}
 	}
 
-	if chunk.RegisterCount != chunk2.RegisterCount {
-		t.Errorf("RegisterCount mismatch: %d != %d", chunk.RegisterCount, chunk2.RegisterCount)
+	if len(chunk.Prototypes) != len(chunk2.Prototypes) {
+		t.Errorf("Prototypes length mismatch: %d != %d", len(chunk.Prototypes), len(chunk2.Prototypes))
+	} else if len(chunk.Prototypes) > 0 {
+		if chunk.Prototypes[0].RegisterCount != chunk2.Prototypes[0].RegisterCount {
+			t.Errorf("RegisterCount mismatch: %d != %d", chunk.Prototypes[0].RegisterCount, chunk2.Prototypes[0].RegisterCount)
+		}
 	}
 }
 
@@ -231,15 +239,15 @@ func TestAssembleInvalidMemoryOpcodes(t *testing.T) {
 		name   string
 		source string
 	}{
-		{"NEWSTR wrong args", ".code\nNEWSTR r0"},
-		{"NEWARRAY wrong args", ".code\nNEWARRAY r0"},
-		{"NEWOBJ wrong args", ".code\nNEWOBJ r0 r1"},
-		{"GETINDEX wrong args", ".code\nGETINDEX r0 r1"},
-		{"SETINDEX wrong args", ".code\nSETINDEX r0"},
-		{"GETFIELD wrong args", ".code\nGETFIELD r0"},
-		{"SETFIELD wrong args", ".code\nSETFIELD r0 r1"},
-		{"ARRLEN wrong args", ".code\nARRLEN r0"},
-		{"GC wrong args", ".code\nGC r0"},
+		{"NEWSTR wrong args", ".func main 1 0\nNEWSTR r0\n.endfunc"},
+		{"NEWARRAY wrong args", ".func main 1 0\nNEWARRAY r0\n.endfunc"},
+		{"NEWOBJ wrong args", ".func main 2 0\nNEWOBJ r0 r1\n.endfunc"},
+		{"GETINDEX wrong args", ".func main 2 0\nGETINDEX r0 r1\n.endfunc"},
+		{"SETINDEX wrong args", ".func main 1 0\nSETINDEX r0\n.endfunc"},
+		{"GETFIELD wrong args", ".func main 1 0\nGETFIELD r0\n.endfunc"},
+		{"SETFIELD wrong args", ".func main 2 0\nSETFIELD r0 r1\n.endfunc"},
+		{"ARRLEN wrong args", ".func main 1 0\nARRLEN r0\n.endfunc"},
+		{"GC wrong args", ".func main 1 0\nGC r0\n.endfunc"},
 	}
 
 	for _, tt := range tests {

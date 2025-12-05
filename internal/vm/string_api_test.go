@@ -17,8 +17,7 @@ func TestStringAPIDirectCreation(t *testing.T) {
 		NewInstr(OpNEWSTR, 0, 0, 0),
 		NewInstr(OpRET, 0, 0, 0),
 	}
-	chunk.RegisterCount = 1
-	chunk.ArgCount = 0
+	addMainProto(chunk, 1, 0)
 
 	// Execute
 	result, err := v.Exec(chunk)
@@ -65,8 +64,7 @@ func TestStringAPIConcatenationProgram(t *testing.T) {
 		NewInstr(OpNEWSTR, 2, 2, 0), // r2 = "Gamma"
 		NewInstr(OpRET, 1, 0, 0),    // return r1
 	}
-	chunk.RegisterCount = 3
-	chunk.ArgCount = 0
+	addMainProto(chunk, 3, 0)
 
 	// Execute
 	result, err := v.Exec(chunk)
@@ -87,7 +85,7 @@ func TestStringAPIBytecodeFormatVersion(t *testing.T) {
 	chunk.StringPool = []string{"Test"}
 	chunk.Constants = []Value{NewInt(0)}
 	chunk.Code = []Instr{NewInstr(OpNOP, 0, 0, 0)}
-	chunk.RegisterCount = 1
+	addMainProto(chunk, 1, 0)
 
 	// Serialize
 	bytecode, err := SerializeChunk(chunk)
@@ -97,7 +95,7 @@ func TestStringAPIBytecodeFormatVersion(t *testing.T) {
 
 	// Check magic number (bytes 0-3)
 	magic := uint32(bytecode[0]) | uint32(bytecode[1])<<8 |
-	         uint32(bytecode[2])<<16 | uint32(bytecode[3])<<24
+		uint32(bytecode[2])<<16 | uint32(bytecode[3])<<24
 	expectedMagic := uint32(0x4C554D4E) // "LUMN"
 	if magic != expectedMagic {
 		t.Errorf("Expected magic 0x%X, got 0x%X", expectedMagic, magic)
@@ -105,7 +103,7 @@ func TestStringAPIBytecodeFormatVersion(t *testing.T) {
 
 	// Check version (bytes 4-7)
 	version := uint32(bytecode[4]) | uint32(bytecode[5])<<8 |
-	           uint32(bytecode[6])<<16 | uint32(bytecode[7])<<24
+		uint32(bytecode[6])<<16 | uint32(bytecode[7])<<24
 	expectedVersion := uint32(1)
 	if version != expectedVersion {
 		t.Errorf("Expected version %d, got %d", expectedVersion, version)
@@ -117,7 +115,7 @@ func TestStringAPIEmptyPool(t *testing.T) {
 	chunk := NewChunk()
 	chunk.StringPool = []string{} // Empty pool
 	chunk.Code = []Instr{NewInstr(OpNOP, 0, 0, 0)}
-	chunk.RegisterCount = 1
+	addMainProto(chunk, 1, 0)
 
 	// Serialize and deserialize
 	bytecode, err := SerializeChunk(chunk)
@@ -146,7 +144,7 @@ func TestStringAPILargePool(t *testing.T) {
 	}
 
 	chunk.Code = []Instr{NewInstr(OpNOP, 0, 0, 0)}
-	chunk.RegisterCount = 1
+	addMainProto(chunk, 1, 0)
 
 	// Serialize and deserialize
 	bytecode, err := SerializeChunk(chunk)
@@ -174,17 +172,17 @@ func TestStringAPILargePool(t *testing.T) {
 // TestStringAPISpecialCharacters tests strings with special UTF-8 characters
 func TestStringAPISpecialCharacters(t *testing.T) {
 	specialStrings := []string{
-		"",                           // empty
-		" ",                          // space
-		"\x00",                       // null byte
-		"a\x00b",                     // null in middle
-		"\u0001\u0002\u0003",        // control chars
-		"🎉🎊🎈",                     // emojis
-		"Ä Ö Ü ß",                   // German umlauts
-		"Привет мир",                 // Cyrillic
+		"",                         // empty
+		" ",                        // space
+		"\x00",                     // null byte
+		"a\x00b",                   // null in middle
+		"\u0001\u0002\u0003",       // control chars
+		"🎉🎊🎈",                      // emojis
+		"Ä Ö Ü ß",                  // German umlauts
+		"Привет мир",               // Cyrillic
 		"🇺🇸🇬🇧🇯🇵",                   // Flag emojis
-		"\n\r\t",                     // whitespace
-		string([]byte{0xFF, 0xFE}),   // invalid UTF-8
+		"\n\r\t",                   // whitespace
+		string([]byte{0xFF, 0xFE}), // invalid UTF-8
 	}
 
 	v := NewVM()
@@ -198,7 +196,7 @@ func TestStringAPISpecialCharacters(t *testing.T) {
 				NewInstr(OpNEWSTR, 0, 0, 0),
 				NewInstr(OpRET, 0, 0, 0),
 			}
-			chunk.RegisterCount = 1
+			addMainProto(chunk, 1, 0)
 
 			result, err := v.Exec(chunk)
 			if err != nil {
@@ -219,7 +217,7 @@ func TestStringAPIMemoryLayout(t *testing.T) {
 	chunk.StringPool = []string{"Short", "A much longer string with more content"}
 	chunk.Constants = []Value{NewInt(0), NewInt(1)}
 	chunk.Code = []Instr{NewInstr(OpNOP, 0, 0, 0)}
-	chunk.RegisterCount = 1
+	addMainProto(chunk, 1, 0)
 
 	bytecode, err := SerializeChunk(chunk)
 	if err != nil {
@@ -272,7 +270,7 @@ func TestStringAPINoFileIO(t *testing.T) {
 		chunk1.AddInstruction(NewInstr(OpNEWSTR, byte(i), byte(i), 0))
 	}
 	chunk1.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk1.RegisterCount = len(testStrings)
+	addMainProto(chunk1, len(testStrings), 0)
 
 	// Step 2: Serialize to memory buffer
 	bytecode, err := SerializeChunk(chunk1)
@@ -314,11 +312,11 @@ func TestStringAPIConstantsWithStrings(t *testing.T) {
 
 	// Mix regular constants with string pool indices
 	chunk.Constants = []Value{
-		NewInt(42),        // Regular int
-		NewNumber(3.14),   // Regular float
-		NewBool(true),     // Regular bool
-		NewInt(0),         // String pool index
-		NewInt(1),         // String pool index
+		NewInt(42),      // Regular int
+		NewNumber(3.14), // Regular float
+		NewBool(true),   // Regular bool
+		NewInt(0),       // String pool index
+		NewInt(1),       // String pool index
 	}
 
 	chunk.StringPool = []string{
@@ -328,14 +326,14 @@ func TestStringAPIConstantsWithStrings(t *testing.T) {
 
 	// Use both regular constants and strings
 	chunk.Code = []Instr{
-		NewInstr(OpLOADK, 0, 0, 0),    // r0 = 42 (int)
-		NewInstr(OpLOADK, 1, 1, 0),    // r1 = 3.14 (float)
-		NewInstr(OpLOADK, 2, 2, 0),    // r2 = true (bool)
-		NewInstr(OpNEWSTR, 3, 3, 0),   // r3 = "First string"
-		NewInstr(OpNEWSTR, 4, 4, 0),   // r4 = "Second string"
-		NewInstr(OpRET, 3, 0, 0),      // return first string
+		NewInstr(OpLOADK, 0, 0, 0),  // r0 = 42 (int)
+		NewInstr(OpLOADK, 1, 1, 0),  // r1 = 3.14 (float)
+		NewInstr(OpLOADK, 2, 2, 0),  // r2 = true (bool)
+		NewInstr(OpNEWSTR, 3, 3, 0), // r3 = "First string"
+		NewInstr(OpNEWSTR, 4, 4, 0), // r4 = "Second string"
+		NewInstr(OpRET, 3, 0, 0),    // return first string
 	}
-	chunk.RegisterCount = 5
+	addMainProto(chunk, 5, 0)
 
 	result, err := v.Exec(chunk)
 	if err != nil {

@@ -9,7 +9,7 @@ The memory management system consists of:
 1. **Fixed-size heap** - Pre-allocated memory pool (1MB by default)
 2. **NaN-boxed values** - Efficient 64-bit value representation with heap pointers
 3. **Mark-sweep GC** - Simple, stop-the-world garbage collection
-4. **Three heap object types** - String, Array, and Object/Map
+4. **Five heap object types** - String, Array, Object/Map, Function, and Upvalue
 
 ## Heap Architecture
 
@@ -121,6 +121,37 @@ obj.Set("name", NewInt(123))
 obj.Set("age", NewInt(25))
 val, ok := obj.Get("name")  // Returns 123, true
 ```
+
+### 4. Function Objects
+
+First-class functions and closures:
+
+```go
+type FunctionObj struct {
+    header   ObjHeader
+    chunk    *Chunk
+    protoIdx int
+    upvalues []*UpvalueObj
+}
+```
+
+**Operations:**
+- `AllocFunction(chunk *Chunk, protoIdx int)` - Allocate a new function closure
+
+### 5. Upvalue Objects
+
+Captured variables for closures:
+
+```go
+type UpvalueObj struct {
+    header   ObjHeader
+    location *Value
+    closed   Value
+}
+```
+
+**Operations:**
+- `AllocUpvalue(location *Value)` - Allocate a new upvalue
 
 ## Garbage Collection
 

@@ -122,8 +122,16 @@ type Chunk struct {
 
 ### Function Calls
 
-- `CALL r_func nargs` - Call function
-- `RET r_val` - Return from function
+### Function Calls & Closures
+
+- `NEWFUNC r_dest func_name` - Create a function object (or closure) from a prototype.
+- `NEWEXFUNC r_dest extern_name` - Create an external function object.
+- `CALL r_func nargs` - Call a function object in `r_func` with `nargs` arguments.
+- `RET r_val` - Return from function with value.
+- `CAPLOCAL r_func upval_idx local_reg` - Capture a local variable into a closure's upvalue slot.
+- `CAPUPVAL r_func upval_idx parent_upval_idx` - Capture an existing upvalue into a closure's upvalue slot.
+- `LDCAP r_dest upval_idx` - Load value from an upvalue.
+- `STCAP upval_idx r_src` - Store value to an upvalue.
 
 ## Instruction Encoding
 
@@ -163,10 +171,10 @@ type ObjHeader struct {
 
 Object types:
 
-- `ObjString` - Immutable string
-- `ObjArray` - Dynamic array
-- `ObjClosure` - Function closure
-- `ObjUpvalue` - Captured variable
+- `StringObj` - Immutable string
+- `ArrayObj` - Dynamic array
+- `FunctionObj` - Function closure
+- `UpvalueObj` - Captured variable
 
 ## Example Execution
 

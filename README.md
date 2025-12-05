@@ -74,15 +74,12 @@ Lumen assembly (.lasm) uses a simple text format:
   0: 10.0        ; floating point number
   1: 5i          ; integer (48-bit)
 
-.code
+.func main 3 0
   LOADK r0 0     ; load constant into register
   LOADK r1 1
   ADD r2 r0 r1   ; r2 = r0 + r1
   RET r2         ; return result
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 ```
 
 ### Value Types

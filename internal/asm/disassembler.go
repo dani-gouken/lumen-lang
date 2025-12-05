@@ -35,39 +35,77 @@ func Disassemble(chunk *vm.Chunk) string {
 	}
 	sb.WriteString("\n")
 
-	// Write code section
-	sb.WriteString(".code\n")
-	for i := 0; i < len(chunk.Code); i++ {
-		instr := chunk.Code[i]
-
-		// Check for LONG prefix
-		if instr.Op == vm.OpLONG {
-			if i+2 >= len(chunk.Code) {
-				sb.WriteString(fmt.Sprintf("  %04d: LONG (incomplete)\n", i))
-				break
+	// Write function prototypes (grouped by .func blocks)
+	if len(chunk.Prototypes) > 0 {
+		for _, proto := range chunk.Prototypes {
+			// Write .func header
+			if proto.UpvalueCount > 0 {
+				sb.WriteString(fmt.Sprintf(".func %s %d %d %d\n", proto.Name, proto.RegisterCount, proto.ArgCount, proto.UpvalueCount))
+			} else {
+				sb.WriteString(fmt.Sprintf(".func %s %d %d\n", proto.Name, proto.RegisterCount, proto.ArgCount))
 			}
 
-			opcodeInstr := chunk.Code[i+1]
-			offsetInstr := chunk.Code[i+2]
-			offset := vm.DecodeOffset32(offsetInstr)
-			targetIP := i + 3 + int(offset)
+			// Write instructions for this function
+			endIP := proto.CodeStart + proto.CodeSize
+			for i := proto.CodeStart; i < endIP && i < len(chunk.Code); i++ {
+				instr := chunk.Code[i]
 
-			sb.WriteString(fmt.Sprintf("  %04d: LONG\n", i))
-			sb.WriteString(fmt.Sprintf("  %04d: %s (target: %d, offset: %d)\n", i+1,
-				formatLongInstruction(opcodeInstr, targetIP, offset), targetIP, offset))
-			sb.WriteString(fmt.Sprintf("  %04d: [offset word]\n", i+2))
+				// Check for LONG prefix
+				if instr.Op == vm.OpLONG {
+					if i+2 >= len(chunk.Code) {
+						sb.WriteString(fmt.Sprintf("  %04d: LONG (incomplete)\n", i))
+						break
+					}
 
-			i += 2 // Skip the opcode and offset words
-		} else {
-			sb.WriteString(fmt.Sprintf("  %04d: %s\n", i, formatInstruction(instr, chunk)))
+					opcodeInstr := chunk.Code[i+1]
+					offsetInstr := chunk.Code[i+2]
+					offset := vm.DecodeOffset32(offsetInstr)
+					targetIP := i + 3 + int(offset)
+
+					sb.WriteString(fmt.Sprintf("  %04d: LONG\n", i))
+					sb.WriteString(fmt.Sprintf("  %04d: %s (target: %d, offset: %d)\n", i+1,
+						formatLongInstruction(opcodeInstr, targetIP, offset), targetIP, offset))
+					sb.WriteString(fmt.Sprintf("  %04d: [offset word]\n", i+2))
+
+					i += 2 // Skip the opcode and offset words
+				} else {
+					sb.WriteString(fmt.Sprintf("  %s\n", formatInstruction(instr, chunk)))
+				}
+			}
+
+			// Write .endfunc footer
+			sb.WriteString(".endfunc\n\n")
 		}
-	}
-	sb.WriteString("\n")
+	} else {
+		// Fallback: if no prototypes, write all code in a single block (legacy support)
+		sb.WriteString(".code\n")
+		for i := 0; i < len(chunk.Code); i++ {
+			instr := chunk.Code[i]
 
-	// Write metadata section
-	sb.WriteString(".metadata\n")
-	sb.WriteString(fmt.Sprintf("  registers: %d\n", chunk.RegisterCount))
-	sb.WriteString(fmt.Sprintf("  args: %d\n", chunk.ArgCount))
+			// Check for LONG prefix
+			if instr.Op == vm.OpLONG {
+				if i+2 >= len(chunk.Code) {
+					sb.WriteString(fmt.Sprintf("  %04d: LONG (incomplete)\n", i))
+					break
+				}
+
+				opcodeInstr := chunk.Code[i+1]
+				offsetInstr := chunk.Code[i+2]
+				offset := vm.DecodeOffset32(offsetInstr)
+				targetIP := i + 3 + int(offset)
+
+				sb.WriteString(fmt.Sprintf("  %04d: LONG\n", i))
+				sb.WriteString(fmt.Sprintf("  %04d: %s (target: %d, offset: %d)\n", i+1,
+					formatLongInstruction(opcodeInstr, targetIP, offset), targetIP, offset))
+				sb.WriteString(fmt.Sprintf("  %04d: [offset word]\n", i+2))
+
+				i += 2 // Skip the opcode and offset words
+			} else {
+				sb.WriteString(fmt.Sprintf("  %04d: %s\n", i, formatInstruction(instr, chunk)))
+			}
+		}
+		sb.WriteString("\n")
+	}
 
 	return sb.String()
 }
@@ -226,21 +264,39 @@ func formatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 	case vm.OpJMPIFNOT32:
 		return fmt.Sprintf("JMPIFNOT32 r%d", instr.A)
 
-	case vm.OpCALL32:
-		return fmt.Sprintf("CALL32 %d", instr.A)
-
 	case vm.OpCALL:
 		return fmt.Sprintf("CALL r%d %d", instr.A, instr.B)
+
+	case vm.OpNEWFUNC:
+		// Reverse lookup: show function name instead of numeric index
+		funcName := "???"
+		if int(instr.B) < len(chunk.Prototypes) {
+			funcName = chunk.Prototypes[instr.B].Name
+		}
+		return fmt.Sprintf("NEWFUNC r%d %s", instr.A, funcName)
+
+	case vm.OpNEWEXFUNC:
+		// Reverse lookup: show extern function name instead of numeric index
+		externName := "unknown"
+		if int(instr.B) < len(chunk.ExternNames) {
+			externName = chunk.ExternNames[instr.B]
+		}
+		return fmt.Sprintf("NEWEXFUNC r%d %s", instr.A, externName)
 
 	case vm.OpRET:
 		return fmt.Sprintf("RET r%d", instr.A)
 
-	case vm.OpCALLEXTERN:
-		externName := "unknown"
-		if int(instr.A) < len(chunk.ExternNames) {
-			externName = chunk.ExternNames[instr.A]
-		}
-		return fmt.Sprintf("CALLEXTERN %s %d", externName, instr.B)
+	case vm.OpCAPLOCAL:
+		return fmt.Sprintf("CAPLOCAL r%d %d r%d", instr.A, instr.B, instr.C)
+
+	case vm.OpCAPUPVAL:
+		return fmt.Sprintf("CAPUPVAL r%d %d %d", instr.A, instr.B, instr.C)
+
+	case vm.OpLDCAP:
+		return fmt.Sprintf("LDCAP r%d %d", instr.A, instr.B)
+
+	case vm.OpSTCAP:
+		return fmt.Sprintf("STCAP %d r%d", instr.A, instr.B)
 
 	case vm.OpNEWSTR:
 		return fmt.Sprintf("NEWSTR r%d %d", instr.A, instr.B)
@@ -292,8 +348,6 @@ func formatLongInstruction(instr vm.Instr, targetIP int, offset int32) string {
 		return fmt.Sprintf("JMPIF32 r%d", instr.A)
 	case vm.OpJMPIFNOT32:
 		return fmt.Sprintf("JMPIFNOT32 r%d", instr.A)
-	case vm.OpCALL32:
-		return fmt.Sprintf("CALL32 %d", instr.A)
 	default:
 		return fmt.Sprintf("UNKNOWN_LONG(%d)", instr.Op)
 	}

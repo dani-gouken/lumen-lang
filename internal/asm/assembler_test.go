@@ -12,15 +12,12 @@ func TestAssembleSimpleProgram(t *testing.T) {
   0: 10i
   1: 20i
 
-.code
+.func main 3 0
   LOADK r0 0
   LOADK r1 1
   ADD r2 r0 r1
   RET r2
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -34,11 +31,15 @@ func TestAssembleSimpleProgram(t *testing.T) {
 	if len(chunk.Code) != 4 {
 		t.Errorf("expected 4 instructions, got %d", len(chunk.Code))
 	}
-	if chunk.RegisterCount != 3 {
-		t.Errorf("expected 3 registers, got %d", chunk.RegisterCount)
+	if len(chunk.Prototypes) != 1 {
+		t.Fatalf("expected 1 prototype, got %d", len(chunk.Prototypes))
 	}
-	if chunk.ArgCount != 0 {
-		t.Errorf("expected 0 args, got %d", chunk.ArgCount)
+	proto := chunk.Prototypes[0]
+	if proto.RegisterCount != 3 {
+		t.Errorf("expected 3 registers, got %d", proto.RegisterCount)
+	}
+	if proto.ArgCount != 0 {
+		t.Errorf("expected 0 args, got %d", proto.ArgCount)
 	}
 }
 
@@ -60,12 +61,9 @@ func TestAssembleValueTypes(t *testing.T) {
 			source := `.constants 1
   0: ` + tt.constant + `
 
-.code
+.func main 0 0
   NOP
-
-.metadata
-  registers: 0
-  args: 0
+.endfunc
 `
 			chunk, err := Assemble(source)
 			if err != nil {
@@ -103,13 +101,10 @@ func TestAssembleStringLiterals(t *testing.T) {
 			source := `.constants 1
   0: ` + tt.constant + `
 
-.code
+.func main 1 0
   NEWSTR r0 0
   RET r0
-
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 			chunk, err := Assemble(source)
 			if err != nil {
@@ -145,15 +140,12 @@ func TestAssembleMultipleStrings(t *testing.T) {
   1: "Second"
   2: "Third"
 
-.code
+.func main 3 0
   NEWSTR r0 0
   NEWSTR r1 1
   NEWSTR r2 2
   RET r0
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -191,7 +183,7 @@ func TestAssembleAllInstructions(t *testing.T) {
   0: 10i
   1: 5i
 
-.code
+.func main 18 0
   NOP
   MOV r1 r0
   LOADK r0 0
@@ -226,10 +218,7 @@ func TestAssembleAllInstructions(t *testing.T) {
   JMPIFNOT r0 5
   CALL r0 2
   RET r0
-
-.metadata
-  registers: 18
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -261,13 +250,10 @@ func TestAssembleWithComments(t *testing.T) {
 	source := `.constants 1
   0: 42i  ; the answer
 
-.code
+.func main 1 0  ; main function
   LOADK r0 0  ; load the answer
   RET r0      ; return it
-
-.metadata
-  registers: 1  ; only need one
-  args: 0       ; no arguments
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -285,16 +271,11 @@ func TestAssembleEmptyLines(t *testing.T) {
   0: 1i
 
 
-.code
-
+.func main 1 0
   LOADK r0 0
 
   RET r0
-
-
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	chunk, err := Assemble(source)
@@ -310,12 +291,9 @@ func TestAssembleEmptyLines(t *testing.T) {
 func TestAssembleErrorInvalidInstruction(t *testing.T) {
 	source := `.constants 0
 
-.code
+.func main 1 0
   INVALID r0 r1
-
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	_, err := Assemble(source)
@@ -330,12 +308,9 @@ func TestAssembleErrorInvalidInstruction(t *testing.T) {
 func TestAssembleErrorInvalidRegister(t *testing.T) {
 	source := `.constants 0
 
-.code
+.func main 1 0
   LOADNULL x0
-
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	_, err := Assemble(source)
@@ -347,12 +322,9 @@ func TestAssembleErrorInvalidRegister(t *testing.T) {
 func TestAssembleErrorRegisterOutOfRange(t *testing.T) {
 	source := `.constants 0
 
-.code
+.func main 1 0
   LOADNULL r256
-
-.metadata
-  registers: 1
-  args: 0
+.endfunc
 `
 
 	_, err := Assemble(source)
@@ -365,12 +337,9 @@ func TestAssembleErrorInvalidValue(t *testing.T) {
 	source := `.constants 1
   0: not_a_value
 
-.code
+.func main 0 0
   NOP
-
-.metadata
-  registers: 0
-  args: 0
+.endfunc
 `
 
 	_, err := Assemble(source)
@@ -393,12 +362,9 @@ func TestAssembleErrorWrongArgumentCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			source := `.constants 0
 
-.code
+.func main 3 0
   ` + tt.source + `
-
-.metadata
-  registers: 3
-  args: 0
+.endfunc
 `
 			_, err := Assemble(source)
 			if err == nil {

@@ -18,9 +18,7 @@ func TestStringCreationAndExecution(t *testing.T) {
 	chunk.AddInstruction(NewInstr(OpNEWSTR, 0, 0, 0))
 	// RET r0
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-
-	chunk.RegisterCount = 1
-	chunk.ArgCount = 0
+	addMainProto(chunk, 1, 0)
 
 	result, err := v.Exec(chunk)
 	if err != nil {
@@ -64,7 +62,14 @@ func TestStringWithEscapeSequences(t *testing.T) {
 			chunk.AddConstant(NewInt(int64(strIdx)))
 			chunk.AddInstruction(NewInstr(OpNEWSTR, 0, 0, 0))
 			chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-			chunk.RegisterCount = 1
+			mainProto := FunctionPrototype{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      2,
+				RegisterCount: 1,
+				ArgCount:      0,
+			}
+			chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 			result, err := v.Exec(chunk)
 			if err != nil {
@@ -99,7 +104,14 @@ func TestStringPoolMultipleStrings(t *testing.T) {
 
 	// Return the third string (r2)
 	chunk.AddInstruction(NewInstr(OpRET, 2, 0, 0))
-	chunk.RegisterCount = 5
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 5,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	result, err := v.Exec(chunk)
 	if err != nil {
@@ -122,7 +134,14 @@ func TestStringEmptyString(t *testing.T) {
 	chunk.AddConstant(NewInt(int64(strIdx)))
 	chunk.AddInstruction(NewInstr(OpNEWSTR, 0, 0, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	result, err := v.Exec(chunk)
 	if err != nil {
@@ -151,7 +170,14 @@ func TestStringLongString(t *testing.T) {
 	chunk.AddConstant(NewInt(int64(strIdx)))
 	chunk.AddInstruction(NewInstr(OpNEWSTR, 0, 0, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	result, err := v.Exec(chunk)
 	if err != nil {
@@ -187,7 +213,14 @@ func TestStringUnicodeSupport(t *testing.T) {
 			chunk.AddConstant(NewInt(int64(strIdx)))
 			chunk.AddInstruction(NewInstr(OpNEWSTR, 0, 0, 0))
 			chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-			chunk.RegisterCount = 1
+			mainProto := FunctionPrototype{
+				Name:          "main",
+				CodeStart:     0,
+				CodeSize:      2,
+				RegisterCount: 1,
+				ArgCount:      0,
+			}
+			chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 			result, err := v.Exec(chunk)
 			if err != nil {
@@ -222,7 +255,7 @@ func TestStringSerializationRoundTrip(t *testing.T) {
 
 	chunk1.AddInstruction(NewInstr(OpNEWSTR, 0, 0, 0))
 	chunk1.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk1.RegisterCount = 1
+	addMainProto(chunk1, 1, 0)
 
 	// Serialize
 	bytecode, err := SerializeChunk(chunk1)
@@ -280,7 +313,14 @@ func TestStringErrorInvalidPoolIndex(t *testing.T) {
 
 	chunk.AddInstruction(NewInstr(OpNEWSTR, 0, 0, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	_, err := v.Exec(chunk)
 	if err == nil {
@@ -302,7 +342,14 @@ func TestStringErrorNonIntegerConstant(t *testing.T) {
 
 	chunk.AddInstruction(NewInstr(OpNEWSTR, 0, 0, 0))
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	_, err := v.Exec(chunk)
 	if err == nil {
@@ -333,7 +380,14 @@ func TestStringGarbageCollection(t *testing.T) {
 	}
 
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
-	chunk.RegisterCount = 1
+	mainProto := FunctionPrototype{
+		Name:          "main",
+		CodeStart:     0,
+		CodeSize:      2,
+		RegisterCount: 1,
+		ArgCount:      0,
+	}
+	chunk.Prototypes = append(chunk.Prototypes, mainProto)
 
 	result, err := v.Exec(chunk)
 	if err != nil {
@@ -358,7 +412,7 @@ func TestStringGarbageCollection(t *testing.T) {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
 		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-		findSubstring(s, substr)))
+			findSubstring(s, substr)))
 }
 
 func findSubstring(s, substr string) bool {
