@@ -78,7 +78,7 @@ func IsAssignable(target, source Type, registry *ImplRegistry) bool {
 		if structType, ok := source.(*StructType); ok {
 			return registry.Implements(structType.Name, targetBehavior.Name)
 		}
-		
+
 		// Case 4b: Source is an Intersection -> Check if it contains the behavior
 		if sourceIntersection, ok := source.(*IntersectionType); ok {
 			for _, b := range sourceIntersection.Behaviors {
