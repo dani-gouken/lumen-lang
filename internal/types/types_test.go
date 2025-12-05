@@ -125,7 +125,7 @@ func TestIsCastable(t *testing.T) {
 
 		// Downcasts (Unsafe but allowed)
 		{"Any -> Int", Int, Any, true},
-		{"ErrorLike -> MyError", myError, errorLike, true}, // Allowed because MyError implements ErrorLike
+		{"ErrorLike -> MyError", myError, errorLike, true},    // Allowed because MyError implements ErrorLike
 		{"ErrorLike -> Other", otherStruct, errorLike, false}, // Not allowed: Other doesn't implement ErrorLike
 
 		// Side-casts
