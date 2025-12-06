@@ -1,0 +1,214 @@
+package desugar
+
+import (
+	"github.com/yourname/lumen/internal/ast"
+	"github.com/yourname/lumen/internal/token"
+	"github.com/yourname/lumen/internal/types"
+)
+
+// desugarMatchStmt transforms a match statement into nested if-else statements
+//
+// Simple Value Matching:
+//   match x {
+//     case 1: { action1(); }
+//     case 2: { action2(); }
+//     default: { defaultAction(); }
+//   }
+//
+// Becomes:
+//   if x == 1 {
+//     action1();
+//   } else if x == 2 {
+//     action2();
+//   } else {
+//     defaultAction();
+//   }
+//
+// Type Matching:
+//   match value {
+//     case Int: { handleInt(); }
+//     case String: { handleString(); }
+//   }
+//
+// Becomes:
+//   {
+//     let __match_tmp_N = value;
+//     if __is_type(__match_tmp_N, Int) {
+//       handleInt();
+//     } else if __is_type(__match_tmp_N, String) {
+//       handleString();
+//     }
+//   }
+func (d *Desugarer) desugarMatchStmt(match *ast.MatchStmt) ast.Stmt {
+	pos := match.Position()
+
+	// Desugar the matched expression
+	matchedExpr := d.desugarExpr(match.Cond)
+
+	// If we have no cases, return an empty block
+	if len(match.Cases) == 0 {
+		return d.wrapInBlock([]ast.Stmt{}, pos)
+	}
+
+	// Check if we need a temporary variable
+	// We use a temporary if:
+	// 1. The expression is complex (not just an identifier or literal)
+	// 2. We have type matching or enum variant matching
+	needsTemp := d.isComplexExpr(matchedExpr) || d.hasTypeOrEnumMatching(match.Cases)
+
+	var tmpVar string
+	var tmpVarExpr ast.Expr
+	var stmts []ast.Stmt
+
+	if needsTemp {
+		// Generate temporary variable: let __match_tmp_N = matched_expr;
+		tmpVar = d.generateMatchVar()
+		tmpVarType := d.inferTypeFromExpr(match.Cond, pos)
+
+		tmpInit := &ast.LetStmt{
+			BaseNode: ast.BaseNode{Pos: pos},
+			Name:     tmpVar,
+			Type:     tmpVarType,
+			Value:    matchedExpr,
+			IsConst:  false,
+		}
+
+		tmpVarExpr = d.createIdent(tmpVar, pos)
+		if exprType, ok := d.typeInfo.Types[match.Cond]; ok {
+			d.typeInfo.Types[tmpVarExpr] = exprType
+		}
+
+		stmts = append(stmts, tmpInit)
+	} else {
+		tmpVarExpr = matchedExpr
+	}
+
+	// Build the if-else chain
+	var ifChain ast.Stmt
+	for i := len(match.Cases) - 1; i >= 0; i-- {
+		caseStmt := match.Cases[i]
+		ifChain = d.buildMatchCase(tmpVarExpr, caseStmt, ifChain, pos)
+	}
+
+	if needsTemp {
+		stmts = append(stmts, ifChain)
+		block := d.wrapInBlock(stmts, pos)
+		d.info.Mapping[match] = block
+		return block
+	}
+
+	d.info.Mapping[match] = ifChain
+	return ifChain
+}
+
+// buildMatchCase builds a single case in the if-else chain
+func (d *Desugarer) buildMatchCase(matchedExpr ast.Expr, caseStmt *ast.MatchCase, elseStmt ast.Stmt, pos token.Position) ast.Stmt {
+	// Desugar the case body
+	var caseBody *ast.BlockStmt
+	switch body := caseStmt.Body.(type) {
+	case *ast.BlockStmt:
+		caseBody = d.desugarStmt(body).(*ast.BlockStmt)
+	case ast.Expr:
+		// Convert expression to expression statement in block
+		exprStmt := &ast.ExprStmt{
+			BaseNode: ast.BaseNode{Pos: body.Position()},
+			Expr:     d.desugarExpr(body),
+		}
+		caseBody = d.wrapInBlock([]ast.Stmt{exprStmt}, body.Position())
+	case ast.Stmt:
+		caseBody = d.wrapInBlock([]ast.Stmt{d.desugarStmt(body)}, body.Position())
+	default:
+		caseBody = d.wrapInBlock([]ast.Stmt{}, pos)
+	}
+
+	// Build the condition based on the pattern type
+	var condition ast.Expr
+
+	switch pattern := caseStmt.Pattern.(type) {
+	case *ast.Type:
+		// Type matching: __is_type(matched_expr, Type)
+		condition = d.createTypeCheckCall(matchedExpr, pattern, pos)
+
+	case ast.Expr:
+		// Value matching: matched_expr == pattern
+		patternExpr := d.desugarExpr(pattern)
+		condition = d.createBinaryExpr(matchedExpr, "==", patternExpr, pos)
+		d.typeInfo.Types[condition] = types.Bool
+
+	default:
+		// Default case or unsupported pattern - always true
+		condition = d.createBoolLiteral(true, pos)
+		d.typeInfo.Types[condition] = types.Bool
+	}
+
+	// Build the if statement
+	ifStmt := &ast.IfStmt{
+		BaseNode: ast.BaseNode{Pos: pos},
+		Cond:     condition,
+		Then:     caseBody,
+		Else:     elseStmt,
+	}
+
+	return ifStmt
+}
+
+// createTypeCheckCall creates a call to the __is_type intrinsic function
+func (d *Desugarer) createTypeCheckCall(expr ast.Expr, typ *ast.Type, pos token.Position) ast.Expr {
+	// Create __is_type function identifier
+	isTypeFunc := d.createIdent("__is_type", pos)
+	d.typeInfo.Types[isTypeFunc] = types.NewFunction(
+		[]types.Type{types.Any, types.Any},
+		types.Bool,
+	)
+
+	// Create type identifier from the type
+	typeIdent := d.createIdent(typ.Name, pos)
+
+	// Create the call: __is_type(expr, Type)
+	call := &ast.CallExpr{
+		BaseNode: ast.BaseNode{Pos: pos},
+		Func:     isTypeFunc,
+		Args:     []ast.Expr{expr, typeIdent},
+	}
+
+	d.typeInfo.Types[call] = types.Bool
+	return call
+}
+
+// isComplexExpr determines if an expression is complex enough to need a temporary variable
+func (d *Desugarer) isComplexExpr(expr ast.Expr) bool {
+	switch expr.(type) {
+	case *ast.Ident, *ast.Literal:
+		return false
+	default:
+		return true
+	}
+}
+
+// hasTypeOrEnumMatching checks if any cases use type or enum matching
+func (d *Desugarer) hasTypeOrEnumMatching(cases []*ast.MatchCase) bool {
+	for _, c := range cases {
+		if _, isType := c.Pattern.(*ast.Type); isType {
+			return true
+		}
+		// Check for enum variant matching (CallExpr pattern)
+		if _, isCall := c.Pattern.(*ast.CallExpr); isCall {
+			return true
+		}
+	}
+	return false
+}
+
+// inferTypeFromExpr infers the AST type from an expression
+func (d *Desugarer) inferTypeFromExpr(expr ast.Expr, pos token.Position) *ast.Type {
+	if exprType, ok := d.typeInfo.Types[expr]; ok {
+		return d.typeToASTType(exprType, pos)
+	}
+
+	// Default to Any type
+	return &ast.Type{
+		BaseNode: ast.BaseNode{Pos: pos},
+		Kind:     ast.TypeBasic,
+		Name:     "Any",
+	}
+}

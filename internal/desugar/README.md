@@ -1,0 +1,269 @@
+# AST Desugaring Implementation
+
+This package implements AST desugaring for the Lumen programming language, transforming complex syntactic constructs into simpler, more primitive forms.
+
+## Overview
+
+The desugaring phase transforms:
+- **For loops** → While loops with explicit iteration
+- **Match statements** → If-else chains
+- **Short-circuit operators** (`&&`, `||`) → Explicit control flow with temporary variables
+- **Null coalescing** (`??`) → Conditional assignments
+
+This simplification reduces complexity for later compilation stages (closure analysis, IR generation) while preserving program semantics.
+
+## Key Design Decisions
+
+### Statement-Level Desugaring for Short-Circuit Operators
+
+Short-circuit operators (`&&`, `||`, `??`) are **fully desugared** when they appear in statement contexts:
+
+```lumen
+// Original
+let result = func1() && func2();
+
+// Desugared
+{
+  let __tmp_0 = func1();
+  let __tmp_1 = false;
+  if __tmp_0 {
+    __tmp_1 = func2();
+  }
+  let result = __tmp_1;
+}
+```
+
+The key insight: **We CAN transform expressions into statements** by:
+1. Detecting short-circuit operators at the statement level (`containsShortCircuit`)
+2. Hoisting the desugaring logic to generate pre-statements
+3. Wrapping the result in a block statement
+
+This works for:
+- **If/while conditions**: `if a() && b() { ... }`
+- **Let statements**: `let x = a() || b();`
+- **Return statements**: (can be extended similarly)
+
+### Expression-Level Fallback
+
+When short-circuit operators appear in pure expression contexts (e.g., nested in function arguments without being in a let/if/while), we:
+1. Recursively desugar the operands
+2. Keep the operator itself
+3. Let IR generation handle the short-circuit semantics
+
+This is rare in practice because most real-world code uses these operators in statement contexts.
+
+## Architecture
+
+### Main Components
+
+- **`desugar.go`**: Core desugarer, orchestrates transformations
+- **`for_loop.go`**: For-loop → while-loop transformation
+- **`match.go`**: Match statement → if-else transformation
+- **`binary_expr.go`**: Short-circuit operator desugaring
+
+### Data Structures
+
+```go
+type Desugarer struct {
+    prog         *ast.Program
+    typeInfo     *types.Info
+    resolveTable *resolve.Table
+    errs         *errors.Handler
+    tmpCounter   int
+    info         *DesugarInfo
+}
+
+type DesugarInfo struct {
+    Mapping map[ast.Node]ast.Node  // Original → Desugared
+    TmpVars map[string]string       // Variable → Purpose
+}
+```
+
+## Transformations
+
+### 1. For-Loop Desugaring
+
+```lumen
+// Before
+for item in collection {
+    body
+}
+
+// After
+{
+    let __iter_0 = 0;
+    let __len_0 = collection.length;
+    while __iter_0 < __len_0 {
+        let item = collection[__iter_0];
+        body
+        __iter_0 = __iter_0 + 1;
+    }
+}
+```
+
+**Implementation**: [for_loop.go:20](./for_loop.go#L20)
+
+**Features**:
+- Generates unique iterator (`__iter_N`) and length (`__len_N`) variables
+- Preserves original loop variable name
+- Updates type information for generated variables
+- Handles both arrays and strings
+
+### 2. Match Statement Desugaring
+
+```lumen
+// Before
+match x {
+    case 1: { action1(); }
+    case 2: { action2(); }
+    default: { defaultAction(); }
+}
+
+// After
+if x == 1 {
+    action1();
+} else if x == 2 {
+    action2();
+} else {
+    defaultAction();
+}
+```
+
+**Implementation**: [match.go:51](./match.go#L51)
+
+**Features**:
+- Handles value matching (literals, expressions)
+- Supports type matching with `__is_type` intrinsic
+- Generates temporary variables for complex matched expressions
+- Preserves pattern order and semantics
+
+### 3. Short-Circuit Operators
+
+#### In Conditions
+
+```lumen
+// Before
+if a() && b() {
+    action();
+}
+
+// After
+{
+    let __tmp_0 = a();
+    let __tmp_1 = false;
+    if __tmp_0 {
+        __tmp_1 = b();
+    }
+    if __tmp_1 {
+        action();
+    }
+}
+```
+
+**Implementation**: [binary_expr.go:94](./binary_expr.go#L94)
+
+#### In Let Statements
+
+```lumen
+// Before
+let result = func1() || func2();
+
+// After
+{
+    let __tmp_0 = func1();
+    let __tmp_1 = true;
+    if !__tmp_0 {
+        __tmp_1 = func2();
+    }
+    let result = __tmp_1;
+}
+```
+
+**Implementation**: [desugar.go:182](./desugar.go#L182)
+
+## Type Information Management
+
+The desugarer maintains type information for generated nodes:
+
+```go
+// Iterator variables get Int type
+iterIdent := d.createIdent(iterVar, pos)
+d.typeInfo.Types[iterIdent] = types.Int
+
+// Result variables inherit expression types
+if exprType, ok := d.typeInfo.Types[expr]; ok {
+    d.typeInfo.Types[tmpVarExpr] = exprType
+}
+```
+
+This ensures type-checking passes can still work with desugared code.
+
+## Usage
+
+```go
+import (
+    "github.com/yourname/lumen/internal/desugar"
+    "github.com/yourname/lumen/internal/ast"
+    "github.com/yourname/lumen/internal/types"
+    "github.com/yourname/lumen/internal/resolve"
+    "github.com/yourname/lumen/internal/errors"
+)
+
+// After monomorphization, type checking, and name resolution:
+desugarer := desugar.NewDesugarer(prog, typeInfo, resolveTable, errHandler)
+desugaredProg, desugarInfo := desugarer.Desugar()
+
+// Use desugaredProg for further compilation stages
+// Use desugarInfo for debugging (mapping original → desugared nodes)
+```
+
+## Testing
+
+Run tests:
+```bash
+go test ./internal/desugar/... -v
+```
+
+Test coverage includes:
+- For loop desugaring (simple, nested, with break/continue)
+- Match statement desugaring (value, type, enum matching)
+- Short-circuit operators in conditions
+- Short-circuit operators in let statements
+- Edge cases (empty programs, complex nesting)
+
+## Integration with Compilation Pipeline
+
+Position in pipeline:
+```
+Source → Parse → Resolve → TypeCheck → Monomorphize → **Desugar** → ClosureAnalysis → IRGen → Bytecode
+```
+
+**Inputs**:
+- Monomorphized AST (no generic type parameters)
+- Complete type information
+- Name resolution table
+
+**Outputs**:
+- Simplified AST (while loops only, no match, explicit short-circuit)
+- DesugarInfo for debugging
+
+## Performance
+
+- **Time complexity**: O(n) where n = AST size (single-pass traversal)
+- **Space complexity**: O(n) for temporary node storage
+- **Code size impact**: For loops expand 3-4x, match expands linearly with cases
+
+The IR optimizer can eliminate many temporary variables introduced during desugaring.
+
+## Future Extensions
+
+Potential additions:
+- String interpolation → concatenation
+- List comprehensions → for loops
+- Optional chaining (`?.`) → explicit null checks
+- Pattern matching with destructuring
+- Range-based for loops
+
+## References
+
+See [docs/compilation/desugaring.md](../../docs/compilation/desugaring.md) for the full specification.
