@@ -69,7 +69,10 @@ func TestDesugarForLoop(t *testing.T) {
 	resolveTable := resolve.NewTable()
 	errs := errors.NewHandler()
 
-	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs)
+	// Create empty source lines map (no source context needed for this test)
+	sourceLines := make(map[int]string)
+
+	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs, sourceLines)
 	desugaredProg, info := desugarer.Desugar()
 
 	if errs.HasErrors() {
@@ -227,7 +230,10 @@ func TestDesugarMatchStatement(t *testing.T) {
 	resolveTable := resolve.NewTable()
 	errs := errors.NewHandler()
 
-	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs)
+	// Create empty source lines map
+	sourceLines := make(map[int]string)
+
+	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs, sourceLines)
 	desugaredProg, _ := desugarer.Desugar()
 
 	if errs.HasErrors() {
@@ -341,7 +347,10 @@ func TestDesugarShortCircuitAnd(t *testing.T) {
 	resolveTable := resolve.NewTable()
 	errs := errors.NewHandler()
 
-	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs)
+	// Create empty source lines map (no source context needed for this test)
+	sourceLines := make(map[int]string)
+
+	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs, sourceLines)
 	desugaredProg, info := desugarer.Desugar()
 
 	if errs.HasErrors() {
@@ -378,7 +387,10 @@ func TestDesugarEmptyProgram(t *testing.T) {
 	resolveTable := resolve.NewTable()
 	errs := errors.NewHandler()
 
-	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs)
+	// Create empty source lines map
+	sourceLines := make(map[int]string)
+
+	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs, sourceLines)
 	desugaredProg, _ := desugarer.Desugar()
 
 	if errs.HasErrors() {
@@ -458,7 +470,10 @@ func TestDesugarLetWithShortCircuit(t *testing.T) {
 	resolveTable := resolve.NewTable()
 	errs := errors.NewHandler()
 
-	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs)
+	// Create empty source lines map (no source context needed for this test)
+	sourceLines := make(map[int]string)
+
+	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs, sourceLines)
 	desugaredProg, info := desugarer.Desugar()
 
 	if errs.HasErrors() {
@@ -493,13 +508,20 @@ func TestDesugarNestedForLoops(t *testing.T) {
 	// Create nested for loops: for i in arr1 { for j in arr2 { ... } }
 	pos := token.Position{File: "test.lum", Line: 1, Col: 1}
 
+	// Create the identifiers first so we can use the same instances
+	arr1Ident := &ast.Ident{
+		BaseNode: ast.BaseNode{Pos: pos},
+		Name:     "arr1",
+	}
+	arr2Ident := &ast.Ident{
+		BaseNode: ast.BaseNode{Pos: pos},
+		Name:     "arr2",
+	}
+
 	innerFor := &ast.ForStmt{
 		BaseNode: ast.BaseNode{Pos: pos},
 		Var:      "j",
-		Iterable: &ast.Ident{
-			BaseNode: ast.BaseNode{Pos: pos},
-			Name:     "arr2",
-		},
+		Iterable: arr2Ident,
 		Body: &ast.BlockStmt{
 			BaseNode: ast.BaseNode{Pos: pos},
 			Stmts:    []ast.Stmt{},
@@ -509,10 +531,7 @@ func TestDesugarNestedForLoops(t *testing.T) {
 	outerFor := &ast.ForStmt{
 		BaseNode: ast.BaseNode{Pos: pos},
 		Var:      "i",
-		Iterable: &ast.Ident{
-			BaseNode: ast.BaseNode{Pos: pos},
-			Name:     "arr1",
-		},
+		Iterable: arr1Ident,
 		Body: &ast.BlockStmt{
 			BaseNode: ast.BaseNode{Pos: pos},
 			Stmts:    []ast.Stmt{innerFor},
@@ -535,15 +554,16 @@ func TestDesugarNestedForLoops(t *testing.T) {
 	}
 
 	typeInfo := types.NewInfo()
-	arr1Ident := &ast.Ident{BaseNode: ast.BaseNode{Pos: pos}, Name: "arr1"}
-	arr2Ident := &ast.Ident{BaseNode: ast.BaseNode{Pos: pos}, Name: "arr2"}
 	typeInfo.Types[arr1Ident] = types.NewArray(types.Int)
 	typeInfo.Types[arr2Ident] = types.NewArray(types.Int)
 
 	resolveTable := resolve.NewTable()
 	errs := errors.NewHandler()
 
-	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs)
+	// Create empty source lines map (no source context needed for this test)
+	sourceLines := make(map[int]string)
+
+	desugarer := NewDesugarer(prog, typeInfo, resolveTable, errs, sourceLines)
 	desugaredProg, info := desugarer.Desugar()
 
 	if errs.HasErrors() {

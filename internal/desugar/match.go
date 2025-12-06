@@ -50,6 +50,14 @@ func (d *Desugarer) desugarMatchStmt(match *ast.MatchStmt) ast.Stmt {
 		return d.wrapInBlock([]ast.Stmt{}, pos)
 	}
 
+	// Validate all patterns
+	for _, caseStmt := range match.Cases {
+		if !d.validateMatchPattern(caseStmt.Pattern) {
+			// Continue processing other cases even if one fails
+			// This allows reporting multiple errors at once
+		}
+	}
+
 	// Check if we need a temporary variable
 	// We use a temporary if:
 	// 1. The expression is complex (not just an identifier or literal)

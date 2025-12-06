@@ -60,6 +60,7 @@ This is rare in practice because most real-world code uses these operators in st
 - **`for_loop.go`**: For-loop → while-loop transformation
 - **`match.go`**: Match statement → if-else transformation
 - **`binary_expr.go`**: Short-circuit operator desugaring
+- **`errors.go`**: Error reporting with rich diagnostics and suggestions
 
 ### Data Structures
 
@@ -217,6 +218,46 @@ desugaredProg, desugarInfo := desugarer.Desugar()
 // Use desugarInfo for debugging (mapping original → desugared nodes)
 ```
 
+## Error Reporting
+
+The desugarer provides comprehensive error diagnostics with helpful context and suggestions:
+
+### Error Codes
+
+| Code | Description | Example |
+|------|-------------|---------|
+| **E4001** | Unsupported Iterable | `for x in 42 { }` - can't iterate over Int |
+| **E4002** | Invalid Match Pattern | Unsupported pattern in match statement |
+| **E4003** | Missing Type Info | Type information missing (internal error) |
+| **E4004** | Nested Short-Circuit | Warning for deeply nested `&&`/`||` |
+| **E4005** | Unsupported Match Type | Complex type patterns not supported |
+| **E4006** | Enum Variant Extraction | Invalid enum variant pattern |
+
+### Example Error Output
+
+```
+[ERROR] E4001: Cannot iterate over type 'int'
+  --> src/main.lum:10:5
+   10 | for x in count {
+      |          ^^^^^
+   = Suggestion: Only arrays and strings are iterable. Consider using a while loop or converting to an array.
+```
+
+### Validation Checks
+
+The desugarer validates:
+- **For loops**: Iterable type must be array or string
+- **Match patterns**: Must be literals, identifiers, or type names
+- **Type information**: All expressions must have type info from previous phases
+- **Complexity**: Warns about deeply nested short-circuit operators (depth ≥ 5)
+
+### Error Recovery
+
+The desugarer continues processing after errors to report multiple issues:
+- Invalid patterns in match statements don't stop validation of other patterns
+- Type errors are collected and reported together
+- Warnings don't prevent desugaring from completing
+
 ## Testing
 
 Run tests:
@@ -230,6 +271,8 @@ Test coverage includes:
 - Short-circuit operators in conditions
 - Short-circuit operators in let statements
 - Edge cases (empty programs, complex nesting)
+- **Error reporting** (invalid iterables, missing type info, invalid patterns)
+- **Warnings** (deeply nested expressions)
 
 ## Integration with Compilation Pipeline
 

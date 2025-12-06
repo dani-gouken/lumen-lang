@@ -26,6 +26,12 @@ import (
 func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 	pos := forStmt.Position()
 
+	// Validate that the iterable is actually iterable
+	if !d.validateForLoopIterable(forStmt) {
+		// Return the original statement on error - compilation will fail anyway
+		return forStmt
+	}
+
 	// Desugar the iterable expression first
 	iterableExpr := d.desugarExpr(forStmt.Iterable)
 

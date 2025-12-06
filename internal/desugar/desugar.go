@@ -31,6 +31,9 @@ type Desugarer struct {
 
 	// Info collected during desugaring
 	info *DesugarInfo
+
+	// Source lines for error reporting (map of line number to line content)
+	sourceLines map[int]string
 }
 
 // NewDesugarer creates a new desugarer instance
@@ -39,6 +42,7 @@ func NewDesugarer(
 	typeInfo *types.Info,
 	resolveTable *resolve.Table,
 	errs *errors.Handler,
+	sourceLines map[int]string,
 ) *Desugarer {
 	return &Desugarer{
 		prog:         prog,
@@ -46,6 +50,7 @@ func NewDesugarer(
 		resolveTable: resolveTable,
 		errs:         errs,
 		tmpCounter:   0,
+		sourceLines:  sourceLines,
 		info: &DesugarInfo{
 			Mapping: make(map[ast.Node]ast.Node),
 			TmpVars: make(map[string]string),

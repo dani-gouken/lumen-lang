@@ -100,6 +100,9 @@ func (d *Desugarer) desugarShortCircuitInCondition(expr ast.Expr) ([]ast.Stmt, a
 		return nil, d.desugarExpr(expr)
 	}
 
+	// Check complexity and warn if too deeply nested
+	d.checkShortCircuitComplexity(expr)
+
 	pos := expr.Position()
 
 	switch binary.Op {
