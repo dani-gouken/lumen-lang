@@ -44,7 +44,9 @@ const (
 	OpSetIndex // Src1[Src2] = Src3
 
 	// Closures
-	OpMakeClosure // Dest = MakeClosure Func, Captures...
+	OpMakeClosure  // Dest = MakeClosure Func, Captures...
+	OpLoadUpvalue  // Dest = LoadUpvalue Index
+	OpStoreUpvalue // StoreUpvalue Index, Value
 )
 
 func (op OpType) String() string {
@@ -107,6 +109,10 @@ func (op OpType) String() string {
 		return "SET_INDEX"
 	case OpMakeClosure:
 		return "MAKE_CLOSURE"
+	case OpLoadUpvalue:
+		return "LOAD_UPVALUE"
+	case OpStoreUpvalue:
+		return "STORE_UPVALUE"
 	default:
 		return "UNKNOWN"
 	}

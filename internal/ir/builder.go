@@ -47,8 +47,8 @@ func (b *Builder) AddParam() *Register {
 	return reg
 }
 
-// emit adds an instruction to the current block
-func (b *Builder) emit(op OpType, dest *Register, operands ...Value) *Instruction {
+// Emit adds an instruction to the current block
+func (b *Builder) Emit(op OpType, dest *Register, operands ...Value) *Instruction {
 	instr := &Instruction{
 		Op:       op,
 		Dest:     dest,
@@ -61,30 +61,30 @@ func (b *Builder) emit(op OpType, dest *Register, operands ...Value) *Instructio
 // CreateAdd creates an addition instruction
 func (b *Builder) CreateAdd(lhs, rhs Value) *Register {
 	dest := b.NewRegister()
-	b.emit(OpAdd, dest, lhs, rhs)
+	b.Emit(OpAdd, dest, lhs, rhs)
 	return dest
 }
 
 // CreateSub creates a subtraction instruction
 func (b *Builder) CreateSub(lhs, rhs Value) *Register {
 	dest := b.NewRegister()
-	b.emit(OpSub, dest, lhs, rhs)
+	b.Emit(OpSub, dest, lhs, rhs)
 	return dest
 }
 
 // CreateMov creates a move instruction (assignment)
 func (b *Builder) CreateMov(src Value) *Register {
 	dest := b.NewRegister()
-	b.emit(OpMov, dest, src)
+	b.Emit(OpMov, dest, src)
 	return dest
 }
 
 // CreateRet creates a return instruction
 func (b *Builder) CreateRet(val Value) {
 	if val == nil {
-		b.emit(OpRet, nil)
+		b.Emit(OpRet, nil)
 	} else {
-		b.emit(OpRet, nil, val)
+		b.Emit(OpRet, nil, val)
 	}
 }
 
@@ -94,7 +94,7 @@ func (b *Builder) CreateCallTrait(receiver Value, traitName string, methodName s
 	dest := b.NewRegister()
 	operands := []Value{receiver, Constant{Val: traitName, Type: "String"}, Constant{Val: methodName, Type: "String"}}
 	operands = append(operands, args...)
-	b.emit(OpCallTrait, dest, operands...)
+	b.Emit(OpCallTrait, dest, operands...)
 	return dest
 }
 
@@ -103,23 +103,53 @@ func (b *Builder) CreateNewStruct(typeName string, fields ...Value) *Register {
 	dest := b.NewRegister()
 	operands := []Value{Constant{Val: typeName, Type: "String"}}
 	operands = append(operands, fields...)
-	b.emit(OpNewStruct, dest, operands...)
+	b.Emit(OpNewStruct, dest, operands...)
 	return dest
 }
 
 // CreateGetField accesses a field of a struct
 func (b *Builder) CreateGetField(structVal Value, fieldName string) *Register {
 	dest := b.NewRegister()
-	b.emit(OpGetField, dest, structVal, Constant{Val: fieldName, Type: "String"})
+	b.Emit(OpGetField, dest, structVal, Constant{Val: fieldName, Type: "String"})
 	return dest
 }
 
 // CreateJmp creates an unconditional jump
 func (b *Builder) CreateJmp(target *BasicBlock) {
-	b.emit(OpJmp, nil, target)
+	b.Emit(OpJmp, nil, target)
 }
 
 // CreateBr creates a conditional branch
 func (b *Builder) CreateBr(cond Value, thenBlock, elseBlock *BasicBlock) {
-	b.emit(OpBr, nil, cond, thenBlock, elseBlock)
+	b.Emit(OpBr, nil, cond, thenBlock, elseBlock)
+}
+
+// CreateCall creates a function call instruction
+func (b *Builder) CreateCall(fn Value, args ...Value) *Register {
+	dest := b.NewRegister()
+	operands := []Value{fn}
+	operands = append(operands, args...)
+	b.Emit(OpCall, dest, operands...)
+	return dest
+}
+
+// CreateLoadUpvalue loads from an upvalue
+func (b *Builder) CreateLoadUpvalue(index int) *Register {
+	dest := b.NewRegister()
+	b.Emit(OpLoadUpvalue, dest, Constant{Val: index, Type: "Int"})
+	return dest
+}
+
+// CreateStoreUpvalue stores to an upvalue
+func (b *Builder) CreateStoreUpvalue(index int, val Value) {
+	b.Emit(OpStoreUpvalue, nil, Constant{Val: index, Type: "Int"}, val)
+}
+
+// CreateMakeClosure creates a closure with captured variables
+func (b *Builder) CreateMakeClosure(fn Value, captures ...Value) *Register {
+	dest := b.NewRegister()
+	operands := []Value{fn}
+	operands = append(operands, captures...)
+	b.Emit(OpMakeClosure, dest, operands...)
+	return dest
 }

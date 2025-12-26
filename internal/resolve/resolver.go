@@ -84,11 +84,6 @@ func (r *Resolver) visitDecl(decl ast.Decl) {
 	case *ast.FnDecl:
 		r.visitFnDecl(d)
 	case *ast.StructDecl:
-		// Struct fields types need resolution? Yes, but types are resolved in type checking mostly.
-		// However, if we had type aliases or constants, we'd resolve them here.
-		// For now, we might want to check if field types refer to valid types.
-		// But the spec says "Name Resolution links identifiers to declarations".
-		// So we should resolve type names in struct fields too.
 		r.visitStructDecl(d)
 	case *ast.EnumDecl:
 		r.visitEnumDecl(d)

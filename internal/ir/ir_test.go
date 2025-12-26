@@ -60,7 +60,7 @@ func TestControlFlow(t *testing.T) {
 	// Note: We don't have CreateGt in builder yet, let's use emit directly or add it.
 	// For this test, I'll use emit directly to keep builder simple for now.
 	cond := builder.NewRegister()
-	builder.emit(OpGt, cond, a, b)
+	builder.Emit(OpGt, cond, a, b)
 
 	builder.CreateBr(cond, thenBlock, elseBlock)
 

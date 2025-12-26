@@ -576,3 +576,30 @@ func (e *ArrayLiteralExpr) String() string {
 	}
 	return fmt.Sprintf("[%s]", strings.Join(elems, ", "))
 }
+
+// FnExpr represents an anonymous function expression (lambda/closure)
+type FnExpr struct {
+	BaseNode
+	Params     []*Param
+	ReturnType *Type
+	Body       *BlockStmt
+}
+
+func (e *FnExpr) exprNode() {}
+func (e *FnExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString("fn(")
+	var params []string
+	for _, p := range e.Params {
+		params = append(params, p.String())
+	}
+	sb.WriteString(strings.Join(params, ", "))
+	sb.WriteString(")")
+	if e.ReturnType != nil {
+		sb.WriteString(" -> " + e.ReturnType.String())
+	}
+	if e.Body != nil {
+		sb.WriteString(" " + e.Body.String())
+	}
+	return sb.String()
+}
