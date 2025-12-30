@@ -3,7 +3,7 @@ package errors
 import (
 	"testing"
 
-	"github.com/yourname/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/token"
 )
 
 func TestDiagnosticString(t *testing.T) {

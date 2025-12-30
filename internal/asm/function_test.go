@@ -3,7 +3,7 @@ package asm
 import (
 	"testing"
 
-	"github.com/yourname/lumen/internal/vm"
+	"github.com/dani-gouken/lumen/internal/vm"
 )
 
 func TestAssembleFunctionCall(t *testing.T) {

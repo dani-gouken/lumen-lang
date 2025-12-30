@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // mangleName generates a unique mangled name for a monomorphized instance.

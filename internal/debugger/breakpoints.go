@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/yourname/lumen/internal/vm"
+	"github.com/dani-gouken/lumen/internal/vm"
 )
 
 // BreakpointManager manages breakpoints for the debugger.

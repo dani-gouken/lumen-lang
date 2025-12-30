@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/yourname/lumen/internal/vm"
+	"github.com/dani-gouken/lumen/internal/vm"
 )
 
 // AssembleFromFile converts assembly text into a Chunk with debug info.

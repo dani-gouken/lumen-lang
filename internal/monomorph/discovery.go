@@ -3,8 +3,8 @@ package monomorph
 import (
 	"fmt"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // discoverInstantiations walks the AST to find all uses of generic functions and types.

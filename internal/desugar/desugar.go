@@ -3,11 +3,11 @@ package desugar
 import (
 	"fmt"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/resolve"
-	"github.com/yourname/lumen/internal/token"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // DesugarInfo holds metadata about the desugaring process
@@ -21,10 +21,10 @@ type DesugarInfo struct {
 
 // Desugarer transforms complex syntactic constructs into simpler, more primitive forms
 type Desugarer struct {
-	prog        *ast.Program
-	typeInfo    *types.Info
+	prog         *ast.Program
+	typeInfo     *types.Info
 	resolveTable *resolve.Table
-	errs        *errors.Handler
+	errs         *errors.Handler
 
 	// Counter for generating unique temporary variable names
 	tmpCounter int

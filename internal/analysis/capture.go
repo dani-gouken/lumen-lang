@@ -1,8 +1,8 @@
 package analysis
 
 import (
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/resolve"
 )
 
 // buildCaptureGraph traverses the AST and identifies captures

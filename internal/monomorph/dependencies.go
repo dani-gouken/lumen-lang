@@ -3,8 +3,8 @@ package monomorph
 import (
 	"fmt"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // resolveDependencies performs topological sort of instantiations to handle

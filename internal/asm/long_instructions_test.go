@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yourname/lumen/internal/vm"
+	"github.com/dani-gouken/lumen/internal/vm"
 )
 
 func TestAssembleLongJump(t *testing.T) {

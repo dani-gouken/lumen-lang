@@ -1,44 +1,48 @@
 package desugar
 
 import (
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/token"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // desugarMatchStmt transforms a match statement into nested if-else statements
 //
 // Simple Value Matching:
-//   match x {
-//     case 1: { action1(); }
-//     case 2: { action2(); }
-//     default: { defaultAction(); }
-//   }
+//
+//	match x {
+//	  case 1: { action1(); }
+//	  case 2: { action2(); }
+//	  default: { defaultAction(); }
+//	}
 //
 // Becomes:
-//   if x == 1 {
-//     action1();
-//   } else if x == 2 {
-//     action2();
-//   } else {
-//     defaultAction();
-//   }
+//
+//	if x == 1 {
+//	  action1();
+//	} else if x == 2 {
+//	  action2();
+//	} else {
+//	  defaultAction();
+//	}
 //
 // Type Matching:
-//   match value {
-//     case Int: { handleInt(); }
-//     case String: { handleString(); }
-//   }
+//
+//	match value {
+//	  case Int: { handleInt(); }
+//	  case String: { handleString(); }
+//	}
 //
 // Becomes:
-//   {
-//     let __match_tmp_N = value;
-//     if __is_type(__match_tmp_N, Int) {
-//       handleInt();
-//     } else if __is_type(__match_tmp_N, String) {
-//       handleString();
-//     }
-//   }
+//
+//	{
+//	  let __match_tmp_N = value;
+//	  if __is_type(__match_tmp_N, Int) {
+//	    handleInt();
+//	  } else if __is_type(__match_tmp_N, String) {
+//	    handleString();
+//	  }
+//	}
 func (d *Desugarer) desugarMatchStmt(match *ast.MatchStmt) ast.Stmt {
 	pos := match.Position()
 

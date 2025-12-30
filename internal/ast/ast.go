@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yourname/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/token"
 )
 
 // Node is the base interface for all AST nodes.

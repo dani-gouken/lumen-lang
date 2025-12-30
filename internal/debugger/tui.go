@@ -7,8 +7,8 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/yourname/lumen/internal/asm"
-	"github.com/yourname/lumen/internal/vm"
+	"github.com/dani-gouken/lumen/internal/asm"
+	"github.com/dani-gouken/lumen/internal/vm"
 )
 
 // ExecutionMode represents the current execution mode

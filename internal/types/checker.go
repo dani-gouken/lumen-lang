@@ -3,25 +3,25 @@ package types
 import (
 	"fmt"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/resolve"
-	"github.com/yourname/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/token"
 )
 
 const (
-	ErrTypeMismatch     = "E2001"
-	ErrReturnOutsideFn  = "E2002"
-	ErrReturnMismatch   = "E2003"
-	ErrMissingReturn    = "E2004"
-	ErrInvalidCondition = "E2005"
-	ErrInvalidOperation = "E2006"
-	ErrInvalidUnary     = "E2007"
-	ErrNotFunction      = "E2008"
-	ErrArgCount         = "E2009"
-	ErrArgType          = "E2010"
-	ErrNotIterable      = "E2011"
-	ErrMissingMethod    = "E2012"
+	ErrTypeMismatch      = "E2001"
+	ErrReturnOutsideFn   = "E2002"
+	ErrReturnMismatch    = "E2003"
+	ErrMissingReturn     = "E2004"
+	ErrInvalidCondition  = "E2005"
+	ErrInvalidOperation  = "E2006"
+	ErrInvalidUnary      = "E2007"
+	ErrNotFunction       = "E2008"
+	ErrArgCount          = "E2009"
+	ErrArgType           = "E2010"
+	ErrNotIterable       = "E2011"
+	ErrMissingMethod     = "E2012"
 	ErrSignatureMismatch = "E2013"
 )
 

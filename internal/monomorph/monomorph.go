@@ -3,17 +3,17 @@ package monomorph
 import (
 	"strings"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/resolve"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // Error codes for monomorphization
 const (
-	ErrUnboundedGenerics   = "E3001" // Generic function/type used but type arguments cannot be inferred
+	ErrUnboundedGenerics     = "E3001" // Generic function/type used but type arguments cannot be inferred
 	ErrInfiniteInstantiation = "E3002" // Recursive generic types causing infinite instantiation
-	ErrTypeArgMismatch     = "E3003" // Number of type arguments doesn't match number of type parameters
+	ErrTypeArgMismatch       = "E3003" // Number of type arguments doesn't match number of type parameters
 )
 
 // InstantiationKey uniquely identifies a monomorphized instance.
@@ -53,11 +53,11 @@ func NewMonomorphizationInfo() *MonomorphizationInfo {
 
 // Monomorphizer performs the monomorphization transformation.
 type Monomorphizer struct {
-	prog        *ast.Program
-	typeInfo    *types.Info
+	prog         *ast.Program
+	typeInfo     *types.Info
 	resolveTable *resolve.Table
-	errs        *errors.Handler
-	sourceLines map[int]string
+	errs         *errors.Handler
+	sourceLines  map[int]string
 
 	// Tracks all discovered instantiations
 	instantiations map[InstantiationKey]*Instantiation
@@ -80,15 +80,15 @@ func NewMonomorphizer(
 	errs *errors.Handler,
 ) *Monomorphizer {
 	return &Monomorphizer{
-		prog:         prog,
-		typeInfo:     typeInfo,
-		resolveTable: resolveTable,
-		errs:         errs,
-		sourceLines:  make(map[int]string),
+		prog:           prog,
+		typeInfo:       typeInfo,
+		resolveTable:   resolveTable,
+		errs:           errs,
+		sourceLines:    make(map[int]string),
 		instantiations: make(map[InstantiationKey]*Instantiation),
-		generated:    make(map[InstantiationKey]ast.Node),
-		generics:     make(map[string]ast.Node),
-		generating:   make(map[InstantiationKey]bool),
+		generated:      make(map[InstantiationKey]ast.Node),
+		generics:       make(map[string]ast.Node),
+		generating:     make(map[InstantiationKey]bool),
 	}
 }
 

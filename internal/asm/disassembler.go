@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/yourname/lumen/internal/vm"
+	"github.com/dani-gouken/lumen/internal/vm"
 )
 
 // Disassemble converts a Chunk into human-readable assembly text.

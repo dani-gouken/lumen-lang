@@ -3,7 +3,7 @@ package resolve
 import (
 	"fmt"
 
-	"github.com/yourname/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/ast"
 )
 
 // SymbolKind distinguishes different kinds of symbols.

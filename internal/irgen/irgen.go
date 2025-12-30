@@ -1,12 +1,12 @@
 package irgen
 
 import (
-	"github.com/yourname/lumen/internal/analysis"
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/ir"
-	"github.com/yourname/lumen/internal/resolve"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/analysis"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/ir"
+	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // Error codes for IR generation

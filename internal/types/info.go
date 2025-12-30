@@ -1,6 +1,6 @@
 package types
 
-import "github.com/yourname/lumen/internal/ast"
+import "github.com/dani-gouken/lumen/internal/ast"
 
 // Info holds the result of type checking.
 type Info struct {

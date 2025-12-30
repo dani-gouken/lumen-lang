@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/resolve"
-	"github.com/yourname/lumen/internal/token"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // Helper to create a token
@@ -287,7 +287,7 @@ func TestDuplicateInstantiationsReuse(t *testing.T) {
 						&ast.LetStmt{
 							Name: "a",
 							Value: &ast.CallExpr{
-								Func:&ast.Ident{Name: "identity", TypeArgs: []*ast.Type{{Kind: ast.TypeBasic, Name: "Int"}}},
+								Func: &ast.Ident{Name: "identity", TypeArgs: []*ast.Type{{Kind: ast.TypeBasic, Name: "Int"}}},
 								Args: []ast.Expr{&ast.Literal{Value: "1"}},
 							},
 						},

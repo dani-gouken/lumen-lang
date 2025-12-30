@@ -1,7 +1,7 @@
 package monomorph
 
 import (
-	"github.com/yourname/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/ast"
 )
 
 // rewriteCallSites rewrites all call sites to use monomorphized function names.

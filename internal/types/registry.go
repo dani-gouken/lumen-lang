@@ -1,6 +1,6 @@
 package types
 
-import "github.com/yourname/lumen/internal/ast"
+import "github.com/dani-gouken/lumen/internal/ast"
 
 // RegisterType registers a type definition in the type registry.
 // This should be called during type checking when processing struct/enum declarations.

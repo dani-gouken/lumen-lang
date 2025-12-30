@@ -1,7 +1,7 @@
 package debugger
 
 import (
-	"github.com/yourname/lumen/internal/vm"
+	"github.com/dani-gouken/lumen/internal/vm"
 )
 
 const (
@@ -12,29 +12,29 @@ const (
 // VMSnapshot captures the complete state of the VM at a specific instruction.
 type VMSnapshot struct {
 	// Execution state
-	IP         int         // Instruction pointer
-	Instr      vm.Instr    // Current instruction
-	DebugInfo  *vm.DebugInfo // Debug info for current instruction
-	
+	IP        int           // Instruction pointer
+	Instr     vm.Instr      // Current instruction
+	DebugInfo *vm.DebugInfo // Debug info for current instruction
+
 	// Register state
-	Registers  []vm.Value  // Copy of all registers
-	
+	Registers []vm.Value // Copy of all registers
+
 	// Constants and code
-	Constants  []vm.Value  // Reference to constants (read-only)
-	Code       []vm.Instr  // Reference to code (read-only)
-	
+	Constants []vm.Value // Reference to constants (read-only)
+	Code      []vm.Instr // Reference to code (read-only)
+
 	// Stack state
-	StackPointer int        // Stack pointer
-	FramePointer int        // Frame pointer
-	FrameCount   int        // Number of active frames
-	
+	StackPointer int // Stack pointer
+	FramePointer int // Frame pointer
+	FrameCount   int // Number of active frames
+
 	// Heap state
-	HeapAllocated uint64    // Bytes allocated on heap
-	HeapMax       uint64    // Maximum heap size
-	
+	HeapAllocated uint64 // Bytes allocated on heap
+	HeapMax       uint64 // Maximum heap size
+
 	// Metadata
-	RegisterCount int       // Total number of registers
-	ArgCount      int       // Number of function arguments
+	RegisterCount int // Total number of registers
+	ArgCount      int // Number of function arguments
 }
 
 // ExecutionHistory maintains a circular buffer of VM snapshots.
@@ -91,7 +91,7 @@ func (h *ExecutionHistory) GetLast(n int) []*VMSnapshot {
 	if n > h.size {
 		n = h.size
 	}
-	
+
 	result := make([]*VMSnapshot, n)
 	for i := 0; i < n; i++ {
 		result[i] = h.Get(h.size - 1 - i)

@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/token"
 )
 
 func TestResolveSuggestion(t *testing.T) {

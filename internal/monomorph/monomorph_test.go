@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/resolve"
-	"github.com/yourname/lumen/internal/token"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // Test instantiation key generation
@@ -86,7 +86,7 @@ func TestNewMonomorphizer(t *testing.T) {
 	prog := &ast.Program{Decls: []ast.Decl{}}
 
 	m := NewMonomorphizer(prog, typeInfo, resolveTable, errs)
-	
+
 	if m == nil {
 		t.Fatal("NewMonomorphizer returned nil")
 	}

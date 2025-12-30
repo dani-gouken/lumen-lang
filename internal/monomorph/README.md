@@ -65,10 +65,10 @@ The monomorphization process consists of **four main phases**:
 
 ```go
 import (
-    "github.com/yourname/lumen/internal/monomorph"
-    "github.com/yourname/lumen/internal/types"
-    "github.com/yourname/lumen/internal/resolve"
-    "github.com/yourname/lumen/internal/errors"
+    "github.com/dani-gouken/lumen/internal/monomorph"
+    "github.com/dani-gouken/lumen/internal/types"
+    "github.com/dani-gouken/lumen/internal/resolve"
+    "github.com/dani-gouken/lumen/internal/errors"
 )
 
 // After parsing, name resolution, and type checking:

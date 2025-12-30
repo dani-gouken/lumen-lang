@@ -1,8 +1,8 @@
 package irgen
 
 import (
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/ir"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/ir"
 )
 
 // compileIfStmt compiles an if statement

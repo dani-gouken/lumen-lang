@@ -203,11 +203,11 @@ This ensures type-checking passes can still work with desugared code.
 
 ```go
 import (
-    "github.com/yourname/lumen/internal/desugar"
-    "github.com/yourname/lumen/internal/ast"
-    "github.com/yourname/lumen/internal/types"
-    "github.com/yourname/lumen/internal/resolve"
-    "github.com/yourname/lumen/internal/errors"
+    "github.com/dani-gouken/lumen/internal/desugar"
+    "github.com/dani-gouken/lumen/internal/ast"
+    "github.com/dani-gouken/lumen/internal/types"
+    "github.com/dani-gouken/lumen/internal/resolve"
+    "github.com/dani-gouken/lumen/internal/errors"
 )
 
 // After monomorphization, type checking, and name resolution:

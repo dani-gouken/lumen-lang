@@ -1,8 +1,8 @@
 package monomorph
 
 import (
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // generateInstance generates a monomorphized instance for the given key.

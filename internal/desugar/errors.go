@@ -3,10 +3,10 @@ package desugar
 import (
 	"fmt"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/token"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // Error codes for desugaring phase

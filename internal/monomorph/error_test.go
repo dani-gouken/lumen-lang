@@ -4,11 +4,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/errors"
-	"github.com/yourname/lumen/internal/resolve"
-	"github.com/yourname/lumen/internal/token"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // Test: E3002 - Infinite instantiation (cycle detection)
@@ -33,7 +33,7 @@ func TestInfiniteInstantiationError(t *testing.T) {
 									Name: "recurse",
 									TypeArgs: []*ast.Type{
 										{
-											Kind: ast.TypeArray,
+											Kind:     ast.TypeArray,
 											ElemType: &ast.Type{Kind: ast.TypeBasic, Name: "T"},
 										},
 									},

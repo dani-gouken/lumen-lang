@@ -3,8 +3,8 @@ package irgen
 import (
 	"strconv"
 
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/ir"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/ir"
 )
 
 // compileExpr compiles an expression and returns the register containing the result

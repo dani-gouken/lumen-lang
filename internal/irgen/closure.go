@@ -3,9 +3,9 @@ package irgen
 import (
 	"fmt"
 
-	"github.com/yourname/lumen/internal/analysis"
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/ir"
+	"github.com/dani-gouken/lumen/internal/analysis"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/ir"
 )
 
 // createClosure creates a closure with captured variables

@@ -1,28 +1,30 @@
 package desugar
 
 import (
-	"github.com/yourname/lumen/internal/ast"
-	"github.com/yourname/lumen/internal/token"
-	"github.com/yourname/lumen/internal/types"
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/token"
+	"github.com/dani-gouken/lumen/internal/types"
 )
 
 // desugarForStmt transforms a for-in loop into a while loop
 //
 // Before:
-//   for item in collection {
-//     body
-//   }
+//
+//	for item in collection {
+//	  body
+//	}
 //
 // After (for arrays):
-//   {
-//     let __iter_N = 0;
-//     let __len_N = collection.length;
-//     while __iter_N < __len_N {
-//       let item = collection[__iter_N];
-//       body
-//       __iter_N = __iter_N + 1;
-//     }
-//   }
+//
+//	{
+//	  let __iter_N = 0;
+//	  let __len_N = collection.length;
+//	  while __iter_N < __len_N {
+//	    let item = collection[__iter_N];
+//	    body
+//	    __iter_N = __iter_N + 1;
+//	  }
+//	}
 func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 	pos := forStmt.Position()
 
