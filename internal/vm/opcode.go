@@ -84,6 +84,10 @@ const (
 
 	// Checked element write (added after OpGC to keep earlier opcodes stable)
 	OpSETELEM // A = array, B = index, C = value; index must be below the length
+
+	// Detach closures from a register: A = register. Closures that captured
+	// it keep the value it has now and no longer follow the register.
+	OpCLOSEUP
 )
 
 // Instr represents a single bytecode instruction.
@@ -209,6 +213,8 @@ func (i Instr) String() string {
 		return formatInstr("DELFIELD", i.A, i.B, i.C)
 	case OpSETELEM:
 		return formatInstr("SETELEM", i.A, i.B, i.C)
+	case OpCLOSEUP:
+		return formatInstr("CLOSEUP", i.A)
 	case OpGC:
 		return "GC"
 	default:

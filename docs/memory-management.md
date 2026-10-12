@@ -6,7 +6,7 @@ Lumen uses a simple mark-and-sweep garbage collector to manage heap-allocated ob
 
 The memory management system consists of:
 
-1. **Fixed-size heap** - Pre-allocated memory pool (1MB by default)
+1. **Bounded heap** - A limit on what the program may hold at once (256MB by default); memory is taken as needed, not pre-allocated
 2. **NaN-boxed values** - Efficient 64-bit value representation with heap pointers
 3. **Mark-sweep GC** - Simple, stop-the-world garbage collection
 4. **Five heap object types** - String, Array, Object/Map, Function, and Upvalue
@@ -27,9 +27,15 @@ type Heap struct {
 ```
 
 **Default configuration:**
-- Heap size: 1MB (1024 * 1024 bytes)
-- GC threshold: 80% of heap size
-- Allocation tracking: Per-object size accounting
+- Heap limit: 256MB (`DefaultHeapSize`), `--heap-mb=N` on the command line
+- First collection: after 1MB has been allocated (`DefaultGCStart`), or at 80% of a heap smaller than that
+- After each collection: the threshold is twice what survived, never below the first one and never above the limit
+- Allocation tracking: per object, including growth after creation (array capacity, object fields)
+
+The threshold following the live data is what keeps collection cheap. A
+threshold that stays near the live size makes the collector run after every
+few allocations, and each run walks everything alive; appending to one large
+array then costs time proportional to the square of its length.
 
 ### Object Layout
 
@@ -218,7 +224,7 @@ if shouldGC {
 }
 ```
 
-Threshold formula: `bytesAllocated >= maxBytes * 0.8`
+Threshold: `bytesAllocated >= nextGC`. `nextGC` starts at 1MB and is set to twice the surviving bytes after each collection (see the configuration above).
 
 #### 2. Manual Trigger
 
@@ -230,7 +236,7 @@ vm.CollectGarbage()
 
 #### 3. Allocation Failure
 
-When heap is full and allocation fails, you might run GC and retry (not automatic).
+An allocation, or the growth of an array or object, that would exceed the heap limit runs a collection first and is retried. Only if there is still no room does the program stop with `out of memory`.
 
 ### GC Roots
 

@@ -60,15 +60,13 @@ func (fc *FunctionCompiler) compileWhileStmt(stmt *ast.WhileStmt) {
 	fc.builder.CreateBr(cond, bodyBlock, exitBlock)
 
 	// Push loop context
-	fc.loopStack = append(fc.loopStack, &loopContext{
-		breakTarget:    exitBlock,
-		continueTarget: condBlock,
-	})
+	loop := fc.newLoop(exitBlock, condBlock)
 
 	// Body block
 	fc.builder.SetBlock(bodyBlock)
 	fc.compileStmt(stmt.Body)
 	if !fc.blockEndsWithTerminator() {
+		fc.endIteration(loop)
 		fc.builder.CreateJmp(condBlock)
 	}
 
@@ -107,10 +105,7 @@ func (fc *FunctionCompiler) compileForStmt(stmt *ast.ForStmt) {
 	fc.builder.Emit(ir.OpLt, inRange, index, length)
 	fc.builder.CreateBr(inRange, bodyBlock, exitBlock)
 
-	fc.loopStack = append(fc.loopStack, &loopContext{
-		breakTarget:    exitBlock,
-		continueTarget: condBlock,
-	})
+	loop := fc.newLoop(exitBlock, condBlock)
 
 	fc.builder.SetBlock(bodyBlock)
 	fc.pushScope()
@@ -126,6 +121,7 @@ func (fc *FunctionCompiler) compileForStmt(stmt *ast.ForStmt) {
 	fc.compileStmt(stmt.Body)
 	fc.popScope()
 	if !fc.blockEndsWithTerminator() {
+		fc.endIteration(loop)
 		fc.builder.CreateJmp(condBlock)
 	}
 
@@ -152,6 +148,8 @@ func (fc *FunctionCompiler) compileContinueStmt(stmt *ast.ContinueStmt) {
 		return
 	}
 	ctx := fc.loopStack[len(fc.loopStack)-1]
+	// `continue` ends the iteration too
+	fc.endIteration(ctx)
 	fc.builder.CreateJmp(ctx.continueTarget)
 	fc.startDeadBlock()
 }

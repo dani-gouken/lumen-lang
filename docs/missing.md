@@ -11,9 +11,9 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Area | Most useful next steps |
 |------|------------------------|
 | Everyday syntax | ranges, sized arrays, more builtins |
-| Correctness | unused variables, heap accounting |
+| Correctness | unused variables |
 | Types | inference from the expected type, richer `match` patterns, array literals of mixed structs |
-| Runtime | heap size and accounting, recursion depth, integer overflow |
+| Runtime | register allocation per call, bytecode format limits |
 | Program structure | imports, enums, global constants |
 
 ---
@@ -155,28 +155,17 @@ A cast to a function type is checked against the signature recorded when the fun
 
 ## 3. Runtime and VM
 
-### Heap size and accounting — M
+### Strings are not counted when they grow — S
 
-*   The heap is fixed at 1 MB and cannot be changed from the command line.
-*   **Array growth is not counted.** An array's size is recorded when it is created; elements added with `push` do not count toward the limit or the GC trigger. A program can use far more memory than the limit suggests.
-*   Allocation fails as soon as the limit would be exceeded, without first trying a collection.
-*   The error names whichever allocation happened to hit the limit, e.g. `extern function allocation failed: heap exhausted`, which reads like a problem with the function rather than with memory.
-
-### Recursion depth — S
-
-The call stack is limited to 256 frames (`maxCallDepth`), so `down(1000)` fails with `stack overflow: max call depth 256 exceeded`. There is no tail-call optimization.
+`a + b` and `text += part` create a new string each time, and each is counted. But building a long string in a loop makes garbage proportional to the square of its length (every step copies everything so far). There is no string builder yet.
 
 ### Method dispatch cost — M
 
 Calls on a value whose struct is known are direct. Calls through a trait look the method up on the value, so each value of a struct that implements traits carries one function object per trait method, created with the value (see [ir_generation.md](compilation/ir_generation.md#structs-and-methods)). A method table shared per struct type would remove that; it needs VM support.
 
-### Each call of a builtin allocates — S
+### Every call allocates its registers — M
 
-`println(x)` compiles to `NEWEXFUNC` + `CALL`, creating a host function object every time it runs. In a hot loop this is the main source of garbage. Caching the object per function, or a dedicated call instruction, would remove it.
-
-### Closures created in a loop share variables — M
-
-A variable declared in a loop body has one register for all iterations, so closures created in different iterations all see its last value. Passing the value through a function parameter is the workaround.
+Function objects are reused, so calling a function by name allocates nothing for the function. Each call does still allocate a fresh register array for the callee; in call-heavy code that is the main cost left. A register stack shared by all frames would remove it.
 
 ### Bytecode format limits — L
 
@@ -202,7 +191,7 @@ Operands are one byte: 256 registers per function, 256 distinct constants and 25
 | Errors from several stages in one run | The pipeline stops at the first stage with errors, so type errors appear only after syntax errors are fixed |
 | Machine-readable diagnostics | No `--format=json` |
 | Source-level debugging | `lumdbg` steps bytecode instructions and shows registers by number; it has no statement stepping and no variable names |
-| Compiler flags | No heap size, no optimization level, no warnings-as-errors |
+| Compiler flags | `--heap-mb` and `--max-depth` exist; no optimization level, no warnings-as-errors |
 | Formatter, language server, syntax highlighting | None |
 | Optimization | None: no constant folding, no dead code elimination beyond unreachable blocks, every jump uses the 3-word long form |
 | `Instr.String()` | Still renders every operand as a register; the debugger and disassembler use `asm.FormatInstruction` instead |
@@ -213,11 +202,10 @@ Operands are one byte: 256 registers per function, 256 distinct constants and 25
 
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
-1.  **Runtime headroom first**, now that the silent failures are closed (see 3).
+1.  **Null operators**: `x!`, `a?.b`, and rejecting a value known to be null.
 2.  **Everyday syntax**: ranges, `array(n, value)`, a first batch of string and array builtins, `toInt`/`toFloat`.
-3.  **Runtime headroom**: count array growth, collect before failing an allocation, a clearer out-of-memory message, a configurable heap and call depth.
+3.  **Bytecode format limits**, before a standard library is compiled into every program.
 4.  **Types**: inference from the expected result type, `match` as an expression with bindings and guards.
 5.  **Program structure**: global constants, then imports, then enums with pattern matching.
-6.  **Format limits**: wider operands, once programs are large enough to hit them.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

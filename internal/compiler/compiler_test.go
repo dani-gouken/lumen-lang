@@ -788,7 +788,7 @@ func TestForLoopIndex(t *testing.T) {
 		}
 		println(scores);
 
-		// Each closure created in the loop captures the same variable
+		// Each closure created in the loop keeps its own iteration's variables
 		let readers: [fn() -> Int] = [];
 		for i, v in [7, 8, 9] { push(readers, fn() -> Int { return i * 10 + v; }); }
 		println(readers[0](), readers[2]());
@@ -797,7 +797,7 @@ func TestForLoopIndex(t *testing.T) {
 		let nothing: [Int] = [];
 		for i, v in nothing { println("never", i, v); }
 		println("done");
-	`, "0 ada 1 bob \n0 h 2 l 3 l \n1 x 2 y 3 z \n2 -1\n[\"ab\", \"ac\", \"bc\"]\n[20, 41, 62]\n29 29\ndone\n")
+	`, "0 ada 1 bob \n0 h 2 l 3 l \n1 x 2 y 3 z \n2 -1\n[\"ab\", \"ac\", \"bc\"]\n[20, 41, 62]\n7 29\ndone\n")
 }
 
 func TestCasts(t *testing.T) {
@@ -865,6 +865,211 @@ func TestClosures(t *testing.T) {
 		add(5);
 		println(total);
 	`, "3 1\n15 16\n10\n")
+}
+
+func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
+	decls := `
+		struct Button { label: String; onClick: fn() -> String; }
+
+		fn makeButtons(labels: [String]) -> [Button] {
+			let buttons: [Button] = [];
+			for i, label in labels {
+				let id = toString(i) + ":" + label;
+				push(buttons, Button { label: label, onClick: fn() -> String { return "clicked " + id; } });
+			}
+			return buttons;
+		}
+
+		// Each call returns counters that share one total and own one count
+		fn makeCounters(n: Int) -> [fn() -> String] {
+			let counters: [fn() -> String] = [];
+			let total = 0;
+			let i = 0;
+			while i < n {
+				let own = 0;
+				let name = i;
+				i++;
+				push(counters, fn() -> String {
+					own++;
+					total++;
+					return toString(name) + "=" + toString(own) + "/" + toString(total);
+				});
+			}
+			return counters;
+		}
+	`
+	expectOutput(t, decls, `
+		// for over an array, with and without index
+		let readers: [fn() -> Int] = [];
+		for v in [1, 2, 3] { push(readers, fn() -> Int { return v; }); }
+		println(readers[0](), readers[1](), readers[2]());
+
+		let indexed: [fn() -> Int] = [];
+		for i, v in [10, 20, 30] { push(indexed, fn() -> Int { return i * 100 + v; }); }
+		println(indexed[0](), indexed[1](), indexed[2]());
+
+		// while, with continue skipping some iterations
+		let squares: [fn() -> Int] = [];
+		let n = 0;
+		while n < 5 {
+			let square = n * n;
+			n++;
+			if square == 4 { continue; }
+			push(squares, fn() -> Int { return square; });
+		}
+		println(squares[0](), squares[1](), squares[2](), squares[3](), squares.length);
+
+		// break leaves the closures made so far intact
+		let early: [fn() -> String] = [];
+		for word in ["a", "b", "c"] {
+			push(early, fn() -> String { return word + "!"; });
+			if word == "b" { break; }
+		}
+		println(early[0](), early[1](), early.length);
+
+		// A variable changed after the closure was made, in the same iteration, is shared
+		let late: [fn() -> Int] = [];
+		for v in [1, 2] {
+			let doubled = v;
+			push(late, fn() -> Int { return doubled; });
+			doubled *= 2;
+		}
+		println(late[0](), late[1]());
+
+		// Each closure owns its iteration's variable, but they share an outer one
+		let counters = makeCounters(3);
+		println(counters[0](), counters[0](), counters[2](), counters[1](), counters[0]());
+
+		// Closures stored in structs, through a function
+		for button in makeButtons(["ok", "cancel"]) { println(button.label, "->", button.onClick()); }
+
+		// Nested loops, and a closure returned from a closure
+		let cells: [fn() -> String] = [];
+		for r, row in ["a", "b"] {
+			for c, col in ["x", "y"] {
+				let make = fn() -> fn() -> String {
+					return fn() -> String { return row + col + toString(r * 2 + c); };
+				};
+				push(cells, make());
+			}
+		}
+		for cell in cells { print(cell(), ""); }
+		println("");
+
+		// Strings
+		let letters: [fn() -> String] = [];
+		for ch in "hey" { push(letters, fn() -> String { return ch + ch; }); }
+		println(letters[0](), letters[1](), letters[2]());
+	`, "1 2 3\n10 120 230\n0 1 9 16 4\na! b! 2\n2 4\n0=1/1 0=2/2 2=1/3 1=1/4 0=3/5\n"+
+		"ok -> clicked 0:ok\ncancel -> clicked 1:cancel\nax0 ay1 bx2 by3 \nhh ee yy\n")
+}
+
+func TestDeepRecursion(t *testing.T) {
+	decls := `
+		struct Node { value: Int; next: Node?; }
+
+		fn build(n: Int) -> Node? {
+			let list: Node? = null;
+			let i = 0;
+			while i < n { list = Node { value: i, next: list }; i++; }
+			return list;
+		}
+		fn sum(node: Node?) -> Int {
+			if node == null { return 0; }
+			return node.value + sum(node.next);
+		}
+		fn depth(node: Node?) -> Int {
+			if node == null { return 0; }
+			return 1 + depth(node.next);
+		}
+		fn isEven(n: Int) -> Bool { if n == 0 { return true; } return isOdd(n - 1); }
+		fn isOdd(n: Int) -> Bool { if n == 0 { return false; } return isEven(n - 1); }
+	`
+	// 5000 calls deep: well past the old limit of 256
+	expectOutput(t, decls, `
+		let list = build(5000);
+		println(sum(list), depth(list), isEven(4000), isOdd(4000));
+	`, "12497500 5000 true false\n")
+
+	// Recursion that never ends is still stopped, with the place it happened
+	_, _, err := runProgram(t, "fn forever(n: Int) -> Int { return forever(n + 1); }\nfn main() -> Int { return forever(0); }")
+	if err == nil || !strings.Contains(err.Error(), "stack overflow: max call depth 10000 exceeded") || !strings.Contains(err.Error(), "in function 'forever'") {
+		t.Errorf("expected a stack overflow in 'forever', got %v", err)
+	}
+}
+
+func TestLargeArraysStayFast(t *testing.T) {
+	src := `
+		struct Point { x: Int; y: Int; }
+
+		fn main() -> Int {
+			// Growing arrays of numbers, strings and structs
+			let numbers: [Int] = [];
+			let labels: [String] = [];
+			let points: [Point] = [];
+			let i = 0;
+			while i < 200000 {
+				push(numbers, i);
+				if i % 100 == 0 {
+					push(labels, "item " + toString(i));
+					push(points, Point { x: i, y: 0 - i });
+				}
+				i++;
+			}
+
+			let sum = 0;
+			for n in numbers { sum += n % 7; }
+			let last = points[points.length - 1];
+			println(numbers.length, labels.length, labels[1999], last.x + last.y, sum);
+			return 0;
+		}
+	`
+	errs := errors.NewHandler()
+	result := Compile(src, "test.lum", errs)
+	if errs.HasErrors() {
+		t.Fatalf("unexpected errors: %v", errs.Diagnostics)
+	}
+
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	if _, err := machine.Exec(result.Chunk); err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	if want := "200000 2000 item 199900 0 599994\n"; out.String() != want {
+		t.Errorf("expected %q, got %q", want, out.String())
+	}
+
+	// The measure of "fast" that does not depend on the machine: how often
+	// the collector ran. It used to run thousands of times here, each run
+	// walking the whole array; now its runs spread out as the data grows.
+	if got := machine.GetHeap().Collections(); got > 40 {
+		t.Errorf("expected a few dozen collections at most, got %d", got)
+	}
+}
+
+func TestOutOfMemoryIsReported(t *testing.T) {
+	src := "fn main() -> Int {\n  let xs: [Int] = [];\n  while true { push(xs, 1); }\n}\n"
+	errs := errors.NewHandler()
+	result := Compile(src, "test.lum", errs)
+	if errs.HasErrors() {
+		t.Fatalf("unexpected errors: %v", errs.Diagnostics)
+	}
+
+	machine := vm.NewVMWithHeapSize(256 * 1024)
+	_, err := machine.Exec(result.Chunk)
+	if err == nil {
+		t.Fatal("expected the program to run out of memory")
+	}
+	for _, want := range []string{"out of memory", "limit 262144", "test.lum:3:", "in function 'main'"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected the error to contain %q, got:\n%v", want, err)
+		}
+	}
+	// The message is about memory, not about the function that happened to ask
+	if strings.Contains(err.Error(), "extern function") {
+		t.Errorf("expected no mention of the host function, got:\n%v", err)
+	}
 }
 
 func TestGenericsAndVariadics(t *testing.T) {

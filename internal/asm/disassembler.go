@@ -334,6 +334,9 @@ func FormatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 	case vm.OpSETELEM:
 		return fmt.Sprintf("SETELEM r%d r%d r%d", instr.A, instr.B, instr.C)
 
+	case vm.OpCLOSEUP:
+		return fmt.Sprintf("CLOSEUP r%d", instr.A)
+
 	case vm.OpGC:
 		return "GC"
 

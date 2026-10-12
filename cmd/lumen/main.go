@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -13,7 +14,55 @@ import (
 	"github.com/dani-gouken/lumen/internal/vm"
 )
 
+// Limits of the virtual machine, settable from the command line.
+var (
+	heapMB   = 0 // 0: the VM's default
+	maxDepth = 0
+)
+
+// parseOptions removes the --name=value options from the arguments and
+// applies them. They may appear anywhere after the command.
+func parseOptions(args []string) []string {
+	var rest []string
+	for _, arg := range args {
+		name, value, isOption := strings.Cut(arg, "=")
+		if !strings.HasPrefix(arg, "--") {
+			rest = append(rest, arg)
+			continue
+		}
+
+		n, err := strconv.Atoi(value)
+		if !isOption || err != nil || n <= 0 {
+			fmt.Fprintf(os.Stderr, "Error: option %s needs a positive number, as in %s=64\n", name, name)
+			os.Exit(1)
+		}
+		switch name {
+		case "--heap-mb":
+			heapMB = n
+		case "--max-depth":
+			maxDepth = n
+		default:
+			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n", name)
+			os.Exit(1)
+		}
+	}
+	return rest
+}
+
+// newVM creates a virtual machine with the limits from the command line.
+func newVM() *vm.VM {
+	machine := vm.NewVM()
+	if heapMB > 0 {
+		machine = vm.NewVMWithHeapSize(uint64(heapMB) * 1024 * 1024)
+	}
+	if maxDepth > 0 {
+		machine.SetMaxCallDepth(maxDepth)
+	}
+	return machine
+}
+
 func main() {
+	os.Args = parseOptions(os.Args)
 	if len(os.Args) < 2 {
 		printHelp()
 		return
@@ -101,6 +150,10 @@ func printHelp() {
 	fmt.Println("  lumen exec <file>          Execute .lc bytecode file")
 	fmt.Println("  lumen runasm <file>        Assemble and run .lasm file directly")
 	fmt.Println("  lumen lumdbg <file>        Debug a .lum, .lasm or .lc file")
+	fmt.Println()
+	fmt.Println("Options for commands that execute a program:")
+	fmt.Println("  --heap-mb=N                Memory the program may use, in MB (default 256)")
+	fmt.Println("  --max-depth=N              How deep calls may nest (default 10000)")
 }
 
 // compileSource runs the compilation pipeline on a .lum file. Diagnostics
@@ -127,7 +180,7 @@ func compileSource(inputFile string) *compiler.Result {
 func cmdRun(inputFile string) {
 	chunk := compileSource(inputFile).Chunk
 
-	result, err := vm.NewVM().Exec(chunk)
+	result, err := newVM().Exec(chunk)
 	if err != nil {
 		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
 		os.Exit(1)
@@ -240,7 +293,7 @@ func cmdExecute(inputFile string) {
 	}
 
 	// Create VM and execute
-	v := vm.NewVM()
+	v := newVM()
 	result, err := v.Exec(chunk)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
@@ -266,7 +319,7 @@ func cmdRunAsm(inputFile string) {
 	}
 
 	// Create VM and execute directly
-	v := vm.NewVM()
+	v := newVM()
 	result, err := v.Exec(chunk)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
@@ -333,7 +386,7 @@ func cmdDebug(inputFile string) {
 	}
 
 	// Create VM
-	v := vm.NewVM()
+	v := newVM()
 
 	// Print header
 	printDebuggerHeader()

@@ -18,6 +18,7 @@ package e2e
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"fmt"
@@ -27,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 var update = flag.Bool("update", false, "rewrite the expected .out files")
@@ -35,6 +37,9 @@ var update = flag.Bool("update", false, "rewrite the expected .out files")
 var lumen string
 
 const repoRoot = "../.."
+
+// runTimeout bounds one run of the binary.
+const runTimeout = 20 * time.Second
 
 func TestMain(m *testing.M) {
 	flag.Parse()
@@ -70,14 +75,24 @@ type result struct {
 func runLumen(t *testing.T, args ...string) result {
 	t.Helper()
 
+	// No test program needs more than a moment. A run that takes this long
+	// has stopped making progress, or has become slow enough to count as
+	// broken: fail instead of waiting for it.
+	ctx, cancel := context.WithTimeout(context.Background(), runTimeout)
+	defer cancel()
+
 	var stdout, stderr bytes.Buffer
-	cmd := exec.Command(lumen, args...)
+	cmd := exec.CommandContext(ctx, lumen, args...)
 	cmd.Dir = repoRoot
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	res := result{}
-	if err := cmd.Run(); err != nil {
+	err := cmd.Run()
+	if ctx.Err() == context.DeadlineExceeded {
+		t.Fatalf("lumen %v did not finish within %s", args, runTimeout)
+	}
+	if err != nil {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) {
 			t.Fatalf("cannot run lumen %v: %v", args, err)
@@ -248,6 +263,61 @@ func TestIRCommand(t *testing.T) {
 	for _, want := range []string{"fn main() {", "b0:", `MOV, "println"`, "CALL", "RET"} {
 		if !strings.Contains(res.stdout, want) {
 			t.Errorf("expected the IR to contain %q, got:\n%s", want, res.stdout)
+		}
+	}
+}
+
+// TestMachineLimits covers the options that bound what a program may use.
+func TestMachineLimits(t *testing.T) {
+	deep := "test/e2e/cases/limits_recursion.lum"
+	big := "test/e2e/cases/limits_memory.lum"
+
+	// Within the defaults both programs run
+	if res := runLumen(t, "run", deep); res.exit != 0 || res.stdout != "12497500 5000\n" {
+		t.Errorf("expected the recursion to finish, got exit %d, %q, %s", res.exit, res.stdout, res.stderr)
+	}
+	if res := runLumen(t, "run", big); res.exit != 0 || res.stdout != "1500000 1124999250000\n" {
+		t.Errorf("expected the large array to be built, got exit %d, %q, %s", res.exit, res.stdout, res.stderr)
+	}
+
+	// --max-depth lowers how deep calls may nest
+	res := runLumen(t, "run", "--max-depth=1000", deep)
+	if res.exit != 1 || !strings.Contains(res.stderr, "stack overflow: max call depth 1000 exceeded") {
+		t.Errorf("expected a stack overflow at depth 1000, got exit %d:\n%s", res.exit, res.stderr)
+	}
+	if !strings.Contains(res.stderr, "limits_recursion.lum") || !strings.Contains(res.stderr, "in function 'sum'") {
+		t.Errorf("expected the overflow to name where it happened, got:\n%s", res.stderr)
+	}
+
+	// --heap-mb lowers how much memory it may hold; the option may follow the file
+	res = runLumen(t, "run", big, "--heap-mb=2")
+	if res.exit != 1 || !strings.Contains(res.stderr, "out of memory") || !strings.Contains(res.stderr, "limit 2097152") {
+		t.Errorf("expected the program to run out of 2MB, got exit %d:\n%s", res.exit, res.stderr)
+	}
+	// ...and raising it is fine
+	if res := runLumen(t, "run", "--heap-mb=512", "--max-depth=20000", big); res.exit != 0 {
+		t.Errorf("expected generous limits to work, got exit %d:\n%s", res.exit, res.stderr)
+	}
+
+	// The same options apply to compiled bytecode
+	bytecode := filepath.Join(t.TempDir(), "deep.lc")
+	if res := runLumen(t, "build", deep, bytecode); res.exit != 0 {
+		t.Fatalf("build failed:\n%s", res.stderr)
+	}
+	res = runLumen(t, "exec", bytecode, "--max-depth=1000")
+	if res.exit != 1 || !strings.Contains(res.stderr, "max call depth 1000 exceeded") {
+		t.Errorf("expected exec to honour --max-depth, got exit %d:\n%s", res.exit, res.stderr)
+	}
+
+	for _, bad := range [][]string{
+		{"run", "--heap-mb=lots", big},
+		{"run", "--heap-mb=0", big},
+		{"run", "--max-depth", deep},
+		{"run", "--speed=9", big},
+	} {
+		res := runLumen(t, bad...)
+		if res.exit != 1 || !strings.Contains(res.stderr, "Error:") || res.stdout != "" {
+			t.Errorf("%v: expected an option error, got exit %d, %q, %q", bad, res.exit, res.stdout, res.stderr)
 		}
 	}
 }

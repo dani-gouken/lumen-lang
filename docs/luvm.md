@@ -173,6 +173,7 @@ See [assembly.md](assembly.md) for the exact rules of each instruction.
 - `RET r_val` - Return from function with value.
 - `CAPLOCAL r_func upval_idx local_reg` - Capture a local variable into a closure's upvalue slot.
 - `CAPUPVAL r_func upval_idx parent_upval_idx` - Capture an existing upvalue into a closure's upvalue slot.
+- `CLOSEUP r` - Detach the closures that captured register `r`: they keep its current value and stop following it.
 - `LDCAP r_dest upval_idx` - Load value from an upvalue.
 - `STCAP upval_idx r_src` - Store value to an upvalue.
 
@@ -255,7 +256,30 @@ luvm uses **mark-sweep** garbage collection:
 1. **Mark Phase**: Starting from roots (registers, stack), recursively mark all reachable objects
 2. **Sweep Phase**: Iterate through heap, free unmarked objects
 
-GC triggers when heap allocation exceeds a threshold.
+**When it runs.** The first collection happens once 1 MB has been allocated.
+After each collection the threshold is set to twice what survived (never below
+that first megabyte), so collections spread out as the live data grows and
+the total work stays proportional to what the program allocates. Everything
+that takes memory is counted, including an array's growth as it is appended to
+and the fields added to an object.
+
+**The limit.** A program may hold 256 MB at once by default
+(`NewVMWithHeapSize`, or `--heap-mb=N` on the command line). An allocation that
+would exceed it first triggers a collection; if that does not make room, the
+program stops with `out of memory`.
+
+**Function objects are reused.** `NEWFUNC` for a function without captured
+variables and `NEWEXFUNC` for a host function return the same object every
+time, so calling a function by its name allocates nothing. A closure
+(`UpvalueCount > 0`) gets a new object each time, since it carries its own
+captured variables.
+
+### Call depth
+
+Calls may nest 10000 deep by default (`VM.SetMaxCallDepth`, `--max-depth=N`);
+beyond that the program stops with `stack overflow`. The frame stack grows as
+needed, so the limit is a guard against runaway recursion, not a reserved
+size.
 
 ### Heap Object Header
 

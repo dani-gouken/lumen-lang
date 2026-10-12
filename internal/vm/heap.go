@@ -6,9 +6,11 @@ import (
 )
 
 const (
-	// DefaultHeapSize is 1MB
-	DefaultHeapSize = 1024 * 1024
-	// GC triggers when heap is 80% full
+	// DefaultHeapSize is the most a program may hold at once: 256MB
+	DefaultHeapSize = 256 * 1024 * 1024
+	// DefaultGCStart is how much is allocated before the first collection
+	DefaultGCStart = 1024 * 1024
+	// A heap smaller than DefaultGCStart collects when it is 80% full
 	DefaultGCThreshold = 0.8
 )
 
@@ -20,9 +22,15 @@ type Heap struct {
 	// Memory statistics
 	bytesAllocated uint64
 	nextGC         uint64
+	collections    int // number of collections run so far
 
 	// Configuration
 	maxBytes uint64
+	minGC    uint64 // the collection threshold never drops below this
+
+	// Runs a collection. Set by the VM, which knows the roots; called when
+	// an allocation would exceed maxBytes, before giving up.
+	collect func()
 }
 
 // NewHeap creates a new heap with the given size limit.
@@ -31,19 +39,56 @@ func NewHeap(maxBytes uint64) *Heap {
 		maxBytes = DefaultHeapSize
 	}
 
+	// Collect for the first time at DefaultGCStart, or when a smaller heap
+	// is nearly full. After each collection the threshold is set to twice
+	// what survived (see sweep), so the cost of collecting stays
+	// proportional to what is allocated.
+	start := uint64(float64(maxBytes) * DefaultGCThreshold)
+	if start > DefaultGCStart {
+		start = DefaultGCStart
+	}
+
 	return &Heap{
 		objects:        nil,
 		bytesAllocated: 0,
-		nextGC:         uint64(float64(maxBytes) * DefaultGCThreshold),
+		nextGC:         start,
 		maxBytes:       maxBytes,
+		minGC:          start,
 	}
+}
+
+// reserve makes sure size more bytes fit under the limit, collecting
+// garbage first if they do not.
+func (h *Heap) reserve(size uint64) error {
+	if h.bytesAllocated+size > h.maxBytes && h.collect != nil {
+		h.collect()
+	}
+	if h.bytesAllocated+size > h.maxBytes {
+		return fmt.Errorf("out of memory: %d bytes in use, %d more requested, limit %d", h.bytesAllocated, size, h.maxBytes)
+	}
+	return nil
+}
+
+// grow accounts for an existing object getting larger: an array gaining
+// capacity, an object gaining a field. It reports whether a collection is
+// due.
+func (h *Heap) grow(size uint64) (bool, error) {
+	if err := h.reserve(size); err != nil {
+		return false, err
+	}
+	h.bytesAllocated += size
+	return h.ShouldCollect(), nil
+}
+
+// Collections returns how many garbage collections have run.
+func (h *Heap) Collections() int {
+	return h.collections
 }
 
 // allocate allocates memory for an object and tracks it.
 func (h *Heap) allocate(obj Obj, size uint64) error {
-	// Check if we need to run GC
-	if h.bytesAllocated+size > h.maxBytes {
-		return fmt.Errorf("heap exhausted: %d bytes allocated, %d max", h.bytesAllocated, h.maxBytes)
+	if err := h.reserve(size); err != nil {
+		return err
 	}
 
 	// Add to object list

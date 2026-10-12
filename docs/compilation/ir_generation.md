@@ -47,7 +47,7 @@ b2:
 | Structs | `NEW_STRUCT name`, `GET_FIELD obj, name`, `SET_FIELD obj, name, value` |
 | Casts and type tests | no operation of their own: a call of the `__cast` / `__is` host function |
 | Arrays | `NEW_ARRAY capacity`, `GET_INDEX arr, i`, `SET_INDEX arr, i, value`, `LEN value`, `PUSH arr, value` |
-| Closures | `MAKE_CLOSURE fn, captures...`, `LOAD_UPVALUE i`, `STORE_UPVALUE i, value` |
+| Closures | `MAKE_CLOSURE fn, captures...`, `LOAD_UPVALUE i`, `STORE_UPVALUE i, value`, `CLOSE_UPVALUES regs...` |
 
 `AND`, `OR` and `CALL_TRAIT` exist in the instruction set but are not produced: short-circuit operators become branches and method calls become a field read plus a call. The backend rejects them (`E6004`).
 
@@ -133,6 +133,8 @@ exit:                            index = index + 1
 `for` loops are normally rewritten by desugaring before they get here; IR generation still compiles any that reach it as a real loop, with the increment before the body so `continue` cannot skip it. With `for i, v in xs`, the body's `i` is a copy of the loop's own counter. The type checker rejects assignments to either loop variable, so the copy is never written.
 
 `break` and `continue` jump to the exit and condition blocks of the innermost loop, tracked on a loop stack. Outside a loop they are `E5005`.
+
+**Per-iteration variables.** Each loop on the stack also collects the registers of variables declared in its body that a closure captured. Before the jump back to the condition, and before each `continue`, `CLOSE_UPVALUES` is emitted for them, so closures made in one iteration do not see the next one's values (see [closure-spec.md](../closure-spec.md#loops-one-variable-per-iteration)). A loop whose body creates no such closure gets nothing extra.
 
 **Code after a terminator.** After `return`, `break` and `continue` the generator switches to a fresh block. Statements that follow (unreachable code) land there instead of after a terminator, which keeps every block well formed. Nothing jumps to these blocks and the backend drops them.
 

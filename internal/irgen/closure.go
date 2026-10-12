@@ -18,8 +18,9 @@ func (fc *FunctionCompiler) createClosure(
 	capturedVals := make([]ir.Value, len(captures.CapturedVars))
 
 	for i, cv := range captures.CapturedVars {
-		if reg, ok := fc.lookup(cv.Name); ok {
+		if reg, depth, ok := fc.lookupScope(cv.Name); ok {
 			capturedVals[i] = reg
+			fc.noteCapture(reg, depth)
 		} else if upvalIdx, ok := fc.upvalues[cv.Name]; ok {
 			capturedVals[i] = ir.Constant{Val: upvalIdx, Type: "Upvalue"}
 		} else {

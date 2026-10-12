@@ -48,9 +48,10 @@ const (
 	// Closures
 	// A capture is either a Register (a local of the enclosing function) or
 	// a Constant of type "Upvalue" (an upvalue index of the enclosing function).
-	OpMakeClosure  // Dest = MakeClosure Func, Captures...
-	OpLoadUpvalue  // Dest = LoadUpvalue Index
-	OpStoreUpvalue // StoreUpvalue Index, Value
+	OpMakeClosure   // Dest = MakeClosure Func, Captures...
+	OpCloseUpvalues // CloseUpvalues Registers...: closures stop following them
+	OpLoadUpvalue   // Dest = LoadUpvalue Index
+	OpStoreUpvalue  // StoreUpvalue Index, Value
 )
 
 func (op OpType) String() string {
@@ -121,6 +122,8 @@ func (op OpType) String() string {
 		return "LOAD_UPVALUE"
 	case OpStoreUpvalue:
 		return "STORE_UPVALUE"
+	case OpCloseUpvalues:
+		return "CLOSE_UPVALUES"
 	default:
 		return "UNKNOWN"
 	}

@@ -10,8 +10,11 @@ import (
 )
 
 const (
-	stackSize    = 4096
-	maxCallDepth = 256
+	stackSize = 4096
+
+	// DefaultMaxCallDepth bounds how deep calls may nest, so that runaway
+	// recursion ends with an error instead of exhausting memory.
+	DefaultMaxCallDepth = 10000
 )
 
 // CallFrame represents a function call frame.
@@ -33,7 +36,7 @@ type DebugHook func(snapshot interface{}) bool
 // VM represents the Lumen virtual machine.
 type VM struct {
 	stack           [stackSize]Value
-	frames          [maxCallDepth]CallFrame
+	frames          []CallFrame
 	frameCount      int          // Number of active frames
 	fp              int          // frame pointer
 	sp              int          // stack pointer
@@ -49,6 +52,15 @@ type VM struct {
 	castTypes       map[string]*castType  // Parsed cast descriptors, by text
 
 	externSignatures map[string]string // Declared types of external functions
+
+	maxCallDepth int
+
+	// Function objects that never differ between uses are created once:
+	// a function without captured variables (by prototype index) and a host
+	// function (by name). Without this every call of a function by its name
+	// would allocate an object just to call it.
+	funcObjs   map[int]Value
+	externObjs map[string]Value
 }
 
 // NewVM creates a new VM instance.
@@ -66,7 +78,11 @@ func NewVM() *VM {
 		castTypes:   make(map[string]*castType),
 
 		externSignatures: make(map[string]string),
+		maxCallDepth:     DefaultMaxCallDepth,
+		funcObjs:         make(map[int]Value),
+		externObjs:       make(map[string]Value),
 	}
+	vm.heap.collect = vm.CollectGarbage
 	vm.registerBuiltins()
 	return vm
 }
@@ -86,7 +102,11 @@ func NewVMWithHeapSize(heapSize uint64) *VM {
 		castTypes:   make(map[string]*castType),
 
 		externSignatures: make(map[string]string),
+		maxCallDepth:     DefaultMaxCallDepth,
+		funcObjs:         make(map[int]Value),
+		externObjs:       make(map[string]Value),
 	}
+	vm.heap.collect = vm.CollectGarbage
 	vm.registerBuiltins()
 	return vm
 }
@@ -102,6 +122,13 @@ func (vm *VM) RegisterExtern(name string, fn ExternFunc) {
 func (vm *VM) RegisterTypedExtern(name, signature string, fn ExternFunc) {
 	vm.externFuncs[name] = fn
 	vm.externSignatures[name] = signature
+}
+
+// SetMaxCallDepth sets how deep calls may nest (default DefaultMaxCallDepth).
+func (vm *VM) SetMaxCallDepth(depth int) {
+	if depth > 0 {
+		vm.maxCallDepth = depth
+	}
 }
 
 // SetOutput redirects the output of print/println (default: os.Stdout).
@@ -179,8 +206,8 @@ func (vm *VM) registerBuiltins() {
 		if t, ok := heapType(args[0]); !ok || t != ObjTypeArray {
 			return NewNull(), fmt.Errorf("push expects an array, got %s", typeName(args[0]))
 		}
-		(*ArrayObj)(unsafe.Pointer(args[0].AsHeapPtr())).Append(args[1])
-		return NewNull(), nil
+		// The caller collects garbage after the call if it is due
+		return NewNull(), vm.appendToArray((*ArrayObj)(unsafe.Pointer(args[0].AsHeapPtr())), args[1])
 	})
 }
 
@@ -208,6 +235,23 @@ func (vm *VM) newString(s string) (Value, error) {
 		return NewNull(), err
 	}
 	return NewHeapPtr(uintptr(unsafe.Pointer(strObj))), nil
+}
+
+// objectFieldSize is what one field is counted as in the heap's accounting.
+const objectFieldSize = 32
+
+// appendToArray appends a value and accounts for the memory when the array
+// has to grow. Counting growth is what lets the collector's threshold
+// follow the size of the data; an array that grows unseen keeps the
+// threshold low, and every collection then walks the whole array again.
+func (vm *VM) appendToArray(arr *ArrayObj, v Value) error {
+	before := cap(arr.elements)
+	arr.Append(v)
+	if after := cap(arr.elements); after > before {
+		_, err := vm.heap.grow(uint64(after-before) * uint64(unsafe.Sizeof(Value(0))))
+		return err
+	}
+	return nil
 }
 
 // collectIfNeeded runs the GC when the heap has passed its threshold. Call
@@ -402,6 +446,10 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 	vm.ip = mainProto.CodeStart
 	vm.currentFunction = mainFunc
 	vm.frameCount = 0
+	vm.frames = vm.frames[:0]
+
+	// Cached function objects belong to the chunk being run
+	vm.funcObjs = make(map[int]Value)
 
 	for vm.ip < len(vm.chunk.Code) {
 		// Call debug hook if set
@@ -786,18 +834,18 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				}
 
 				// Check call depth
-				if vm.frameCount >= maxCallDepth {
-					return NewNull(), vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", maxCallDepth))
+				if vm.frameCount >= vm.maxCallDepth {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", vm.maxCallDepth))
 				}
 
 				// Save current frame
-				vm.frames[vm.frameCount] = CallFrame{
+				vm.frames = append(vm.frames[:vm.frameCount], CallFrame{
 					function: vm.currentFunction,
 					chunk:    vm.chunk,
 					ip:       vm.ip,
 					fp:       vm.fp,
 					regs:     vm.regs,
-				}
+				})
 				vm.frameCount++
 
 				// Allocate new register set for called function
@@ -837,9 +885,11 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				// Call the extern function
 				retVal, err := externObj.Function()(vm, args)
 				if err != nil {
-					if strings.HasPrefix(externObj.Name(), "__") {
+					if strings.HasPrefix(externObj.Name(), "__") || strings.HasPrefix(err.Error(), "out of memory") {
 						// Compiler intrinsic: the user wrote an operator,
-						// not a call, so the function name means nothing
+						// not a call, so the function name means nothing.
+						// Running out of memory is not the function's
+						// doing either.
 						return NewNull(), vm.runtimeError(err.Error())
 					}
 					return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s failed: %v", externObj.Name(), err))
@@ -894,6 +944,13 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 			proto := vm.chunk.Prototypes[protoIdx]
 
+			// A function that captures nothing is the same object every
+			// time; only closures need one of their own
+			if cached, ok := vm.funcObjs[protoIdx]; ok && proto.UpvalueCount == 0 {
+				vm.regs[instr.A] = cached
+				break
+			}
+
 			// Allocate function object on heap
 			funcObj, shouldGC, err := vm.heap.AllocFunction(vm.chunk, protoIdx, proto.UpvalueCount)
 			if err != nil {
@@ -902,6 +959,9 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 			// Store function object pointer in destination register
 			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(funcObj)))
+			if proto.UpvalueCount == 0 {
+				vm.funcObjs[protoIdx] = vm.regs[instr.A]
+			}
 
 			// Trigger GC if needed
 			if shouldGC {
@@ -968,6 +1028,12 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			}
 			externName := vm.chunk.ExternNames[externIdx]
 
+			// One object per host function is enough
+			if cached, ok := vm.externObjs[externName]; ok {
+				vm.regs[instr.A] = cached
+				break
+			}
+
 			// Look up the extern function
 			externFunc, ok := vm.externFuncs[externName]
 			if !ok {
@@ -986,11 +1052,19 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 			// Store function object pointer in destination register
 			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(funcObj)))
+			vm.externObjs[externName] = vm.regs[instr.A]
 
 			// Trigger GC if needed
 			if shouldGC {
 				vm.CollectGarbage()
 			}
+
+		case OpCLOSEUP:
+			// CLOSEUP: A = register. Closures that captured this register
+			// get their own copy of its value and stop following it. Used
+			// at the end of a loop iteration, so that each iteration's
+			// closures keep that iteration's variables.
+			vm.closeUpvalueAt(&vm.regs[instr.A])
 
 		case OpLDCAP:
 			// LDCAP: A = dest_reg, B = upvalue_idx
@@ -1126,6 +1200,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				return NewNull(), err
 			}
 			// Writing past the length grows the array, up to its capacity
+			// (which was accounted for when the array was created)
 			if index < 0 || index >= cap(arrayObj.elements) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
 			}
@@ -1177,7 +1252,14 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if err != nil {
 				return NewNull(), err
 			}
+			if _, exists := objObj.Get(fieldName); !exists {
+				// A new field makes the object larger
+				if _, err := vm.heap.grow(objectFieldSize); err != nil {
+					return NewNull(), vm.runtimeError(err.Error())
+				}
+			}
 			objObj.Set(fieldName, vm.regs[instr.C])
+			vm.collectIfNeeded()
 
 		case OpARRLEN:
 			// Get length: A = dest, B = array or string.
@@ -1205,7 +1287,10 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if err != nil {
 				return NewNull(), err
 			}
-			arrayObj.Append(vm.regs[instr.B])
+			if err := vm.appendToArray(arrayObj, vm.regs[instr.B]); err != nil {
+				return NewNull(), vm.runtimeError(err.Error())
+			}
+			vm.collectIfNeeded()
 
 		case OpHASFIELD:
 			// Check if object has field: A = dest bool, B = object, C = const index
@@ -1285,6 +1370,17 @@ func (vm *VM) findOrCreateUpvalue(location *Value) *UpvalueObj {
 	}
 
 	return upval
+}
+
+// closeUpvalueAt closes the open upvalue for one register, if there is one.
+func (vm *VM) closeUpvalueAt(location *Value) {
+	for i, upval := range vm.openUpvalues {
+		if upval.location == location {
+			upval.Close()
+			vm.openUpvalues = append(vm.openUpvalues[:i], vm.openUpvalues[i+1:]...)
+			return
+		}
+	}
 }
 
 // closeUpvalues closes all upvalues that point to stack slots at or above the given index.

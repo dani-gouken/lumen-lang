@@ -424,3 +424,44 @@ func TestAssembleCheckedElementWrite(t *testing.T) {
 		t.Error("expected an error for SETELEM with 2 arguments")
 	}
 }
+
+// TestAssembleCloseUpvalue covers CLOSEUP, which detaches the closures that
+// captured a register.
+func TestAssembleCloseUpvalue(t *testing.T) {
+	source := `
+.func main 4 0
+  LOADI r1 10
+  NEWFUNC r2 reader
+  CAPLOCAL r2 0 r1
+  CLOSEUP r1
+  LOADI r1 20
+  CALL r2 0
+  RET r0
+.endfunc
+
+.func reader 1 0 1
+  LDCAP r0 0
+  RET r0
+.endfunc
+`
+	chunk, err := Assemble(source)
+	if err != nil {
+		t.Fatalf("assembly failed: %v", err)
+	}
+	if instr := chunk.Code[3]; instr.Op != vm.OpCLOSEUP || instr.A != 1 {
+		t.Errorf("expected CLOSEUP r1, got %v", instr)
+	}
+	if text := Disassemble(chunk); !strings.Contains(text, "CLOSEUP r1") {
+		t.Errorf("expected the disassembly to show CLOSEUP, got:\n%s", text)
+	}
+
+	// The closure kept the value the register had when it was detached
+	result, err := vm.NewVM().Exec(chunk)
+	if err != nil || !result.IsInt() || result.AsInt() != 10 {
+		t.Errorf("expected 10, got %v, %v", result, err)
+	}
+
+	if _, err := Assemble(".func main 1 0\n  CLOSEUP\n.endfunc\n"); err == nil {
+		t.Error("expected an error for CLOSEUP without a register")
+	}
+}

@@ -30,6 +30,57 @@ type FunctionCompiler struct {
 type loopContext struct {
 	breakTarget    *ir.BasicBlock
 	continueTarget *ir.BasicBlock
+
+	// Number of scopes open when the loop started: a variable in a scope at
+	// this depth or deeper is declared inside the loop body.
+	scopeDepth int
+
+	// Registers of variables declared in the body that a closure captured.
+	// They are detached from those closures when an iteration ends.
+	captured []*ir.Register
+}
+
+// newLoop starts the context of a loop about to be compiled.
+func (fc *FunctionCompiler) newLoop(breakTarget, continueTarget *ir.BasicBlock) *loopContext {
+	ctx := &loopContext{
+		breakTarget:    breakTarget,
+		continueTarget: continueTarget,
+		scopeDepth:     len(fc.scopes),
+	}
+	fc.loopStack = append(fc.loopStack, ctx)
+	return ctx
+}
+
+// noteCapture records that a closure captured the variable in reg, declared
+// at the given scope depth, with every enclosing loop whose body declares it.
+func (fc *FunctionCompiler) noteCapture(reg *ir.Register, depth int) {
+	for _, ctx := range fc.loopStack {
+		if depth < ctx.scopeDepth {
+			continue
+		}
+		known := false
+		for _, r := range ctx.captured {
+			known = known || r.ID == reg.ID
+		}
+		if !known {
+			ctx.captured = append(ctx.captured, reg)
+		}
+	}
+}
+
+// endIteration emits what has to happen when an iteration of a loop ends,
+// before jumping back: the closures created in it stop following the body's
+// variables. The next iteration reuses those registers; without this, every
+// closure made in the loop would end up seeing the last iteration's values.
+func (fc *FunctionCompiler) endIteration(ctx *loopContext) {
+	if len(ctx.captured) == 0 {
+		return
+	}
+	operands := make([]ir.Value, len(ctx.captured))
+	for i, reg := range ctx.captured {
+		operands[i] = reg
+	}
+	fc.builder.Emit(ir.OpCloseUpvalues, nil, operands...)
 }
 
 func (g *IRGenerator) newFunctionCompiler(fn ast.Node, name string) *FunctionCompiler {
@@ -127,12 +178,18 @@ func (fc *FunctionCompiler) declare(name string, reg *ir.Register) {
 
 // lookup finds the register of a local variable, innermost scope first.
 func (fc *FunctionCompiler) lookup(name string) (*ir.Register, bool) {
+	reg, _, ok := fc.lookupScope(name)
+	return reg, ok
+}
+
+// lookupScope is lookup that also says how deep the declaring scope is.
+func (fc *FunctionCompiler) lookupScope(name string) (*ir.Register, int, bool) {
 	for i := len(fc.scopes) - 1; i >= 0; i-- {
 		if reg, ok := fc.scopes[i][name]; ok {
-			return reg, true
+			return reg, i, true
 		}
 	}
-	return nil, false
+	return nil, 0, false
 }
 
 // setPos records the source position for the instructions emitted next.

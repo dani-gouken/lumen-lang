@@ -56,7 +56,7 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Closure analysis
 - ✅ IR generation
 - ✅ Bytecode generation with register allocation
-- ✅ luvm bytecode virtual machine with mark-sweep GC
+- ✅ luvm bytecode virtual machine with mark-sweep GC, bounded memory and call depth (`--heap-mb`, `--max-depth`)
 - ✅ Binary bytecode format (.lc files), assembler and disassembler
 - ✅ Interactive debugger, showing Lumen source lines
 - ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`

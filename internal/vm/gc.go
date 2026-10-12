@@ -39,6 +39,14 @@ func (vm *VM) markRoots() {
 		}
 	}
 
+	// Function objects kept for reuse (see functionObject, NEWEXFUNC)
+	for _, cached := range vm.funcObjs {
+		vm.markValue(cached)
+	}
+	for _, cached := range vm.externObjs {
+		vm.markValue(cached)
+	}
+
 	// Mark open upvalues (they are roots because they point to stack)
 	for _, upval := range vm.openUpvalues {
 		if upval != nil && !upval.header.Marked {
@@ -163,8 +171,15 @@ func (h *Heap) sweep() {
 		}
 	}
 
-	// Update GC threshold
-	h.nextGC = h.bytesAllocated + (h.bytesAllocated / 2)
+	// Collect again when twice as much is in use as survived this time, and
+	// never before minGC. A threshold tied to what survives keeps the total
+	// work proportional to what the program allocates; one that stays small
+	// while the live data grows makes every collection re-walk that data.
+	h.collections++
+	h.nextGC = h.bytesAllocated * 2
+	if h.nextGC < h.minGC {
+		h.nextGC = h.minGC
+	}
 	if h.nextGC > h.maxBytes {
 		h.nextGC = h.maxBytes
 	}
@@ -186,8 +201,8 @@ func (h *Heap) freeObject(header *ObjHeader) {
 	case ObjTypeObject:
 		obj := (*ObjectObj)(unsafe.Pointer(header))
 		size = uint64(unsafe.Sizeof(ObjectObj{}))
-		// Approximate map overhead
-		size += uint64(len(obj.fields)) * 32
+		// What SETFIELD counted when each field was added
+		size += uint64(len(obj.fields)) * objectFieldSize
 
 	case ObjTypeFunction:
 		// Phase A: Just the function object size (no upvalue array yet)

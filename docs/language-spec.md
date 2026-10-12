@@ -98,7 +98,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 
 ### Closures
 - A function expression captures the variables it uses **by reference**: it sees later assignments made by the enclosing function, and its own assignments are visible outside. A captured variable lives on after the enclosing function returns.
-- Variables declared inside a loop body are shared by all closures created in that loop; copy the value into a function parameter to give each closure its own.
+- Each iteration of a loop has its own variables: closures created in different iterations keep the values of their own iteration, including the loop's variables (`for i, item in items`). Within one iteration a closure and the loop body still share them. A variable declared outside the loop is shared by all of them.
 
 ## 6. Modules & Imports
 - One module per `.lum` file; module name = path relative to a chosen root (TBD).
@@ -153,6 +153,7 @@ Values print as `42`, `2.5`, `true`, `null`, the text of a string, `[1, 2]` for 
 - Execution starts at `fn main()`, which takes no parameters (`E6006` otherwise).
 - When `main` returns an `Int`, `lumen run` uses it as the process exit code (low 8 bits). Any other result exits with 0.
 - A runtime error prints the message with the source location and exits with 1.
+- Two limits end a runaway program with an error rather than letting it take the machine down: calls may nest 10000 deep (`--max-depth=N`), and the program may hold 256 MB at once (`--heap-mb=N`).
 
 ## 12. Grammar (EBNF sketch)
 ```

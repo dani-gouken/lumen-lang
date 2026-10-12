@@ -901,6 +901,16 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 		}
 		instr = vm.NewInstr(vm.OpSETINDEX, a, b, c)
 
+	case "CLOSEUP":
+		if len(args) != 1 {
+			return fmt.Errorf("CLOSEUP requires 1 argument, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpCLOSEUP, a, 0, 0)
+
 	case "SETELEM":
 		if len(args) != 3 {
 			return fmt.Errorf("SETELEM requires 3 arguments, got %d", len(args))

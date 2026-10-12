@@ -328,6 +328,69 @@ func TestForLoopIndexIsACopyOfThePosition(t *testing.T) {
 	)
 }
 
+func TestLoopIterationsDetachTheirClosures(t *testing.T) {
+	// A variable declared in the loop body and captured: detached when the
+	// iteration ends, at the back edge and at `continue`
+	src := `
+		fn main() -> Int {
+			let fs: [fn() -> Int] = [];
+			let i = 0;
+			while i < 3 {
+				let x = i * 2;
+				i += 1;
+				push(fs, fn() -> Int { return x; });
+				if x == 2 { continue; }
+				i += 0;
+			}
+			return fs[0]();
+		}`
+	dump := dumpFunction(t, src, "main")
+	if n := strings.Count(dump, "CLOSE_UPVALUES"); n != 2 {
+		t.Fatalf("expected the closure to be detached at `continue` and at the end of the body, found %d in:\n%s", n, dump)
+	}
+	// It names the register the closure captured
+	captured := dump[strings.Index(dump, "MAKE_CLOSURE"):]
+	captured = captured[strings.Index(captured, "%v"):strings.Index(captured, "\n")]
+	if !strings.Contains(dump, "CLOSE_UPVALUES "+captured) {
+		t.Errorf("expected CLOSE_UPVALUES %s in:\n%s", captured, dump)
+	}
+	// ...and comes right before the jump back
+	if !strings.Contains(dump, "CLOSE_UPVALUES "+captured+"\n\tJMP b1") {
+		t.Errorf("expected the detach right before the jump to the condition, got:\n%s", dump)
+	}
+
+	nothingToDetach := []struct {
+		name string
+		src  string
+	}{
+		{"no closure in the loop", `fn main() -> Int { let t = 0; let i = 0; while i < 3 { let x = i; t += x; i += 1; } return t; }`},
+		{"closure over a variable declared outside the loop", `fn main() -> Int {
+			let total = 0; let i = 0;
+			while i < 3 { let add = fn() -> Void { total += 1; }; add(); i += 1; }
+			return total; }`},
+		{"closure that captures nothing", `fn main() -> Int { let i = 0; while i < 3 { let f = fn() -> Int { return 1; }; i += f(); } return i; }`},
+		{"closure outside any loop", `fn main() -> Int { let x = 1; let f = fn() -> Int { return x; }; return f(); }`},
+	}
+	for _, tt := range nothingToDetach {
+		if dump := dumpFunction(t, tt.src, "main"); strings.Contains(dump, "CLOSE_UPVALUES") {
+			t.Errorf("%s: expected nothing to detach, got:\n%s", tt.name, dump)
+		}
+	}
+
+	// In nested loops the inner body's variable is detached by the inner
+	// loop, and again by the outer one, whose body contains it
+	nested := `
+		fn main() -> Int {
+			let fs: [fn() -> Int] = [];
+			for a in [1, 2] { for b in [3, 4] { push(fs, fn() -> Int { return a * b; }); } }
+			return fs[0]();
+		}`
+	dump = dumpFunction(t, nested, "main")
+	if n := strings.Count(dump, "CLOSE_UPVALUES"); n != 2 {
+		t.Errorf("expected one detach per loop, found %d in:\n%s", n, dump)
+	}
+}
+
 func TestNegativeLiteralsAreConstants(t *testing.T) {
 	dump := dumpFunction(t, `fn main() -> Int { let a = -5; let b = -140737488355328; let c = -2.5; let d = 1; return -d; }`, "main")
 

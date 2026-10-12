@@ -479,6 +479,10 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 
 	case ir.OpMakeClosure:
 		f.generateClosure(instr)
+	case ir.OpCloseUpvalues:
+		for _, operand := range instr.Operands {
+			f.emit(vm.OpCLOSEUP, f.reg(operand), 0, 0)
+		}
 	case ir.OpLoadUpvalue:
 		if idx, ok := f.intOperand(instr, 0); ok {
 			f.emit(vm.OpLDCAP, f.dest(instr), byte(idx), 0)

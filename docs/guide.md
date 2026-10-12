@@ -39,6 +39,18 @@ Every program needs a `main` function without parameters. If it returns an `Int`
 
 Exit codes: `0` on success (or the `Int` returned by `main`), `1` for a compile error, a runtime error or a usage error. Diagnostics go to stderr, program output to stdout.
 
+Commands that execute a program accept two limits, anywhere after the command:
+
+| Option | Default | Exceeding it |
+|--------|---------|--------------|
+| `--heap-mb=N` | 256 | `out of memory: ... limit N` |
+| `--max-depth=N` | 10000 | `stack overflow: max call depth N exceeded` |
+
+```bash
+lumen run --heap-mb=1024 big.lum
+lumen exec program.lc --max-depth=100000
+```
+
 A `.lasm` file produced by `build` is a listing for reading. It is not accepted back by `lumen asm`, because the disassembler prints long jumps in an annotated form.
 
 ## A Tour of the Language
@@ -248,6 +260,16 @@ next();     // 2
 
 A closure shares the variables it captures with the function that declared them, and keeps them alive after that function returns.
 
+In a loop, each iteration has its own variables, so closures made in different iterations do not interfere:
+
+```lumen
+let readers: [fn() -> Int] = [];
+for v in [1, 2, 3] {
+    push(readers, fn() -> Int { return v; });
+}
+readers[0]();     // 1, not 3
+```
+
 ### Builtin functions
 
 | Function | Description |
@@ -307,7 +329,6 @@ Things to be aware of:
 
 *   **What is known about a field ends at a call that may change a field.** `println`, and functions that only read, are fine; after calling something that assigns a field, or a function value, the field has to be tested again or copied into a local first. A variable that a lambda assigns is not narrowed at all.
 *   **A type argument nothing determines has to be written**: `let xs = none();` gives no clue, so write `none<Int>()` or `let xs: [Int] = none();`.
-*   **Closures created in a loop share the loop body's variables.** Pass the value through a function parameter to give each closure its own copy.
 *   **Size limits:** 256 registers per function, 256 distinct constants and 256 functions per program. Very large functions may need to be split.
 
 The status table in the [language spec](language-spec.md#13-implementation-status) lists what works; [missing.md](missing.md) is the full inventory of what does not, including `+=`/`++`, the index in `for` loops and arrays with a size.

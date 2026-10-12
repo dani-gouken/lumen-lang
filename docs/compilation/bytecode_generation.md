@@ -142,6 +142,7 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 | `SET_INDEX` | `SETELEM`, which refuses an index at or past the length (`SETINDEX` would grow the array up to its capacity) |
 | `MAKE_CLOSURE` | `NEWFUNC`, then one `CAPLOCAL` (register capture) or `CAPUPVAL` (upvalue capture) per captured variable |
 | `LOAD_UPVALUE` / `STORE_UPVALUE` | `LDCAP` / `STCAP` |
+| `CLOSE_UPVALUES` | one `CLOSEUP` per register |
 | `AND` `OR` `CALL_TRAIT` | none: `E6004` |
 
 ## Chunk Tables

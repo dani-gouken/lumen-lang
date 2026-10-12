@@ -1,6 +1,7 @@
 package vm
 
 import (
+	"strings"
 	"testing"
 	"unsafe"
 )
@@ -137,21 +138,40 @@ func TestGCClearsMarkedFlag(t *testing.T) {
 }
 
 func TestGCUpdateThreshold(t *testing.T) {
-	vm := NewVMWithHeapSize(10 * 1024)
-
-	// Allocate some objects
-	for i := 0; i < 3; i++ {
-		str, _, _ := vm.heap.AllocString("test")
+	// The next collection is due when twice as much is in use as survived
+	// this one, and never before the heap's starting threshold.
+	newVM := func() *VM { return NewVMWithHeapSize(1024 * 1024) }
+	keep := func(vm *VM, bytes int) {
+		str, _, _ := vm.heap.AllocString(strings.Repeat("x", bytes))
 		vm.regs = append(vm.regs, NewHeapPtr(uintptr(unsafe.Pointer(str))))
 	}
 
-	thresholdBefore := vm.heap.nextGC
+	// Little survives: the threshold stays where it started. Dropping it to
+	// just above the live size would make the collector run constantly.
+	vm := newVM()
+	start := vm.heap.nextGC
+	keep(vm, 100)
+	vm.heap.AllocString(strings.Repeat("garbage", 1000))
 	vm.CollectGarbage()
-	thresholdAfter := vm.heap.nextGC
+	if vm.heap.nextGC != start {
+		t.Errorf("expected the threshold to stay at %d with little live data, got %d", start, vm.heap.nextGC)
+	}
 
-	// Threshold should be updated
-	if thresholdBefore == thresholdAfter {
-		t.Error("GC should update nextGC threshold")
+	// Much survives: the threshold follows it
+	vm = newVM()
+	keep(vm, 500*1024)
+	vm.CollectGarbage()
+	live := vm.heap.BytesAllocated()
+	if want := live * 2; vm.heap.nextGC != want {
+		t.Errorf("expected the threshold at twice the live size (%d), got %d", want, vm.heap.nextGC)
+	}
+
+	// ...but never past the limit of the heap
+	vm = newVM()
+	keep(vm, 700*1024)
+	vm.CollectGarbage()
+	if vm.heap.nextGC != vm.heap.MaxBytes() {
+		t.Errorf("expected the threshold capped at the heap limit %d, got %d", vm.heap.MaxBytes(), vm.heap.nextGC)
 	}
 }
 

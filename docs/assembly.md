@@ -530,6 +530,24 @@ instead of silently extending the array.
 - Runtime error if `r_index` is not an integer
 - Runtime error if the index is negative or not below the length
 
+#### CLOSEUP - Detach Closures from a Register
+```assembly
+CLOSEUP r
+```
+Close the open upvalue for register `r`, if a closure captured it: the closure
+keeps the value the register has now and no longer follows it. Has no effect
+on a register nothing captured. The compiler emits it at the end of each loop
+iteration for the body's captured variables; `RET` does the same for all
+registers of the returning function.
+
+```assembly
+LOADI r1 10
+NEWFUNC r2 reader
+CAPLOCAL r2 0 r1    ; reader follows r1
+CLOSEUP r1          ; reader keeps 10
+LOADI r1 20         ; not seen by reader
+```
+
 #### ARRPUSH - Append to Array
 ```assembly
 ARRPUSH r_array r_value

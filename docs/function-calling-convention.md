@@ -73,7 +73,7 @@ type CallFrame struct {
 }
 ```
 
-Maximum call depth: **256 frames**
+Maximum call depth: **10000 frames** by default (`VM.SetMaxCallDepth`, `--max-depth=N`)
 
 ## User-Defined Functions
 
@@ -278,14 +278,14 @@ type CallFrame struct {
 
 The VM maintains:
 ```go
-frames     [maxCallDepth]CallFrame  // Fixed-size frame stack
-frameCount int                       // Current frame depth
+frames     []CallFrame  // Frame stack, grows as calls nest
+frameCount int          // Current frame depth
 ```
 
 **Limits:**
-- `maxCallDepth` = 256
+- `maxCallDepth` = 10000 by default, adjustable per VM
 - Stack overflow if exceeded
-- No dynamic frame allocation
+- Frames are allocated as needed; the limit guards against runaway recursion
 
 ### Frame Lifecycle
 
@@ -434,7 +434,7 @@ Recursion is **fully supported** through automatic frame management.
 - Each recursive call creates new frame
 - Each frame has isolated registers
 - Automatic unwinding on return
-- Maximum depth: 256 (configurable via `maxCallDepth`)
+- Maximum depth: 10000 by default (`--max-depth=N`)
 
 ### Example: Factorial
 
@@ -477,12 +477,12 @@ base_case:
 
 If recursion exceeds `maxCallDepth`:
 ```
-Error: stack overflow: max call depth 256 exceeded
+Error: stack overflow: max call depth 10000 exceeded
 ```
 
 **Solutions:**
 - Rewrite as iteration
-- Increase `maxCallDepth` (requires VM recompilation)
+- Raise the limit: `lumen run --max-depth=100000 program.lum`
 - Use tail-call optimization (future enhancement)
 
 ## Implementation Details
@@ -628,8 +628,8 @@ sizeof(CallFrame) = sizeof(Chunk*) + sizeof(int)*2 + sizeof([]Value)
 
 **Maximum Stack:**
 ```
-256 frames * 40 bytes = 10,240 bytes
-Plus register data: 256 * 256 * 8 bytes = 524,288 bytes (worst case)
+10000 frames * 40 bytes = 400,000 bytes at the default limit
+Plus register data: each frame has its own registers, up to 256 * 8 bytes
 ```
 
 **Actual usage typically much lower** due to:

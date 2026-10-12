@@ -159,7 +159,29 @@ fn makeCounter() -> fn() -> Int {
 
 For this to hold, the register of a captured variable must keep holding that variable for the whole function. The register allocator therefore never reuses the register of anything passed to `MAKE_CLOSURE` (see [compilation/bytecode_generation.md](compilation/bytecode_generation.md#register-allocation)).
 
-One consequence to know about: a variable declared in a loop body has one register for all iterations, so closures created in different iterations share it and all see its last value. Passing the value through a function parameter gives each closure its own variable, because every call has its own registers.
+### Loops: one variable per iteration
+
+A variable declared in a loop body has one register for all iterations. If nothing were done, every closure created in the loop would point at that register and end up seeing the last iteration's value.
+
+So when an iteration ends, the closures created in it are **detached** from the body's variables: `CLOSEUP r` closes the upvalue for a register, exactly as `RET` does for a whole frame. The closure keeps the value from that moment; the next iteration writes the register afresh and a closure created then gets a new upvalue.
+
+```lumen
+for v in [1, 2, 3] {
+    push(readers, fn() -> Int { return v; });
+}
+```
+```
+body:
+    ... v = xs[index] ...
+    %v9 = MAKE_CLOSURE "lambda_0", %v7      ; captures v
+    ...
+    CLOSE_UPVALUES %v7                      ; end of the iteration
+    JMP cond
+```
+
+The IR generator records, per loop, which registers of variables declared in its body were captured, and emits `CLOSE_UPVALUES` for them before the jump back and before each `continue`. `break` and `return` need nothing: nothing writes the register again. In nested loops a variable of the inner body is detached by the inner loop and again by the outer one, since the outer body contains it.
+
+Within one iteration nothing changes: the closure and the body share the variable until the iteration ends. Variables declared outside the loop are not touched, so closures from all iterations still share those.
 
 ### Nested closures
 
