@@ -265,7 +265,7 @@ func (vm *VM) collectIfNeeded() {
 // fieldName resolves the field name operand of GETFIELD/SETFIELD/HASFIELD/
 // DELFIELD. The constant is either an index into the string pool (what the
 // assembler and compiler emit) or a pre-allocated heap string.
-func (vm *VM) fieldName(op string, constIdx byte) (string, error) {
+func (vm *VM) fieldName(op string, constIdx uint16) (string, error) {
 	if int(constIdx) >= len(vm.chunk.Constants) {
 		return "", vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", constIdx))
 	}

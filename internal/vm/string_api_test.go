@@ -267,7 +267,7 @@ func TestStringAPINoFileIO(t *testing.T) {
 
 	// Create program that uses all strings
 	for i := 0; i < len(testStrings); i++ {
-		chunk1.AddInstruction(NewInstr(OpNEWSTR, byte(i), byte(i), 0))
+		chunk1.AddInstruction(NewInstr(OpNEWSTR, uint16(i), uint16(i), 0))
 	}
 	chunk1.AddInstruction(NewInstr(OpRET, 0, 0, 0))
 	addMainProto(chunk1, len(testStrings), 0)

@@ -30,7 +30,7 @@ The second argument lists the host functions the program may reference. A functi
 
 Three properties of the VM shape most of this stage.
 
-1.  **Operands are one byte.** A function can address 256 registers, a chunk 256 constants and 256 functions.
+1.  **Operands are 16 bits.** A function can address 65536 registers, a chunk 65536 constants and 65536 functions.
 2.  **`CALL` uses consecutive registers.** The callee must be in some register `rN` and its arguments in `rN+1`, `rN+2`, ...
 3.  **Every call returns its result in `r0` of the caller**, and the callee receives its arguments in `r0`, `r1`, ... of a fresh frame.
 
@@ -92,7 +92,7 @@ MOV  dest r0        ; fetch the result
 
 Calls never nest at this level — arguments are already computed into registers before the sequence starts — so a single window is enough. Its size is one more than the largest argument count in the function.
 
-The function's `RegisterCount` is `permanents + temporaries + window`. If it exceeds 256 the function is rejected with `E6001`.
+The function's `RegisterCount` is `permanents + temporaries + window`. If it exceeds 65536 the function is rejected with `E6001`.
 
 ## Control Flow
 
@@ -112,7 +112,7 @@ JMP32 | JMPIFNOT32 r_cond
 <offset word>
 ```
 
-The short `JMP`/`JMPIF` instructions hold an absolute address in one byte, which only reaches the first 256 instructions of a chunk; using the long form everywhere avoids choosing per jump. Offsets are patched once all blocks of the function are placed.
+The short `JMP`/`JMPIF` instructions hold an absolute address in one operand, which only reaches the first 65536 instructions of a chunk; using the long form everywhere avoids choosing per jump. Offsets are patched once all blocks of the function are placed.
 
 | IR | Bytecode |
 |----|----------|
@@ -129,7 +129,7 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 |----|----------|
 | `MOV` from a register | `MOV` (nothing if source and destination coincide) |
 | `MOV` of `Null` / `Bool` | `LOADNULL` / `LOADBOOL` |
-| `MOV` of an `Int` in 0..255 | `LOADI` (no constant slot used) |
+| `MOV` of an `Int` in 0..65535 | `LOADI` (no constant slot used) |
 | `MOV` of any other `Int`, or a `Float` | `LOADK` from the constant pool |
 | `MOV` of a `String` | `NEWSTR` (allocates a string object) |
 | `MOV` of a `FuncRef` | `NEWFUNC` for a compiled function, `NEWEXFUNC` for a host function |
@@ -137,7 +137,7 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 | `EQ` `NEQ` `LT` `LTE` `GT` `GTE` | `EQ` `NE` `LT` `LE` `GT` `GE` |
 | `NEW_STRUCT` | `NEWOBJ` with the struct's name as a string constant, which casts check |
 | `GET_FIELD` / `SET_FIELD` | `GETFIELD` / `SETFIELD` with the field name as a string constant |
-| `NEW_ARRAY` | `NEWARRAY` (capacity capped at 255; it is only a hint) |
+| `NEW_ARRAY` | `NEWARRAY` (capacity capped at 65535; it is only a hint) |
 | `GET_INDEX` / `LEN` / `PUSH` | `GETINDEX` / `ARRLEN` / `ARRPUSH` |
 | `SET_INDEX` | `SETELEM`, which refuses an index at or past the length (`SETINDEX` would grow the array up to its capacity) |
 | `MAKE_CLOSURE` | `NEWFUNC`, then one `CAPLOCAL` (register capture) or `CAPUPVAL` (upvalue capture) per captured variable |
@@ -156,10 +156,12 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 
 | Limit | Error | What counts |
 |-------|-------|-------------|
-| 256 registers per function | `E6001` | permanents + temporaries + call window |
-| 256 constants per program | `E6002` | distinct floats, ints outside 0..255, strings and field names |
-| 256 functions per program | `E6003` | functions, methods, lambdas and generic instances |
-| call window | `E6007` | a call whose arguments would pass register 255 |
+| 65536 registers per function | `E6001` | permanents + temporaries + call window |
+| 65536 constants per program | `E6002` | distinct floats, ints outside 0..65535, strings and field names |
+| 65536 functions per program | `E6003` | functions, methods, lambdas and generic instances |
+| call window | `E6007` | a call whose arguments would pass register 65535 |
+
+The limits are those of a 16-bit operand (`vm.MaxOperand`); the generator takes them from there.
 
 There is **no limit on the length of a string**: the constant stores an index, and `.lc` files encode string lengths in 32 bits. What is limited is how many *different* constants a program has.
 

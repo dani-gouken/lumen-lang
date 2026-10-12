@@ -187,7 +187,7 @@ func TestVMExecuteLOADNULL(t *testing.T) {
 
 func TestVMExecuteLOADBOOL(t *testing.T) {
 	tests := []struct {
-		value    byte
+		value    uint16
 		expected bool
 	}{
 		{1, true},

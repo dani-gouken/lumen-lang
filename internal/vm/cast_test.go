@@ -343,7 +343,7 @@ func TestCastFunctionSignatures(t *testing.T) {
 
 func TestCastToFunctionTypeUsesRecordedSignature(t *testing.T) {
 	// r1 = a function value; then __cast(r1, descriptor) or __is(r1, descriptor)
-	run := func(load Instr, intrinsic byte, descriptor string) (Value, error) {
+	run := func(load Instr, intrinsic uint16, descriptor string) (Value, error) {
 		chunk := NewChunk()
 		chunk.StringPool = []string{descriptor}
 		chunk.Constants = []Value{NewInt(0)}

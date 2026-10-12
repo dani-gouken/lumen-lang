@@ -73,7 +73,7 @@ func (f *funcGen) generate() {
 	// The first argument arrives in r0, which every call overwrites
 	if len(f.fn.Params) > 0 {
 		if home, ok := f.phys[f.fn.Params[0].ID]; ok && home != returnReg {
-			f.emit(vm.OpMOV, byte(home), returnReg, 0)
+			f.emit(vm.OpMOV, uint16(home), returnReg, 0)
 		}
 	}
 
@@ -312,7 +312,7 @@ func (f *funcGen) allocateRegisters() {
 
 // --- Emission ---
 
-func (f *funcGen) emit(op vm.OpCode, a, b, c byte) {
+func (f *funcGen) emit(op vm.OpCode, a, b, c uint16) {
 	f.g.chunk.AddInstructionWithDebug(vm.NewInstr(op, a, b, c), f.g.debugInfo(f.pos, f.fn.Name))
 }
 
@@ -322,7 +322,7 @@ func (f *funcGen) fail(code, msg, suggestion string) {
 }
 
 // reg returns the physical register of a register operand.
-func (f *funcGen) reg(v ir.Value) byte {
+func (f *funcGen) reg(v ir.Value) uint16 {
 	id, ok := regID(v)
 	if !ok {
 		f.fail(ErrUnsupportedIR, fmt.Sprintf("expected a register operand, found %v", v), "")
@@ -333,11 +333,11 @@ func (f *funcGen) reg(v ir.Value) byte {
 		// Too many registers; reported once the function is complete
 		return 0
 	}
-	return byte(slot)
+	return uint16(slot)
 }
 
 // dest returns the physical register an instruction writes to.
-func (f *funcGen) dest(instr *ir.Instruction) byte {
+func (f *funcGen) dest(instr *ir.Instruction) uint16 {
 	if instr.Dest == nil {
 		f.fail(ErrUnsupportedIR, fmt.Sprintf("%s has no destination register", instr.Op), "")
 		return 0
@@ -346,7 +346,7 @@ func (f *funcGen) dest(instr *ir.Instruction) byte {
 }
 
 // emitJump emits an unconditional or conditional 32-bit relative jump.
-func (f *funcGen) emitJump(op vm.OpCode, cond byte, target *ir.BasicBlock) {
+func (f *funcGen) emitJump(op vm.OpCode, cond uint16, target *ir.BasicBlock) {
 	f.emit(vm.OpLONG, 0, 0, 0)
 	f.emit(op, cond, 0, 0)
 	f.fixups = append(f.fixups, fixup{offsetIdx: len(f.g.chunk.Code), target: target})
@@ -454,10 +454,10 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 
 	case ir.OpNewArray:
 		capacity, _ := f.intOperand(instr, 0)
-		if capacity > 255 {
-			capacity = 255 // Only a hint; arrays grow on push
+		if capacity > vm.MaxOperand {
+			capacity = vm.MaxOperand // Only a hint; arrays grow on push
 		}
-		f.emit(vm.OpNEWARRAY, f.dest(instr), byte(capacity), 0)
+		f.emit(vm.OpNEWARRAY, f.dest(instr), uint16(capacity), 0)
 	case ir.OpGetIndex:
 		if f.arity(instr, 2) {
 			f.emit(vm.OpGETINDEX, f.dest(instr), f.reg(instr.Operands[0]), f.reg(instr.Operands[1]))
@@ -485,11 +485,11 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 		}
 	case ir.OpLoadUpvalue:
 		if idx, ok := f.intOperand(instr, 0); ok {
-			f.emit(vm.OpLDCAP, f.dest(instr), byte(idx), 0)
+			f.emit(vm.OpLDCAP, f.dest(instr), uint16(idx), 0)
 		}
 	case ir.OpStoreUpvalue:
 		if idx, ok := f.intOperand(instr, 0); ok && f.arity(instr, 2) {
-			f.emit(vm.OpSTCAP, byte(idx), f.reg(instr.Operands[1]), 0)
+			f.emit(vm.OpSTCAP, uint16(idx), f.reg(instr.Operands[1]), 0)
 		}
 
 	default:
@@ -519,7 +519,7 @@ func (f *funcGen) generateMov(instr *ir.Instruction) {
 		f.emit(vm.OpLOADNULL, dest, 0, 0)
 
 	case "Bool":
-		var b byte
+		var b uint16
 		if v, _ := c.Val.(bool); v {
 			b = 1
 		}
@@ -531,8 +531,8 @@ func (f *funcGen) generateMov(instr *ir.Instruction) {
 			f.fail(ErrUnsupportedIR, fmt.Sprintf("invalid integer constant %v", c.Val), "")
 			return
 		}
-		if n >= 0 && n <= 255 {
-			f.emit(vm.OpLOADI, dest, byte(n), 0)
+		if n >= 0 && n <= vm.MaxOperand {
+			f.emit(vm.OpLOADI, dest, uint16(n), 0)
 			return
 		}
 		f.emit(vm.OpLOADK, dest, f.g.constant(vm.NewInt(n), f.pos), 0)
@@ -555,9 +555,9 @@ func (f *funcGen) generateMov(instr *ir.Instruction) {
 }
 
 // loadFunction puts a function object for the named function in dest.
-func (f *funcGen) loadFunction(dest byte, name string) {
+func (f *funcGen) loadFunction(dest uint16, name string) {
 	if idx, ok := f.g.protoIndex[name]; ok {
-		f.emit(vm.OpNEWFUNC, dest, byte(idx), 0)
+		f.emit(vm.OpNEWFUNC, dest, uint16(idx), 0)
 		return
 	}
 	if f.g.externs[name] {
@@ -584,9 +584,9 @@ func (f *funcGen) generateCall(instr *ir.Instruction) {
 	}
 
 	for i, operand := range instr.Operands {
-		f.emit(vm.OpMOV, byte(f.callBase+i), f.reg(operand), 0)
+		f.emit(vm.OpMOV, uint16(f.callBase+i), f.reg(operand), 0)
 	}
-	f.emit(vm.OpCALL, byte(f.callBase), byte(nargs), 0)
+	f.emit(vm.OpCALL, uint16(f.callBase), uint16(nargs), 0)
 
 	if instr.Dest != nil {
 		if dest := f.reg(instr.Dest); dest != returnReg {
@@ -614,12 +614,12 @@ func (f *funcGen) generateClosure(instr *ir.Instruction) {
 	}
 
 	dest := f.dest(instr)
-	f.emit(vm.OpNEWFUNC, dest, byte(idx), 0)
+	f.emit(vm.OpNEWFUNC, dest, uint16(idx), 0)
 
 	for i, capture := range instr.Operands[1:] {
 		if _, isReg := regID(capture); isReg {
 			// A local of this function, shared by reference
-			f.emit(vm.OpCAPLOCAL, dest, byte(i), f.reg(capture))
+			f.emit(vm.OpCAPLOCAL, dest, uint16(i), f.reg(capture))
 			continue
 		}
 		c, isConst := capture.(ir.Constant)
@@ -629,7 +629,7 @@ func (f *funcGen) generateClosure(instr *ir.Instruction) {
 			continue
 		}
 		// A variable this function captured itself, passed on
-		f.emit(vm.OpCAPUPVAL, dest, byte(i), byte(upvalIdx))
+		f.emit(vm.OpCAPUPVAL, dest, uint16(i), uint16(upvalIdx))
 	}
 }
 

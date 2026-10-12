@@ -239,7 +239,7 @@ grep -q "offset:" "$OUTPUT_DIR/long_jump_disasm.lasm" || fail "missing offset in
 pass
 
 # Test 25: Short jump out of range error
-test_name "Error when short jump target exceeds 255 instructions"
+test_name "Error when short jump target exceeds 65535 instructions"
 cat > "$OUTPUT_DIR/short_jump_overflow.lasm" <<'EOF'
 .constants 1
   0: 1i
@@ -247,10 +247,8 @@ cat > "$OUTPUT_DIR/short_jump_overflow.lasm" <<'EOF'
 .func main 1 0
   JMP far_away
 EOF
-# Add 300 NOPs to exceed short jump range
-for i in {1..300}; do
-    echo "  NOP" >> "$OUTPUT_DIR/short_jump_overflow.lasm"
-done
+# Add enough NOPs to exceed the range of a 16-bit operand
+yes "  NOP" | head -n 65600 >> "$OUTPUT_DIR/short_jump_overflow.lasm"
 cat >> "$OUTPUT_DIR/short_jump_overflow.lasm" <<'EOF'
 far_away:
   LOADK r0 0

@@ -145,9 +145,9 @@ that detects the problem.
 
 | Code | Meaning |
 |------|---------|
-| `E6001` | Function needs more than 256 registers |
-| `E6002` | Program uses more than 256 distinct constants |
-| `E6003` | Program has more than 256 functions |
+| `E6001` | Function needs more than 65536 registers |
+| `E6002` | Program uses more than 65536 distinct constants |
+| `E6003` | Program has more than 65536 functions |
 | `E6004` | IR operation with no bytecode equivalent |
 | `E6005` | Reference to a function that does not exist |
 | `E6006` | No `main` function, or `main` takes parameters |

@@ -22,7 +22,7 @@ Lumen implements a simple, register-based calling convention with the following 
 **Core Capabilities:**
 - User-defined functions with labels
 - Function calls with multiple arguments
-- Deep recursion support (up to 256 levels)
+- Deep recursion support (10000 levels by default)
 - External (host) functions
 - Register-based argument passing
 - Automatic frame management
@@ -39,14 +39,14 @@ Lumen implements a simple, register-based calling convention with the following 
 
 Lumen uses a register-based virtual machine:
 - Each function has its own register file
-- Maximum 256 registers per function (r0-r255)
+- Maximum 65536 registers per function (r0-r65535)
 - Registers contain NaN-boxed values (numbers, ints, bools, null, heap pointers)
 
 ### Memory Organization
 
 ```
 ┌─────────────────────┐
-│   Call Stack        │ ← frameCount, frames[256]
+│   Call Stack        │ ← frameCount, frames[]
 │  (Call Frames)      │
 ├─────────────────────┤
 │   Current Chunk     │ ← chunk pointer
@@ -159,7 +159,7 @@ CALL r_func argc
 
 **Parameters:**
 - `r_func`: Register containing function object (created by NEWFUNC)
-- `argc`: Number of arguments (0-255)
+- `argc`: Number of arguments
 
 **Behavior:**
 1. Save current call frame:
@@ -237,7 +237,7 @@ CALL r0 2          ; Callee receives: r0=5, r1=10
 ```
 
 **Constraints:**
-- Maximum 256 arguments (limited by register count)
+- Arguments must fit in the caller's registers above the function register
 - No argument type checking (caller's responsibility)
 - Variadic functions: The compiler handles variadic arguments by ensuring the correct number of arguments are passed at the call site, or by constructing an array/slice if the language semantics require it (implementation detail). The VM sees them as normal arguments.
 
@@ -492,7 +492,7 @@ Error: stack overflow: max call depth 10000 exceeded
 **CALL Instruction:**
 ```
 Opcode: OpCALL (0x13)
-Format: [OpCALL:8][A:8][B:8][C:8]
+Format: [OpCALL:8][A:16][B:16][C:16]
 Fields:
   A = Function address or register number
   B = Argument count (argc)
@@ -502,7 +502,7 @@ Fields:
 **RET Instruction:**
 ```
 Opcode: OpRET (0x14)
-Format: [OpRET:8][A:8][B:8][C:8]
+Format: [OpRET:8][A:16][B:16][C:16]
 Fields:
   A = Register containing return value
   B = Unused
@@ -512,7 +512,7 @@ Fields:
 **NEWEXFUNC Instruction:**
 ```
 Opcode: OpNEWEXFUNC
-Format: [OpNEWEXFUNC:8][A:8][B:8][C:8]
+Format: [OpNEWEXFUNC:8][A:16][B:16][C:16]
 Fields:
   A = Destination register
   B = Extern function index in chunk's ExternNames array
@@ -629,11 +629,11 @@ sizeof(CallFrame) = sizeof(Chunk*) + sizeof(int)*2 + sizeof([]Value)
 **Maximum Stack:**
 ```
 10000 frames * 40 bytes = 400,000 bytes at the default limit
-Plus register data: each frame has its own registers, up to 256 * 8 bytes
+Plus register data: each frame has its own registers, 8 bytes each
 ```
 
 **Actual usage typically much lower** due to:
-- Functions use fewer than 256 registers
+- Functions use a few dozen registers
 - Average call depth < 10
 
 ## Examples

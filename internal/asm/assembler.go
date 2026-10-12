@@ -469,7 +469,7 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 		if err != nil {
 			return err
 		}
-		var b byte
+		var b uint16
 		if args[1] == "true" {
 			b = 1
 		} else if args[1] == "false" {
@@ -598,10 +598,10 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 
 		// Short JMP
 		if addr, ok := labels[args[0]]; ok {
-			if addr > 255 {
+			if addr > vm.MaxOperand {
 				return fmt.Errorf("jump address out of range: %d (use JMP.L for long jumps)", addr)
 			}
-			instr = vm.NewInstr(vm.OpJMP, byte(addr), 0, 0)
+			instr = vm.NewInstr(vm.OpJMP, uint16(addr), 0, 0)
 		} else {
 			a, err := parseImm(args[0])
 			if err != nil {
@@ -644,12 +644,12 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 		}
 
 		// Short JMPIF/JMPIFNOT
-		var b byte
+		var b uint16
 		if addr, ok := labels[args[1]]; ok {
-			if addr > 255 {
+			if addr > vm.MaxOperand {
 				return fmt.Errorf("jump address out of range: %d (use %s.L for long jumps)", addr, mnemonic)
 			}
-			b = byte(addr)
+			b = uint16(addr)
 		} else {
 			b, err = parseImm(args[1])
 			if err != nil {
@@ -682,12 +682,12 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 			return fmt.Errorf("unknown function: %s", funcName)
 		}
 
-		// Validate proto index fits in 8 bits
-		if protoIdx > 255 {
-			return fmt.Errorf("function prototype index %d out of range (max 255)", protoIdx)
+		// Validate proto index fits in an operand
+		if protoIdx > vm.MaxOperand {
+			return fmt.Errorf("function prototype index %d out of range (max %d)", protoIdx, vm.MaxOperand)
 		}
 
-		instr = vm.NewInstr(vm.OpNEWFUNC, destReg, byte(protoIdx), 0)
+		instr = vm.NewInstr(vm.OpNEWFUNC, destReg, uint16(protoIdx), 0)
 
 	case "NEWEXFUNC":
 		// NEWEXFUNC r_dest extern_name
@@ -705,11 +705,11 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 		externName := args[1]
 		// Add to extern list and get index
 		externIdx := chunk.AddExtern(externName)
-		if externIdx > 255 {
+		if externIdx > vm.MaxOperand {
 			return fmt.Errorf("too many extern functions")
 		}
 
-		instr = vm.NewInstr(vm.OpNEWEXFUNC, destReg, byte(externIdx), 0)
+		instr = vm.NewInstr(vm.OpNEWEXFUNC, destReg, uint16(externIdx), 0)
 
 	case "CALL":
 		// New CALL: register-based only (CALL r_func nargs)
@@ -1043,7 +1043,7 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 	return nil
 }
 
-func parseReg(s string) (byte, error) {
+func parseReg(s string) (uint16, error) {
 	if !strings.HasPrefix(s, "r") {
 		return 0, fmt.Errorf("register must start with 'r', got %s", s)
 	}
@@ -1053,22 +1053,22 @@ func parseReg(s string) (byte, error) {
 		return 0, fmt.Errorf("invalid register number: %s", s)
 	}
 
-	if regNum < 0 || regNum > 255 {
-		return 0, fmt.Errorf("register number out of range [0-255]: %d", regNum)
+	if regNum < 0 || regNum > vm.MaxOperand {
+		return 0, fmt.Errorf("register number out of range [0-%d]: %d", vm.MaxOperand, regNum)
 	}
 
-	return byte(regNum), nil
+	return uint16(regNum), nil
 }
 
-func parseImm(s string) (byte, error) {
+func parseImm(s string) (uint16, error) {
 	val, err := strconv.Atoi(s)
 	if err != nil {
 		return 0, fmt.Errorf("invalid immediate value: %s", s)
 	}
 
-	if val < 0 || val > 255 {
-		return 0, fmt.Errorf("immediate value out of range [0-255]: %d", val)
+	if val < 0 || val > vm.MaxOperand {
+		return 0, fmt.Errorf("immediate value out of range [0-%d]: %d", vm.MaxOperand, val)
 	}
 
-	return byte(val), nil
+	return uint16(val), nil
 }

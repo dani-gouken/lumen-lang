@@ -21,11 +21,11 @@ const (
 	ErrCallTooLarge     = "E6007" // Call has more arguments than an instruction can encode
 )
 
-// Operands are one byte wide, which bounds everything they index.
+// Operands are 16 bits wide, which bounds everything they index.
 const (
-	maxRegisters = 256
-	maxConstants = 256
-	maxFunctions = 256
+	maxRegisters = vm.MaxOperand + 1
+	maxConstants = vm.MaxOperand + 1
+	maxFunctions = vm.MaxOperand + 1
 )
 
 // EntryPoint is the function the VM starts executing.
@@ -123,9 +123,9 @@ func (g *Generator) report(pos token.Position, code, msg, suggestion string) {
 }
 
 // constant returns the pool index of a constant, adding it if needed.
-func (g *Generator) constant(val vm.Value, pos token.Position) byte {
+func (g *Generator) constant(val vm.Value, pos token.Position) uint16 {
 	if idx, ok := g.constIndex[val]; ok {
-		return byte(idx)
+		return uint16(idx)
 	}
 	if len(g.chunk.Constants) >= maxConstants {
 		g.report(pos, ErrTooManyConstants,
@@ -135,12 +135,12 @@ func (g *Generator) constant(val vm.Value, pos token.Position) byte {
 	}
 	idx := g.chunk.AddConstant(val)
 	g.constIndex[val] = idx
-	return byte(idx)
+	return uint16(idx)
 }
 
 // stringConstant returns the pool index of a constant referring to a string
 // in the string pool, as NEWSTR and the field instructions expect.
-func (g *Generator) stringConstant(s string, pos token.Position) byte {
+func (g *Generator) stringConstant(s string, pos token.Position) uint16 {
 	idx, ok := g.stringIndex[s]
 	if !ok {
 		idx = g.chunk.AddString(s)
@@ -150,13 +150,13 @@ func (g *Generator) stringConstant(s string, pos token.Position) byte {
 }
 
 // extern returns the index of a host function name.
-func (g *Generator) extern(name string) byte {
+func (g *Generator) extern(name string) uint16 {
 	idx, ok := g.externIndex[name]
 	if !ok {
 		idx = g.chunk.AddExtern(name)
 		g.externIndex[name] = idx
 	}
-	return byte(idx)
+	return uint16(idx)
 }
 
 // debugInfo builds the debug record for an instruction.

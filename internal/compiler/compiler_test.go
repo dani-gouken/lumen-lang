@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -1320,5 +1321,143 @@ func TestCompileExposesStageResults(t *testing.T) {
 func TestCompileFileMissing(t *testing.T) {
 	if _, err := CompileFile("does/not/exist.lum", errors.NewHandler()); err == nil {
 		t.Error("expected an error for a missing file")
+	}
+}
+
+// largeProgram builds a program far past what one-byte operands allowed:
+// 256 functions and 256 constants per program, 256 registers per function.
+// It has `count` struct types, each with its own field names, a trait
+// implementation, a constructor and a label, so every struct adds
+// functions, field-name constants, strings and numbers. It returns the
+// source and what the program prints.
+func largeProgram(count int) (string, string) {
+	var sb strings.Builder
+	sb.WriteString("trait Shape {\n    fn area() -> Int;\n    fn name() -> String;\n}\n\n")
+
+	for i := 0; i < count; i++ {
+		fmt.Fprintf(&sb, "struct S%d { w%d: Int; h%d: Int; }\n", i, i, i)
+		fmt.Fprintf(&sb, "impl Shape for S%d {\n", i)
+		fmt.Fprintf(&sb, "    fn area() -> Int { return self.w%d * self.h%d + %d; }\n", i, i, 100000+i)
+		fmt.Fprintf(&sb, "    fn name() -> String { return \"shape-%d\"; }\n}\n", i)
+		fmt.Fprintf(&sb, "fn make%d() -> Shape { return S%d { w%d: %d, h%d: 2 }; }\n\n", i, i, i, i, i)
+	}
+
+	// One function with more live variables than 256 registers could hold,
+	// a closure over the last of them and a call made from up there
+	sb.WriteString("fn wide(seed: Int) -> Int {\n")
+	for i := 0; i < count; i++ {
+		fmt.Fprintf(&sb, "    let v%d = seed + %d;\n", i, i)
+	}
+	fmt.Fprintf(&sb, "    let addLast = fn(n: Int) -> Int { return n + v%d; };\n", count-1)
+	sb.WriteString("    let total = 0;\n")
+	for i := 0; i < count; i++ {
+		fmt.Fprintf(&sb, "    total += v%d;\n", i)
+	}
+	sb.WriteString("    return addLast(total);\n}\n\n")
+
+	sb.WriteString("fn main() -> Int {\n    let shapes: [Shape] = [];\n")
+	for i := 0; i < count; i++ {
+		fmt.Fprintf(&sb, "    push(shapes, make%d());\n", i)
+	}
+	sb.WriteString(`    let area = 0;
+    let letters = 0;
+    for i, shape in shapes {
+        area += shape.area();
+        letters += shape.name().length;
+        if i == ` + fmt.Sprint(count-1) + ` { println(shape.name(), shape.area()); }
+    }
+    println(shapes.length, area, letters, wide(3));
+    return 0;
+}
+`)
+
+	area, letters, wide := 0, 0, 0
+	for i := 0; i < count; i++ {
+		area += i*2 + 100000 + i
+		letters += len(fmt.Sprintf("shape-%d", i))
+		wide += 3 + i
+	}
+	wide += 3 + count - 1
+	last := count - 1
+	want := fmt.Sprintf("shape-%d %d\n%d %d %d %d\n", last, last*2+100000+last, count, area, letters, wide)
+	return sb.String(), want
+}
+
+func TestLargeProgram(t *testing.T) {
+	const count = 400
+	src, want := largeProgram(count)
+
+	errs := errors.NewHandler()
+	result := Compile(src, "large.lum", errs)
+	for _, d := range errs.Diagnostics {
+		t.Fatalf("unexpected diagnostic:\n%s", d.String())
+	}
+	chunk := result.Chunk
+
+	// The program really is past the old limits
+	if len(chunk.Prototypes) <= 256 {
+		t.Errorf("expected more than 256 functions, got %d", len(chunk.Prototypes))
+	}
+	if len(chunk.Constants) <= 256 {
+		t.Errorf("expected more than 256 constants, got %d", len(chunk.Constants))
+	}
+	if idx := chunk.FindPrototype("wide"); idx < 0 || chunk.Prototypes[idx].RegisterCount <= 256 {
+		t.Errorf("expected 'wide' to need more than 256 registers")
+	}
+
+	run := func(chunk *vm.Chunk) string {
+		t.Helper()
+		var out bytes.Buffer
+		machine := vm.NewVM()
+		machine.SetOutput(&out)
+		if _, err := machine.Exec(chunk); err != nil {
+			t.Fatalf("runtime error: %v", err)
+		}
+		return out.String()
+	}
+	if got := run(chunk); got != want {
+		t.Errorf("unexpected output\n--- want ---\n%s--- got ---\n%s", want, got)
+	}
+
+	// The bytecode file holds the same program
+	data, err := vm.SerializeChunk(chunk)
+	if err != nil {
+		t.Fatalf("serialization failed: %v", err)
+	}
+	loaded, err := vm.DeserializeChunk(data)
+	if err != nil {
+		t.Fatalf("deserialization failed: %v", err)
+	}
+	if got := run(loaded); got != want {
+		t.Errorf("unexpected output from the bytecode file\n--- want ---\n%s--- got ---\n%s", want, got)
+	}
+}
+
+func TestLargeProgramRuntimeErrorLocation(t *testing.T) {
+	// An error raised in a function with a high index, from a register
+	// above 255, is still reported where it happened
+	var sb strings.Builder
+	for i := 0; i < 300; i++ {
+		fmt.Fprintf(&sb, "fn f%d(xs: [Int]) -> Int { return %d; }\n", i, i)
+	}
+	sb.WriteString("fn last(xs: [Int]) -> Int {\n")
+	for i := 0; i < 300; i++ {
+		fmt.Fprintf(&sb, "    let v%d = %d;\n", i, i)
+	}
+	sb.WriteString("    let at = v0")
+	for i := 1; i < 300; i++ {
+		fmt.Fprintf(&sb, " + v%d", i)
+	}
+	sb.WriteString(";\n    return xs[at];\n}\n")
+	sb.WriteString("fn main() -> Int { return f299([1]) + last([1, 2, 3]); }\n")
+
+	_, _, err := runProgram(t, sb.String())
+	if err == nil {
+		t.Fatal("expected an out-of-bounds error")
+	}
+	for _, want := range []string{"index out of bounds: 44850", "in function 'last'", "return xs[at];"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("expected the error to contain %q, got:\n%v", want, err)
+		}
 	}
 }

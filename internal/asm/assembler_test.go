@@ -1,6 +1,7 @@
 package asm
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -323,7 +324,7 @@ func TestAssembleErrorRegisterOutOfRange(t *testing.T) {
 	source := `.constants 0
 
 .func main 1 0
-  LOADNULL r256
+  LOADNULL r65536
 .endfunc
 `
 
@@ -463,5 +464,87 @@ func TestAssembleCloseUpvalue(t *testing.T) {
 
 	if _, err := Assemble(".func main 1 0\n  CLOSEUP\n.endfunc\n"); err == nil {
 		t.Error("expected an error for CLOSEUP without a register")
+	}
+}
+
+// Operands are 16 bits wide: registers, constant indexes, immediates,
+// function indexes and short jump targets all go past 255.
+func TestAssembleWideOperands(t *testing.T) {
+	var sb strings.Builder
+	sb.WriteString(".constants 400\n")
+	for i := 0; i < 400; i++ {
+		fmt.Fprintf(&sb, "  %d: %di\n", i, i*3)
+	}
+	sb.WriteString(`
+.func main 500 0
+  LOADK r300 399
+  LOADI r301 60000
+  ADD r499 r300 r301
+  JMP skip
+`)
+	for i := 0; i < 300; i++ {
+		sb.WriteString("  LOADI r499 1\n")
+	}
+	sb.WriteString(`skip:
+  NEWFUNC r400 f299
+  MOV r401 r499
+  CALL r400 1
+  RET r0
+.endfunc
+`)
+	// 300 functions, so the one called has an index above 255
+	for i := 0; i < 300; i++ {
+		fmt.Fprintf(&sb, "\n.func f%d 2 1\n  LOADI r1 %d\n  ADD r0 r0 r1\n  RET r0\n.endfunc\n", i, i)
+	}
+
+	chunk, err := Assemble(sb.String())
+	if err != nil {
+		t.Fatalf("assembly failed: %v", err)
+	}
+	if first := chunk.Code[0]; first.A != 300 || first.B != 399 {
+		t.Errorf("expected LOADK r300 399, got %+v", first)
+	}
+
+	want := int64(399*3 + 60000 + 299)
+	check := func(chunk *vm.Chunk, what string) {
+		t.Helper()
+		result, err := vm.NewVM().Exec(chunk)
+		if err != nil {
+			t.Fatalf("%s: execution failed: %v", what, err)
+		}
+		if !result.IsInt() || result.AsInt() != want {
+			t.Errorf("%s: expected %d, got %s", what, want, vm.FormatValue(result))
+		}
+	}
+	check(chunk, "assembled")
+
+	// The listing names the wide operands and assembles to the same program
+	listing := Disassemble(chunk)
+	for _, text := range []string{"LOADK r300 399", "LOADI r301 60000", "ADD r499 r300 r301", "NEWFUNC r400 f299"} {
+		if !strings.Contains(listing, text) {
+			t.Errorf("expected the listing to contain %q", text)
+		}
+	}
+	again, err := Assemble(listing)
+	if err != nil {
+		t.Fatalf("assembling the listing failed: %v", err)
+	}
+	check(again, "reassembled")
+}
+
+func TestAssembleOperandRange(t *testing.T) {
+	program := func(instruction string) string {
+		return ".constants 0\n\n.func main 1 0\n  " + instruction + "\n  RET r0\n.endfunc\n"
+	}
+
+	for _, instruction := range []string{"LOADNULL r65535", "LOADI r0 65535", "MOV r65535 r0"} {
+		if _, err := Assemble(program(instruction)); err != nil {
+			t.Errorf("%s: expected the largest operand to be accepted, got %v", instruction, err)
+		}
+	}
+	for _, instruction := range []string{"LOADNULL r65536", "LOADI r0 65536", "LOADI r0 -1", "MOV r0 r70000"} {
+		if _, err := Assemble(program(instruction)); err == nil || !strings.Contains(err.Error(), "out of range") {
+			t.Errorf("%s: expected an out-of-range error, got %v", instruction, err)
+		}
 	}
 }

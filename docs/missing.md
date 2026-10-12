@@ -13,7 +13,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Everyday syntax | ranges, sized arrays, more builtins |
 | Correctness | unused variables |
 | Types | inference from the expected type, richer `match` patterns, array literals of mixed structs |
-| Runtime | register allocation per call, bytecode format limits |
+| Runtime | register allocation per call, method dispatch cost |
 | Program structure | imports, enums, global constants |
 
 ---
@@ -167,15 +167,11 @@ Calls on a value whose struct is known are direct. Calls through a trait look th
 
 Function objects are reused, so calling a function by name allocates nothing for the function. Each call does still allocate a fresh register array for the callee; in call-heavy code that is the main cost left. A register stack shared by all frames would remove it.
 
-### Bytecode format limits — L
-
-Operands are one byte: 256 registers per function, 256 distinct constants and 256 functions per program. These are reported as compile errors (`E6001`–`E6003`), never as corruption, but a large program will reach the constant limit. Lifting them means wider operands or extended instruction forms in the VM.
-
 ### Smaller items
 
 | Item | Detail |
 |------|--------|
-| `.lc` compatibility | Bytecode files carry a version but nothing bumps it; files built before a VM change may load and misbehave |
+| `.lc` compatibility | Bytecode files carry a version (4 today) that is raised by hand when the format changes; a new opcode alone does not raise it |
 | GC roots and Go's GC | Heap objects are held as integers in registers and stay alive only through the VM's object list; correct today, fragile if Go ever moves objects |
 | Equality | Arrays and structs compare by identity; there is no structural `==` |
 | Float formatting | `println(3.0)` prints `3`, indistinguishable from an Int |
@@ -204,7 +200,7 @@ A sequence that keeps each step small and makes the language noticeably more com
 
 1.  **Null operators**: `x!`, `a?.b`, and rejecting a value known to be null.
 2.  **Everyday syntax**: ranges, `array(n, value)`, a first batch of string and array builtins, `toInt`/`toFloat`.
-3.  **Bytecode format limits**, before a standard library is compiled into every program.
+3.  **A prelude**: a way to compile library code in front of every program, the first step towards a standard library.
 4.  **Types**: inference from the expected result type, `match` as an expression with bindings and guards.
 5.  **Program structure**: global constants, then imports, then enums with pattern matching.
 

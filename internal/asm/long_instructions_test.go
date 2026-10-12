@@ -255,7 +255,7 @@ end_label:
 }
 
 func TestShortJumpOutOfRangeError(t *testing.T) {
-	// Create a program with a jump target beyond 255 instructions
+	// Create a program with a jump target beyond what an operand can hold
 	var sb strings.Builder
 	sb.WriteString(`.constants 1
   0: 1i
@@ -264,8 +264,8 @@ func TestShortJumpOutOfRangeError(t *testing.T) {
   JMP far_label
 `)
 
-	// Add many NOP instructions to push the label beyond 255
-	for i := 0; i < 300; i++ {
+	// Add many NOP instructions to push the label beyond the operand range
+	for i := 0; i < vm.MaxOperand+10; i++ {
 		sb.WriteString("  NOP\n")
 	}
 

@@ -176,7 +176,7 @@ func TestRuntimeTypeAndBoundsErrors(t *testing.T) {
 
 func TestCheckedElementWrite(t *testing.T) {
 	// r1 = [10, 20] with capacity 8; r2 = index; r3 = 99
-	setup := func(index byte) []Instr {
+	setup := func(index uint16) []Instr {
 		return []Instr{
 			NewInstr(OpNEWARRAY, 1, 8, 0),
 			NewInstr(OpLOADI, 4, 10, 0),
@@ -187,7 +187,7 @@ func TestCheckedElementWrite(t *testing.T) {
 			NewInstr(OpLOADI, 3, 99, 0),
 		}
 	}
-	run := func(index byte, write OpCode) (string, error) {
+	run := func(index uint16, write OpCode) (string, error) {
 		code := append(setup(index), NewInstr(write, 1, 2, 3), NewInstr(OpRET, 1, 0, 0))
 		result, _, err := execMain(t, nil, nil, code...)
 		return FormatValue(result), err
@@ -198,7 +198,7 @@ func TestCheckedElementWrite(t *testing.T) {
 		t.Errorf("expected [10, 99], got %s, %v", got, err)
 	}
 	// ...and refuses anything past the length, even within the capacity
-	for _, index := range []byte{2, 5, 7, 200} {
+	for _, index := range []uint16{2, 5, 7, 200} {
 		_, err := run(index, OpSETELEM)
 		if err == nil || !strings.Contains(err.Error(), "index out of bounds") || !strings.Contains(err.Error(), "(length 2)") {
 			t.Errorf("SETELEM at %d: expected an out-of-bounds error, got %v", index, err)

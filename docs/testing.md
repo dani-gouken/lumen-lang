@@ -62,6 +62,7 @@ Lumen uses a pragmatic, three-level testing approach focused on **concise, high-
 - Every `examples/*.lum` is run too and compared with `examples/expected/NAME.out`, so the examples in the repository are guaranteed to work.
 - A few Go tests cover the other commands: `build` then `exec`, `build` to a `.lasm` listing, `ir`, a missing file, and usage errors.
 - A run that takes longer than 20 seconds fails the test. `limits_memory.lum` builds an array of a million and a half elements; it takes a fraction of a second, and took minutes when appending was quadratic. Performance that regresses that far is caught here.
+- `TestLargeProgram` generates a program of 500 structs, each with a trait implementation, and runs it from source and from a bytecode file. `TestDebuggerSession` drives `lumdbg` with commands on standard input: stepping, registers, state, continue.
 - The `program_*.lum` cases are complete programs of 150 to 250 lines (a bank, matrix arithmetic, a calculator with tokenizer and parser). Each combines most of the language in one place: traits and generics, closures, optionals and narrowing, casts and `match` on types, loops with indexes. They catch interactions that one-feature tests cannot.
 
 To add a case, drop a `.lum` file in `cases/` and generate its expected output:
@@ -130,6 +131,8 @@ git diff test/e2e examples   # review what changed before committing
 **Non-goals**:
 - ❌ Testing every possible corruption scenario
 - ❌ Backwards compatibility (only one version exists)
+
+**Also in the VM package**: `wide_operands_test.go` runs chunks whose registers, constants, functions and field names have indexes past 255, jumps across more instructions than an operand can address, and round-trips such a chunk through the file format. Operands were one byte once; an index that silently wrapped would read the wrong register or field.
 
 **Also in the VM package**: `limits_test.go` covers what bounds a running program and what keeps it fast: reuse of function objects, accounting of array and object growth, the number of collections for a large array, running out of memory, detaching closures from a register, and call depth.
 

@@ -212,35 +212,46 @@ runtime, and exists so that `value as fn(Int) -> Int` and
 
 ### Bytecode file version
 
-`.lc` files start with a format version, currently **3** (1 predates the
-48-bit value payload, 2 the tag of null). A file of another version
+`.lc` files start with a format version, currently **4** (1 predates the
+48-bit value payload, 2 the tag of null, 3 had one-byte operands). A file of
+another version
 is refused with `unsupported bytecode version` rather than misread; rebuild it
 from source.
 
 ## Operand Limits
 
-Every operand is one byte, which bounds what a single function or chunk can
-address:
+Every operand is 16 bits (`vm.MaxOperand` = 65535), which bounds what a single
+function or chunk can address:
 
 | What                              | Limit | Reported by the compiler as |
 |-----------------------------------|-------|-----------------------------|
-| Registers per function            | 256   | `E6001`                     |
-| Distinct constants per chunk      | 256   | `E6002`                     |
-| Functions per chunk               | 256   | `E6003`                     |
+| Registers per function            | 65536 | `E6001`                     |
+| Distinct constants per chunk      | 65536 | `E6002`                     |
+| Functions per chunk               | 65536 | `E6003`                     |
 | Arguments per call                | bounded by the register window | `E6007` |
 
 Strings have no length limit of their own: a string constant stores an index
 into the string pool, and bytecode files encode string lengths in 32 bits.
 What counts against the constant limit is the number of *distinct* strings,
-field names, floats and integers outside 0-255.
+field names, floats and integers outside 0-65535.
+
+Operands were one byte until format version 4, and each of these limits was
+256: a program with a few dozen structs ran out of constants.
 
 ## Instruction Encoding
 
-Instructions are fixed-width 32-bit values:
+Every instruction has an opcode and three operands:
 
 ```
-[opcode:8][A:8][B:8][C:8]
+[opcode:8][A:16][B:16][C:16]
 ```
+
+In memory this is the `Instr` struct. In a `.lc` file an instruction takes 7
+bytes, operands in little-endian order.
+
+The offset word of a long jump (`LONG`, `JMP32`, offset) is not an
+instruction: it holds a signed 32-bit offset, the high half in A and the low
+half in B (`EncodeOffset32` / `DecodeOffset32`).
 
 - **opcode**: Operation code
 - **A**: First operand (usually destination register)

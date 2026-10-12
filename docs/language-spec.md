@@ -265,6 +265,6 @@ the programmer writes, not something the checker falls back on. What the
 checker still does not do is listed in [missing.md](missing.md): inference
 from the expected type, and the deliberate limits of flow typing.
 
-**Size limits** come from one-byte bytecode operands: 256 registers per
-function, 256 distinct constants and 256 functions per program. Exceeding one
-is a compile error (`E6001`-`E6003`), never silent corruption.
+**Size limits** come from 16-bit bytecode operands: 65536 registers per
+function, 65536 distinct constants and 65536 functions per program. Exceeding
+one is a compile error (`E6001`-`E6003`), never silent corruption.

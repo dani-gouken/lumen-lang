@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -297,10 +298,10 @@ func TestGenerateErrors(t *testing.T) {
 
 	tooManyRegisters := ir.NewBuilder("main")
 	var live []*ir.Register
-	for i := 0; i < 300; i++ {
+	for i := 0; i < maxRegisters+10; i++ {
 		live = append(live, tooManyRegisters.CreateMov(intConst(1)))
 	}
-	// Reading every value in another block keeps all 300 alive at once
+	// Reading every value in another block keeps all of them alive at once
 	tail := tooManyRegisters.NewBlock()
 	tooManyRegisters.CreateJmp(tail)
 	tooManyRegisters.SetBlock(tail)
@@ -311,10 +312,15 @@ func TestGenerateErrors(t *testing.T) {
 	tooManyRegisters.CreateRet(sum)
 
 	tooManyConstants := ir.NewBuilder("main")
-	for i := 0; i < 300; i++ {
-		tooManyConstants.CreateMov(intConst(int64(1000 + i)))
+	for i := 0; i < maxConstants+10; i++ {
+		tooManyConstants.CreateMov(intConst(int64(1_000_000 + i)))
 	}
 	tooManyConstants.CreateRet(nil)
+
+	tooManyFunctions := []*ir.Function{ret("main", 0)}
+	for i := 0; i < maxFunctions; i++ {
+		tooManyFunctions = append(tooManyFunctions, ret(fmt.Sprintf("f%d", i), 0))
+	}
 
 	undefined := ir.NewBuilder("main")
 	undefined.CreateRet(undefined.CreateMov(funcRef("nowhere")))
@@ -332,6 +338,7 @@ func TestGenerateErrors(t *testing.T) {
 		{"main with parameters", []*ir.Function{ret("main", 1)}, ErrMissingMain, "must not take parameters"},
 		{"too many registers", []*ir.Function{tooManyRegisters.Func}, ErrTooManyRegisters, "registers"},
 		{"too many constants", []*ir.Function{tooManyConstants.Func}, ErrTooManyConstants, "distinct constants"},
+		{"too many functions", tooManyFunctions, ErrTooManyFunctions, "functions, the limit is 65536"},
 		{"undefined function", []*ir.Function{undefined.Func}, ErrUndefinedFunc, "undefined function 'nowhere'"},
 		{"unsupported operation", []*ir.Function{unsupported.Func}, ErrUnsupportedIR, "CALL_TRAIT"},
 	}
@@ -353,4 +360,111 @@ func TestGenerateErrors(t *testing.T) {
 			}
 		})
 	}
+}
+
+// The limits used to be 256 registers per function and 256 constants and
+// functions per program. Programs well past those compile and run.
+
+func TestGenerateManyLiveRegisters(t *testing.T) {
+	const count = 1000
+
+	b := ir.NewBuilder("main")
+	var live []*ir.Register
+	for i := 0; i < count; i++ {
+		live = append(live, b.CreateMov(intConst(int64(i))))
+	}
+	// Reading every value in another block keeps all of them alive at once
+	tail := b.NewBlock()
+	b.CreateJmp(tail)
+	b.SetBlock(tail)
+	sum := live[0]
+	for _, reg := range live[1:] {
+		sum = b.CreateAdd(sum, reg)
+	}
+	// A call from a function this large has its window above register 255
+	b.CreateRet(b.CreateCall(b.CreateMov(funcRef("double")), sum))
+
+	double := ir.NewBuilder("double")
+	param := double.AddParam()
+	double.CreateRet(double.CreateAdd(param, param))
+
+	chunk := generate(t, b.Func, double.Func)
+	if got := proto(t, chunk, "main").RegisterCount; got <= 256 {
+		t.Errorf("expected main to need more than 256 registers, it has %d", got)
+	}
+	expectInt(t, run(t, chunk), count*(count-1))
+}
+
+func TestGenerateManyConstants(t *testing.T) {
+	const count = 2000
+
+	// Values above the range of LOADI, so each one takes a pool entry
+	b := ir.NewBuilder("main")
+	sum := b.CreateMov(intConst(0))
+	want := int64(0)
+	for i := 0; i < count; i++ {
+		value := int64(1_000_000 + i)
+		sum = b.CreateAdd(sum, b.CreateMov(intConst(value)))
+		want += value
+	}
+	b.CreateRet(sum)
+
+	chunk := generate(t, b.Func)
+	if len(chunk.Constants) != count {
+		t.Errorf("expected %d constants, got %d", count, len(chunk.Constants))
+	}
+	// Temporaries are reused, so the constants do not cost registers
+	if got := proto(t, chunk, "main").RegisterCount; got > 16 {
+		t.Errorf("expected a handful of registers, got %d", got)
+	}
+	expectInt(t, run(t, chunk), want)
+}
+
+func TestGenerateSmallIntsNeedNoConstant(t *testing.T) {
+	b := ir.NewBuilder("main")
+	b.CreateRet(b.CreateAdd(b.CreateMov(intConst(vm.MaxOperand)), b.CreateMov(intConst(256))))
+
+	chunk := generate(t, b.Func)
+	if len(chunk.Constants) != 0 {
+		t.Errorf("expected immediates to be used up to %d, got %d constants", vm.MaxOperand, len(chunk.Constants))
+	}
+	expectInt(t, run(t, chunk), vm.MaxOperand+256)
+
+	// One past the range goes to the pool
+	b = ir.NewBuilder("main")
+	b.CreateRet(b.CreateMov(intConst(vm.MaxOperand + 1)))
+	chunk = generate(t, b.Func)
+	if len(chunk.Constants) != 1 {
+		t.Errorf("expected one constant, got %d", len(chunk.Constants))
+	}
+	expectInt(t, run(t, chunk), vm.MaxOperand+1)
+}
+
+func TestGenerateManyFunctions(t *testing.T) {
+	const count = 1000
+
+	// f0 returns its argument; f(i) returns f(i-1)(n) + i. Every function
+	// refers to its neighbour, so indexes above 255 are both defined and used.
+	fns := make([]*ir.Function, 0, count+1)
+	main := ir.NewBuilder("main")
+	main.CreateRet(main.CreateCall(main.CreateMov(funcRef(fmt.Sprintf("f%d", count-1))), main.CreateMov(intConst(5))))
+	fns = append(fns, main.Func)
+
+	for i := 0; i < count; i++ {
+		b := ir.NewBuilder(fmt.Sprintf("f%d", i))
+		n := b.AddParam()
+		if i == 0 {
+			b.CreateRet(n)
+		} else {
+			below := b.CreateCall(b.CreateMov(funcRef(fmt.Sprintf("f%d", i-1))), n)
+			b.CreateRet(b.CreateAdd(below, b.CreateMov(intConst(int64(i)))))
+		}
+		fns = append(fns, b.Func)
+	}
+
+	chunk := generate(t, fns...)
+	if len(chunk.Prototypes) != count+1 {
+		t.Errorf("expected %d functions, got %d", count+1, len(chunk.Prototypes))
+	}
+	expectInt(t, run(t, chunk), 5+count*(count-1)/2)
 }

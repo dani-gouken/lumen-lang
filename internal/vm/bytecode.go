@@ -11,7 +11,11 @@ const (
 	// Current bytecode format version
 	// 2: value tags moved to bits 48-51; prototypes carry a signature
 	// 3: null has its own tag, so float infinity is no longer read as null
-	bytecodeVersion uint32 = 3
+	// 4: instruction operands are 16 bits wide
+	bytecodeVersion uint32 = 4
+
+	// Bytes per instruction in a file: opcode, then three 16-bit operands
+	instrSize = 1 + 3*2
 )
 
 // SerializeChunk converts a Chunk to binary bytecode format.
@@ -24,7 +28,7 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	// Calculate total size
 	headerSize := 4 + 4 // magic + version
 	constSize := 4 + (len(chunk.Constants) * 8)
-	codeSize := 4 + (len(chunk.Code) * 4)
+	codeSize := 4 + (len(chunk.Code) * instrSize)
 
 	// Calculate prototypes size
 	protoSize := 4 // count
@@ -85,10 +89,10 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	offset += 4
 	for _, instr := range chunk.Code {
 		buf[offset] = byte(instr.Op)
-		buf[offset+1] = instr.A
-		buf[offset+2] = instr.B
-		buf[offset+3] = instr.C
-		offset += 4
+		binary.LittleEndian.PutUint16(buf[offset+1:], instr.A)
+		binary.LittleEndian.PutUint16(buf[offset+3:], instr.B)
+		binary.LittleEndian.PutUint16(buf[offset+5:], instr.C)
+		offset += instrSize
 	}
 
 	// Write function prototypes
@@ -238,18 +242,18 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 	codeCount := binary.LittleEndian.Uint32(data[offset:])
 	offset += 4
 
-	if offset+int(codeCount)*4 > len(data) {
+	if offset+int(codeCount)*instrSize > len(data) {
 		return nil, fmt.Errorf("bytecode truncated: cannot read %d instructions", codeCount)
 	}
 	chunk.Code = make([]Instr, codeCount)
 	for i := uint32(0); i < codeCount; i++ {
 		chunk.Code[i] = Instr{
 			Op: OpCode(data[offset]),
-			A:  data[offset+1],
-			B:  data[offset+2],
-			C:  data[offset+3],
+			A:  binary.LittleEndian.Uint16(data[offset+1:]),
+			B:  binary.LittleEndian.Uint16(data[offset+3:]),
+			C:  binary.LittleEndian.Uint16(data[offset+5:]),
 		}
-		offset += 4
+		offset += instrSize
 	}
 
 	// Read function prototypes

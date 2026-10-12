@@ -311,7 +311,7 @@ loop:
 
 	// JMP should point back to the ADD instruction (offset 1 from function start)
 	expectedTarget := mainProto.CodeStart + 1
-	if jmpInstr.A != uint8(expectedTarget) {
+	if jmpInstr.A != uint16(expectedTarget) {
 		t.Errorf("expected JMP target %d, got %d", expectedTarget, jmpInstr.A)
 	}
 }

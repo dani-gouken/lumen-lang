@@ -94,7 +94,7 @@ func TestNegNotAndConversions(t *testing.T) {
 	chunk := NewChunk()
 
 	numConst := chunk.AddConstant(NewNumber(4.9))
-	chunk.AddInstruction(NewInstr(OpLOADK, 0, byte(numConst), 0))
+	chunk.AddInstruction(NewInstr(OpLOADK, 0, uint16(numConst), 0))
 	chunk.AddInstruction(NewInstr(OpNEG, 1, 0, 0))
 	chunk.AddInstruction(NewInstr(OpTOINT, 2, 0, 0))
 	chunk.AddInstruction(NewInstr(OpTONUM, 3, 2, 0))
@@ -129,7 +129,7 @@ func TestNegNotAndConversions(t *testing.T) {
 
 	// NOT on non-bool should fail
 	chunk.Code = []Instr{
-		NewInstr(OpLOADK, 0, byte(numConst), 0),
+		NewInstr(OpLOADK, 0, uint16(numConst), 0),
 		NewInstr(OpNOT, 1, 0, 0),
 		NewInstr(OpRET, 1, 0, 0),
 	}
@@ -201,10 +201,10 @@ func TestArrayAndObjectHelpers(t *testing.T) {
 
 	objChunk.AddInstruction(NewInstr(OpNEWOBJ, 0, 0, 0))
 	objChunk.AddInstruction(NewInstr(OpLOADBOOL, 1, 1, 0))
-	objChunk.AddInstruction(NewInstr(OpSETFIELD, 0, byte(fieldConst), 1))
-	objChunk.AddInstruction(NewInstr(OpHASFIELD, 2, 0, byte(fieldConst)))
-	objChunk.AddInstruction(NewInstr(OpDELFIELD, 3, 0, byte(fieldConst)))
-	objChunk.AddInstruction(NewInstr(OpHASFIELD, 4, 0, byte(fieldConst)))
+	objChunk.AddInstruction(NewInstr(OpSETFIELD, 0, uint16(fieldConst), 1))
+	objChunk.AddInstruction(NewInstr(OpHASFIELD, 2, 0, uint16(fieldConst)))
+	objChunk.AddInstruction(NewInstr(OpDELFIELD, 3, 0, uint16(fieldConst)))
+	objChunk.AddInstruction(NewInstr(OpHASFIELD, 4, 0, uint16(fieldConst)))
 	objChunk.AddInstruction(NewInstr(OpRET, 4, 0, 0))
 	objProto := FunctionPrototype{
 		Name:          "main",

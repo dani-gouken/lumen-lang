@@ -1,5 +1,7 @@
 package vm
 
+import "strconv"
+
 // OpCode represents a bytecode instruction type.
 type OpCode byte
 
@@ -90,17 +92,22 @@ const (
 	OpCLOSEUP
 )
 
+// MaxOperand is the largest value an instruction operand can hold. It bounds
+// what one operand can index: registers per function, constants, functions
+// and host functions per program.
+const MaxOperand = 1<<16 - 1
+
 // Instr represents a single bytecode instruction.
-// Layout: [Op:8][A:8][B:8][C:8]
+// Layout: [Op:8][A:16][B:16][C:16]
 type Instr struct {
 	Op OpCode
-	A  byte
-	B  byte
-	C  byte
+	A  uint16
+	B  uint16
+	C  uint16
 }
 
 // NewInstr creates a new instruction.
-func NewInstr(op OpCode, a, b, c byte) Instr {
+func NewInstr(op OpCode, a, b, c uint16) Instr {
 	return Instr{Op: op, A: a, B: b, C: c}
 }
 
@@ -222,26 +229,24 @@ func (i Instr) String() string {
 	}
 }
 
-func formatInstr(name string, args ...byte) string {
+func formatInstr(name string, args ...uint16) string {
 	s := name
 	for _, arg := range args {
-		s += " r" + string(rune('0'+arg))
+		s += " r" + strconv.Itoa(int(arg))
 	}
 	return s
 }
 
 // EncodeOffset32 encodes a 32-bit signed offset as an Instr.
-// The offset is stored across all 4 bytes of the instruction.
+// The high half is stored in A and the low half in B; Op and C are zero.
 func EncodeOffset32(offset int32) Instr {
 	return Instr{
-		Op: OpCode(byte(offset >> 24)),
-		A:  byte(offset >> 16),
-		B:  byte(offset >> 8),
-		C:  byte(offset),
+		A: uint16(uint32(offset) >> 16),
+		B: uint16(uint32(offset)),
 	}
 }
 
 // DecodeOffset32 decodes a 32-bit signed offset from an Instr.
 func DecodeOffset32(instr Instr) int32 {
-	return int32(instr.Op)<<24 | int32(instr.A)<<16 | int32(instr.B)<<8 | int32(instr.C)
+	return int32(uint32(instr.A)<<16 | uint32(instr.B))
 }

@@ -209,9 +209,9 @@ LOADBOOL r1 false  ; r1 = false
 
 #### LOADI - Load Small Integer
 ```assembly
-LOADI r_dest imm8
+LOADI r_dest imm16
 ```
-Load an unsigned 8-bit immediate as an Int into `r_dest`.
+Load an unsigned 16-bit immediate (0-65535) as an Int into `r_dest`.
 
 **Example:**
 ```assembly
@@ -391,7 +391,7 @@ Create a heap-allocated array with the specified capacity.
 
 **Arguments:**
 - `r_dest`: destination register for the array object
-- `capacity`: initial capacity of the array (0-255)
+- `capacity`: initial capacity of the array (0-65535)
 
 **Behavior:**
 - Allocates array object on the heap
@@ -787,7 +787,7 @@ JMPIFNOT r0 3           ; if r0 is false, jump forward 3 instructions
 
 #### Long Instructions (32-bit Offsets)
 
-For large programs where jump targets exceed 255 instructions, long instruction variants are available. These use a `.L` suffix and support 32-bit signed offsets, allowing jumps to any location in the code.
+A short jump holds its target in one operand, so it reaches the first 65536 instructions of a program. For targets beyond that, long instruction variants are available. These use a `.L` suffix and support 32-bit signed offsets, allowing jumps to any location in the code.
 
 **Long Instruction Format:**
 Long instructions are encoded as 3 consecutive instruction words:
@@ -803,9 +803,9 @@ JMPIFNOT.L r_cond label  ; Long conditional jump if false
 ```
 
 **When to Use Long Instructions:**
-- When the target label is more than 255 instructions away
+- When the target label is past instruction 65535
 - The assembler will report an error if a short jump is out of range
-- Long instructions take 3× the space of short instructions (12 bytes vs 4 bytes)
+- Long instructions take 3× the space of short instructions (three instruction words instead of one)
 
 **Example:**
 ```assembly
@@ -813,7 +813,7 @@ JMPIFNOT.L r_cond label  ; Long conditional jump if false
   LOADK r0 0
   JMP.L far_away_label  ; Assembled as: LONG + JMP32 + offset
 
-  ; ... many instructions (256+) ...
+  ; ... many instructions ...
 
 far_away_label:
   LOADK r1 1

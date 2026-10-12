@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -74,6 +75,12 @@ type result struct {
 // in diagnostics do not depend on where the tests are started from.
 func runLumen(t *testing.T, args ...string) result {
 	t.Helper()
+	return runLumenWithInput(t, "", args...)
+}
+
+// runLumenWithInput is runLumen with text supplied on standard input.
+func runLumenWithInput(t *testing.T, input string, args ...string) result {
+	t.Helper()
 
 	// No test program needs more than a moment. A run that takes this long
 	// has stopped making progress, or has become slow enough to count as
@@ -86,6 +93,9 @@ func runLumen(t *testing.T, args ...string) result {
 	cmd.Dir = repoRoot
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+	if input != "" {
+		cmd.Stdin = strings.NewReader(input)
+	}
 
 	res := result{}
 	err := cmd.Run()
@@ -343,5 +353,120 @@ func TestUsageErrors(t *testing.T) {
 				t.Errorf("expected usage help, got:\n%s", res.stdout)
 			}
 		})
+	}
+}
+
+// TestLargeProgram runs a program well past what the bytecode format once
+// allowed: 256 functions and 256 constants per program, 256 registers per
+// function. It is generated, since it is two thousand lines of repetition.
+func TestLargeProgram(t *testing.T) {
+	const count = 500
+
+	var sb strings.Builder
+	sb.WriteString("trait Step {\n    fn apply(n: Int) -> Int;\n    fn label() -> String;\n}\n\n")
+	for i := 0; i < count; i++ {
+		fmt.Fprintf(&sb, "struct Step%d { amount%d: Int; }\n", i, i)
+		fmt.Fprintf(&sb, "impl Step for Step%d {\n", i)
+		fmt.Fprintf(&sb, "    fn apply(n: Int) -> Int { return n + self.amount%d + %d; }\n", i, 70000+i)
+		fmt.Fprintf(&sb, "    fn label() -> String { return \"step %d\"; }\n}\n", i)
+		fmt.Fprintf(&sb, "fn step%d() -> Step { return Step%d { amount%d: %d }; }\n\n", i, i, i, i)
+	}
+	sb.WriteString("fn main() -> Int {\n    let steps: [Step] = [];\n")
+	for i := 0; i < count; i++ {
+		fmt.Fprintf(&sb, "    let s%d = step%d();\n    push(steps, s%d);\n", i, i, i)
+	}
+	fmt.Fprintf(&sb, `    let value = 0;
+    let last = "";
+    for step in steps {
+        value = step.apply(value);
+        last = step.label();
+    }
+    println(steps.length, value, last, s%d.label());
+    return 7;
+}
+`, count-1)
+
+	value := 0
+	for i := 0; i < count; i++ {
+		value += i + 70000 + i
+	}
+	want := fmt.Sprintf("%d %d step %d step %d\n", count, value, count-1, count-1)
+
+	dir := t.TempDir()
+	source := filepath.Join(dir, "large.lum")
+	if err := os.WriteFile(source, []byte(sb.String()), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	res := runLumen(t, "run", source)
+	if res.exit != 7 || res.stdout != want || res.stderr != "" {
+		t.Fatalf("run: expected exit 7 and %q, got exit %d, %q\n%s", want, res.exit, res.stdout, res.stderr)
+	}
+
+	// The same through a bytecode file
+	bytecode := filepath.Join(dir, "large.lc")
+	if res := runLumen(t, "build", source, bytecode); res.exit != 0 {
+		t.Fatalf("build failed:\n%s", res.stderr)
+	}
+	res = runLumen(t, "exec", bytecode)
+	if !strings.HasPrefix(res.stdout, want) || res.stderr != "" {
+		t.Errorf("exec: expected output starting with %q, got %q\n%s", want, res.stdout, res.stderr)
+	}
+
+	// The listing shows the operands that did not fit before
+	listing := filepath.Join(dir, "large.lasm")
+	if res := runLumen(t, "build", source, listing); res.exit != 0 {
+		t.Fatalf("build of the listing failed:\n%s", res.stderr)
+	}
+	text, err := os.ReadFile(listing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(text), fmt.Sprintf(".func step%d ", count-1)) {
+		t.Errorf("expected the listing to define step%d", count-1)
+	}
+	if !regexp.MustCompile(fmt.Sprintf(`NEWFUNC r\d+ step%d\n`, count-1)).Match(text) {
+		t.Errorf("expected the listing to refer to step%d by name", count-1)
+	}
+	// Constant indexes past 255 are printed in full
+	if !regexp.MustCompile(`LOADK r\d+ \d{4}\b`).Match(text) {
+		t.Error("expected the listing to load a constant with a four-digit index")
+	}
+}
+
+// TestDebuggerSession drives lumdbg through its commands on a compiled
+// program that uses closures, loops and calls.
+func TestDebuggerSession(t *testing.T) {
+	program := "test/e2e/cases/closures_in_loops.lum"
+
+	// Step a few instructions, look at registers and state, then run on
+	res := runLumenWithInput(t, "s\ns\ns\nr\ni\nc\n", "lumdbg", program)
+	if res.exit != 0 {
+		t.Fatalf("debugger exited with %d:\n%s\n%s", res.exit, res.stdout, res.stderr)
+	}
+	for _, want := range []string{
+		"NEWFUNC r7 schedule  [main]", // Functions by name, not by register
+		"closures_in_loops.lum:17",    // Source position of the instruction
+		`r8 = String("build")`,        // Registers after three steps
+		"Function: main",
+		"Execution complete: Int(0)",
+	} {
+		if !strings.Contains(res.stdout, want) {
+			t.Errorf("expected the session to contain %q, got:\n%s", want, res.stdout)
+		}
+	}
+
+	// The program prints the same under the debugger as without it
+	plain := runLumen(t, "run", program)
+	for _, line := range strings.Split(strings.TrimSpace(plain.stdout), "\n") {
+		if !strings.Contains(res.stdout, line) {
+			t.Errorf("expected the debugged program to print %q", line)
+		}
+	}
+
+	// Limits apply under the debugger too, and errors name their place
+	res = runLumenWithInput(t, "c\n", "lumdbg", "--max-depth=50", "test/e2e/cases/limits_recursion.lum")
+	if res.exit != 1 || !strings.Contains(res.stderr, "stack overflow: max call depth 50 exceeded") {
+		t.Errorf("expected a stack overflow at depth 50, got exit %d:\n%s", res.exit, res.stderr)
 	}
 }

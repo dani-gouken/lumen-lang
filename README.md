@@ -68,7 +68,6 @@ Not there yet:
 - ⚠️ Imports / multi-file programs, enums
 - ⚠️ No standard library beyond `print`, `println`, `toString`, `push`
 - ⚠️ REPL (stub only)
-- ⚠️ Bytecode limits: 256 registers per function, 256 distinct constants and 256 functions per program
 
 What works is listed in the [implementation status table](docs/language-spec.md#13-implementation-status); what does not, with the way it fails today, in [docs/missing.md](docs/missing.md).
 

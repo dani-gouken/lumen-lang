@@ -99,7 +99,7 @@ func TestStringPoolMultipleStrings(t *testing.T) {
 
 	// Create all strings: NEWSTR r0-r4 from constants 0-4
 	for i := 0; i < len(strings); i++ {
-		chunk.AddInstruction(NewInstr(OpNEWSTR, byte(i), byte(i), 0))
+		chunk.AddInstruction(NewInstr(OpNEWSTR, uint16(i), uint16(i), 0))
 	}
 
 	// Return the third string (r2)
@@ -376,7 +376,7 @@ func TestStringGarbageCollection(t *testing.T) {
 	// Create strings in a loop, overwriting previous ones
 	// This should trigger GC and clean up unreachable strings
 	for i := 0; i < 10; i++ {
-		chunk.AddInstruction(NewInstr(OpNEWSTR, 0, byte(i), 0)) // Always r0, different constants
+		chunk.AddInstruction(NewInstr(OpNEWSTR, 0, uint16(i), 0)) // Always r0, different constants
 	}
 
 	chunk.AddInstruction(NewInstr(OpRET, 0, 0, 0))
