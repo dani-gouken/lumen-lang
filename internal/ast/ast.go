@@ -289,6 +289,7 @@ func (d *TraitDecl) String() string {
 
 type ImplDecl struct {
 	BaseNode
+	TypeParams []string // impl<T> Box<T>: the struct's type parameters, by position
 	StructName string
 	TraitName  string
 	Methods    []*FnDecl
@@ -297,7 +298,16 @@ type ImplDecl struct {
 func (d *ImplDecl) declNode() {}
 func (d *ImplDecl) String() string {
 	var sb strings.Builder
-	sb.WriteString("impl " + d.TraitName + " for " + d.StructName + " { ")
+	sb.WriteString("impl")
+	generics := ""
+	if len(d.TypeParams) > 0 {
+		generics = "<" + strings.Join(d.TypeParams, ", ") + ">"
+		sb.WriteString(generics)
+	}
+	if d.TraitName != "" {
+		sb.WriteString(" " + d.TraitName + " for")
+	}
+	sb.WriteString(" " + d.StructName + generics + " { ")
 	for _, m := range d.Methods {
 		sb.WriteString(m.String() + " ")
 	}
@@ -468,6 +478,32 @@ func (e *UnaryExpr) String() string {
 	return fmt.Sprintf("(%s%s)", e.Op, e.Expr.String())
 }
 
+// CastExpr converts a value to a type, checked when the program runs:
+// `value as Int`.
+type CastExpr struct {
+	BaseNode
+	Expr Expr
+	Type *Type
+}
+
+func (e *CastExpr) exprNode() {}
+func (e *CastExpr) String() string {
+	return fmt.Sprintf("(%s as %s)", e.Expr.String(), e.Type.String())
+}
+
+// TypeTestExpr asks whether a value is of a type when the program runs:
+// `value is Int`.
+type TypeTestExpr struct {
+	BaseNode
+	Expr Expr
+	Type *Type
+}
+
+func (e *TypeTestExpr) exprNode() {}
+func (e *TypeTestExpr) String() string {
+	return fmt.Sprintf("(%s is %s)", e.Expr.String(), e.Type.String())
+}
+
 type CallExpr struct {
 	BaseNode
 	Func Expr
@@ -487,11 +523,22 @@ type MemberExpr struct {
 	BaseNode
 	Expr Expr
 	Name string
+
+	// Type arguments of a call to a generic method: stack.map<String>(f)
+	TypeArgs []*Type
 }
 
 func (e *MemberExpr) exprNode() {}
 func (e *MemberExpr) String() string {
-	return fmt.Sprintf("%s.%s", e.Expr.String(), e.Name)
+	s := fmt.Sprintf("%s.%s", e.Expr.String(), e.Name)
+	if len(e.TypeArgs) > 0 {
+		var args []string
+		for _, t := range e.TypeArgs {
+			args = append(args, t.String())
+		}
+		s += "<" + strings.Join(args, ", ") + ">"
+	}
+	return s
 }
 
 type IndexExpr struct {

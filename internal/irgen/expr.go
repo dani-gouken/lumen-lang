@@ -38,6 +38,10 @@ func (fc *FunctionCompiler) compileExpr(expr ast.Expr) *ir.Register {
 		return fc.compileStructInit(e)
 	case *ast.FnExpr:
 		return fc.compileLambda(e)
+	case *ast.CastExpr:
+		return fc.compileCastExpr(e)
+	case *ast.TypeTestExpr:
+		return fc.compileTypeTest(e)
 	default:
 		// Unsupported expression type
 		fc.gen.errorAt(expr, ErrUnsupportedConstruct, "Unsupported expression type in IR generation", "")
@@ -239,10 +243,45 @@ func (fc *FunctionCompiler) compileUnaryExpr(expr *ast.UnaryExpr) *ir.Register {
 	return dest
 }
 
+// compileCastExpr compiles `value as Type`. The type checker has decided
+// whether the cast can fail; only then is a runtime check emitted.
+func (fc *FunctionCompiler) compileCastExpr(expr *ast.CastExpr) *ir.Register {
+	value := fc.compileExpr(expr.Expr)
+
+	descriptor, checked := fc.gen.typeInfo.Casts[expr]
+	if !checked {
+		return value
+	}
+
+	fc.setPos(expr)
+	fn := fc.builder.CreateMov(ir.Constant{Val: CastIntrinsic, Type: "FuncRef"})
+	desc := fc.builder.CreateMov(ir.Constant{Val: descriptor, Type: "String"})
+	return fc.builder.CreateCall(fn, value, desc)
+}
+
+// compileTypeTest compiles `value is Type` to a call of the type test
+// intrinsic with the description of the type computed by the type checker.
+func (fc *FunctionCompiler) compileTypeTest(expr *ast.TypeTestExpr) *ir.Register {
+	value := fc.compileExpr(expr.Expr)
+	fc.setPos(expr)
+
+	descriptor, ok := fc.gen.typeInfo.Tests[expr]
+	if !ok {
+		fc.gen.errorAt(expr, ErrUnsupportedConstruct, "this type test cannot be compiled", "")
+		return fc.builder.NewRegister()
+	}
+
+	fn := fc.builder.CreateMov(ir.Constant{Val: TypeTestIntrinsic, Type: "FuncRef"})
+	desc := fc.builder.CreateMov(ir.Constant{Val: descriptor, Type: "String"})
+	return fc.builder.CreateCall(fn, value, desc)
+}
+
 // compileCallExpr compiles a function or method call
 func (fc *FunctionCompiler) compileCallExpr(expr *ast.CallExpr) *ir.Register {
-	if member, ok := expr.Func.(*ast.MemberExpr); ok && fc.gen.methodNames[member.Name] {
-		return fc.compileMethodCall(expr, member)
+	if member, ok := expr.Func.(*ast.MemberExpr); ok {
+		if how, structName := fc.gen.resolveMethod(member.Expr, member.Name); how != dispatchField {
+			return fc.compileMethodCall(expr, member, how, structName)
+		}
 	}
 
 	fn := fc.compileExpr(expr.Func)
@@ -251,19 +290,20 @@ func (fc *FunctionCompiler) compileCallExpr(expr *ast.CallExpr) *ir.Register {
 	return fc.builder.CreateCall(fn, args...)
 }
 
-// compileMethodCall compiles `receiver.method(args)`. Methods are stored on
-// the struct value, so the call looks the function up on the receiver and
-// passes the receiver as `self`.
-func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.MemberExpr) *ir.Register {
-	if fc.gen.fieldNames[member.Name] {
-		fc.gen.errorAt(member, ErrAmbiguousMember,
-			fmt.Sprintf("'%s' is both a struct field and a method name", member.Name),
-			"Rename the field or the method")
-	}
-
+// compileMethodCall compiles `receiver.method(args)`. The receiver is passed
+// as `self`. When the receiver's struct is known the method's function is
+// called directly; when only a trait is known, the function is read from
+// the value, where struct literals store the methods a trait can reach.
+func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.MemberExpr, how dispatch, structName string) *ir.Register {
 	receiver := fc.compileExpr(member.Expr)
 	fc.setPos(member)
-	fn := fc.builder.CreateGetField(receiver, member.Name)
+
+	var fn *ir.Register
+	if how == dispatchStatic {
+		fn = fc.builder.CreateMov(ir.Constant{Val: methodIRName(structName, member.Name), Type: "FuncRef"})
+	} else {
+		fn = fc.builder.CreateGetField(receiver, member.Name)
+	}
 
 	args := []ir.Value{receiver}
 	for _, arg := range expr.Args {
@@ -371,7 +411,7 @@ func (fc *FunctionCompiler) compileArray(elements []ast.Expr) *ir.Register {
 }
 
 // compileStructInit compiles a struct initialization. Fields are set by
-// name, then the struct's methods are attached to the new value.
+// name, then the methods that need a runtime lookup are stored on the value.
 func (fc *FunctionCompiler) compileStructInit(expr *ast.StructInitExpr) *ir.Register {
 	// Map iteration order is random; sort for deterministic output
 	names := make([]string, 0, len(expr.Fields))
@@ -392,6 +432,9 @@ func (fc *FunctionCompiler) compileStructInit(expr *ast.StructInitExpr) *ir.Regi
 	}
 
 	for _, m := range fc.gen.structMethods[expr.Name] {
+		if !fc.gen.storedOnValue(m) {
+			continue
+		}
 		fn := fc.builder.CreateMov(ir.Constant{Val: m.irName, Type: "FuncRef"})
 		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: m.name, Type: "String"}, fn)
 	}

@@ -16,14 +16,26 @@ const (
 	ErrUnsupportedConstruct = "E5001" // Language feature not yet supported in IR
 	ErrNotAValue            = "E5002" // Name cannot be used as a value
 	ErrInvalidAssignment    = "E5003" // Target of an assignment cannot be written
-	ErrAmbiguousMember      = "E5004" // Name is both a struct field and a method
 	ErrLoopControl          = "E5005" // break/continue outside of a loop
 )
+
+// CastIntrinsic is the host function that implements `value as Type`. It
+// takes the value and a description of the type and returns the value, or
+// fails when the value is something else.
+const CastIntrinsic = "__cast"
+
+// TypeTestIntrinsic is the host function that implements `value is Type`.
+// It takes the value and a description of the type and returns a Bool.
+const TypeTestIntrinsic = "__is"
 
 // method describes one impl method of a struct.
 type method struct {
 	name   string // Name used at call sites: p.name(...)
 	irName string // Name of the compiled function: Struct.name
+
+	// A method reachable through a trait is also stored on each value of
+	// the struct, so it can be found when only the trait is known.
+	fromTrait bool
 }
 
 // IRGenerator converts AST to IR
@@ -47,10 +59,9 @@ type IRGenerator struct {
 	// Top-level functions by name (user declarations and builtins)
 	funcs map[string]*ast.FnDecl
 
-	// Methods attached to each struct, and every method/field name in use
+	// Methods of each struct, and for each method name the structs having it
 	structMethods map[string][]method
-	methodNames   map[string]bool
-	fieldNames    map[string]bool
+	methodOwners  map[string][]string
 }
 
 // NewIRGenerator creates a new IR generator
@@ -72,8 +83,7 @@ func NewIRGenerator(
 		lambdaCount:   0,
 		funcs:         make(map[string]*ast.FnDecl),
 		structMethods: make(map[string][]method),
-		methodNames:   make(map[string]bool),
-		fieldNames:    make(map[string]bool),
+		methodOwners:  make(map[string][]string),
 	}
 }
 
@@ -112,19 +122,16 @@ func (g *IRGenerator) collectDecls() {
 		switch d := decl.(type) {
 		case *ast.FnDecl:
 			g.funcs[d.Name] = d
-		case *ast.StructDecl:
-			for _, field := range d.Fields {
-				g.fieldNames[field.Name] = true
-			}
 		case *ast.ImplDecl:
 			for _, m := range d.Methods {
 				if m.Body == nil {
 					continue
 				}
-				g.methodNames[m.Name] = true
+				g.methodOwners[m.Name] = append(g.methodOwners[m.Name], d.StructName)
 				g.structMethods[d.StructName] = append(g.structMethods[d.StructName], method{
-					name:   m.Name,
-					irName: methodIRName(d.StructName, m.Name),
+					name:      m.Name,
+					irName:    methodIRName(d.StructName, m.Name),
+					fromTrait: d.TraitName != "",
 				})
 			}
 		}
@@ -137,6 +144,74 @@ func (g *IRGenerator) collectDecls() {
 
 func methodIRName(structName, methodName string) string {
 	return structName + "." + methodName
+}
+
+// hasMethod reports whether a struct has an impl method of that name.
+func (g *IRGenerator) hasMethod(structName, name string) bool {
+	for _, m := range g.structMethods[structName] {
+		if m.name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// dispatch says how a call `receiver.name(...)` reaches its target.
+type dispatch int
+
+const (
+	dispatchField   dispatch = iota // Not a method: call the function stored in the field
+	dispatchStatic                  // The struct is known: call its function directly
+	dispatchDynamic                 // Only a trait is known: look the method up on the value
+)
+
+// resolveMethod decides how `receiver.name(...)` is called, from the static
+// type of the receiver. For a static call it also returns the struct.
+func (g *IRGenerator) resolveMethod(receiver ast.Expr, name string) (dispatch, string) {
+	recvType := g.typeInfo.Types[receiver]
+	if union, ok := recvType.(*types.UnionType); ok {
+		// An optional receiver: dispatch on what it is when it is not null
+		var value types.Type
+		for _, member := range union.Types {
+			if !member.Equals(types.Null) {
+				if value != nil {
+					value = nil
+					break
+				}
+				value = member
+			}
+		}
+		recvType = value
+	}
+
+	switch t := recvType.(type) {
+	case *types.StructType:
+		if g.hasMethod(t.Name, name) {
+			return dispatchStatic, t.Name
+		}
+		return dispatchField, ""
+	case *types.BehaviorType:
+		return dispatchDynamic, ""
+	}
+
+	// The receiver's type is not known (its elements came from an untyped
+	// `[]`, for instance). The name still identifies the method when only
+	// one struct defines it.
+	switch owners := g.methodOwners[name]; len(owners) {
+	case 0:
+		return dispatchField, ""
+	case 1:
+		return dispatchStatic, owners[0]
+	}
+	return dispatchDynamic, ""
+}
+
+// storedOnValue reports whether a method has to be stored on each value of
+// its struct: when it can be called through a trait, or when several
+// structs share the name and a call with an unknown receiver type has to
+// find the right one at runtime.
+func (g *IRGenerator) storedOnValue(m method) bool {
+	return m.fromTrait || len(g.methodOwners[m.name]) > 1
 }
 
 // errorAt reports an IR generation error at the given node.

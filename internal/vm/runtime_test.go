@@ -17,7 +17,7 @@ func execMain(t *testing.T, pool []string, constants []Value, code ...Instr) (Va
 	chunk.StringPool = pool
 	chunk.Constants = constants
 	chunk.Code = code
-	chunk.ExternNames = []string{"print", "println", "toString", "push"}
+	chunk.ExternNames = []string{"print", "println", "toString", "push", "__cast"}
 	chunk.Prototypes = []FunctionPrototype{{Name: "main", CodeSize: len(code), RegisterCount: 8}}
 
 	var out bytes.Buffer

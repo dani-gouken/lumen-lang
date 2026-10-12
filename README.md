@@ -50,7 +50,7 @@ See [docs/luvm.md](docs/luvm.md) for detailed VM specification.
 This is a prototype implementation. A Lumen program goes through the whole chain, from source text to execution:
 
 - ✅ Lexer and parser, with error recovery
-- ✅ Name resolution and type checking (partial: see below)
+- ✅ Name resolution and static type checking (methods, traits, optionals, generics with inferred type arguments, casts and type tests, flow-sensitive narrowing)
 - ✅ Generic functions and structs (monomorphization)
 - ✅ Desugaring (`for`, `match`, short-circuit operators)
 - ✅ Closure analysis
@@ -61,12 +61,11 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Interactive debugger, showing Lumen source lines
 - ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`
 
-Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, `if`/`while`/`for`/`match`, short-circuit operators.
+Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators.
 
 Not there yet:
 
-- ⚠️ Imports / multi-file programs, enums, `match` on types
-- ⚠️ Type checking is partial: method call results, generic values and optionals are checked at runtime
+- ⚠️ Imports / multi-file programs, enums
 - ⚠️ No standard library beyond `print`, `println`, `toString`, `push`
 - ⚠️ REPL (stub only)
 - ⚠️ Bytecode limits: 256 registers per function, 256 distinct constants and 256 functions per program
@@ -153,6 +152,8 @@ Example programs in [examples/](examples/):
 - **shapes.lum** - Structs, traits, methods
 - **closures.lum** - Anonymous functions and captured variables
 - **generics.lum** - Generic and variadic functions, `match`
+- **stack.lum** - A generic struct with methods, optionals, casts
+- **dynamic.lum** - `Any`, `is`, `match` on types, null tests on fields
 
 ## Working with Bytecode
 

@@ -54,6 +54,8 @@ func (g *IRGenerator) compileFunction(fn *ast.FnDecl, name string, isMethod bool
 	fc := g.newFunctionCompiler(fn, name)
 	if isMethod {
 		fc.declare("self", fc.builder.AddParam())
+	} else {
+		fc.builder.Func.Signature = g.typeInfo.Signatures[fn]
 	}
 	fc.compileBody(fn.Params, fn.Body)
 }

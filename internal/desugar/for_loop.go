@@ -129,15 +129,8 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 		}
 	}
 
-	if loopVarType == nil {
-		// Default to any type if we can't determine it
-		loopVarType = &ast.Type{
-			BaseNode: ast.BaseNode{Pos: pos},
-			Kind:     ast.TypeBasic,
-			Name:     "Any",
-		}
-		d.typeInfo.Types[indexExpr] = types.Any
-	}
+	// When the element type is not known the declaration gets no annotation
+	// and takes the type of the element expression when it is checked again.
 
 	loopVarInit := &ast.LetStmt{
 		BaseNode: ast.BaseNode{Pos: pos},
@@ -206,34 +199,55 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 	return block
 }
 
-// typeToASTType converts a types.Type to an ast.Type
+// typeToASTType converts a types.Type to an ast.Type. It returns nil for a
+// type that has no source form or is not known; a declaration without an
+// annotation then takes the type of its initializer.
 func (d *Desugarer) typeToASTType(t types.Type, pos token.Position) *ast.Type {
+	basic := func(name string) *ast.Type {
+		return &ast.Type{BaseNode: ast.BaseNode{Pos: pos}, Kind: ast.TypeBasic, Name: name}
+	}
+
 	switch t := t.(type) {
 	case *types.PrimitiveType:
-		return &ast.Type{
-			BaseNode: ast.BaseNode{Pos: pos},
-			Kind:     ast.TypeBasic,
-			Name:     string(t.Name),
+		if t.Name == types.PrimitiveUnknown {
+			return nil
 		}
+		return basic(string(t.Name))
 	case *types.ArrayType:
 		elemType := d.typeToASTType(t.ElementType, pos)
+		if elemType == nil {
+			return nil
+		}
 		return &ast.Type{
 			BaseNode: ast.BaseNode{Pos: pos},
 			Kind:     ast.TypeArray,
 			ElemType: elemType,
 		}
 	case *types.StructType:
-		return &ast.Type{
-			BaseNode: ast.BaseNode{Pos: pos},
-			Kind:     ast.TypeBasic,
-			Name:     t.Name,
+		result := basic(t.Name)
+		for _, arg := range t.TypeArgs {
+			argType := d.typeToASTType(arg, pos)
+			if argType == nil {
+				return nil
+			}
+			result.Generics = append(result.Generics, argType)
 		}
+		return result
+	case *types.BehaviorType:
+		return basic(t.Name)
+	case *types.TypeParam:
+		return basic(t.Name)
 	case *types.FunctionType:
 		paramTypes := make([]*ast.Type, len(t.Params))
 		for i, param := range t.Params {
-			paramTypes[i] = d.typeToASTType(param, pos)
+			if paramTypes[i] = d.typeToASTType(param, pos); paramTypes[i] == nil {
+				return nil
+			}
 		}
 		returnType := d.typeToASTType(t.ReturnType, pos)
+		if returnType == nil || t.IsVariadic {
+			return nil
+		}
 		return &ast.Type{
 			BaseNode:   ast.BaseNode{Pos: pos},
 			Kind:       ast.TypeFunction,
@@ -243,7 +257,9 @@ func (d *Desugarer) typeToASTType(t types.Type, pos token.Position) *ast.Type {
 	case *types.UnionType:
 		unionTypes := make([]*ast.Type, len(t.Types))
 		for i, ut := range t.Types {
-			unionTypes[i] = d.typeToASTType(ut, pos)
+			if unionTypes[i] = d.typeToASTType(ut, pos); unionTypes[i] == nil {
+				return nil
+			}
 		}
 		return &ast.Type{
 			BaseNode:   ast.BaseNode{Pos: pos},
@@ -251,11 +267,6 @@ func (d *Desugarer) typeToASTType(t types.Type, pos token.Position) *ast.Type {
 			UnionTypes: unionTypes,
 		}
 	default:
-		// Default to Any type
-		return &ast.Type{
-			BaseNode: ast.BaseNode{Pos: pos},
-			Kind:     ast.TypeBasic,
-			Name:     "Any",
-		}
+		return nil
 	}
 }

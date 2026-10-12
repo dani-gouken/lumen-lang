@@ -30,7 +30,7 @@ func resolveSource(t *testing.T, src string) []string {
 func TestResolveBuiltinsAreInScope(t *testing.T) {
 	msgs := resolveSource(t, `
 		fn main() -> Int {
-			let xs = [];
+			let xs: [Int] = [];
 			push(xs, 1);
 			print("a");
 			println(toString(xs));

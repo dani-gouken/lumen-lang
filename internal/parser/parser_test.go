@@ -52,6 +52,16 @@ func TestParseExpressionPrecedence(t *testing.T) {
 		{"a.b[0](1, 2).c", "a.b[0](1, 2).c"},
 		{"f(x)(y)", "f(x)(y)"},
 		{"[1, [2, 3], f()]", "[1, [2, 3], f()]"},
+		// `as` binds tighter than binary operators, looser than postfix
+		{"a as Int + 1", "((a as Int) + 1)"},
+		{"a.b[0] as String? == null", "((a.b[0] as String?) == null)"},
+		{"-a as Int", "(-(a as Int))"},
+		{"a as Any as Int", "((a as Any) as Int)"},
+		// `is` sits at the same level as `as`
+		{"a is Int && b", "((a is Int) && b)"},
+		{"!a is [String]", "(!(a is [String]))"},
+		{"a.b is Point? == true", "((a.b is Point?) == true)"},
+		{"a as Any is Int", "((a as Any) is Int)"},
 	}
 
 	for _, tt := range tests {
@@ -80,6 +90,35 @@ func TestParseGenericCallVersusComparison(t *testing.T) {
 	}
 	if got := parseExprString(t, "a < b && c > (d)"); got != "((a < b) && (c > d))" {
 		t.Errorf("expected two comparisons, got %s", got)
+	}
+}
+
+func TestParseMethodTypeArguments(t *testing.T) {
+	// The same rule as for function names: `<` after a member name starts
+	// type arguments only when a call follows the closing `>`.
+	call := parseBody(t, "let v = stack.map<String, [Int]>(f);")[0].(*ast.LetStmt).Value.(*ast.CallExpr)
+	member := call.Func.(*ast.MemberExpr)
+	if member.Name != "map" || len(member.TypeArgs) != 2 || member.TypeArgs[1].Kind != ast.TypeArray {
+		t.Fatalf("expected map with 2 type arguments, got %s", member)
+	}
+	if got := call.String(); got != "stack.map<String, [Int]>(f)" {
+		t.Errorf("expected the type arguments to print back, got %s", got)
+	}
+
+	tests := []struct {
+		src  string
+		want string
+	}{
+		{"a.b < c", "(a.b < c)"},
+		{"a.b < c.d", "(a.b < c.d)"},
+		{"a.b < c && d > (e)", "((a.b < c) && (d > e))"},
+		{"a.b<T>(x).c<U>(y)", "a.b<T>(x).c<U>(y)"},
+		{"a.b(x)", "a.b(x)"},
+	}
+	for _, tt := range tests {
+		if got := parseExprString(t, tt.src); got != tt.want {
+			t.Errorf("%s: expected %s, got %s", tt.src, tt.want, got)
+		}
 	}
 }
 
@@ -188,6 +227,64 @@ func TestParseMatch(t *testing.T) {
 	}
 }
 
+func TestParseTypePatterns(t *testing.T) {
+	prog := parseOK(t, `
+		struct Point { x: Int; }
+		trait Shape { fn area() -> Int; }
+		struct Box<T> { value: T; }
+		fn f(v: Any, limit: Int) -> Void {
+			match v {
+				case Int: { return; }
+				case [String]: { return; }
+				case Int?: { return; }
+				case fn(Int) -> Bool: { return; }
+				case Box<Int>: { return; }
+				case Point: { return; }
+				case Shape: { return; }
+				case limit: { return; }
+				case 3: { return; }
+				case -1: { return; }
+				default: { return; }
+			}
+		}
+	`)
+
+	var cases []*ast.MatchCase
+	for _, decl := range prog.Decls {
+		if fn, ok := decl.(*ast.FnDecl); ok {
+			cases = fn.Body.Stmts[0].(*ast.MatchStmt).Cases
+		}
+	}
+
+	// A pattern is a type when it can only be one, or when it is the name
+	// of a struct or trait declared in the file
+	wantTypes := []string{"Int", "[String]", "Int?", "fn(Int) -> Bool", "Box<Int>", "Point", "Shape"}
+	for i, want := range wantTypes {
+		typ, ok := cases[i].Pattern.(*ast.Type)
+		if !ok {
+			t.Errorf("case %d: expected the type pattern %s, got %T", i, want, cases[i].Pattern)
+			continue
+		}
+		if typ.String() != want {
+			t.Errorf("case %d: expected %s, got %s", i, want, typ)
+		}
+	}
+
+	// Any other name stays an expression, as do literals
+	if _, ok := cases[7].Pattern.(*ast.Ident); !ok {
+		t.Errorf("expected `limit` to stay an identifier, got %T", cases[7].Pattern)
+	}
+	if _, ok := cases[8].Pattern.(*ast.Literal); !ok {
+		t.Errorf("expected a literal pattern, got %T", cases[8].Pattern)
+	}
+	if _, ok := cases[9].Pattern.(*ast.UnaryExpr); !ok {
+		t.Errorf("expected a negative literal pattern, got %T", cases[9].Pattern)
+	}
+	if cases[10].Pattern != nil {
+		t.Errorf("expected default to have no pattern, got %T", cases[10].Pattern)
+	}
+}
+
 func TestParseDeclarations(t *testing.T) {
 	prog := parseOK(t, `
 		import "std/io" as io;
@@ -244,6 +341,34 @@ func TestParseDeclarations(t *testing.T) {
 	ret := fn.ReturnType
 	if ret.Kind != ast.TypeUnion || ret.UnionTypes[0].Kind != ast.TypeOption {
 		t.Errorf("expected union with optional first member, got %s", ret)
+	}
+}
+
+func TestParseGenericImpl(t *testing.T) {
+	prog := parseOK(t, `
+		impl<T> Box<T> { fn get() -> T { return self.value; } }
+		impl<K, V> Show for Pair<K, V> { fn show() -> String { return ""; } }
+	`)
+
+	box := prog.Decls[0].(*ast.ImplDecl)
+	if box.StructName != "Box" || box.TraitName != "" || strings.Join(box.TypeParams, ",") != "T" {
+		t.Errorf("unexpected impl: %s", box)
+	}
+	pair := prog.Decls[1].(*ast.ImplDecl)
+	if pair.StructName != "Pair" || pair.TraitName != "Show" || strings.Join(pair.TypeParams, ",") != "K,V" {
+		t.Errorf("unexpected trait impl: %s", pair)
+	}
+
+	// The struct has to repeat the parameters, in order
+	for _, src := range []string{
+		"impl<T> Box { fn get() -> T { return self.value; } }",
+		"impl<K, V> Pair<V, K> { fn show() -> String { return \"\"; } }",
+	} {
+		errs := errors.NewHandler()
+		Parse(src, "test.lum", errs)
+		if len(errs.Diagnostics) != 1 || !strings.Contains(errs.Diagnostics[0].Suggestion, "Write: impl<") {
+			t.Errorf("expected one error showing the right form for %q, got %v", src, errs.Diagnostics)
+		}
 	}
 }
 

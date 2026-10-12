@@ -12,7 +12,7 @@ fn makeCounter() -> fn() -> Int {
 }
 
 fn map(xs: [Int], f: fn(Int) -> Int) -> [Int] {
-    let out = [];
+    let out: [Int] = [];
     for x in xs {
         push(out, f(x));
     }

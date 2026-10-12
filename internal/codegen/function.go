@@ -106,6 +106,7 @@ func (f *funcGen) generate() {
 		RegisterCount: total,
 		ArgCount:      len(f.fn.Params),
 		UpvalueCount:  f.fn.UpvalueCount,
+		Signature:     f.fn.Signature,
 	})
 }
 
@@ -437,7 +438,10 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 		f.generateCall(instr)
 
 	case ir.OpNewStruct:
-		f.emit(vm.OpNEWOBJ, f.dest(instr), 0, 0)
+		// The struct's name is recorded on the value; casts check it
+		if name, ok := f.nameOperand(instr, 0); ok {
+			f.emit(vm.OpNEWOBJ, f.dest(instr), f.g.stringConstant(name, f.pos), 1)
+		}
 
 	case ir.OpGetField:
 		if name, ok := f.nameOperand(instr, 1); ok {

@@ -9,7 +9,8 @@ const (
 	// Magic number "LUMN" in ASCII
 	bytecodeFileMagic uint32 = 0x4C554D4E
 	// Current bytecode format version
-	bytecodeVersion uint32 = 1
+	// 2: value tags moved to bits 48-51; prototypes carry a signature
+	bytecodeVersion uint32 = 2
 )
 
 // SerializeChunk converts a Chunk to binary bytecode format.
@@ -28,7 +29,8 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	protoSize := 4 // count
 	for _, proto := range chunk.Prototypes {
 		// Each prototype: NameLen + Name + CodeStart + CodeSize + RegisterCount + ArgCount + UpvalueCount
-		protoSize += 4 + len(proto.Name) + 4 + 4 + 4 + 4 + 4
+		// + SignatureLen + Signature
+		protoSize += 4 + len(proto.Name) + 4 + 4 + 4 + 4 + 4 + 4 + len(proto.Signature)
 	}
 
 	// Calculate extern names size
@@ -109,6 +111,12 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 		offset += 4
 		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.UpvalueCount))
 		offset += 4
+
+		// Write signature
+		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(proto.Signature)))
+		offset += 4
+		copy(buf[offset:], []byte(proto.Signature))
+		offset += len(proto.Signature)
 	}
 
 	// Write extern names
@@ -280,6 +288,18 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 		upvalueCount := int(binary.LittleEndian.Uint32(data[offset:]))
 		offset += 4
 
+		// Read signature
+		if offset+4 > len(data) {
+			return nil, fmt.Errorf("bytecode truncated: cannot read function signature length")
+		}
+		signatureLen := int(binary.LittleEndian.Uint32(data[offset:]))
+		offset += 4
+		if signatureLen < 0 || offset+signatureLen > len(data) {
+			return nil, fmt.Errorf("bytecode truncated: cannot read function signature")
+		}
+		signature := string(data[offset : offset+signatureLen])
+		offset += signatureLen
+
 		chunk.Prototypes[i] = FunctionPrototype{
 			Name:          name,
 			CodeStart:     codeStart,
@@ -287,6 +307,7 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 			RegisterCount: registerCount,
 			ArgCount:      argCount,
 			UpvalueCount:  upvalueCount,
+			Signature:     signature,
 		}
 	}
 

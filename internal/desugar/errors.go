@@ -167,8 +167,9 @@ func (d *Desugarer) validateForLoopIterable(forStmt *ast.ForStmt) bool {
 		// Arrays are iterable
 		return true
 	case *types.PrimitiveType:
-		if t.Name == types.PrimitiveString || t.Name == types.PrimitiveAny {
-			// Strings are iterable; Any is checked when the loop runs
+		if t.Name == types.PrimitiveString || t.Name == types.PrimitiveUnknown {
+			// Strings are iterable; an unknown type was already reported
+			// or will be checked when the loop runs
 			return true
 		}
 		// Other primitives are not iterable

@@ -152,5 +152,6 @@ func builtinNames() []string {
 	for _, fn := range resolve.Builtins() {
 		names = append(names, fn.Name)
 	}
-	return names
+	// Intrinsics the compiler calls itself; they are not visible as names
+	return append(names, irgen.CastIntrinsic, irgen.TypeTestIntrinsic)
 }

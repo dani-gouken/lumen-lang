@@ -85,6 +85,14 @@ func (m *Monomorphizer) rewriteExprCallSites(expr ast.Expr) {
 		m.rewriteExprCallSites(e.Right)
 	case *ast.UnaryExpr:
 		m.rewriteExprCallSites(e.Expr)
+	case *ast.CastExpr:
+		m.rewriteExprCallSites(e.Expr)
+	case *ast.TypeTestExpr:
+		m.rewriteExprCallSites(e.Expr)
+	case *ast.FnExpr:
+		if e.Body != nil {
+			m.rewriteStmtCallSites(e.Body)
+		}
 	case *ast.MemberExpr:
 		m.rewriteExprCallSites(e.Expr)
 	case *ast.IndexExpr:
@@ -98,16 +106,11 @@ func (m *Monomorphizer) rewriteExprCallSites(expr ast.Expr) {
 		for _, fieldExpr := range e.Fields {
 			m.rewriteExprCallSites(fieldExpr)
 		}
-		// Also handle generic struct instantiation
-		if len(e.TypeArgs) > 0 {
-			if _, isGeneric := m.generics[e.Name]; isGeneric {
-				typeArgs := m.convertASTTypesToTypes(e.TypeArgs)
-				key := MakeInstantiationKey(e.Name, typeArgs)
-				// Rewrite the struct name to the mangled name
-				e.Name = m.mangleName(key)
-				// Remove type arguments
-				e.TypeArgs = nil
-			}
-		}
+		// A literal of a generic struct keeps its name and type arguments.
+		// Type annotations refer to the struct the same way (`Box<Int>`),
+		// and its methods belong to `Box`; renaming only the literal would
+		// make the value a different type from every place it is used.
+		// Values carry no type arguments at runtime, so one struct serves
+		// all instantiations.
 	}
 }

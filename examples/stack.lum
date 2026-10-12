@@ -1,0 +1,87 @@
+// A generic container with methods, optionals and casts.
+
+struct Stack<T> {
+    items: [T];
+}
+
+// `impl<T>` introduces the struct's type parameter for the methods.
+impl<T> Stack<T> {
+    fn push(item: T) -> Void {
+        push(self.items, item);
+    }
+
+    fn size() -> Int {
+        return self.items.length;
+    }
+
+    // A method can add type parameters of its own: U is chosen at the call.
+    fn map<U>(convert: fn(T) -> U) -> Stack<U> {
+        let out = Stack<U> { items: [] };
+        for item in self.items {
+            out.push(convert(item));
+        }
+        return out;
+    }
+
+    // Returns null when the stack is empty.
+    fn peek() -> T? {
+        if self.items.length == 0 {
+            return null;
+        }
+        return self.items[self.items.length - 1];
+    }
+}
+
+trait Shape {
+    fn area() -> Int;
+}
+
+struct Square { side: Int; }
+struct Circle { radius: Int; }
+
+impl Shape for Square {
+    fn area() -> Int { return self.side * self.side; }
+}
+
+impl Shape for Circle {
+    fn area() -> Int { return 3 * self.radius * self.radius; }
+}
+
+// `as` checks at runtime that the shape really is a Square.
+fn sideOf(shape: Shape) -> Int {
+    return (shape as Square).side;
+}
+
+fn main() -> Int {
+    let numbers = Stack<Int> { items: [] };
+    println("empty:", numbers.peek() == null);
+
+    numbers.push(10);
+    numbers.push(20);
+
+    // peek() returns Int?; testing it against null makes it an Int inside
+    let top = numbers.peek();
+    if top != null {
+        println("top + 1 =", top + 1, "of", numbers.size());
+    }
+
+    let labels = numbers.map<String>(fn(n: Int) -> String { return "#" + toString(n); });
+    println("labels:", labels.items);
+
+    // ...or a fallback covers the null case
+    let none = Stack<String> { items: [] };
+    println(none.peek() ?? "nothing here");
+
+    let shapes = Stack<Shape> { items: [] };
+    shapes.push(Square { side: 4 });
+    shapes.push(Circle { radius: 1 });
+    println("shapes:", shapes.size());
+
+    let first = shapes.items[0];
+    println("area", first.area(), "side", sideOf(first));
+
+    // A value stored as Any has to be cast back before it can be used
+    let boxed: Any = 41;
+    println((boxed as Int) + 1);
+    return 0;
+}

@@ -9,7 +9,7 @@ fn fib(n: Int) -> Int {
 
 // Iterative version: builds the whole sequence in an array.
 fn fibSequence(count: Int) -> [Int] {
-    let seq = [];
+    let seq: [Int] = [];
     let a = 0;
     let b = 1;
     let i = 0;

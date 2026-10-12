@@ -64,5 +64,6 @@ func (g *IRGenerator) compileLambdaFunction(lambda *ast.FnExpr) *ir.Function {
 	g.lambdaCount++
 
 	fc := g.newFunctionCompiler(lambda, name)
+	fc.builder.Func.Signature = g.typeInfo.Signatures[lambda]
 	return fc.compileBody(lambda.Params, lambda.Body)
 }

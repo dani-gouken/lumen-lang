@@ -101,9 +101,10 @@ func TestGenerateConstantsAreShared(t *testing.T) {
 	b.CreateRet(b.CreateGetField(obj, "name"))
 
 	chunk := generate(t, b.Func)
-	// One slot for the int, one for the string used as value and field name
-	if len(chunk.Constants) != 2 || len(chunk.StringPool) != 1 {
-		t.Errorf("expected 2 constants and 1 pooled string, got %d and %d", len(chunk.Constants), len(chunk.StringPool))
+	// One slot for the int, one for the string used as value and field
+	// name, one for the struct's name
+	if len(chunk.Constants) != 3 || len(chunk.StringPool) != 2 {
+		t.Errorf("expected 3 constants and 2 pooled strings, got %d and %d", len(chunk.Constants), len(chunk.StringPool))
 	}
 }
 
@@ -264,6 +265,23 @@ func TestGenerateDebugInfo(t *testing.T) {
 	}
 	if info.SourceLine != "    return 1;" || info.FuncName != "main" {
 		t.Errorf("unexpected context: %q in %q", info.SourceLine, info.FuncName)
+	}
+}
+
+func TestGenerateKeepsFunctionSignatures(t *testing.T) {
+	typed := ir.NewBuilder("main")
+	typed.Func.Signature = "fn()->int"
+	typed.CreateRet(typed.CreateMov(intConst(1)))
+
+	untyped := ir.NewBuilder("helper")
+	untyped.CreateRet(nil)
+
+	chunk := generate(t, typed.Func, untyped.Func)
+	if got := proto(t, chunk, "main").Signature; got != "fn()->int" {
+		t.Errorf("expected main to keep its signature, got %q", got)
+	}
+	if got := proto(t, chunk, "helper").Signature; got != "" {
+		t.Errorf("expected helper to have no signature, got %q", got)
 	}
 }
 

@@ -357,21 +357,21 @@ func TestDesugarShortCircuitAnd(t *testing.T) {
 		t.Fatalf("Desugaring failed with errors: %v", errs.Diagnostics)
 	}
 
-	// Check that temporary variables were generated
-	if len(info.TmpVars) == 0 {
-		t.Error("Expected temporary variables to be generated for short-circuit &&")
+	// The condition keeps its && operator: IR generation turns it into
+	// branches. Rewriting it into temporaries here would hide the condition
+	// from the type checker when the program is checked again.
+	if len(info.TmpVars) != 0 {
+		t.Errorf("Expected no temporary variables for &&, got %v", info.TmpVars)
 	}
 
-	// The if statement with && should be wrapped in a block with temporary variable setup
 	fnDecl := desugaredProg.Decls[0].(*ast.FnDecl)
-	blockStmt, ok := fnDecl.Body.Stmts[0].(*ast.BlockStmt)
+	newIf, ok := fnDecl.Body.Stmts[0].(*ast.IfStmt)
 	if !ok {
-		t.Fatalf("Expected if with && to be wrapped in block, got %T", fnDecl.Body.Stmts[0])
+		t.Fatalf("Expected the if statement to stay an if statement, got %T", fnDecl.Body.Stmts[0])
 	}
-
-	// Should have multiple statements for the short-circuit logic
-	if len(blockStmt.Stmts) < 3 {
-		t.Errorf("Expected at least 3 statements for short-circuit desugaring, got %d", len(blockStmt.Stmts))
+	cond, ok := newIf.Cond.(*ast.BinaryExpr)
+	if !ok || cond.Op != "&&" {
+		t.Errorf("Expected the condition to remain an && expression, got %s", newIf.Cond)
 	}
 }
 
@@ -480,26 +480,22 @@ func TestDesugarLetWithShortCircuit(t *testing.T) {
 		t.Fatalf("Desugaring failed with errors: %v", errs.Diagnostics)
 	}
 
-	// Check that temporary variables were generated
-	if len(info.TmpVars) == 0 {
-		t.Error("Expected temporary variables to be generated for let with &&")
+	// The let keeps its && initializer, as a direct statement of the block
+	if len(info.TmpVars) != 0 {
+		t.Errorf("Expected no temporary variables for &&, got %v", info.TmpVars)
 	}
 
-	// The helper statements are placed in the enclosing block, in front of
-	// the let. Wrapping them in a block of their own would hide `result`
-	// from the statements that follow.
 	fnDecl := desugaredProg.Decls[0].(*ast.FnDecl)
-	blockStmt := fnDecl.Body
-
-	// Should have multiple statements for the short-circuit logic plus the final let
-	if len(blockStmt.Stmts) < 3 {
-		t.Errorf("Expected at least 3 statements for short-circuit desugaring in let, got %d", len(blockStmt.Stmts))
+	if len(fnDecl.Body.Stmts) != 1 {
+		t.Fatalf("Expected the let to remain a single statement, got %d", len(fnDecl.Body.Stmts))
 	}
-
-	// The last statement should be the actual let statement
-	lastStmt := blockStmt.Stmts[len(blockStmt.Stmts)-1]
-	if _, ok := lastStmt.(*ast.LetStmt); !ok {
-		t.Errorf("Expected last statement to be let statement, got %T", lastStmt)
+	newLet, ok := fnDecl.Body.Stmts[0].(*ast.LetStmt)
+	if !ok {
+		t.Fatalf("Expected a let statement, got %T", fnDecl.Body.Stmts[0])
+	}
+	value, ok := newLet.Value.(*ast.BinaryExpr)
+	if !ok || value.Op != "&&" {
+		t.Errorf("Expected the initializer to remain an && expression, got %s", newLet.Value)
 	}
 }
 

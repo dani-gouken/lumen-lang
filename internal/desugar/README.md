@@ -7,53 +7,39 @@ This package implements AST desugaring for the Lumen programming language, trans
 The desugaring phase transforms:
 - **For loops** → While loops with explicit iteration
 - **Match statements** → If-else chains
-- **Short-circuit operators** (`&&`, `||`) → Explicit control flow with temporary variables
+- **Short-circuit operators** (`&&`, `||`, `??`) → kept as they are; IR generation lowers them
 - **Null coalescing** (`??`) → Conditional assignments
 
 This simplification reduces complexity for later compilation stages (closure analysis, IR generation) while preserving program semantics.
 
 ## Key Design Decisions
 
-### Statement-Level Desugaring for Short-Circuit Operators
+### Short-Circuit Operators Are Left to IR Generation
 
-Short-circuit operators (`&&`, `||`, `??`) are **fully desugared** when they appear in statement contexts:
+Short-circuit operators (`&&`, `||`, `??`) are **not rewritten** by the
+desugarer. Their operands are desugared; the operator stays in the tree, and
+IR generation lowers it to branches (see `docs/compilation/ir_generation.md`), wherever it
+appears: conditions, `let` initializers, return values, arguments.
+
+An earlier version rewrote them into statements with temporaries:
 
 ```lumen
-// Original
-let result = func1() && func2();
-
-// Desugared (the helpers are added to the enclosing block, so `result`
-// stays in scope for the statements that follow)
-let __tmp_0 = func1();
-let __tmp_1 = false;
-if __tmp_0 {
-  __tmp_1 = func2();
-}
-let result = __tmp_1;
+// Source                         // What the old rewrite produced
+if a != null && a.ready {         let __tmp_0 = a != null;
+    use(a);                       let __tmp_1 = false;
+}                                 if __tmp_0 { __tmp_1 = a.ready; }
+                                  if __tmp_1 { use(a); }
 ```
 
-A `while` whose condition contains these operators becomes `while true` with the
-helpers and an `if !cond { break; }` at the top of the body, so the condition is
-recomputed before every iteration.
+That form is equivalent at runtime, but it destroys information. The program
+is type checked again after desugaring, and those types drive code generation
+(which function a method call targets). In the rewritten form nothing says
+that `a` is non-null inside the body any more: the condition is a temporary
+Bool. The checker then cannot narrow `a`, and code generation has to guess.
+Keeping the operators keeps the condition readable for the checker.
 
-The key insight: **We CAN transform expressions into statements** by:
-1. Detecting short-circuit operators at the statement level (`containsShortCircuit`)
-2. Hoisting the desugaring logic to generate pre-statements
-3. Wrapping the result in a block statement
-
-This works for:
-- **If/while conditions**: `if a() && b() { ... }`
-- **Let statements**: `let x = a() || b();`
-- **Return statements**: (can be extended similarly)
-
-### Expression-Level Fallback
-
-When short-circuit operators appear in pure expression contexts (e.g., nested in function arguments without being in a let/if/while), we:
-1. Recursively desugar the operands
-2. Keep the operator itself
-3. Let IR generation handle the short-circuit semantics
-
-This is rare in practice because most real-world code uses these operators in statement contexts.
+The desugarer still warns (`E4004`) about operators nested five or more levels
+deep in a condition or a `let` initializer.
 
 ## Architecture
 
@@ -62,7 +48,7 @@ This is rare in practice because most real-world code uses these operators in st
 - **`desugar.go`**: Core desugarer, orchestrates transformations
 - **`for_loop.go`**: For-loop → while-loop transformation
 - **`match.go`**: Match statement → if-else transformation
-- **`binary_expr.go`**: Short-circuit operator desugaring
+- **`binary_expr.go`**: Desugars the operands of binary expressions
 - **`errors.go`**: Error reporting with rich diagnostics and suggestions
 
 ### Data Structures
@@ -141,53 +127,16 @@ if x == 1 {
 
 **Features**:
 - Handles value matching (literals, expressions)
-- Supports type matching with `__is_type` intrinsic
+- Type patterns (`case Int:`) become type tests (`value is Int`), which let the checker narrow the matched variable inside the case
 - Generates temporary variables for complex matched expressions
 - Preserves pattern order and semantics
 
 ### 3. Short-Circuit Operators
 
-#### In Conditions
+Not transformed: the operands are desugared and the operator is kept. See
+"Short-Circuit Operators Are Left to IR Generation" above.
 
-```lumen
-// Before
-if a() && b() {
-    action();
-}
-
-// After
-{
-    let __tmp_0 = a();
-    let __tmp_1 = false;
-    if __tmp_0 {
-        __tmp_1 = b();
-    }
-    if __tmp_1 {
-        action();
-    }
-}
-```
-
-**Implementation**: [binary_expr.go:94](./binary_expr.go#L94)
-
-#### In Let Statements
-
-```lumen
-// Before
-let result = func1() || func2();
-
-// After
-{
-    let __tmp_0 = func1();
-    let __tmp_1 = true;
-    if !__tmp_0 {
-        __tmp_1 = func2();
-    }
-    let result = __tmp_1;
-}
-```
-
-**Implementation**: [desugar.go:182](./desugar.go#L182)
+**Implementation**: [binary_expr.go](./binary_expr.go)
 
 ## Type Information Management
 
@@ -275,8 +224,8 @@ go test ./internal/desugar/... -v
 Test coverage includes:
 - For loop desugaring (simple, nested, with break/continue)
 - Match statement desugaring (value, type, enum matching)
-- Short-circuit operators in conditions
-- Short-circuit operators in let statements
+- Short-circuit operators are kept, their operands desugared
+- Type patterns become type tests
 - Edge cases (empty programs, complex nesting)
 - **Error reporting** (invalid iterables, missing type info, invalid patterns)
 - **Warnings** (deeply nested expressions)
@@ -294,7 +243,7 @@ Source → Parse → Resolve → TypeCheck → Monomorphize → **Desugar** → 
 - Name resolution table
 
 **Outputs**:
-- Simplified AST (while loops only, no match, explicit short-circuit)
+- Simplified AST (while loops only, no match)
 - DesugarInfo for debugging
 
 ## Performance

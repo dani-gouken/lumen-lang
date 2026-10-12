@@ -88,7 +88,7 @@ that detects the problem.
 | `E2001` | Type mismatch in a declaration, assignment, array literal or struct field |
 | `E2002` | `return` outside of a function |
 | `E2003` | Returned value does not match the function's return type |
-| `E2004` | `return;` in a function that must return a value |
+| `E2004` | `return;` in a function that must return a value, or a function that can reach its end without returning one |
 | `E2005` | Condition of `if`/`while` is not a `Bool` |
 | `E2006` | Binary operator not defined for the operand types |
 | `E2007` | Unary operator not defined for the operand type |
@@ -97,14 +97,24 @@ that detects the problem.
 | `E2010` | Argument type does not match the parameter type |
 | `E2011` | `for-in` over a type that cannot be iterated |
 | `E2012` | `impl` is missing a method required by the trait |
-| `E2013` | Method signature differs from the trait's |
-| `E2014` | Struct literal names a field the struct does not have |
+| `E2013` | Method signature differs from the trait's (parameters, return type, or number of type parameters) |
+| `E2014` | Field that does not exist: in a struct literal, or read from a value. Also a method used without calling it |
+| `E2015` | Method that does not exist on the receiver's struct or trait. Suggests a close name |
+| `E2016` | Struct literal of an undefined struct, or of a trait |
+| `E2017` | Optional (`T?`) used where a value is required; the suggestion is to add `??` |
+| `E2018` | Struct literal leaves fields without a value |
+| `E2019` | Method defined twice for the same struct |
+| `E2020` | `let x = [];` with nothing to tell the element type |
+| `E2021` | Cast or type test that can never succeed (`1 as String`, `1 is String`, `case String:` on an Int), or for a type that cannot be verified |
+| `E2022` | Assignment to a name declared with `const` |
+| `E2023` | **Warning**: unreachable code after a statement that always leaves the block. Reported once per block |
+| `E2024` | Type arguments of a method call that cannot be inferred, are superfluous or of the wrong number |
 
 ### E3xxx — Monomorphization (`internal/monomorph`)
 
 | Code | Meaning |
 |------|---------|
-| `E3001` | Generic used without type arguments that can be determined |
+| `E3001` | Generic function called without type arguments where the arguments do not determine them |
 | `E3002` | Recursive generic types causing infinite instantiation |
 | `E3003` | Number of type arguments differs from the number of type parameters |
 
@@ -127,7 +137,6 @@ that detects the problem.
 | `E5001` | Construct that cannot be lowered to IR yet |
 | `E5002` | Name used as a value that is neither a variable nor a function (e.g. a struct name) |
 | `E5003` | Assignment to something that is not a variable (e.g. a function) |
-| `E5004` | Name is both a struct field and a method, so `x.name(...)` would be ambiguous |
 | `E5005` | `break` or `continue` outside of a loop |
 
 ### E6xxx — Bytecode generation (`internal/codegen`)
@@ -150,7 +159,11 @@ within them.
 
 | Code | Meaning |
 |------|---------|
-| `E7001` | Language feature that parses but cannot be compiled yet (imports, enums, type patterns) |
+| `E7001` | Language feature that parses but cannot be compiled yet (imports, enums, match patterns other than literals and types) |
+
+### Severity
+
+Most diagnostics are errors. A **warning** (currently only `E2023`) is printed like an error but does not set `Handler.HasErrors()`: the pipeline continues, bytecode is produced, and the CLI's exit code is that of the program. Code that reads `Diagnostics[0]` to find "the error" must skip warnings.
 
 ## Reporting Strategy
 

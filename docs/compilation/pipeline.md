@@ -116,8 +116,7 @@ internals the user never wrote:
 |-----------|---------|
 | `import "..."` | imports are not supported yet |
 | `enum ...` | enums are not supported yet |
-| `case Int:` in a match | type patterns in match are not supported yet |
-| other non-literal match patterns | this kind of match pattern is not supported yet |
+| match patterns other than literals, types and `default` | this kind of match pattern is not supported yet |
 
 When one of these gets implemented, remove its entry here.
 
@@ -160,13 +159,35 @@ locations and recovering to report several per file.
     *   Check function call arguments against signatures, including variadic ones.
     *   Check binary/unary operator compatibility and assignments.
     *   Type member access (struct fields, `.length`), indexing and lambdas.
-    *   Validate trait implementations.
-*   **What it does not prove**: The checker is deliberately lenient where it
-    lacks information, and uses `Any` for it: the result of a method call, a
-    value whose type is a type parameter, an optional (`T?`), a trait-typed
-    value. `Any` is assignable in both directions, so such code compiles and is
-    checked by the VM when it runs. Tightening this is a matter of teaching the
-    checker more, not of changing later stages.
+    *   Type method calls: the method must exist on the receiver's struct or
+        trait, arguments are checked against its signature, and `Self` is the
+        receiver's type.
+    *   Validate trait implementations, and that a struct passed where a trait
+        is expected implements it.
+    *   Treat `T?` as `T | null` and refuse to use it unless a `??` fallback or
+        a test against `null` rules null out (flow typing, in `flow.go`).
+    *   Check casts, reject assignments to constants, and require a return on
+        every path of a function that returns a value.
+    *   Substitute explicit type arguments into generic signatures, and infer
+        them when they are left out, from the arguments and then from the
+        type expected of the result. Inferred arguments are written into the
+        AST, so monomorphization sees an explicit call.
+    *   Narrow variables and fields by null tests and type tests. For fields
+        this relies on knowing which functions may assign a field, computed
+        over the call graph before bodies are checked (`findFieldWriters`).
+    *   Record, for the back end, what each cast and type test must verify
+        and the signature of every function (`types.Info`).
+*   **`Any` and `unknown` are different things.** `Any` is a type the
+    programmer writes: everything fits into it, nothing comes out of it. When
+    the checker cannot type an expression because it already reported an error
+    there, it uses the internal type `unknown`, which is compatible with
+    everything so that one mistake produces one diagnostic. `unknown` never
+    appears in a program that compiles, except as the element type of an empty
+    array literal on its way to a typed place.
+*   **Its types drive code generation.** IR generation asks for the type of a
+    method call's receiver to decide between a direct call and a runtime
+    lookup, so the type information computed after desugaring has to be
+    complete; see [ir_generation.md](ir_generation.md#structs-and-methods).
 *   **Testing Strategy**:
     *   Test cases for type mismatches (e.g., `1 + "string"`).
     *   Test cases for valid complex type interactions.
@@ -194,7 +215,8 @@ locations and recovering to report several per file.
 *   **Key Responsibilities**:
     *   Convert `for` loops into `while` loops.
     *   Convert `match` statements into `if-else` chains.
-    *   Hoist `&&`/`||` in conditions and `let` initializers into explicit control flow.
+    *   Lower type patterns to type tests.
+    *   Short-circuit operators are *not* rewritten; see [desugaring.md](desugaring.md#4-short-circuit-operators---).
 *   **Testing Strategy**:
     *   Input AST with a `for` loop -> Output AST with equivalent `while` loop structure.
 

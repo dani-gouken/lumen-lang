@@ -54,6 +54,13 @@ const (
 	PrimitiveVoid   PrimitiveKind = "void"
 	PrimitiveAny    PrimitiveKind = "any"
 	PrimitiveSelf   PrimitiveKind = "Self"
+	PrimitiveNull   PrimitiveKind = "null"
+
+	// PrimitiveUnknown is the type of an expression the checker could not
+	// type, either because an error was already reported for it or because
+	// nothing constrains it yet (the elements of `[]`). It is compatible
+	// with every type so that one mistake is reported once.
+	PrimitiveUnknown PrimitiveKind = "unknown"
 )
 
 type PrimitiveType struct {
@@ -75,6 +82,10 @@ var (
 	Void   = &PrimitiveType{Name: PrimitiveVoid}
 	Any    = &PrimitiveType{Name: PrimitiveAny}
 	Self   = &PrimitiveType{Name: PrimitiveSelf}
+
+	// Null is the type of the `null` literal. `T?` is the union T | null.
+	Null    = &PrimitiveType{Name: PrimitiveNull}
+	Unknown = &PrimitiveType{Name: PrimitiveUnknown}
 )
 
 // --- Structs ---

@@ -104,7 +104,7 @@ func TestStringAPIBytecodeFormatVersion(t *testing.T) {
 	// Check version (bytes 4-7)
 	version := uint32(bytecode[4]) | uint32(bytecode[5])<<8 |
 		uint32(bytecode[6])<<16 | uint32(bytecode[7])<<24
-	expectedVersion := uint32(1)
+	expectedVersion := bytecodeVersion
 	if version != expectedVersion {
 		t.Errorf("Expected version %d, got %d", expectedVersion, version)
 	}

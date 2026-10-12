@@ -166,27 +166,36 @@ if x == 1 {
 }
 ```
 
-**Type Matching (Union Types)**:
+**Type Matching**:
 ```lumen
 // Before
 match value {
-    case Int: { handleInt(); }
-    case String: { handleString(); }
+    case Int: { handleInt(value + 1); }
+    case String: { handleString(value.length); }
     default: { handleOther(); }
 }
 
 // After
-{
-    let __match_tmp_N = value;
-    if __is_type(__match_tmp_N, Int) {
-        handleInt();
-    } else if __is_type(__match_tmp_N, String) {
-        handleString();
-    } else {
-        handleOther();
-    }
+if value is Int {
+    handleInt(value + 1);
+} else if value is String {
+    handleString(value.length);
+} else {
+    handleOther();
 }
 ```
+
+A type pattern becomes a type test (`ast.TypeTestExpr`), the same node the
+`is` operator produces. When the matched expression is a plain variable it is
+tested directly, without a temporary: `value is Int` then tells the type
+checker that `value` is an `Int` inside the case, which is what lets the case
+body use it as one. Any other expression is first stored in a temporary, so
+that it is evaluated once.
+
+Patterns that are types: the builtin types, `[T]`, `T?`, function types,
+generic instantiations (`Box<Int>`), and the bare name of a struct or trait.
+The last one is decided by the parser once the whole file is read
+(see [parsing.md](parsing.md)).
 
 **Enum Variant Matching**:
 ```lumen
@@ -219,10 +228,10 @@ match result {
 - Preserve source location information for error reporting
 
 **Patterns accepted today**: literals (including negative numbers such as
-`case -1:`) and `default:`. A `default:` case has no pattern and becomes the
-final `else`. Type patterns (`case Int:`) are desugared to a call to the
-`__is_type` intrinsic, which has no runtime implementation yet; the compiler
-driver rejects them up front with `E7001` (see [pipeline.md](pipeline.md)).
+`case -1:`), types (above) and `default:`. A `default:` case has no pattern
+and becomes the final `else`. A name that is not a type (`case limit:`) and
+destructuring patterns are rejected by the compiler driver with `E7001`
+(see [pipeline.md](pipeline.md)).
 
 ### 3. Optional Chaining (Future)
 
@@ -246,144 +255,35 @@ if user != null {
 }
 ```
 
-### 4. Null Coalescing (`??`)
+### 4. Short-Circuit Operators (`&&`, `||`, `??`)
 
-**Goal**: Transform null coalescing into explicit null checks.
+Short-circuit operators (`&&`, `||`, `??`) are **not rewritten** by the
+desugarer. Their operands are desugared; the operator stays in the tree, and
+IR generation lowers it to branches (see
+[ir_generation.md](ir_generation.md#short-circuit-operators)), wherever it
+appears: conditions, `let` initializers, return values, arguments.
 
-```lumen
-// Before
-let name = user.name ?? "Unknown";
-
-// After
-{
-    let __tmp_N = user.name;
-    let name;
-    if __tmp_N != null {
-        name = __tmp_N;
-    } else {
-        name = "Unknown";
-    }
-}
-```
-
-**Nested Coalescing**:
-```lumen
-// Before
-let val = a ?? b ?? c;
-
-// After
-{
-    let __tmp_N = a;
-    let val;
-    if __tmp_N != null {
-        val = __tmp_N;
-    } else {
-        let __tmp_M = b;
-        if __tmp_M != null {
-            val = __tmp_M;
-        } else {
-            val = c;
-        }
-    }
-}
-```
-
-### 5. Short-Circuit Logical Operators (`&&`, `||`)
-
-**Goal**: Make short-circuit evaluation explicit using control flow.
-
-**AND Operator**:
-```lumen
-// Before
-if condition1() && condition2() {
-    action();
-}
-
-// After
-{
-    let __tmp_N = condition1();
-    let __result_N;
-    if __tmp_N {
-        __result_N = condition2();
-    } else {
-        __result_N = false;
-    }
-    if __result_N {
-        action();
-    }
-}
-```
-
-**OR Operator**:
-```lumen
-// Before
-if condition1() || condition2() {
-    action();
-}
-
-// After
-{
-    let __tmp_N = condition1();
-    let __result_N;
-    if __tmp_N {
-        __result_N = true;
-    } else {
-        __result_N = condition2();
-    }
-    if __result_N {
-        action();
-    }
-}
-```
-
-**`let` statements**: a `let` whose initializer contains a short-circuit
-operator gets helper statements in front of it. They are inserted into the
-**enclosing block**, not wrapped in a block of their own, because a new block
-would end the scope of the declared variable immediately:
+An earlier version rewrote them into statements with temporaries:
 
 ```lumen
-// Before
-let result = func1() && func2();
-use(result);
-
-// After
-let __tmp_N = func1();
-let __tmp_M = false;
-if __tmp_N {
-    __tmp_M = func2();
-}
-let result = __tmp_M;
-use(result);          // `result` is still in scope
+// Source                         // What the old rewrite produced
+if a != null && a.ready {         let __tmp_0 = a != null;
+    use(a);                       let __tmp_1 = false;
+}                                 if __tmp_0 { __tmp_1 = a.ready; }
+                                  if __tmp_1 { use(a); }
 ```
 
-**`while` conditions**: the helper statements compute the condition, so they
-have to run before *every* iteration, including the ones reached through
-`continue`. The loop becomes an unconditional loop with an explicit exit:
+That form is equivalent at runtime, but it destroys information. The program
+is type checked again after desugaring, and those types drive code generation
+(which function a method call targets). In the rewritten form nothing says
+that `a` is non-null inside the body any more: the condition is a temporary
+Bool. The checker then cannot narrow `a`, and code generation has to guess.
+Keeping the operators keeps the condition readable for the checker.
 
-```lumen
-// Before
-while a() && b() {
-    body
-}
+The desugarer still warns (`E4004`) about operators nested five or more levels
+deep in a condition or a `let` initializer.
 
-// After
-while true {
-    let __tmp_N = a();
-    let __tmp_M = false;
-    if __tmp_N {
-        __tmp_M = b();
-    }
-    if !__tmp_M { break; }
-    body
-}
-```
-
-**Everywhere else** (return values, call arguments, assignments, nested
-operands) the operators are left in place and IR generation lowers them to
-branches directly; see [ir_generation.md](ir_generation.md). Both routes
-evaluate the right operand only when the left one does not decide the result.
-
-### 6. String Interpolation (Future)
+### 5. String Interpolation (Future)
 
 **Goal**: Transform string interpolation into concatenation.
 
@@ -503,7 +403,7 @@ When generating new AST nodes during desugaring:
    - This ensures error messages point to the right place
    - Use the `BaseNode` position from the original construct
 
-### 7. Anonymous Functions
+### 6. Anonymous Functions
 
 The body of a function expression is desugared like the body of a declaration,
 so loops and matches inside lambdas are lowered too.
@@ -714,7 +614,7 @@ let evens = [x * 2 for x in nums if x % 2 == 0];
 
 // After
 {
-    let evens = [];
+    let evens: [Int] = [];
     for x in nums {
         if x % 2 == 0 {
             evens.push(x * 2);

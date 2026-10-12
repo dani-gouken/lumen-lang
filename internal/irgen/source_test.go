@@ -99,22 +99,67 @@ func TestShortCircuitBranchesAroundRightOperand(t *testing.T) {
 	expectLines(t, dump, "EQ, %v2, %v3", "BR %v4, b1, b2")
 }
 
-func TestStructInitSetsFieldsByNameAndAttachesMethods(t *testing.T) {
+func TestStructInitSetsFieldsByName(t *testing.T) {
 	dump := dumpFunction(t, `
 		struct P { x: Int; y: Int; }
-		impl P { fn sum() -> Int { return self.x + self.y; } }
-		fn main() -> Int { let p = P { y: 2, x: 1 }; return p.sum(); }`, "main")
+		fn main() -> Int { let p = P { y: 2, x: 1 }; return p.x; }`, "main")
 
 	expectLines(t, dump,
 		`NEW_STRUCT, "P"`,
-		`, "x", %v`,
-		`, "y", %v`,
-		`MOV, "P.sum"`,
-		`, "sum", %v`,
-		// The method is read from the value and receives it as self
-		`%v5 = GET_FIELD, %v3, "sum"`,
-		`%v6 = CALL, %v5, %v3`,
+		`SET_FIELD %v3, "x", %v1`,
+		`SET_FIELD %v3, "y", %v2`,
 	)
+}
+
+func TestMethodCallOnKnownStructIsDirect(t *testing.T) {
+	dump := dumpFunction(t, `
+		struct P { x: Int; y: Int; }
+		impl P { fn sum() -> Int { return self.x + self.y; } }
+		fn main() -> Int { let p = P { x: 1, y: 2 }; return p.sum(); }`, "main")
+
+	// The receiver is a P, so the call names P.sum and passes p as self
+	expectLines(t, dump, `%v4 = MOV, "P.sum"`, `%v5 = CALL, %v4, %v3`)
+
+	// Nothing has to be looked up at runtime, so nothing is stored on the value
+	if strings.Contains(dump, `"sum"`) {
+		t.Errorf("expected no method stored on or read from the value, got:\n%s", dump)
+	}
+}
+
+func TestMethodCallThroughTraitIsLookedUpOnValue(t *testing.T) {
+	src := `
+		trait Shape { fn area() -> Int; }
+		struct Sq { side: Int; }
+		impl Shape for Sq { fn area() -> Int { return self.side * self.side; } }
+		fn measure(s: Shape) -> Int { return s.area(); }
+		fn main() -> Int { return measure(Sq { side: 3 }); }`
+
+	// Only the trait is known in measure: read the method from the value
+	expectLines(t, dumpFunction(t, src, "measure"), `%v2 = GET_FIELD, %v1, "area"`, `%v3 = CALL, %v2, %v1`)
+
+	// ...which is why a struct literal stores the methods a trait can reach
+	expectLines(t, dumpFunction(t, src, "main"), `MOV, "Sq.area"`, `, "area", %v`)
+}
+
+func TestFieldAndMethodMayShareAName(t *testing.T) {
+	src := `
+		struct Box { size: Int; }
+		struct Crate { n: Int; }
+		impl Crate { fn size() -> Int { return self.n; } }
+		struct Holder { size: fn() -> Int; }
+		fn main() -> Int {
+			let b = Box { size: 1 };
+			let c = Crate { n: 2 };
+			let h = Holder { size: fn() -> Int { return 3; } };
+			return b.size + c.size() + h.size();
+		}`
+	dump := dumpFunction(t, src, "main")
+
+	// c.size() is the method of Crate; h.size() calls the function in the field
+	expectLines(t, dump, `MOV, "Crate.size"`)
+	if n := strings.Count(dump, `GET_FIELD`); n != 2 {
+		t.Errorf("expected 2 field reads (b.size and h.size), got %d in:\n%s", n, dump)
+	}
 }
 
 func TestMethodsTakeSelfAsFirstParameter(t *testing.T) {
@@ -200,6 +245,42 @@ func TestClosureCaptureOperands(t *testing.T) {
 	}
 }
 
+func TestCastsAreCheckedOnlyWhenTheyCanFail(t *testing.T) {
+	// Out of Any: the value may be anything, so the cast is verified
+	dump := dumpFunction(t, `fn f(v: Any) -> Int { return v as Int; } fn main() -> Int { return f(1); }`, "f")
+	expectLines(t, dump, `%v2 = MOV, "__cast"`, `%v3 = MOV, "int"`, `%v4 = CALL, %v2, %v1, %v3`, `RET %v4`)
+
+	// Into a wider type: always succeeds, nothing is emitted
+	dump = dumpFunction(t, `fn f(n: Int) -> Any { return n as Any; } fn main() -> Int { return 0; }`, "f")
+	if strings.Contains(dump, "__cast") || !strings.Contains(dump, "RET %v1") {
+		t.Errorf("expected the value to be returned as it is, got:\n%s", dump)
+	}
+
+	// To a trait: the descriptor lists the structs implementing it
+	dump = dumpFunction(t, `
+		trait T { fn m() -> Int; } struct A { x: Int; } struct B { x: Int; } struct C { x: Int; }
+		impl T for B { fn m() -> Int { return 1; } } impl T for A { fn m() -> Int { return 2; } }
+		fn f(v: Any) -> T { return v as T; } fn main() -> Int { return 0; }`, "f")
+	expectLines(t, dump, `MOV, "{A|B}"`)
+
+	// The same cast twice is two checks: each `as` stands on its own
+	dump = dumpFunction(t, `fn f(v: Any) -> Int { return (v as Int) + (v as Int); } fn main() -> Int { return 0; }`, "f")
+	if n := strings.Count(dump, "CALL"); n != 2 {
+		t.Errorf("expected 2 cast calls, got %d in:\n%s", n, dump)
+	}
+}
+
+func TestMethodsOfGenericStructs(t *testing.T) {
+	src := `
+		struct Box<T> { value: T; }
+		impl<T> Box<T> { fn get() -> T { return self.value; } }
+		fn main() -> Int { let b = Box<Int> { value: 1 }; return b.get(); }`
+
+	// One function serves every Box<...>, and the call names it directly
+	expectLines(t, dumpFunction(t, src, "Box.get"), "fn Box.get(%v1)", `GET_FIELD, %v1, "value"`)
+	expectLines(t, dumpFunction(t, src, "main"), `NEW_STRUCT, "Box"`, `MOV, "Box.get"`)
+}
+
 func TestInstructionsCarrySourcePositions(t *testing.T) {
 	prog, _ := generateSource(t, "fn main() -> Int {\n  let a = 1;\n  return a + 2;\n}")
 
@@ -220,13 +301,8 @@ func TestGenerationErrors(t *testing.T) {
 	}{
 		{"struct name as value", `struct P { x: Int; } fn main() -> Int { let p = P; return 0; }`, ErrNotAValue},
 		{"assign to function", `fn f() -> Int { return 1; } fn main() -> Int { f = f; return 0; }`, ErrInvalidAssignment},
-		{"break outside loop", `fn main() -> Int { break; return 0; }`, ErrLoopControl},
-		{"continue outside loop", `fn main() -> Int { continue; return 0; }`, ErrLoopControl},
-		{"field and method share a name", `
-			struct P { size: Int; }
-			struct Q { n: Int; }
-			impl Q { fn size() -> Int { return self.n; } }
-			fn main() -> Int { let q = Q { n: 1 }; return q.size(); }`, ErrAmbiguousMember},
+		{"break outside loop", `fn main() -> Void { break; }`, ErrLoopControl},
+		{"continue outside loop", `fn main() -> Void { continue; }`, ErrLoopControl},
 		{"match that was not desugared", `fn main() -> Int { match 1 { case 1: { return 1; } } return 0; }`, ErrUnsupportedConstruct},
 	}
 

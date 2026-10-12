@@ -200,6 +200,18 @@ func (m *Monomorphizer) cloneAndSubstituteExpr(expr ast.Expr, subst TypeSubstitu
 			Op:       e.Op,
 			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
 		}
+	case *ast.CastExpr:
+		return &ast.CastExpr{
+			BaseNode: e.BaseNode,
+			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
+			Type:     m.substituteASTType(e.Type, subst),
+		}
+	case *ast.TypeTestExpr:
+		return &ast.TypeTestExpr{
+			BaseNode: e.BaseNode,
+			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
+			Type:     m.substituteASTType(e.Type, subst),
+		}
 	case *ast.CallExpr:
 		return &ast.CallExpr{
 			BaseNode: e.BaseNode,
@@ -207,10 +219,15 @@ func (m *Monomorphizer) cloneAndSubstituteExpr(expr ast.Expr, subst TypeSubstitu
 			Args:     m.cloneAndSubstituteExprs(e.Args, subst),
 		}
 	case *ast.MemberExpr:
+		var memberTypeArgs []*ast.Type
+		for _, ta := range e.TypeArgs {
+			memberTypeArgs = append(memberTypeArgs, m.substituteASTType(ta, subst))
+		}
 		return &ast.MemberExpr{
 			BaseNode: e.BaseNode,
 			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
 			Name:     e.Name,
+			TypeArgs: memberTypeArgs,
 		}
 	case *ast.IndexExpr:
 		return &ast.IndexExpr{
@@ -346,6 +363,14 @@ func (m *Monomorphizer) typeToASTType(t types.Type) *ast.Type {
 			Kind:     ast.TypeArray,
 			ElemType: m.typeToASTType(typ.ElementType),
 		}
+	case *types.UnionType:
+		// T | null is written T?
+		for _, member := range typ.Types {
+			if !member.Equals(types.Null) {
+				return &ast.Type{Kind: ast.TypeOption, ElemType: m.typeToASTType(member)}
+			}
+		}
+		return &ast.Type{Kind: ast.TypeBasic, Name: "unknown"}
 	case *types.FunctionType:
 		params := make([]*ast.Type, len(typ.Params))
 		for i, p := range typ.Params {

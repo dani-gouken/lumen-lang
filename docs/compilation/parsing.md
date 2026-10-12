@@ -52,7 +52,7 @@ A hand-written recursive descent parser over the full token list. Having all tok
 
 *   **Functions**: `fn name<T>(params) -> Type { body }`. The return type may be omitted (`Void`). Trait methods end with `;` instead of a body.
 *   **Structs**: fields may be separated by `;` or `,`, and the last separator is optional.
-*   **Impl blocks**: `impl Trait for Type { ... }` or `impl Type { ... }`. The second form leaves `TraitName` empty.
+*   **Impl blocks**: `impl Trait for Type { ... }` or `impl Type { ... }`. The second form leaves `TraitName` empty. For a generic struct the parameters follow `impl` and must be repeated, in the same order, on the struct: `impl<T> Box<T>`. The repetition is what ties a method's `T` to the struct's, so a mismatch is reported (with the correct header as suggestion) without abandoning the block.
 
 ### Statements
 
@@ -68,7 +68,13 @@ p.x = 1;      BinaryExpr{ Left: MemberExpr(...), Op: "=", Right: 1 }
 
 The left side must be an identifier, an index expression or a member expression (`E0004` otherwise). The desugarer builds the same shape for the assignments it generates, so every later stage handles one representation.
 
-**Match**: each case is `case Pattern:` or `default:`, followed by a block or by an expression and `;`. A pattern that starts with a builtin type name is parsed as a type, anything else as an expression. `default` is not a keyword; it is recognized by position. A default case has a `nil` pattern.
+**Match**: each case is `case Pattern:` or `default:`, followed by a block or by an expression and `;`. `default` is not a keyword; it is recognized by position. A default case has a `nil` pattern.
+
+A pattern is either a type or an expression, and the two overlap:
+
+*   The parser first tries to read the pattern as a **type** (`tryTypePattern`, speculative). It keeps the result when the pattern can only be a type: `Int`, `[String]`, `Int?`, `fn(Int) -> Bool`, `Box<Int>`.
+*   A **bare name** is ambiguous (`case Point:` or `case limit:`), so it is parsed as an expression. When the whole file has been read, `classifyPatterns` turns those that name a struct or trait declared in the file into type patterns.
+*   Everything else is an expression: literals, `-1`.
 
 ### Expressions
 
@@ -84,7 +90,12 @@ Binary expressions use precedence climbing. All binary operators are left-associ
 | 6 | `+` `-` |
 | 7 | `*` `/` `%` |
 | unary | `-` `!` |
+| cast | `value as Type` |
 | postfix | call `f(x)`, index `a[i]`, member `a.b` |
+
+`value is Type` sits at the same level and produces a `TypeTestExpr`. `is` is not a reserved word: after a complete expression an identifier cannot follow, so in that position it can only be this operator, and `is` remains usable as a name elsewhere.
+
+A cast produces a `CastExpr`. Its type is parsed without unions, so `v as Int | String` is not a cast to a union; `v as Int?` is fine. `as` is also the keyword of `import "..." as name`, where it is handled by the import rule.
 
 Primary expressions: literals, identifiers (optionally with type arguments), parenthesized expressions, array literals `[a, b]`, struct literals `Name { field: value }` and function expressions `fn(params) -> Type { body }`.
 
@@ -111,6 +122,8 @@ a < b > (c)            // two comparisons? or a<b>(c)?
 ```
 
 After an identifier, `<` starts a **speculative** parse of a type argument list (`tryTypeArgs`). It is accepted only if it is well formed, closed by `>`, and immediately followed by `(` or `{` — the two things that can follow an instantiated name. Otherwise the parser rewinds to the `<` and treats it as an operator. Errors raised while speculating are not reported.
+
+The same rule applies after a member name, for calls of generic methods: `stack.map<String>(f)` carries its type arguments on the `MemberExpr`, while `a.b < c` stays a comparison.
 
 The price is that `a < b > (c)` is read as the generic call `a<b>(c)`. Chained comparisons like that do not type check anyway, and parentheses resolve it: `(a < b) > c`.
 

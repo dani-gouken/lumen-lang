@@ -29,12 +29,14 @@ fn spell(n: Int) -> String {
         case 2: { return "two"; }
         default: { return "many"; }
     }
-    return "";
 }
 
 fn main() -> Int {
-    println(first<Int>([7, 8, 9]), first<String>(["a", "b"]));
-    println(collect<Int>(1, 2, 3));
+    // Type arguments are inferred from the arguments...
+    println(first([7, 8, 9]), first(["a", "b"]));
+    println(collect(1, 2, 3));
+    // ...and can always be written out
+    println(first<Float>([1.5]));
     println(join(", ", "red", "green", "blue"));
 
     for n in [0, 1, 2, 3] {

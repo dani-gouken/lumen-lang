@@ -66,7 +66,10 @@ func (d *Desugarer) desugarMatchStmt(match *ast.MatchStmt) ast.Stmt {
 	// We use a temporary if:
 	// 1. The expression is complex (not just an identifier or literal)
 	// 2. We have type matching or enum variant matching
-	needsTemp := d.isComplexExpr(matchedExpr) || d.hasTypeOrEnumMatching(match.Cases)
+	// A plain variable is tested directly, also for type patterns: the test
+	// `value is Int` then tells the type checker that `value` is an Int
+	// inside the case, which a copy in a temporary would not.
+	needsTemp := d.isComplexExpr(matchedExpr)
 
 	var tmpVar string
 	var tmpVarExpr ast.Expr
@@ -164,27 +167,16 @@ func (d *Desugarer) buildMatchCase(matchedExpr ast.Expr, caseStmt *ast.MatchCase
 	return ifStmt
 }
 
-// createTypeCheckCall creates a call to the __is_type intrinsic function
+// createTypeCheckCall creates the test `expr is Type` for a type pattern
 func (d *Desugarer) createTypeCheckCall(expr ast.Expr, typ *ast.Type, pos token.Position) ast.Expr {
-	// Create __is_type function identifier
-	isTypeFunc := d.createIdent("__is_type", pos)
-	d.typeInfo.Types[isTypeFunc] = types.NewFunction(
-		[]types.Type{types.Any, types.Any},
-		types.Bool,
-	)
-
-	// Create type identifier from the type
-	typeIdent := d.createIdent(typ.Name, pos)
-
-	// Create the call: __is_type(expr, Type)
-	call := &ast.CallExpr{
-		BaseNode: ast.BaseNode{Pos: pos},
-		Func:     isTypeFunc,
-		Args:     []ast.Expr{expr, typeIdent},
+	test := &ast.TypeTestExpr{
+		BaseNode: ast.BaseNode{Pos: pos, Tok: typ.Tok},
+		Expr:     expr,
+		Type:     typ,
 	}
 
-	d.typeInfo.Types[call] = types.Bool
-	return call
+	d.typeInfo.Types[test] = types.Bool
+	return test
 }
 
 // isComplexExpr determines if an expression is complex enough to need a temporary variable
@@ -217,10 +209,6 @@ func (d *Desugarer) inferTypeFromExpr(expr ast.Expr, pos token.Position) *ast.Ty
 		return d.typeToASTType(exprType, pos)
 	}
 
-	// Default to Any type
-	return &ast.Type{
-		BaseNode: ast.BaseNode{Pos: pos},
-		Kind:     ast.TypeBasic,
-		Name:     "Any",
-	}
+	// Unknown: leave the declaration without an annotation
+	return nil
 }

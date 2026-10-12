@@ -1,0 +1,69 @@
+// Values whose type is only known when the program runs.
+//
+// `Any` holds anything. To use what is inside, ask what it is: with `is`,
+// with a `match` on types, or with a cast (`as`), which stops the program
+// if the value is something else.
+
+trait Shape {
+    fn area() -> Int;
+}
+
+struct Square { side: Int; }
+struct Circle { radius: Int; }
+
+impl Shape for Square {
+    fn area() -> Int { return self.side * self.side; }
+}
+
+impl Shape for Circle {
+    fn area() -> Int { return 3 * self.radius * self.radius; }
+}
+
+// Inside each case, `value` has the type of the case.
+fn describe(value: Any) -> String {
+    match value {
+        case Int: { return "the number " + toString(value + 0); }
+        case String: { return "a text of " + toString(value.length) + " characters"; }
+        case [Int]: { return toString(value.length) + " numbers"; }
+        case Square: { return "a square of side " + toString(value.side); }
+        case Shape: { return "a shape of area " + toString(value.area()); }
+        case fn(Int) -> Int: { return "a function; f(2) = " + toString(value(2)); }
+        default: { return "something else"; }
+    }
+}
+
+struct Node {
+    value: Int;
+    next: Node?;
+}
+
+// A test against null works on fields too.
+fn secondValue(node: Node) -> Int {
+    if node.next == null {
+        return -1;
+    }
+    return node.next.value;
+}
+
+fn main() -> Int {
+    let things: [Any] = [42, "hello", [1, 2, 3], Square { side: 2 }, Circle { radius: 1 }, true];
+    for thing in things {
+        println(describe(thing));
+    }
+    println(describe(fn(n: Int) -> Int { return n * n; }));
+
+    // `is` asks without failing
+    let shape: Shape = Square { side: 5 };
+    if shape is Square {
+        println("side:", shape.side);
+    }
+
+    // `as` insists
+    let boxed: Any = [10, 20];
+    let numbers = boxed as [Int];
+    println(numbers[0] + numbers[1]);
+
+    let list = Node { value: 1, next: Node { value: 2, next: null } };
+    println(secondValue(list), secondValue(Node { value: 9, next: null }));
+    return 0;
+}

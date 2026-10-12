@@ -68,6 +68,11 @@ type Function struct {
 
 	// Number of variables captured from enclosing functions
 	UpvalueCount int
+
+	// Type of the function as a cast descriptor ("fn(int)->string"), kept
+	// with the compiled function so casts to function types can check it.
+	// Empty for methods, which are not values.
+	Signature string
 }
 
 // Program represents the complete compilation unit

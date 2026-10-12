@@ -1,0 +1,2 @@
+Runtime error: cannot cast array to [Int]: element 2: String is not an Int
+cast_error.lum:8:21 in function 'sum'

@@ -59,6 +59,16 @@ func (m *Monomorphizer) mangleType(t types.Type) string {
 		parts = append(parts, m.mangleType(typ.ReturnType))
 		return strings.Join(parts, "_")
 
+	case *types.UnionType:
+		// T? is Opt_T; other unions list their members
+		parts := []string{"Opt"}
+		for _, member := range typ.Types {
+			if !member.Equals(types.Null) {
+				parts = append(parts, m.mangleType(member))
+			}
+		}
+		return strings.Join(parts, "_")
+
 	case *types.TypeParam:
 		// Type parameters should be substituted before mangling
 		// If we reach here, it's an error, but return the name for debugging

@@ -295,7 +295,7 @@ func TestChecker_MatchStmt_WithExpr(t *testing.T) {
 }
 
 func TestChecker_MatchStmt_WithBlock(t *testing.T) {
-	// match x { case 1: { return 2; } }
+	// match x { case 1: { return 2; } } return 0;
 	matchStmt := &ast.MatchStmt{
 		Cond: &ast.Literal{Kind: "int", Value: "1"},
 		Cases: []*ast.MatchCase{
@@ -315,7 +315,8 @@ func TestChecker_MatchStmt_WithBlock(t *testing.T) {
 		Name:       "main",
 		ReturnType: &ast.Type{Kind: ast.TypeBasic, Name: "int"},
 		Body: &ast.BlockStmt{
-			Stmts: []ast.Stmt{matchStmt},
+			// The match has no default, so a return has to follow it
+			Stmts: []ast.Stmt{matchStmt, &ast.ReturnStmt{Value: &ast.Literal{Kind: "int", Value: "0"}}},
 		},
 	}
 	prog := &ast.Program{
@@ -426,12 +427,14 @@ func TestChecker_ArrayLiteral_Empty(t *testing.T) {
 		t.Errorf("Expected no errors for empty array, got %v", errs.Diagnostics)
 	}
 
-	// Empty array should have type [Any]
+	// Nothing constrains the elements of [] yet: the element type is
+	// unknown, which fits any array type, rather than Any, which would
+	// claim the array may hold values of every type.
 	arrayType, ok := info.Types[arrayExpr].(*ArrayType)
 	if !ok {
 		t.Errorf("Expected ArrayType, got %T", info.Types[arrayExpr])
-	} else if !arrayType.ElementType.Equals(Any) {
-		t.Errorf("Expected array of Any, got array of %s", arrayType.ElementType)
+	} else if !arrayType.ElementType.Equals(Unknown) {
+		t.Errorf("Expected array of unknown, got array of %s", arrayType.ElementType)
 	}
 }
 

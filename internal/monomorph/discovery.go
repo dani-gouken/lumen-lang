@@ -85,6 +85,14 @@ func (m *Monomorphizer) visitExprForDiscovery(expr ast.Expr) {
 		m.visitExprForDiscovery(e.Right)
 	case *ast.UnaryExpr:
 		m.visitExprForDiscovery(e.Expr)
+	case *ast.CastExpr:
+		m.visitExprForDiscovery(e.Expr)
+	case *ast.TypeTestExpr:
+		m.visitExprForDiscovery(e.Expr)
+	case *ast.FnExpr:
+		if e.Body != nil {
+			m.visitStmtForDiscovery(e.Body)
+		}
 	case *ast.MemberExpr:
 		m.visitExprForDiscovery(e.Expr)
 	case *ast.IndexExpr:
@@ -219,17 +227,21 @@ func (m *Monomorphizer) astTypeToType(astType *ast.Type) types.Type {
 	switch astType.Kind {
 	case ast.TypeBasic:
 		// Check if it's a primitive type
+		// Both spellings occur: `Int` as written in source, and `int` when
+		// a type computed by the checker was turned back into syntax
 		switch astType.Name {
-		case "Int":
+		case "Int", "int":
 			return types.Int
-		case "Float":
+		case "Float", "float":
 			return types.Float
-		case "Bool":
+		case "Bool", "bool":
 			return types.Bool
-		case "String":
+		case "String", "string":
 			return types.String
-		case "Void":
+		case "Void", "void":
 			return types.Void
+		case "Any", "any":
+			return types.Any
 		default:
 			// It's a named type (struct, enum, etc.)
 			// Look it up in the type environment first
@@ -266,6 +278,8 @@ func (m *Monomorphizer) astTypeToType(astType *ast.Type) types.Type {
 	case ast.TypeArray:
 		elemType := m.astTypeToType(astType.ElemType)
 		return &types.ArrayType{ElementType: elemType}
+	case ast.TypeOption:
+		return types.NewUnion(m.astTypeToType(astType.ElemType), types.Null)
 	case ast.TypeFunction:
 		params := m.convertASTTypesToTypes(astType.ParamTypes)
 		returnType := m.astTypeToType(astType.ReturnType)

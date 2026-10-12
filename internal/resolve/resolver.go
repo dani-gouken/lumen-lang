@@ -200,6 +200,9 @@ func (r *Resolver) visitMethodDecl(impl *ast.ImplDecl, m *ast.FnDecl) {
 	defer r.popScope()
 
 	r.current.Insert("self", &Symbol{Name: "self", Kind: SymbolVar, Decl: impl})
+	for _, tp := range impl.TypeParams {
+		r.current.Insert(tp, &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: impl})
+	}
 	r.visitFnDecl(m)
 }
 
@@ -356,6 +359,9 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 	case *ast.MemberExpr:
 		r.visitExpr(e.Expr)
 		// e.Name is a property name, not a variable, so we don't resolve it here.
+		for _, arg := range e.TypeArgs {
+			r.visitType(arg)
+		}
 	case *ast.IndexExpr:
 		r.visitExpr(e.Expr)
 		r.visitExpr(e.Index)
@@ -371,6 +377,12 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 		}
 	case *ast.FnExpr:
 		r.visitFnExpr(e)
+	case *ast.CastExpr:
+		r.visitExpr(e.Expr)
+		r.visitType(e.Type)
+	case *ast.TypeTestExpr:
+		r.visitExpr(e.Expr)
+		r.visitType(e.Type)
 	case *ast.Ident:
 		r.resolveIdent(e)
 	case *ast.Literal:

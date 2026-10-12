@@ -132,7 +132,7 @@ The ordering instructions accept two Ints, two Numbers or two Strings.
 
 - `NEWSTR r_dest const_idx` - Create a string from a string constant
 - `NEWARRAY r_dest capacity` - Create an empty array
-- `NEWOBJ r_dest` - Create an empty object (used for struct values)
+- `NEWOBJ r_dest [const_idx 1]` - Create an empty object (used for struct values). The compiler passes the struct's name, which is recorded on the object
 - `GETINDEX r_dest r_arr r_idx` / `SETINDEX r_arr r_idx r_val` - Element access
 - `ARRPUSH r_arr r_val` - Append to an array
 - `ARRLEN r_dest r_val` - Length of an array or string
@@ -178,6 +178,8 @@ function. The VM registers these by default:
 | `println`  | any number       | null    | Same, followed by a newline                   |
 | `toString` | 1                | String  | The text `print` would write for the value    |
 | `push`     | array, value     | null    | Appends the value to the array                |
+| `__is`     | value, descriptor | Bool | Implements `value is Type`: whether the value matches the descriptor |
+| `__cast`   | value, descriptor | the value | Implements `value as Type`: fails unless the value matches the descriptor (`int`, `[int]`, `?string`, `{Circle|Square}`, `{Box:value=int}`, ...; the grammar is at the top of `internal/vm/cast.go`). Arrays are checked element by element. Emitted by the compiler; not callable from Lumen source |
 
 Values are written the way a program shows them: `42`, `2.5`, `true`, `null`,
 the text of a string, `[1, "a"]` for arrays and `{x: 1, y: 2}` for objects
@@ -185,7 +187,24 @@ the text of a string, `[1, "a"]` for arrays and `{x: 1, y: 2}` for objects
 `vm.FormatValue`; `Value.String()` remains the debug form (`Int(42)`).
 
 Output goes to standard output unless redirected with `VM.SetOutput`, which is
-how tests capture it. More functions can be added with `VM.RegisterExtern`.
+how tests capture it. More functions can be added with `VM.RegisterExtern`, or
+with `VM.RegisterTypedExtern` to give the function a type
+(`"fn(any)->string"`); only a typed function can be cast to a function type.
+
+### Function signatures
+
+Each function prototype carries a `Signature`: the function's type as a cast
+descriptor, e.g. `fn(int,string)->bool`. The compiler fills it in; functions
+written in assembly have none. It is the only type information kept at
+runtime, and exists so that `value as fn(Int) -> Int` and
+`value is fn(Int) -> Int` can be answered.
+
+### Bytecode file version
+
+`.lc` files start with a format version, currently **2** (version 1 predates
+the 48-bit value payload and the signature field). A file of another version
+is refused with `unsupported bytecode version` rather than misread; rebuild it
+from source.
 
 ## Operand Limits
 

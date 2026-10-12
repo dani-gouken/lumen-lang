@@ -179,7 +179,7 @@ func TestArrays(t *testing.T) {
 		xs[1] = 25;
 		push(xs, 40);
 		println(xs, xs.length, xs[3]);
-		let empty = [];
+		let empty: [String] = [];
 		println(empty, empty.length);
 		let alias = xs;
 		alias[0] = 0;
@@ -216,6 +216,503 @@ func TestStructsAndMethods(t *testing.T) {
 		line.to.x = 99;
 		println(line.to.x, q.x);
 	`, "{x: 2, y: 5} 2 10\n3 {x: 4, y: 6} 24 15\n99 99\n")
+}
+
+func TestMethodDispatch(t *testing.T) {
+	decls := `
+		trait Shape {
+			fn area() -> Int;
+			fn name() -> String;
+		}
+
+		struct Rect { w: Int; h: Int; }
+		struct Square { side: Int; }
+		struct Label { name: String; }          // a field called like a method
+
+		impl Shape for Rect {
+			fn area() -> Int { return self.w * self.h; }
+			fn name() -> String { return "rect"; }
+		}
+		impl Shape for Square {
+			fn area() -> Int { return self.side * self.side; }
+			fn name() -> String { return "square"; }
+		}
+		impl Rect {
+			fn grown(by: Int) -> Rect { return Rect { w: self.w + by, h: self.h + by }; }
+			fn describe() -> String { return self.name() + " " + toString(self.area()); }
+		}
+
+		fn total(shapes: [Shape]) -> Int {
+			let sum = 0;
+			for shape in shapes { sum = sum + shape.area(); }
+			return sum;
+		}
+	`
+	expectOutput(t, decls, `
+		let rect = Rect { w: 2, h: 3 };
+		let square = Square { side: 4 };
+		let label = Label { name: "tag" };
+
+		// Known struct: the method is called directly, and chains keep their type
+		println(rect.area(), rect.grown(1).grown(1).area(), rect.describe());
+		// A field and a method may share a name
+		println(label.name, square.name());
+
+		// Through the trait, the method of each value's own struct runs
+		let shapes: [Shape] = [rect, square, rect.grown(10)];
+		println(total(shapes));
+		for shape in shapes { print(shape.name(), ""); }
+		println("");
+
+		// A struct value prints its data, not the methods stored for dispatch
+		println(square);
+	`, "6 20 rect 6\ntag square\n178\nrect square rect \n{side: 4}\n")
+}
+
+func TestOptionals(t *testing.T) {
+	decls := `
+		struct User { name: String; manager: User?; }
+
+		fn find(users: [User], name: String) -> User? {
+			for user in users {
+				if user.name == name { return user; }
+			}
+			return null;
+		}
+
+		fn bossOf(user: User) -> String {
+			let nobody = User { name: "nobody", manager: null };
+			return (user.manager ?? nobody).name;
+		}
+	`
+	expectOutput(t, decls, `
+		let ada = User { name: "ada", manager: null };
+		let bob = User { name: "bob", manager: ada };
+		let users = [ada, bob];
+
+		println(bossOf(bob), bossOf(ada));
+		println(find(users, "bob") == null, find(users, "zed") == null);
+		println((find(users, "zed") ?? ada).name);
+
+		let count: Int? = null;
+		println(count ?? 0, (count ?? 0) + 1);
+		count = 41;
+		println((count ?? 0) + 1);
+	`, "ada nobody\nfalse true\nada\n0 1\n42\n")
+}
+
+func TestNullChecksNarrowOptionals(t *testing.T) {
+	decls := `
+		struct Node { value: Int; next: Node?; }
+
+		fn sum(list: Node?) -> Int {
+			let total = 0;
+			let node = list;
+			while node != null {
+				total = total + node.value;
+				node = node.next;
+			}
+			return total;
+		}
+
+		fn firstOr(list: Node?, fallback: Int) -> Int {
+			if list == null { return fallback; }
+			return list.value;
+		}
+
+		fn label(name: String?) -> String {
+			if name != null && name.length > 0 { return "<" + name + ">"; }
+			return "<none>";
+		}
+
+		fn total(values: [Int?]) -> Int {
+			let sum = 0;
+			for value in values {
+				if value == null { continue; }
+				sum = sum + value;
+			}
+			return sum;
+		}
+	`
+	expectOutput(t, decls, `
+		let list = Node { value: 1, next: Node { value: 2, next: Node { value: 3, next: null } } };
+		println(sum(list), sum(null), firstOr(list, 9), firstOr(null, 9));
+		println(label("ada"), label(""), label(null));
+		println(total([1, null, 2, null, 3]));
+
+		let count: Int? = null;
+		println(count == null);
+		count = 41;
+		println(count + 1);
+	`, "6 0 1 9\n<ada> <none> <none>\n6\ntrue\n42\n")
+}
+
+func TestGenericStructMethods(t *testing.T) {
+	decls := `
+		trait Sized { fn size() -> Int; }
+
+		struct Stack<T> { items: [T]; }
+
+		impl<T> Stack<T> {
+			fn push(item: T) -> Void { push(self.items, item); }
+			fn peek() -> T? {
+				if self.items.length == 0 { return null; }
+				return self.items[self.items.length - 1];
+			}
+			fn reversed() -> Stack<T> {
+				let out = Stack<T> { items: [] };
+				let i = self.items.length;
+				while i > 0 {
+					i = i - 1;
+					out.push(self.items[i]);
+				}
+				return out;
+			}
+		}
+
+		impl<T> Sized for Stack<T> {
+			fn size() -> Int { return self.items.length; }
+		}
+
+		fn sizeOf(s: Sized) -> Int { return s.size(); }
+	`
+	expectOutput(t, decls, `
+		let numbers = Stack<Int> { items: [] };
+		numbers.push(1);
+		numbers.push(2);
+		numbers.push(3);
+		let top = numbers.peek();
+		if top != null { println(top + 10, numbers.size()); }
+		println(numbers.reversed().items, sizeOf(numbers));
+
+		let words = Stack<String> { items: ["a"] };
+		words.push("b");
+		println(words.peek() ?? "empty", sizeOf(words));
+		println(Stack<Bool> { items: [] }.peek() == null);
+	`, "13 3\n[3, 2, 1] 3\nb 2\ntrue\n")
+}
+
+func TestGenericMethods(t *testing.T) {
+	decls := `
+		struct Stack<T> { items: [T]; }
+
+		impl<T> Stack<T> {
+			fn push(item: T) -> Void { push(self.items, item); }
+
+			// A method may add type parameters of its own to the struct's
+			fn map<U>(f: fn(T) -> U) -> Stack<U> {
+				let out = Stack<U> { items: [] };
+				for item in self.items { out.push(f(item)); }
+				return out;
+			}
+
+			fn fold<A>(start: A, step: fn(A, T) -> A) -> A {
+				let acc = start;
+				for item in self.items { acc = step(acc, item); }
+				return acc;
+			}
+		}
+
+		trait Converter { fn convert<T>(value: T) -> [T]; }
+		struct Wrap { times: Int; }
+		impl Converter for Wrap {
+			fn convert<T>(value: T) -> [T] {
+				let out: [T] = [];
+				let i = 0;
+				while i < self.times { push(out, value); i = i + 1; }
+				return out;
+			}
+		}
+
+		fn through(c: Converter) -> [String] { return c.convert<String>("x"); }
+	`
+	expectOutput(t, decls, `
+		let numbers = Stack<Int> { items: [1, 2, 3] };
+
+		let labels = numbers.map<String>(fn(n: Int) -> String { return "#" + toString(n); });
+		println(labels.items, labels.map<Int>(fn(s: String) -> Int { return s.length; }).items);
+
+		println(numbers.fold<Int>(0, fn(acc: Int, n: Int) -> Int { return acc + n; }));
+		println(numbers.fold<String>(">", fn(acc: String, n: Int) -> String { return acc + toString(n); }));
+
+		let wrap = Wrap { times: 2 };
+		println(wrap.convert<Int>(7), wrap.convert<Bool>(true), through(wrap));
+	`, "[\"#1\", \"#2\", \"#3\"] [2, 2, 2]\n6\n>123\n[7, 7] [true, true] [\"x\", \"x\"]\n")
+}
+
+func TestCastsVerifyElementsAndFields(t *testing.T) {
+	decls := `
+		struct Box<T> { value: T; }
+		struct List<T> { head: T; tail: List<T>?; }
+		trait Shape { fn area() -> Int; }
+		struct Square { side: Int; }
+		impl Shape for Square { fn area() -> Int { return self.side * self.side; } }
+
+		fn total(v: Any) -> Int {
+			let sum = 0;
+			for n in v as [Int] { sum = sum + n; }
+			return sum;
+		}
+		fn unbox(v: Any) -> Int { return (v as Box<Int>).value; }
+		fn head(v: Any) -> Int { return (v as List<Int>).head; }
+		fn areas(v: Any) -> Int {
+			let sum = 0;
+			for s in v as [Shape] { sum = sum + s.area(); }
+			return sum;
+		}
+	`
+	expectOutput(t, decls, `
+		println(total([1, 2, 3]), total([]));
+		println(unbox(Box<Int> { value: 9 }));
+		println(head(List<Int> { head: 4, tail: List<Int> { head: 5, tail: null } }));
+		println(areas([Square { side: 2 }, Square { side: 3 }]));
+
+		let nested: Any = [[1], [2, 3]];
+		println((nested as [[Int]])[1][1]);
+		let mixed: [Any] = [1, null];
+		println((mixed as [Int?])[1] == null);
+	`, "6 0\n9\n4\n13\n3\ntrue\n")
+}
+
+func TestWarningsDoNotStopCompilation(t *testing.T) {
+	src := "fn main() -> Int {\n  println(\"runs\");\n  return 3;\n  println(\"never\");\n}\n"
+
+	errs := errors.NewHandler()
+	result := Compile(src, "test.lum", errs)
+
+	if errs.HasErrors() || result.Chunk == nil {
+		t.Fatalf("expected the program to compile, got %v", errs.Diagnostics)
+	}
+	if len(errs.Diagnostics) != 1 {
+		t.Fatalf("expected exactly 1 warning, got %d: %v", len(errs.Diagnostics), errs.Diagnostics)
+	}
+	warning := errs.Diagnostics[0]
+	if warning.Severity != errors.SeverityWarning || warning.Code != "E2023" || warning.Pos.Line != 4 {
+		t.Errorf("expected an unreachable-code warning on line 4, got %s %s on line %d", warning.Severity, warning.Code, warning.Pos.Line)
+	}
+
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	value, err := machine.Exec(result.Chunk)
+	if err != nil || out.String() != "runs\n" || !value.IsInt() || value.AsInt() != 3 {
+		t.Errorf("expected the reachable part to run and return 3, got %q, %s, %v", out.String(), vm.FormatValue(value), err)
+	}
+}
+
+func TestTypeTestsAndMatchOnTypes(t *testing.T) {
+	decls := `
+		trait Shape { fn area() -> Int; }
+		struct Square { side: Int; }
+		struct Circle { r: Int; }
+		struct Box<T> { value: T; }
+		impl Shape for Square { fn area() -> Int { return self.side * self.side; } }
+		impl Shape for Circle { fn area() -> Int { return 3 * self.r * self.r; } }
+		impl Square { fn diagonalSquared() -> Int { return 2 * self.side * self.side; } }
+
+		fn describe(v: Any) -> String {
+			match v {
+				case Int: { return "int " + toString(v + 1); }
+				case String: { return "string of " + toString(v.length); }
+				case [Int]: { return toString(v.length) + " ints"; }
+				case Box<String>: { return "box of " + v.value; }
+				case Square: { return "square " + toString(v.diagonalSquared()); }
+				case Shape: { return "shape " + toString(v.area()); }
+				case fn(Int) -> Int: { return "function giving " + toString(v(1)); }
+				default: { return "something else"; }
+			}
+		}
+
+		fn sideOrZero(s: Shape) -> Int {
+			if s is Square { return s.side; }
+			return 0;
+		}
+	`
+	expectOutput(t, decls, `
+		println(describe(1));
+		println(describe("abc"));
+		println(describe([1, 2]));
+		println(describe(Box<String> { value: "text" }));
+		println(describe(Box<Int> { value: 1 }));
+		println(describe(Square { side: 2 }));
+		println(describe(Circle { r: 1 }));
+		println(describe(fn(n: Int) -> Int { return n * 10; }));
+		println(describe(null), describe(true), describe(["a"]));
+
+		println(sideOrZero(Square { side: 4 }), sideOrZero(Circle { r: 4 }));
+
+		let v: Any = "text";
+		println(v is String, v is Int, v is String?, v is [String], !(v is Int));
+		if v is String && v.length == 4 { println("four letters"); }
+	`, "int 2\nstring of 3\n2 ints\nbox of text\nsomething else\nsquare 8\nshape 3\nfunction giving 10\n"+
+		"something else something else something else\n4 0\ntrue false true false true\nfour letters\n")
+}
+
+func TestFieldsAreNarrowedByNullTests(t *testing.T) {
+	decls := `
+		struct Node { value: Int; next: Node?; }
+		struct Config { name: String?; retries: Int?; }
+
+		fn second(n: Node) -> Int {
+			if n.next == null { return -1; }
+			return n.next.value;
+		}
+
+		fn third(n: Node) -> Int {
+			if n.next != null && n.next.next != null { return n.next.next.value; }
+			return -1;
+		}
+
+		fn last(n: Node) -> Int {
+			let cur = n;
+			while cur.next != null { cur = cur.next; }
+			return cur.value;
+		}
+
+		fn summary(c: Config) -> String {
+			let out = "";
+			if c.name != null { out = out + c.name; } else { out = out + "?"; }
+			if c.retries != null && c.retries > 1 { out = out + " x" + toString(c.retries); }
+			return out;
+		}
+
+		fn double(n: Int) -> Int { return n * 2; }
+		fn reset(c: Config) -> Void { c.retries = null; }
+
+		// Calls that cannot assign a field leave what is known about fields
+		// alone; one that can does not.
+		fn report(c: Config) -> Int {
+			if c.retries == null { return 0; }
+			println("retries:", c.retries);
+			let twice = double(c.retries);
+			let before = c.retries;
+			reset(c);
+			return twice + before + (c.retries ?? 100);
+		}
+	`
+	expectOutput(t, decls, `
+		let list = Node { value: 1, next: Node { value: 2, next: Node { value: 3, next: null } } };
+		println(second(list), third(list), last(list));
+		let single = Node { value: 9, next: null };
+		println(second(single), third(single), last(single));
+		println(summary(Config { name: "job", retries: 3 }), summary(Config { name: null, retries: 1 }));
+		println(report(Config { name: "job", retries: 4 }), report(Config { name: "job", retries: null }));
+	`, "2 3 3\n-1 -1 9\njob x3 ?\nretries: 4\n112 0\n")
+}
+
+func TestTypeArgumentsAreInferred(t *testing.T) {
+	decls := `
+		struct Stack<T> { items: [T]; }
+		impl<T> Stack<T> {
+			fn map<U>(f: fn(T) -> U) -> Stack<U> {
+				let out = Stack<U> { items: [] };
+				for item in self.items { push(out.items, f(item)); }
+				return out;
+			}
+		}
+
+		fn first<T>(xs: [T]) -> T { return xs[0]; }
+		fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] {
+			let out: [U] = [];
+			for x in xs { push(out, f(x)); }
+			return out;
+		}
+		fn collect<T>(items: ...T) -> [T] { return items; }
+		fn orElse<T>(value: T?, fallback: T) -> T { return value ?? fallback; }
+		fn top<T>(s: Stack<T>) -> T { return first(s.items); }
+		fn none<T>() -> [T] { return []; }
+		fn count(flags: [Bool]) -> Int { return flags.length; }
+		fn emptyInts() -> [Int] { return none(); }
+	`
+	expectOutput(t, decls, `
+		println(first([7, 8]) + 1, first(["a", "b"]).length, first([[1, 2]]).length);
+		println(map([1, 2, 3], toString), map(["a", "bb"], fn(s: String) -> Int { return s.length; }));
+		println(collect(1, 2, 3), collect("x"));
+
+		let missing: Int? = null;
+		println(orElse(missing, 5), orElse("set", "unset"));
+
+		let stack = Stack<Int> { items: [1, 2] };
+		println(stack.map(fn(n: Int) -> String { return "#" + toString(n); }).items, top(stack));
+
+		// No argument says what T is: it comes from the type expected
+		let names: [String] = none();
+		push(names, "ada");
+		println(names, count(none()), emptyInts());
+
+		// Written out where nothing at all determines it, and allowed anywhere
+		println(none<String>().length, first<Int>([4]));
+	`, "8 1 2\n[\"1\", \"2\", \"3\"] [1, 2]\n[1, 2, 3] [\"x\"]\n5 set\n[\"#1\", \"#2\"] 1\n[\"ada\"] 0 []\n0 4\n")
+}
+
+func TestCastsToFunctionTypes(t *testing.T) {
+	decls := `
+		fn inc(n: Int) -> Int { return n + 1; }
+		fn shout(s: String) -> String { return s + "!"; }
+		fn show(v: Any) -> String { return "<" + toString(v) + ">"; }
+	`
+	expectOutput(t, decls, `
+		let fns: [Any] = [inc, shout, show, toString, fn(a: Int, b: Int) -> Int { return a + b; }];
+
+		println((fns[0] as fn(Int) -> Int)(1), (fns[1] as fn(String) -> String)("hey"));
+		// A function accepting more, or returning something more specific, fits
+		println((fns[2] as fn(Int) -> String)(5), (fns[3] as fn(Bool) -> String)(true), (fns[0] as fn(Int) -> Any));
+		println((fns[4] as fn(Int, Int) -> Int)(2, 3));
+
+		println(fns[1] is fn(Int) -> Int, fns[1] is fn(String) -> String, fns[4] is fn(Int) -> Int);
+
+		let total = 0;
+		for f in fns {
+			if f is fn(Int) -> Int { total = total + f(10); }
+		}
+		println(total);
+	`, "2 hey!\n<5> true <fn inc>\n5\nfalse true false\n11\n")
+}
+
+func TestTraitMethodTypeParametersMatchByPosition(t *testing.T) {
+	decls := `
+		trait Converter { fn convert<T>(value: T) -> [T]; }
+		struct Twice { n: Int; }
+		impl Converter for Twice {
+			// The impl calls its parameter U; the trait calls it T
+			fn convert<U>(value: U) -> [U] { return [value, value]; }
+		}
+		fn through(c: Converter) -> [String] { return c.convert("x"); }
+	`
+	expectOutput(t, decls, `
+		let twice = Twice { n: 0 };
+		println(twice.convert(7), through(twice));
+	`, "[7, 7] [\"x\", \"x\"]\n")
+}
+
+func TestCasts(t *testing.T) {
+	decls := `
+		trait Shape { fn area() -> Int; }
+		struct Square { side: Int; }
+		struct Circle { r: Int; }
+		impl Shape for Square { fn area() -> Int { return self.side * self.side; } }
+		impl Shape for Circle { fn area() -> Int { return 3 * self.r * self.r; } }
+
+		fn twice(v: Any) -> Int { return (v as Int) * 2; }
+		fn side(shape: Shape) -> Int { return (shape as Square).side; }
+		fn back(v: Any) -> Shape { return v as Shape; }
+	`
+	expectOutput(t, decls, `
+		let boxed: Any = 21;
+		println(twice(boxed), twice(4));
+
+		let text: Any = "hello";
+		println((text as String).length, (text as String?) ?? "none");
+
+		let shape: Shape = Square { side: 5 };
+		println(side(shape), back(shape).area(), back(Circle { r: 1 }).area());
+
+		let maybe: Int? = 7;
+		println((maybe as Int) + 1);
+
+		let list: Any = [1, 2, 3];
+		println((list as [Int]).length);
+	`, "42 8\n5 hello\n5 25 3\n8\n3\n")
 }
 
 func TestClosures(t *testing.T) {
@@ -287,7 +784,6 @@ func TestMatch(t *testing.T) {
 				case -1: { return "minus one"; }
 				default: { return "other"; }
 			}
-			return "unreachable";
 		}
 	`
 	expectOutput(t, decls, `
@@ -334,13 +830,21 @@ func TestRuntimeErrorsPointAtSource(t *testing.T) {
 	}{
 		{"index out of bounds", "let xs = [1];\nreturn xs[3];", "index out of bounds: 3 (length 1)", 4},
 		{"division by zero", "let zero = 0;\nreturn 1 / zero;", "division by zero", 4},
-		{"call of null", "let p = Empty {};\nreturn p.missing(1);", "CALL requires function object", 4},
-		{"field of non-struct", "let n = 5;\nreturn n.field;", "GETFIELD requires object, got Int", 4},
+		{"empty array", "let xs: [Int] = [];\nreturn xs[0];", "index out of bounds: 0 (length 0)", 4},
+		{"cast of the wrong kind", "let v: Any = \"text\";\nreturn v as Int;", "cannot cast String to Int", 4},
+		{"cast of null", "let n: Int? = null;\nreturn n as Int;", "cannot cast null to Int", 4},
+		{"cast to the wrong struct", "let v: Any = Empty {};\nlet o = v as Other;\nreturn 0;", "cannot cast Empty to Other", 4},
+		{"cast to another function type", "let v: Any = fn(s: String) -> String { return s; };\nlet f = v as fn(Int) -> Int;\nreturn 0;", "cannot cast function to fn(Int) -> Int: it is a fn(String) -> String", 4},
+		{"cast of an array of functions", "let v: [Any] = [toString, 3];\nlet fs = v as [fn(Any) -> String];\nreturn 0;", "element 1: Int is not a fn(Any) -> String", 4},
+		{"cast of an array with a wrong element", "let v: [Any] = [1, \"two\", 3];\nlet xs = v as [Int];\nreturn 0;", "cannot cast array to [Int]: element 1: String is not an Int", 4},
+		{"cast of a nested array", "let v: [[Any]] = [[1], [true]];\nlet xs = v as [[Int]];\nreturn 0;", "element 1: element 0: Bool is not an Int", 4},
+		{"cast of a generic struct with another argument", "let v: Any = Holder<String> { item: \"s\" };\nlet h = v as Holder<Int>;\nreturn 0;", "cannot cast Holder to Holder: field 'item': String is not an Int", 4},
+		{"cast of an array of the wrong structs", "let v: [Any] = [Empty {}, Other {}];\nlet xs = v as [Empty];\nreturn 0;", "element 1: Other is not an Empty", 4},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			src := "struct Empty {}\nfn main() -> Int {\n" + tt.body + "\n}\n"
+			src := "struct Empty {} struct Other {} struct Holder<T> { item: T; }\nfn main() -> Int {\n" + tt.body + "\n}\n"
 			_, _, err := runProgram(t, src)
 			if err == nil {
 				t.Fatal("expected a runtime error")
@@ -375,15 +879,47 @@ func TestCompileErrors(t *testing.T) {
 		{"non-bool condition", "fn main() -> Int { if 1 { return 1; } return 0; }", "E2005", "condition must be bool"},
 		{"bad assignment", "fn main() -> Int { let a = 1; a = true; return a; }", "E2001", "cannot assign type bool to int"},
 		{"mixed array", `fn main() -> Int { let a = [1, "two"]; return 0; }`, "E2001", "array element has type string, expected int"},
-		{"unknown struct field", "struct P { x: Int; }\nfn main() -> Int { let p = P { z: 1 }; return 0; }", "E2014", "no field 'z'"},
+		{"unknown struct field", "struct P { x: Int; }\nfn main() -> Int { let p = P { x: 1, z: 1 }; return 0; }", "E2014", "no field 'z'"},
+		{"missing struct field", "struct P { x: Int; y: Int; }\nfn main() -> Int { let p = P { x: 1 }; return 0; }", "E2018", "missing 'y'"},
+		{"unknown field read", "struct P { x: Int; }\nfn main() -> Int { let p = P { x: 1 }; return p.nope; }", "E2014", "P has no field 'nope'"},
+		{"field of a number", "fn main() -> Int { let n = 5; return n.field; }", "E2014", "int has no field 'field'"},
+		{"unknown method", "struct P { x: Int; }\nfn main() -> Int { let p = P { x: 1 }; return p.missing(1); }", "E2015", "P has no method 'missing'"},
+		{"method argument", "struct P { x: Int; }\nimpl P { fn add(n: Int) -> Int { return self.x + n; } }\nfn main() -> Int { let p = P { x: 1 }; return p.add(\"one\"); }", "E2010", "cannot use type string as argument of type int"},
+		{"method result", "struct P { x: Int; }\nimpl P { fn get() -> Int { return self.x; } }\nfn main() -> Int { let p = P { x: 1 }; let s: String = p.get(); return 0; }", "E2001", "cannot assign type int to string"},
+		{"method used as a value", "struct P { x: Int; }\nimpl P { fn get() -> Int { return self.x; } }\nfn main() -> Int { let p = P { x: 1 }; let f = p.get; return 0; }", "E2014", "'get' is a method of P"},
+		{"struct lacks the trait", "trait T { fn m() -> Int; }\nstruct P { x: Int; }\nfn use(t: T) -> Int { return t.m(); }\nfn main() -> Int { return use(P { x: 1 }); }", "E2010", "cannot use type P as argument of type T"},
+		{"method not in the trait", "trait T { fn m() -> Int; }\nfn use(t: T) -> Int { return t.other(); }\nfn main() -> Int { return 0; }", "E2015", "trait T has no method 'other'"},
+		{"generic result", "fn id<T>(v: T) -> T { return v; }\nfn main() -> Int { let s: String = id<Int>(1); return 0; }", "E2001", "cannot assign type int to string"},
+		{"generic argument", "fn id<T>(v: T) -> T { return v; }\nfn main() -> Int { return id<Int>(\"one\"); }", "E2010", "cannot use type string as argument of type int"},
+		{"operation on a type parameter", "fn twice<T>(v: T) -> T { return v + v; }\nfn main() -> Int { return twice<Int>(1); }", "E2006", "operator + not defined for types T and T"},
+		{"null into a plain type", "fn main() -> Int { let n: Int = null; return n; }", "E2001", "cannot assign type null to int"},
+		{"optional used directly", "fn main() -> Int { let n: Int? = 1; return n + 1; }", "E2017", "the value may be null"},
+		{"field of an optional", "struct P { x: Int; }\nfn main() -> Int { let p: P? = null; return p.x; }", "E2017", "cannot read 'x' of P?"},
+		{"fallback of another type", "fn main() -> Int { let n: Int? = null; return n ?? \"none\"; }", "E2001", "fallback of type string does not match int"},
+		{"value of type Any", "fn show(v: Any) -> Int { return v + 1; }\nfn main() -> Int { return show(1); }", "E2006", "operator + not defined for types any and int"},
+		{"Any into a plain type", "fn show(v: Any) -> Int { return v; }\nfn main() -> Int { return show(1); }", "E2003", "cannot return type any"},
+		{"push of another type", "fn main() -> Int { let xs = [1]; push(xs, \"two\"); return 0; }", "E2010", "cannot push type string onto [int]"},
+		{"comparing unrelated types", "fn main() -> Int { if 1 == \"one\" { return 1; } return 0; }", "E2006", "operator == not defined for types int and string"},
+		{"untyped empty array", "fn main() -> Int { let xs = []; push(xs, 1); return 0; }", "E2020", "cannot infer the element type"},
+		{"assign to a constant", "fn main() -> Int { const c = 1; c = 2; return c; }", "E2022", "cannot assign to constant 'c'"},
+		{"missing return", "fn f(n: Int) -> Int { if n > 0 { return 1; } }\nfn main() -> Int { return f(1); }", "E2004", "can reach its end without returning"},
+		{"impossible cast", "fn main() -> Int { let s = 1 as String; return 0; }", "E2021", "cannot cast int to string"},
+		{"generic impl without parameters", "struct Box<T> { value: T; }\nimpl Box { fn get() -> T { return self.value; } }\nfn main() -> Int { return 0; }", "E1001", "undefined type 'T'"},
+		{"method type argument nothing determines", "struct U { n: Int; }\nimpl U { fn none<T>() -> [T] { return []; } }\nfn main() -> Int { let u = U { n: 1 }; return u.none().length; }", "E2024", "cannot infer the type arguments of method 'none'"},
+		{"trait type parameter count", "trait C { fn conv<T>(v: T) -> T; }\nstruct W { n: Int; }\nimpl C for W { fn conv<A, B>(v: A) -> A { return v; } }\nfn main() -> Int { return 0; }", "E2013", "has 2 type parameters, trait requires 1"},
+		{"field used after a call that may change it", "struct P { x: Int?; }\nfn touch(p: P) -> Void { p.x = null; }\nfn main() -> Int { let p = P { x: 1 }; if p.x != null { touch(p); return p.x + 1; } return 0; }", "E2017", "the value may be null"},
+		{"type test that can never succeed", "fn main() -> Int { let n = 1; if n is String { return 1; } return 0; }", "E2021", "int can never be string"},
+		{"null test on a variable a lambda assigns", "fn main() -> Int {\n let n: Int? = 1;\n let clear = fn() -> Void { n = null; };\n if n != null { clear(); return n + 1; }\n return 0;\n}", "E2017", "the value may be null"},
+		{"undefined struct", "fn main() -> Int { let p = Nope { x: 1 }; return 0; }", "E2016", "undefined struct 'Nope'"},
 		{"assign to function", "fn f() -> Int { return 1; }\nfn main() -> Int { f = f; return 0; }", "E5003", "cannot assign to 'f'"},
-		{"break outside loop", "fn main() -> Int { break; return 0; }", "E5005", "'break' outside of a loop"},
+		{"break outside loop", "fn main() -> Void { break; }", "E5005", "'break' outside of a loop"},
 		{"missing main", "fn helper() -> Int { return 1; }", "E6006", "no 'main' function"},
 		{"main with parameters", "fn main(a: Int) -> Int { return a; }", "E6006", "must not take parameters"},
 		{"imports", `import "std/io"; fn main() -> Int { return 0; }`, "E7001", "imports are not supported yet"},
-		{"uninferred generic", "fn id<T>(v: T) -> T { return v; }\nfn main() -> Int { return id(1); }", "E3001", "Cannot infer type arguments"},
+		{"uninferred generic", "fn none<T>() -> [T] { return []; }\nfn main() -> Int { return none().length; }", "E3001", "Cannot infer type arguments"},
 		{"enums", "enum Color { Red, Green }\nfn main() -> Int { return 0; }", "E7001", "enums are not supported yet"},
-		{"type pattern", "fn main() -> Int { match 1 { case Int: { return 1; } } return 0; }", "E7001", "type patterns in match"},
+		{"type pattern that can never match", "fn main() -> Int { match 1 { case String: { return 1; } default: { return 0; } } }", "E2021", "int can never be string"},
+		{"unsupported pattern", "fn main() -> Int { let limit = 1; match 1 { case limit: { return 1; } default: { return 0; } } }", "E7001", "this kind of match pattern is not supported yet"},
 	}
 
 	for _, tt := range tests {

@@ -137,6 +137,10 @@ func (a *Analyzer) visitExpr(expr ast.Expr, scope *functionScope) {
 		a.visitExpr(e.Right, scope)
 	case *ast.UnaryExpr:
 		a.visitExpr(e.Expr, scope)
+	case *ast.CastExpr:
+		a.visitExpr(e.Expr, scope)
+	case *ast.TypeTestExpr:
+		a.visitExpr(e.Expr, scope)
 	case *ast.CallExpr:
 		a.visitExpr(e.Func, scope)
 		for _, arg := range e.Args {

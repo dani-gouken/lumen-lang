@@ -56,12 +56,10 @@ func checkStmtSupported(stmt ast.Stmt, unsupported func(ast.Node, string, string
 	case *ast.MatchStmt:
 		for _, c := range s.Cases {
 			switch c.Pattern.(type) {
-			case nil, *ast.Literal, *ast.UnaryExpr:
-				// Value patterns and `default`
-			case *ast.Type:
-				unsupported(c, "type patterns in match are", "Match on literal values instead")
+			case nil, *ast.Literal, *ast.UnaryExpr, *ast.Type:
+				// Value patterns, type patterns and `default`
 			default:
-				unsupported(c, "this kind of match pattern is", "Match on literal values instead")
+				unsupported(c, "this kind of match pattern is", "Match on literal values or on types")
 			}
 			if body, ok := c.Body.(*ast.BlockStmt); ok {
 				checkBlockSupported(body, unsupported)

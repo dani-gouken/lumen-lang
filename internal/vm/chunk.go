@@ -8,6 +8,11 @@ type FunctionPrototype struct {
 	RegisterCount int    // Number of registers needed by this function
 	ArgCount      int    // Number of parameters this function accepts
 	UpvalueCount  int    // Number of upvalues this function captures
+
+	// Signature describes the parameter and return types, in the form used
+	// by cast descriptors: "fn(int,string)->bool". Casts to a function type
+	// compare it with the type asked for. Empty for hand-written assembly.
+	Signature string
 }
 
 // Chunk represents a compiled module containing bytecode and metadata.

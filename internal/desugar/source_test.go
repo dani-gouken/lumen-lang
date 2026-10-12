@@ -68,38 +68,63 @@ func TestForLoopEvaluatesIterableOnce(t *testing.T) {
 	}
 }
 
-func TestWhileShortCircuitReevaluatesCondition(t *testing.T) {
-	out := desugarBody(t, `let i = 0; while i < 3 && check(true) { i = i + 1; continue; }`)
+func TestShortCircuitOperatorsAreKept(t *testing.T) {
+	// &&, || and ?? are lowered to branches by IR generation. They stay in
+	// the tree so that the type checker, which runs again on the desugared
+	// program, still sees what a condition says.
+	tests := []struct {
+		body string
+		want string
+	}{
+		{`let i = 0; while i < 3 && check(true) { i = i + 1; }`, "while ((i < 3) && check(true)) {"},
+		{`if check(true) || check(false) { print(1); }`, "if (check(true) || check(false)) {"},
+		{`let ok = check(true) && check(false); print(ok);`, "let ok = (check(true) && check(false)); print(ok);"},
+		{`let n: Int? = null; let m = n ?? 3;`, "let m = (n ?? 3);"},
+	}
 
-	// The condition is computed by statements, so they have to run at the
-	// top of every iteration; a guard then leaves the loop.
-	if !strings.Contains(out, "while true {") {
-		t.Fatalf("expected a `while true` loop with an explicit guard, got: %s", out)
-	}
-	if !before(out, "while true {", "check(true)") {
-		t.Errorf("expected the condition to be evaluated inside the loop, got: %s", out)
-	}
-	if !before(out, "{ break; }", "(i = (i + 1));") {
-		t.Errorf("expected the exit guard before the body, got: %s", out)
-	}
-	if n := strings.Count(out, "check(true)"); n != 1 {
-		t.Errorf("expected the condition to appear once, found %d in: %s", n, out)
+	for _, tt := range tests {
+		out := desugarBody(t, tt.body)
+		if !strings.Contains(out, tt.want) {
+			t.Errorf("expected %q in: %s", tt.want, out)
+		}
+		if strings.Contains(out, "__tmp_") {
+			t.Errorf("expected no temporaries, got: %s", out)
+		}
 	}
 }
 
-func TestLetWithShortCircuitStaysInScope(t *testing.T) {
-	out := desugarBody(t, `let ok = check(true) && check(false); print(ok);`)
+func TestOperandsOfShortCircuitOperatorsAreDesugared(t *testing.T) {
+	// The operator stays, but what is inside it is still lowered
+	out := desugarBody(t, `let f = fn() -> Bool { for v in items() { print(v); } return true; }; if f() && check(true) { print(1); }`)
+	if strings.Contains(out, "for v in") {
+		t.Errorf("expected the loop inside the lambda to be rewritten, got: %s", out)
+	}
+}
 
-	// The let must be a direct statement of the function body, so that
-	// `print(ok)` after it can still see the variable.
-	if !strings.Contains(out, "let ok = __tmp_") {
-		t.Fatalf("expected the let to read a temporary, got: %s", out)
+func TestTypePatternsBecomeTypeTests(t *testing.T) {
+	out := desugarBody(t, `
+		let v: Any = 1;
+		match v {
+			case Int: { print("int"); }
+			case [String]: { print("strings"); }
+			default: { print("other"); }
+		}
+	`)
+
+	// The variable is tested directly, so the checker can narrow it
+	for _, want := range []string{`if (v is Int)`, `else if (v is [String])`, `else if true`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in: %s", want, out)
+		}
 	}
-	if strings.LastIndex(out, "{ let __tmp_") != 0 {
-		t.Errorf("expected the helpers directly in the function body, got: %s", out)
+	if strings.Contains(out, "__match_tmp") {
+		t.Errorf("expected no temporary for a plain variable, got: %s", out)
 	}
-	if !before(out, "let ok = ", "print(ok);") {
-		t.Errorf("expected the use after the declaration, got: %s", out)
+
+	// Anything else is evaluated once, into a temporary
+	out = desugarBody(t, `match items()[0] { case 1: { print("one"); } default: { print("other"); } }`)
+	if !strings.Contains(out, "let __match_tmp_") || strings.Count(out, "items()") != 1 {
+		t.Errorf("expected the matched expression in a temporary, evaluated once: %s", out)
 	}
 }
 

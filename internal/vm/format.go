@@ -121,6 +121,9 @@ func typeName(v Value) string {
 	case ObjTypeArray:
 		return "array"
 	case ObjTypeObject:
+		if name := (*ObjectObj)(unsafe.Pointer(v.AsHeapPtr())).typeName; name != "" {
+			return name
+		}
 		return "struct"
 	case ObjTypeFunction, ObjTypeExternFunction:
 		return "function"

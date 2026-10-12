@@ -181,6 +181,32 @@ let result = identity<Int>(42);
 let result = identity_Int(42);
 ```
 
+**Generic structs are not rewritten.** A literal `Box<Int> { value: 1 }` keeps
+its name and type arguments, and so does every type annotation mentioning
+`Box<Int>`. The reasons:
+
+*   The rest of the program refers to the struct as `Box<...>` (parameter and
+    variable types, `impl<T> Box<T>`). Renaming only the literal to `Box_Int`
+    would make the value a different type from every place it is used, and
+    its methods, which belong to `Box`, would not be found.
+*   Nothing is gained at runtime: a struct value does not carry its type
+    arguments, so one `Box` serves all instantiations. Likewise the methods
+    of `impl<T> Box<T>` are compiled once, not per instantiation.
+
+The concrete struct declarations (`Box_Int`) are still generated in phase 3
+and appended to the program; they are currently unused. Generic *functions*
+are rewritten as described above.
+
+**Type arguments come from the checker.** A call written without type
+arguments, `first([1, 2])`, has them inferred during type checking and written
+into the AST (`first<Int>([1, 2])`), so by the time monomorphization runs every
+call it can instantiate is explicit. `E3001` remains for calls where neither
+the arguments nor the expected result type determine a type parameter.
+
+**Function expressions and casts** are traversed: a generic call inside a
+lambda is discovered and rewritten, and the type in `value as T` is
+substituted when a generic function is instantiated.
+
 ## Name Mangling Scheme
 
 To generate unique names for monomorphized instances:

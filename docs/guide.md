@@ -53,6 +53,11 @@ let ratio: Float = 0.5;     // or stated
 let name = "lumen";
 let ready = true;
 let nothing: Int? = null;   // T? admits null
+let n = nothing ?? 0;       // an optional needs a fallback...
+if nothing != null {        // ...or a test: inside, `nothing` is an Int
+    println(nothing + 1);
+}
+let names: [String] = [];   // an empty array needs its type stated
 
 count = count + 1;          // reassignment
 {
@@ -111,7 +116,8 @@ fn first<T>(items: [T]) -> T {                       // generic
 }
 
 log("got", 1, 2, 3);
-first<Int>([7, 8]);          // type arguments are written out
+first([7, 8]);               // T is inferred from the argument
+first<Int>([7, 8]);          // and can always be written out
 ```
 
 Functions are values: they can be stored in variables, passed and returned.
@@ -144,7 +150,7 @@ impl Point {                                         // methods outside a trait
     fn moved(dx: Int) -> Point { return Point { x: self.x + dx, y: self.y }; }
 }
 
-fn show(s: Shape) -> Void { println(s.area()); }     // any struct implementing Shape
+fn show(s: Shape) -> Void { println(s.area()); }     // only structs implementing Shape
 
 let p = Point { x: 2, y: 3 };
 p.x = 5;
@@ -154,6 +160,67 @@ show(p.moved(1));
 Structs are references: `let q = p;` makes `q` and `p` the same value.
 
 Inside the header of `if`, `while`, `for` and `match`, wrap a struct literal in parentheses: `if (Point { x: 1, y: 2 }).area() > 0 { ... }`.
+
+### Generic structs
+
+```lumen
+struct Stack<T> { items: [T]; }
+
+impl<T> Stack<T> {                       // T is the struct's parameter
+    fn push(item: T) -> Void { push(self.items, item); }
+    fn peek() -> T? {
+        if self.items.length == 0 { return null; }
+        return self.items[self.items.length - 1];
+    }
+    fn map<U>(f: fn(T) -> U) -> Stack<U> {   // U is the method's own parameter
+        let out = Stack<U> { items: [] };
+        for item in self.items { out.push(f(item)); }
+        return out;
+    }
+}
+
+let numbers = Stack<Int> { items: [] };
+numbers.push(1);
+let top = numbers.peek();                // Int?
+let texts = numbers.map(toString);       // Stack<String>; U is inferred
+```
+
+### Optionals and casts
+
+```lumen
+fn length(name: String?) -> Int {
+    if name == null { return 0; }        // from here on, name is a String
+    return name.length;
+}
+
+let boxed: Any = 41;
+let n = (boxed as Int) + 1;              // checked when it runs
+
+fn side(shape: Shape) -> Int {
+    return (shape as Square).side;       // fails at runtime for a Circle
+}
+```
+
+`value is Type` asks the same question without failing, and inside the branch the value has that type:
+
+```lumen
+fn describe(value: Any) -> String {
+    match value {                        // a match on types reads best
+        case Int: { return "number " + toString(value + 1); }
+        case String: { return "text of " + toString(value.length); }
+        case Shape: { return "shape of area " + toString(value.area()); }
+        default: { return "something else"; }
+    }
+}
+
+if shape is Square { println(shape.side); }
+```
+
+Null tests work on fields as well: after `if node.next == null { return; }`, `node.next` is a `Node`.
+
+A value of type `Any` cannot be used until it is cast or tested. A cast that cannot possibly succeed (`1 as String`) is a compile error; one that can fail stops the program with `cannot cast String to Int` and the source location.
+
+Casts look inside the value: `v as [Int]` checks every element and reports the first that does not fit (`element 2: String is not an Int`), and `v as Box<Int>` checks the fields that depend on the type argument.
 
 ### Closures
 
@@ -200,6 +267,15 @@ The code (`E2001`) identifies the kind of error; [compilation/diagnosis.md](comp
 
 The compiler reports the errors of one stage at a time. After fixing syntax errors you may see type errors that were not shown before; that is expected.
 
+### Warnings
+
+```text
+[WARNING] E2023: unreachable code: the statement before it always leaves this block
+  --> main.lum:14:5
+```
+
+A warning does not stop compilation: the program runs, and the exit code is not affected.
+
 ### Runtime errors
 
 ```text
@@ -218,13 +294,11 @@ These are rejected with a clear error rather than miscompiled:
 *   `import` and programs spanning several files
 *   `enum`
 *   `match` on types (`case Int:`)
-*   inferring type arguments (`first([1])` must be `first<Int>([1])`)
 
 Things to be aware of:
 
-*   **Type checking is partial.** Results of method calls, generic values, optionals and trait-typed values are checked when the program runs, not when it compiles.
-*   **`const` is not enforced** yet; a `const` can be reassigned.
-*   **A function that falls off its end returns `null`**, even if it declares a return type.
+*   **What is known about a field ends at a call that may change a field.** `println`, and functions that only read, are fine; after calling something that assigns a field, or a function value, the field has to be tested again or copied into a local first. A variable that a lambda assigns is not narrowed at all.
+*   **A type argument nothing determines has to be written**: `let xs = none();` gives no clue, so write `none<Int>()` or `let xs: [Int] = none();`.
 *   **Closures created in a loop share the loop body's variables.** Pass the value through a function parameter to give each closure its own copy.
 *   **Size limits:** 256 registers per function, 256 distinct constants and 256 functions per program. Very large functions may need to be split.
 

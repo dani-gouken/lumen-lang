@@ -11,8 +11,8 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Area | Most useful next steps |
 |------|------------------------|
 | Everyday syntax | `+=` / `++`, index in `for`, ranges, sized arrays |
-| Correctness | array bounds on write, unknown struct fields, `const`, missing returns |
-| Types | stricter checking where `Any` is used today, type argument inference |
+| Correctness | array bounds on write, integer overflow |
+| Types | inference from the expected type, richer `match` patterns, array literals of mixed structs |
 | Runtime | heap size and accounting, recursion depth, integer overflow |
 | Program structure | imports, enums, global constants |
 
@@ -52,7 +52,7 @@ Creating an array of `n` elements, and fixed-size array types.
 
 **Today**: arrays are created from a literal and grow with `push`. There is no way to write "ten zeros" except a loop.
 
-**Notes**: A builtin such as `array(n, value)` is small (S). A real fixed-size type `[Int; 10]` checked at compile time is a type system feature (L) and is of limited value until the checker is stricter.
+**Notes**: A builtin such as `array(n, value)` is small (S). A real fixed-size type `[Int; 10]` checked at compile time is a type system feature (L).
 
 ### More builtins — S each
 
@@ -80,9 +80,9 @@ Adding one means a host function in `internal/vm/vm.go` and a declaration in `in
 
 **Notes**: Needs a runtime representation for variants, construction syntax, and pattern matching with destructuring (`case Some(x):`).
 
-### `match` beyond literals — M
+### `match` beyond literals and types — M
 
-**Today**: literal patterns and `default` work. Type patterns (`case Int:`) are rejected with `E7001`; the desugarer lowers them to an `__is_type` intrinsic that has no implementation. There are no ranges, no guards, no bindings, and `match` is a statement, not an expression.
+**Today**: literal patterns, type patterns (`case Int:`, `case Point:`, `case [String]:`) and `default` work. There are no ranges, no guards, no bindings (`case x:`), no destructuring, and `match` is a statement, not an expression. A name that is not a type is rejected with `E7001`.
 
 ### Global constants and variables — M
 
@@ -124,52 +124,40 @@ const LIMIT = 100;      // at the top level
 
 These programs compile today and should not, or compile and misbehave.
 
-### Unknown or missing struct fields — S
+### What flow typing does not cover — M
 
-```lumen
-struct P { x: Int; y: Int; }
-let p = P { x: 1 };     // y is never set
-println(p.y);           // null
-println(p.nope);        // null
-```
+A test narrows a **local variable, parameter or field path** (`node.next`) inside the guarded region: `if x != null { ... }`, after `if x == null { return; }`, in a `while x != null` body, across `&&` and `||`, and for `x is T` and `match` on types. Some things are deliberately left out:
 
-**Today**: no error in either case. A struct literal may omit fields, and reading a field that does not exist yields `null`. (A literal that names an *unknown* field is rejected, `E2014`.)
+*   **a variable that a lambda assigns** is never narrowed: the lambda can run at any moment;
+*   **inside a lambda**, nothing known about the enclosing function's variables carries over: the lambda may run later;
+*   **fields are forgotten after anything that may assign a field**: a field assignment, or a call of a function that assigns one, directly or through what it calls. Calls that cannot (builtins, functions that only read) change nothing. A call whose target is not known counts as one that may: a function value, a function stored in a field, and a method if *any* method of that name assigns a field (the receiver's type is not used). Copy the field into a local to keep it across such calls;
+*   **elements are not narrowed**: `if xs[0] != null` says nothing about the next `xs[0]`;
+*   **the false branch of a type test** learns nothing: after `if v is Int { ... } else { ... }`, `v` is not "anything but Int";
+*   **after a loop**: `while x == null { ... }` does not make `x` non-null afterwards.
 
-**Notes**: `checkStructInitExpr` and `checkMemberExpr` in `internal/types/checker.go` have the struct declaration at hand; both checks are short.
+These are conservative choices, not holes. The third could be made more precise by tracking *which* fields a function assigns and by using the receiver's type for method calls.
 
-### `const` is not enforced — S
+### Inference has limits — M
 
-```lumen
-const c = 1;
-c = 2;                  // accepted
-```
+Type arguments are inferred from the arguments of a call (`first([1, 2])`, `stack.map(toString)`) and, for what those leave open, from the type the result is expected to have (`let xs: [Int] = none();`, `return none();`, `size(none())`). Not covered:
 
-### Missing `return` — M
+*   a call whose result goes nowhere typed: `let xs = none();` and `none().length` still need `none<Int>()`;
+*   the first argument that mentions a parameter decides it; there is no search for a type common to several arguments (`same(1, 2.5)` is an error, not `T = Any`);
+*   inference does not look further than one call: in `first(none())`, nothing determines the inner call.
 
-A function declared `-> Int` whose body falls off the end compiles and returns `null`. There is no "all paths return" analysis, and no warning for unreachable code after `return`.
+### Function casts cannot see through generics — inherent
 
-### Partial static typing — L
+A cast to a function type is checked against the signature recorded when the function was compiled. A generic function records its type parameters as `Any`, so a `fn id<T>(v: T) -> T` stored in an `Any` casts to `fn(Any) -> Any`, not to `fn(Int) -> Int`. Functions written in assembly have no recorded signature and cannot be cast to a function type at all.
 
-Where the checker lacks information it uses `Any`, which is accepted everywhere and checked only when the program runs. This affects:
+### Array literals of mixed structs need a type — S
 
-*   the result of every method call (`p.area()` is `Any`);
-*   values whose type is a type parameter, and fields of generic structs;
-*   optional types: `T?` is treated as `Any`, so `null` safety is not checked and `??` is not required;
-*   values typed with a trait: whether the struct implements the trait is not verified at the call site.
-
-A mistake in these places surfaces as a runtime error with a source location. Closing the gap is mostly work inside `internal/types`: method signatures per struct, real optional and trait types, and substituting type arguments instead of erasing them.
-
-### Type arguments are never inferred — M
-
-`first([1, 2])` is rejected (`E3001`); it must be written `first<Int>([1, 2])`. The same error is currently reported twice.
+`let shapes = [rect, square];` is rejected, because the element type is taken from the first element. Stating the type works: `let shapes: [Shape] = [rect, square];`. Finding the common trait automatically would remove the need.
 
 ### Other unchecked things
 
 | Not checked | Effect |
 |-------------|--------|
 | Unused variables, parameters, functions | No warning |
-| A method name that is also a field of a *different* struct | Rejected (`E5004`) even though it would be unambiguous with type information |
-| Calling a method the value does not have | Runtime error (`CALL requires function object`) |
 | Variadic function called through a variable | Arguments are not packed into an array; only direct calls by name are |
 | Shadowing a function with a local | Allowed silently |
 
@@ -214,7 +202,7 @@ Integer literals too large for 48 bits are truncated the same way.
 
 ### Method dispatch cost — M
 
-Every struct value carries one function object per method, created when the value is created (see [ir_generation.md](compilation/ir_generation.md#structs-and-methods)). Correct, but wasteful for structs with many methods or programs creating many values. A method table shared per struct type needs VM support.
+Calls on a value whose struct is known are direct. Calls through a trait look the method up on the value, so each value of a struct that implements traits carries one function object per trait method, created with the value (see [ir_generation.md](compilation/ir_generation.md#structs-and-methods)). A method table shared per struct type would remove that; it needs VM support.
 
 ### Each call of a builtin allocates — S
 
@@ -259,10 +247,10 @@ Operands are one byte: 256 registers per function, 256 distinct constants and 25
 
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
-1.  **Close the silent failures**: array writes past the length, unknown and missing struct fields, `const`. These make existing programs fail loudly instead of misbehaving.
+1.  **Close the silent failures**: array writes past the length, integer overflow. These make existing programs fail loudly instead of misbehaving.
 2.  **Everyday syntax**: `+=` and `++`, index in `for`, `array(n, value)`, a first batch of string and array builtins, `toInt`/`toFloat`.
 3.  **Runtime headroom**: count array growth, collect before failing an allocation, a clearer out-of-memory message, a configurable heap and call depth.
-4.  **Stricter types**: method signatures, missing-return analysis, then optionals and trait types.
+4.  **Types**: inference from the expected result type, `match` as an expression with bindings and guards.
 5.  **Program structure**: global constants, then imports, then enums with pattern matching.
 6.  **Format limits**: wider operands, once programs are large enough to hit them.
 

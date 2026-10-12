@@ -135,7 +135,7 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 | `MOV` of a `FuncRef` | `NEWFUNC` for a compiled function, `NEWEXFUNC` for a host function |
 | `ADD` `SUB` `MUL` `DIV` `MOD` `NEG` `NOT` | the instruction of the same name |
 | `EQ` `NEQ` `LT` `LTE` `GT` `GTE` | `EQ` `NE` `LT` `LE` `GT` `GE` |
-| `NEW_STRUCT` | `NEWOBJ` (the struct name is not needed at runtime) |
+| `NEW_STRUCT` | `NEWOBJ` with the struct's name as a string constant, which casts check |
 | `GET_FIELD` / `SET_FIELD` | `GETFIELD` / `SETFIELD` with the field name as a string constant |
 | `NEW_ARRAY` | `NEWARRAY` (capacity capped at 255; it is only a hint) |
 | `GET_INDEX` / `SET_INDEX` / `LEN` / `PUSH` | `GETINDEX` / `SETINDEX` / `ARRLEN` / `ARRPUSH` |
@@ -145,7 +145,7 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 
 ## Chunk Tables
 
-*   **Function table.** Prototype indices are assigned to all IR functions before any code is generated, so a function can refer to one defined later (mutual recursion, a lambda defined after its use). Each prototype records its name, code range, register count, argument count and upvalue count.
+*   **Function table.** Prototype indices are assigned to all IR functions before any code is generated, so a function can refer to one defined later (mutual recursion, a lambda defined after its use). Each prototype records its name, code range, register count, argument count, upvalue count and its signature (the function's type as a cast descriptor, used when a function value is cast or tested).
 *   **Constant pool.** Deduplicated by value: a constant used a hundred times takes one slot.
 *   **String pool.** Deduplicated by text. A string constant in the constant pool holds the *index* of its text in the string pool; this is the representation `NEWSTR` and the field instructions expect, and it survives serialization (a heap pointer would not). A string literal and a field name with the same text share one entry.
 *   **Host functions.** Names are added to `ExternNames` on first use.

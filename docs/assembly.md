@@ -427,6 +427,12 @@ Create a heap-allocated object (map/dictionary).
 - Object starts empty (no fields)
 - May trigger garbage collection if heap is full
 
+**Struct names:** the instruction has a second form used by the compiler, in
+which operand B is a string constant naming the struct the object is a value
+of and operand C is 1. The name is what the `__cast` host function checks for
+`value as Point`. The assembly syntax above always creates an unnamed object,
+and the disassembler does not show the name.
+
 **Example:**
 ```assembly
 NEWOBJ r0         ; Create empty object

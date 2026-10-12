@@ -129,6 +129,8 @@ git diff test/e2e examples   # review what changed before committing
 - ❌ Testing every possible corruption scenario
 - ❌ Backwards compatibility (only one version exists)
 
+**Also in the VM package**: `runtime_test.go` covers string operations, field names from the string pool, runtime type and bounds errors, the host functions and value formatting; `cast_test.go` covers the cast descriptor parser and the matcher that verifies `value as Type` and `value is Type`, case by case (scalars, optionals, arrays, structs, generic structs, values containing themselves), the subtyping used for function types, and that signatures survive a round trip through a bytecode file.
+
 ### 5. Compiler front end
 
 Tests for the stages that turn source into IR are driven **from source text**: a small helper parses (and resolves, type checks, ...) a snippet and the test asserts on the result. This keeps them short and independent of how AST nodes are built by hand.
@@ -137,10 +139,10 @@ Tests for the stages that turn source into IR are driven **from source text**: a
 |---------|------|----------------|
 | `internal/parser` | `lexer_test.go`, `parser_test.go` | Tokens and positions; operator precedence; `a < b` vs `f<T>(x)`; struct literal vs block; every error code; recovery after a broken statement |
 | `internal/resolve` | `source_test.go` | Builtins in scope; lambda parameters and bodies; `self` only in methods |
-| `internal/types` | `source_test.go` | Inferred types of member/index/lambda/generic expressions; programs that must be accepted; programs that must be rejected, with the message |
+| `internal/types` | `source_test.go` | Inferred types of member/index/lambda/generic expressions; programs that must be accepted; programs that must be rejected, with the message. Covers methods and their type arguments, traits, `Self`, optionals and narrowing of variables and fields, type tests and `match` on types, `Any`, generics, type argument inference from arguments and from the expected type (including the arguments written into the AST), which calls end what is known about a field, casts (including the runtime descriptor each one produces), recorded function signatures, `const`, return paths and unreachable-code warnings |
 | `internal/analysis` | `source_test.go` | Which variables each lambda captures, including ones passed through an intermediate lambda |
-| `internal/desugar` | `source_test.go` | `continue` cannot skip a for-loop increment; the iterable is evaluated once; `while a && b` re-evaluates its condition |
-| `internal/irgen` | `source_test.go` | `let` copies instead of aliasing; block scopes; short-circuit branches; struct fields by name; variadic packing; capture operands |
+| `internal/desugar` | `source_test.go` | `continue` cannot skip a for-loop increment; the iterable is evaluated once; short-circuit operators are kept; type patterns become type tests on the variable itself |
+| `internal/irgen` | `source_test.go` | `let` copies instead of aliasing; block scopes; short-circuit branches; struct fields by name; direct call on a known struct vs lookup through a trait; variadic packing; capture operands |
 
 ### 6. Bytecode generation (`internal/codegen/codegen_test.go`)
 

@@ -86,6 +86,15 @@ func (a *ArrayObj) Append(v Value) {
 type ObjectObj struct {
 	header ObjHeader
 	fields map[string]Value
+
+	// Name of the struct this object is a value of; empty for a plain
+	// object created from assembly. Used by casts.
+	typeName string
+}
+
+// TypeName returns the name of the struct the object is a value of.
+func (o *ObjectObj) TypeName() string {
+	return o.typeName
 }
 
 func (o *ObjectObj) Header() *ObjHeader {
@@ -163,6 +172,9 @@ type ExternFunctionObj struct {
 	name     string      // Function name
 	function ExternFunc // Go function pointer
 	argCount int         // Expected argument count
+
+	// Type of the function as a cast descriptor; empty if not declared
+	signature string
 }
 
 func (ef *ExternFunctionObj) Header() *ObjHeader {

@@ -174,14 +174,6 @@ func (d *Desugarer) desugarBlockStmt(block *ast.BlockStmt) *ast.BlockStmt {
 	newStmts := make([]ast.Stmt, 0, len(block.Stmts))
 
 	for _, stmt := range block.Stmts {
-		// A let may need helper statements in front of it. They go into
-		// this block, next to the let: wrapping them in a block of their
-		// own would end the variable's scope right after its declaration.
-		if let, ok := stmt.(*ast.LetStmt); ok {
-			newStmts = append(newStmts, d.desugarLetStmts(let)...)
-			continue
-		}
-
 		newStmt := d.desugarStmt(stmt)
 		newStmts = append(newStmts, newStmt)
 	}
@@ -192,47 +184,20 @@ func (d *Desugarer) desugarBlockStmt(block *ast.BlockStmt) *ast.BlockStmt {
 	}
 }
 
-// desugarLetStmt desugars a let statement that is not directly inside a
-// block. Helper statements, if any, are wrapped together with it.
+// desugarLetStmt desugars a let statement
 func (d *Desugarer) desugarLetStmt(let *ast.LetStmt) ast.Stmt {
-	stmts := d.desugarLetStmts(let)
-	if len(stmts) == 1 {
-		return stmts[0]
-	}
-	return d.wrapInBlock(stmts, let.Position())
-}
-
-// desugarLetStmts desugars a let statement into the statements that replace
-// it: the helper statements computing a short-circuit value, then the let.
-func (d *Desugarer) desugarLetStmts(let *ast.LetStmt) []ast.Stmt {
 	if let.Value == nil {
-		return []ast.Stmt{let}
+		return let
 	}
+	d.checkShortCircuitComplexity(let.Value)
 
-	// Check if the value contains short-circuit operators
-	if d.containsShortCircuit(let.Value) {
-		preStmts, newValue := d.desugarShortCircuitInExpression(let.Value)
-
-		newLetStmt := &ast.LetStmt{
-			BaseNode: let.BaseNode,
-			Name:     let.Name,
-			Type:     let.Type,
-			Value:    newValue,
-			IsConst:  let.IsConst,
-		}
-
-		return append(preStmts, newLetStmt)
-	}
-
-	newValue := d.desugarExpr(let.Value)
-
-	return []ast.Stmt{&ast.LetStmt{
+	return &ast.LetStmt{
 		BaseNode: let.BaseNode,
 		Name:     let.Name,
 		Type:     let.Type,
-		Value:    newValue,
+		Value:    d.desugarExpr(let.Value),
 		IsConst:  let.IsConst,
-	}}
+	}
 }
 
 // desugarReturnStmt desugars a return statement
@@ -251,8 +216,8 @@ func (d *Desugarer) desugarReturnStmt(ret *ast.ReturnStmt) *ast.ReturnStmt {
 
 // desugarIfStmt desugars an if statement
 func (d *Desugarer) desugarIfStmt(ifStmt *ast.IfStmt) ast.Stmt {
-	// Check if condition contains short-circuit operators
-	preStmts, newCond := d.desugarShortCircuitInCondition(ifStmt.Cond)
+	d.checkShortCircuitComplexity(ifStmt.Cond)
+	newCond := d.desugarExpr(ifStmt.Cond)
 	newThen := d.desugarStmt(ifStmt.Then).(*ast.BlockStmt)
 
 	var newElse ast.Stmt
@@ -260,64 +225,22 @@ func (d *Desugarer) desugarIfStmt(ifStmt *ast.IfStmt) ast.Stmt {
 		newElse = d.desugarStmt(ifStmt.Else)
 	}
 
-	newIfStmt := &ast.IfStmt{
+	return &ast.IfStmt{
 		BaseNode: ifStmt.BaseNode,
 		Cond:     newCond,
 		Then:     newThen,
 		Else:     newElse,
 	}
-
-	// If we have pre-statements, wrap everything in a block
-	if len(preStmts) > 0 {
-		stmts := append(preStmts, newIfStmt)
-		return d.wrapInBlock(stmts, ifStmt.Position())
-	}
-
-	return newIfStmt
 }
 
 // desugarWhileStmt desugars a while statement
 func (d *Desugarer) desugarWhileStmt(while *ast.WhileStmt) ast.Stmt {
-	// Check if condition contains short-circuit operators
-	preStmts, newCond := d.desugarShortCircuitInCondition(while.Cond)
-	newBody := d.desugarStmt(while.Body).(*ast.BlockStmt)
-
-	// The pre-statements compute the condition, so they must run before every
-	// iteration, including the ones reached through `continue`:
-	//
-	//	while true {
-	//	  <pre-statements>
-	//	  if !cond { break; }
-	//	  body
-	//	}
-	if len(preStmts) > 0 {
-		pos := while.Position()
-
-		notCond := &ast.UnaryExpr{BaseNode: ast.BaseNode{Pos: pos}, Op: "!", Expr: newCond}
-		d.typeInfo.Types[notCond] = types.Bool
-
-		exit := &ast.IfStmt{
-			BaseNode: ast.BaseNode{Pos: pos},
-			Cond:     notCond,
-			Then:     d.wrapInBlock([]ast.Stmt{&ast.BreakStmt{BaseNode: ast.BaseNode{Pos: pos}}}, pos),
-		}
-
-		bodyStmts := make([]ast.Stmt, 0, len(preStmts)+len(newBody.Stmts)+1)
-		bodyStmts = append(bodyStmts, preStmts...)
-		bodyStmts = append(bodyStmts, exit)
-		bodyStmts = append(bodyStmts, newBody.Stmts...)
-
-		return &ast.WhileStmt{
-			BaseNode: while.BaseNode,
-			Cond:     d.createBoolLiteral(true, pos),
-			Body:     &ast.BlockStmt{BaseNode: newBody.BaseNode, Stmts: bodyStmts},
-		}
-	}
+	d.checkShortCircuitComplexity(while.Cond)
 
 	return &ast.WhileStmt{
 		BaseNode: while.BaseNode,
-		Cond:     newCond,
-		Body:     newBody,
+		Cond:     d.desugarExpr(while.Cond),
+		Body:     d.desugarStmt(while.Body).(*ast.BlockStmt),
 	}
 }
 
@@ -350,6 +273,10 @@ func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
 		return d.desugarArrayLiteralExpr(expr)
 	case *ast.FnExpr:
 		return d.desugarFnExpr(expr)
+	case *ast.CastExpr:
+		return &ast.CastExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Type: expr.Type}
+	case *ast.TypeTestExpr:
+		return &ast.TypeTestExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Type: expr.Type}
 	case *ast.Literal, *ast.Ident:
 		return expr // No desugaring needed
 	default:
@@ -406,6 +333,7 @@ func (d *Desugarer) desugarMemberExpr(member *ast.MemberExpr) ast.Expr {
 		BaseNode: member.BaseNode,
 		Expr:     newExpr,
 		Name:     member.Name,
+		TypeArgs: member.TypeArgs,
 	}
 }
 

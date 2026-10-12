@@ -184,6 +184,7 @@ func (p *Parser) parseProgram() *ast.Program {
 	for !p.at(token.EOF) {
 		p.parseTopLevel(prog)
 	}
+	classifyPatterns(prog)
 	return prog
 }
 
@@ -371,9 +372,12 @@ func (p *Parser) parseTraitDecl() *ast.TraitDecl {
 }
 
 // parseImplDecl parses `impl Trait for Struct { ... }` or `impl Struct { ... }`.
+// For a generic struct the type parameters are introduced after `impl` and
+// repeated on the struct: `impl<T> Box<T> { ... }`.
 func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	tok := p.expect(token.IMPL, "'impl'")
 	decl := &ast.ImplDecl{BaseNode: base(tok)}
+	decl.TypeParams = p.parseTypeParams()
 
 	first := p.expectTypeName("trait or struct name")
 	if p.accept(token.FOR) {
@@ -382,6 +386,7 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	} else {
 		decl.StructName = first
 	}
+	p.expectImplTypeArgs(decl)
 
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
@@ -389,6 +394,34 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	}
 	p.expect(token.RBRACE, "'}'")
 	return decl
+}
+
+// expectImplTypeArgs parses the `<T, U>` after the struct name of an impl
+// and checks that it repeats the impl's type parameters in order, since
+// that is how a method's T is tied to the struct's. A mismatch is reported
+// without abandoning the impl, so its methods are still parsed.
+func (p *Parser) expectImplTypeArgs(decl *ast.ImplDecl) {
+	params := strings.Join(decl.TypeParams, ", ")
+	correct := fmt.Sprintf("Write: impl<%s> %s<%s>", params, decl.StructName, params)
+
+	if !p.at(token.LT) {
+		if len(decl.TypeParams) > 0 {
+			p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+				fmt.Sprintf("expected the type parameters of '%s' after its name", decl.StructName),
+				correct, p.cur(), p.sourceLines)
+		}
+		return
+	}
+
+	start := p.cur()
+	if args := p.parseTypeParams(); strings.Join(args, ", ") != params {
+		if len(decl.TypeParams) == 0 {
+			correct = fmt.Sprintf("Write: impl<%s> %s<%s>", strings.Join(args, ", "), decl.StructName, strings.Join(args, ", "))
+		}
+		p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+			fmt.Sprintf("type arguments of '%s' must repeat the parameters declared after 'impl'", decl.StructName),
+			correct, start, p.sourceLines)
+	}
 }
 
 func (p *Parser) expectTypeName(what string) string {
@@ -649,8 +682,8 @@ func (p *Parser) parseMatchStmt() *ast.MatchStmt {
 			p.next()
 		} else {
 			p.expect(token.CASE, "'case' or 'default'")
-			if isBuiltinTypeToken(p.cur().Type) {
-				matchCase.Pattern = p.parseType()
+			if typ := p.tryTypePattern(); typ != nil {
+				matchCase.Pattern = typ
 			} else {
 				matchCase.Pattern = p.parseHeaderExpr()
 			}
@@ -667,6 +700,33 @@ func (p *Parser) parseMatchStmt() *ast.MatchStmt {
 	}
 	p.expect(token.RBRACE, "'}'")
 	return stmt
+}
+
+// tryTypePattern parses the pattern of a match case as a type when it can
+// only be one: `Int`, `[Int]`, `String?`, `fn(Int) -> Int`, `Box<Int>`.
+// A bare name is left alone, since `case Point:` and `case limit:` look the
+// same here; the compiler decides once it knows what the name refers to.
+func (p *Parser) tryTypePattern() (typ *ast.Type) {
+	start := p.pos
+	wasSpeculating := p.speculating
+	p.speculating = true
+	defer func() {
+		p.speculating = wasSpeculating
+		if r := recover(); r != nil {
+			if _, ok := r.(bailout); !ok {
+				panic(r)
+			}
+			p.pos = start
+			typ = nil
+		}
+	}()
+
+	parsed := p.parseType()
+	bareName := parsed.Kind == ast.TypeBasic && len(parsed.Generics) == 0 && !isBuiltinTypeToken(parsed.Tok.Type)
+	if bareName || !p.at(token.COLON) {
+		p.fail("not a type pattern")
+	}
+	return parsed
 }
 
 // parseExprStmt parses an expression statement or an assignment. Assignments
@@ -746,7 +806,24 @@ func (p *Parser) parseUnary() ast.Expr {
 		p.next()
 		return &ast.UnaryExpr{BaseNode: base(tok), Op: tok.Literal, Expr: p.parseUnary()}
 	}
-	return p.parsePostfix()
+
+	// `value as Type` and `value is Type` bind tighter than any binary
+	// operator. `is` is not a reserved word: after a complete expression an
+	// identifier cannot follow, so there it can only be this operator.
+	expr := p.parsePostfix()
+	for {
+		tok := p.cur()
+		switch {
+		case tok.Type == token.AS:
+			p.next()
+			expr = &ast.CastExpr{BaseNode: base(tok), Expr: expr, Type: p.parsePostfixType()}
+		case tok.Type == token.IDENT && tok.Literal == "is":
+			p.next()
+			expr = &ast.TypeTestExpr{BaseNode: base(tok), Expr: expr, Type: p.parsePostfixType()}
+		default:
+			return expr
+		}
+	}
 }
 
 func (p *Parser) parsePostfix() ast.Expr {
@@ -770,7 +847,9 @@ func (p *Parser) parsePostfix() ast.Expr {
 		case token.DOT:
 			p.next()
 			name := p.expect(token.IDENT, "member name").Literal
-			expr = &ast.MemberExpr{BaseNode: base(tok), Expr: expr, Name: name}
+			// Like a generic function name, a method name may carry type
+			// arguments when a call follows: stack.map<String>(f)
+			expr = &ast.MemberExpr{BaseNode: base(tok), Expr: expr, Name: name, TypeArgs: p.tryTypeArgs()}
 		default:
 			return expr
 		}

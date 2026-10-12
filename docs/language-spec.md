@@ -30,7 +30,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
   - Unions can be combined with optional types: `Int | String?`.
   - Unions are not implicitly converted: a value must explicitly correspond to one of the types.
   - Unions are statically checked.
-- `let` mutable, `const` immutable; must initialize at declaration. Reassigning a `const` is a static error.
+- `let` mutable, `const` immutable; must initialize at declaration. Reassigning a `const` is a static error (`E2022`).
 - Assignment: `x = x + 1;`.
 - Blocks create scope: `{ let x = 1; }`.
 - Control flow:
@@ -87,9 +87,12 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 
 ### Methods
 - `impl Trait for Type { fn ... }` implements a trait; `impl Type { fn ... }` adds methods that belong to no trait.
+- For a generic struct the type parameters are introduced after `impl` and repeated on the struct: `impl<T> Stack<T> { fn peek() -> T? { ... } }`, `impl<T> Sized for Stack<T> { ... }`. On a `Stack<Int>`, `peek()` then returns `Int?`.
+- A method can have type parameters of its own, given or inferred at the call like those of a generic function: `fn map<U>(f: fn(T) -> U) -> Stack<U>` is called as `stack.map<String>(toString)` or just `stack.map(toString)`.
 - Inside a method, `self` is the value the method was called on. It is implicit: methods do not list it among their parameters.
-- A method name must not also be the name of a struct field anywhere in the program (`E5004`).
-- A parameter typed with a trait accepts any struct that implements it; the method is looked up on the value at runtime.
+- Method calls are fully checked: the method must exist on the receiver's struct or trait, the arguments must match its signature, and the call has the method's return type. `Self` in a signature is the struct the method belongs to.
+- A field and a method may share a name; `value.name` reads the field and `value.name(...)` calls the method. A method cannot be used as a value without calling it.
+- A parameter typed with a trait accepts exactly the structs that implement it (checked at the call), and only the trait's methods can be called on it. Which struct's method runs is decided at runtime.
 
 ### Closures
 - A function expression captures the variables it uses **by reference**: it sees later assignments made by the enclosing function, and its own assignments are visible outside. A captured variable lives on after the enclosing function returns.
@@ -103,9 +106,19 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 ## 7. Type Rules (grab bag)
 - `if`/`while` conditions must be `Bool`.
 - `for in` requires array or string.
-- `null` only fits `T?` or `Any`.
 - No implicit `Int`↔`Float` coercion.
-- `Any` accepts anything; assigning `Any` to specific `T` needs an explicit cast (future work).
+- **Optionals.** `T?` is "a `T` or `null`". `null` only fits `T?` or `Any`. A `T` can be used where a `T?` is expected, not the other way round. An optional cannot be operated on, indexed, or have fields read or methods called directly (`E2017`); `value ?? fallback` yields a `T`. A test against `null` narrows a local variable, a parameter or a field path (`node.next`) to `T` where the test guarantees it: in the body of `if x != null`, after `if x == null { return; }` (or `break`/`continue`), in a `while x != null` body, and on the right of `x != null && ...` / `x == null || ...`. Narrowing ends at an assignment to the variable, and does not apply inside lambdas or to a variable that a lambda assigns (it could be set to `null` whenever the lambda runs). What is known about a field also ends at the next assignment to any field and at the next call of something that may assign one, since those could change it through another reference. Calls that cannot assign a field (builtins, functions that only read) do not affect it; a call of a function value or of a function stored in a field always does.
+- **Type tests.** `value is Type` is a `Bool` computed when the program runs; where it is true, the tested variable or field has that type: `if shape is Square { shape.side }`. A test that can never be true (`1 is String`) is a compile error (`E2021`). `match` accepts types as patterns (`case Int:`, `case [String]:`, `case Point:`, `case fn(Int) -> Int:`), with the same narrowing inside each case. Assigning a non-null value to an optional variable narrows it too.
+- **`Any`** accepts every value, and that is all it does: a value of type `Any` can be passed along, printed, converted with `toString` and compared with `==`. It cannot be used as a number, indexed, called, iterated or assigned to a more specific type without a cast.
+- **Casts.** `value as Type` treats a value as a more specific type: out of `Any`, out of an optional or union, or from a trait to a struct implementing it. The cast is verified when it runs and stops the program if the value is something else. A cast that can never succeed (`1 as String`) is a compile error (`E2021`); one to a wider type is free. `as` binds tighter than the binary operators: `v as Int + 1` is `(v as Int) + 1`. The check goes into the value: every element of an array, and the fields of a generic struct that depend on its type arguments. A function type is compared with the signature of the function: it must accept at least what the type passes and return what it promises.
+- **Constants.** A name declared with `const` cannot be assigned (`E2022`). The value it refers to can still be changed: `const xs = [1]; xs[0] = 2;` is fine.
+- **Returns.** A function with a return type other than `Void` must return a value on every path (`E2004`). `while true` without a `break` and a `match` with a `default` whose cases all return count as returning. Statements that can never run, after a `return`, `break` or `continue`, produce a warning (`E2023`).
+- **Arrays.** All elements share one type. A literal takes its element type from its first element, or from the place it is used when that place has a type: `let shapes: [Shape] = [rect, square];`. An empty literal needs such a place: `let xs: [Int] = [];` (a bare `let xs = [];` is `E2020`). `push(xs, v)` requires `v` to fit the element type.
+- **Structs.** A literal gives every field a value (`E2018`), and only declared fields can be read or written (`E2014`).
+- **Functions as values.** A function fits a function type if it accepts at least what that type passes and returns what it promises, so `toString` (`fn(Any) -> String`) can be used as a `fn(Int) -> String`.
+- **Type parameters** are opaque inside a generic function: a `T` only fits `T`, and has no operators or members. At a call, `f<Int>` has its signature with `Int` substituted, so arguments and result are checked.
+- **Type argument inference.** The type arguments of a call may be left out when the arguments determine them: `first([1, 2])` is `first<Int>([1, 2])`, `map(names, toString)` infers both parameters, `stack.map(toString)` infers the method's. A parameter the arguments leave open is taken from the type expected of the result: `let xs: [Int] = none();`, `return none();`, `size(none())`. If neither determines it, it has to be written (`E3001`, or `E2024` for methods).
+- **Traits.** An impl method matches the trait's by position of its type parameters, not by their names: `fn convert<U>(v: U) -> [U]` implements `fn convert<T>(v: T) -> [T]`.
 - Generic type args must be concrete types (no higher-kinded). Each instantiation gets its own monomorphized copy.
 
 ## 8. luvm Mapping (sketch)
@@ -148,7 +161,7 @@ Decl         = FnDecl | StructDecl | TraitDecl | ImplDecl ;
 TraitDecl    = "trait" Ident "{" { TraitMethod } "}" ;
 TraitMethod  = "fn" Ident "(" [ParamList] ")" "->" Type ";" ;
 
-ImplDecl     = "impl" [ Ident "for" ] Ident "{" { FnDecl } "}" ;
+ImplDecl     = "impl" [TypeParams] [ Ident "for" ] Ident [TypeParams] "{" { FnDecl } "}" ;
 
 FnDecl       = "fn" Ident [TypeParams] "(" [ParamList] ")" "->" Type Block ;
 TypeParams   = "<" TypeParam { "," TypeParam } ">" ;
@@ -174,7 +187,7 @@ ForStmt      = "for" Ident "in" Expr Block ;
 ReturnStmt   = "return" [ Expr ] ";" ;
 MatchStmt    = "match" Expr "{" { MatchCase } "}" ;
 MatchCase    = ( "case" Pattern | "default" ) ":" ( Block | Expr ";" ) ;
-Pattern      = Expr | Type ;
+Pattern      = Literal | [ "-" ] Literal | Type ;
 ExprStmt     = Expr ";" ;
 
 Expr         = OrExpr ;
@@ -185,12 +198,13 @@ EqExpr       = RelExpr { ("==" | "!=") RelExpr } ;
 RelExpr      = AddExpr { ("<" | "<=" | ">" | ">=") AddExpr } ;
 AddExpr      = MulExpr { ("+" | "-") MulExpr } ;
 MulExpr      = UnaryExpr { ("*" | "/" | "%") UnaryExpr } ;
-UnaryExpr    = ( "-" | "!" ) UnaryExpr | PostfixExpr ;
+UnaryExpr    = ( "-" | "!" ) UnaryExpr | CastExpr ;
+CastExpr     = PostfixExpr { ( "as" | "is" ) OptType } ;
 PostfixExpr  = Primary { Call | Index | Member } ;
 Call         = "(" [ ArgList ] ")" ;
 ArgList      = Expr { "," Expr } ;
 Index        = "[" Expr "]" ;
-Member       = "." Ident ;
+Member       = "." Ident [TypeArgs] ;
 Primary      = Literal | Ident [TypeArgs] | "(" Expr ")"
              | ArrayLit | StructLit | FnExpr ;
 ArrayLit     = "[" [ ArgList ] "]" ;
@@ -228,21 +242,24 @@ known defects are inventoried in [missing.md](missing.md).
 | Anonymous functions and closures | Supported | Capture by reference |
 | Arrays | Supported | Grow with `push` |
 | Structs, field access and assignment | Supported | |
-| Traits, `impl`, methods, `self` | Supported | Dispatch is by method name on the value |
-| Generic functions | Supported | Type arguments are explicit: `f<Int>(x)`. They are not inferred (`E3001`) |
+| Traits, `impl`, methods, `self`, `Self` | Supported | Direct call when the struct is known, runtime lookup through a trait |
+| Optionals `T?`, `null`, `??` | Supported | Checked statically; null tests narrow variables and fields |
+| Casts `value as Type` | Supported | Verified at runtime, including array elements, generic struct fields and function signatures |
+| `const` | Supported | Reassignment is rejected |
+| Generic functions | Supported | Type arguments are inferred from the arguments, or written: `f<Int>(x)` |
 | Variadic functions | Supported | Packed at direct calls |
 | `match` on literals, `default` | Supported | |
-| `match` on types (`case Int:`) | Not yet | Rejected with `E7001` |
+| `match` on types (`case Int:`), `value is Type` | Supported | Narrows the tested variable or field |
 | Enums | Not yet | Parsed, rejected with `E7001` |
 | Imports / multiple files | Not yet | Parsed, rejected with `E7001` |
-| Generic structs | Supported | `Box<Int> { value: 1 }`; their fields are not type checked |
-| "All paths return" check, unreachable code | Not yet | A function that falls off its end returns `null` |
+| Generic structs and their methods | Supported | `impl<T> Box<T> { ... }`; methods may add their own: `fn map<U>(...)` |
+| "All paths return" check, unreachable code | Supported | Unreachable code is a warning |
 
-**Static typing is partial.** The checker verifies what it can prove and treats
-the rest as `Any`, which is checked when the program runs: results of method
-calls, values of generic type, optional types (`T?`) and trait-typed values.
-A mistake in those places surfaces as a runtime error with a source location
-rather than as a compile error.
+**Static typing.** Method calls, trait-typed values, optionals, generic calls
+and struct fields are all checked at compile time; `Any` is an explicit type
+the programmer writes, not something the checker falls back on. What the
+checker still does not do is listed in [missing.md](missing.md): inference
+from the expected type, and the deliberate limits of flow typing.
 
 **Size limits** come from one-byte bytecode operands: 256 registers per
 function, 256 distinct constants and 256 functions per program. Exceeding one

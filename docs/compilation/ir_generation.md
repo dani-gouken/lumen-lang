@@ -45,6 +45,7 @@ b2:
 | Logic and comparison | `NOT` `EQ` `NEQ` `LT` `LTE` `GT` `GTE` |
 | Control flow | `JMP block`, `BR cond, then, else`, `RET [value]`, `CALL fn, args...` |
 | Structs | `NEW_STRUCT name`, `GET_FIELD obj, name`, `SET_FIELD obj, name, value` |
+| Casts and type tests | no operation of their own: a call of the `__cast` / `__is` host function |
 | Arrays | `NEW_ARRAY capacity`, `GET_INDEX arr, i`, `SET_INDEX arr, i, value`, `LEN value`, `PUSH arr, value` |
 | Closures | `MAKE_CLOSURE fn, captures...`, `LOAD_UPVALUE i`, `STORE_UPVALUE i, value` |
 
@@ -140,7 +141,7 @@ end:                             JMP end
                              end:
 ```
 
-`||` is the same as `&&` with the branch targets swapped. Desugaring handles the operators in `if`/`while` conditions and `let` initializers itself; this lowering covers every other position (return values, arguments, assignments, nested operands), so the semantics are the same everywhere.
+`||` is the same as `&&` with the branch targets swapped. This is the only place the operators are lowered: the desugarer leaves them in the tree in every position (conditions, `let` initializers, return values, arguments), so the semantics are the same everywhere and the type checker still sees the whole condition.
 
 ## Structs and Methods
 
@@ -153,30 +154,95 @@ Point { x: 1, y: 2 }
 %v3 = NEW_STRUCT, "Point"
 SET_FIELD %v3, "x", %v1
 SET_FIELD %v3, "y", %v2
-%v4 = MOV, "Point.sum"          ; one pair per method of Point
-SET_FIELD %v3, "sum", %v4
 ```
 
 Field values are evaluated in alphabetical order of the field names, which makes the output deterministic (the AST stores fields in a map).
 
-**Methods are stored on the value.** After the fields, every method implemented for the struct is attached as a function-valued field under the method's name. A method call then needs no type information:
+### Method calls
+
+How `receiver.name(args)` is compiled depends on the **static type of the receiver**, taken from the type information computed after desugaring:
+
+| Receiver type | Meaning | Generated |
+|---------------|---------|-----------|
+| a struct that has the method | the target is known | direct call of `Struct.name` |
+| a struct without such a method | `name` is a field holding a function | read the field, call it |
+| a trait | any implementing struct may be behind it | look the method up on the value |
 
 ```lumen
-p.sum()
+p.sum()                 // p: Point
 ```
 ```
-%v5 = GET_FIELD, %v3, "sum"     ; look the method up on the receiver
-%v6 = CALL, %v5, %v3            ; pass the receiver as self
+%v4 = MOV, "Point.sum"          ; the function is named directly
+%v5 = CALL, %v4, %v3            ; the receiver is passed as self
 ```
 
-`x.name(args)` is compiled as a method call when `name` is a method of *any* struct in the program, and as "read field, call the function in it" otherwise. To keep that decision unambiguous, a name may not be both a method and a struct field (`E5004`).
+```lumen
+fn measure(s: Shape) -> Int { return s.area(); }
+```
+```
+%v2 = GET_FIELD, %v1, "area"    ; which area() depends on the value
+%v3 = CALL, %v2, %v1
+```
 
-This gives dynamic dispatch for free: a function taking a trait-typed parameter works with any struct that has the method. Its costs are stated plainly:
+Because the decision uses the receiver's type, a field and a method may have the same name, in the same struct or in different ones.
 
-*   every struct value carries one function object per method, created when the value is created;
-*   calling a method the value does not have is found at runtime (`CALL requires function object`), not at compile time.
+Type arguments of a method call (`stack.map<String>(f)`) only matter to the type checker. They leave no trace in the IR: like the struct's own parameters, they are erased, and one compiled `Stack.map` serves every call.
 
-A method table shared by all values of a struct would remove the first cost; that needs VM support and is left for later.
+### Methods stored on values
+
+The runtime lookup needs the function to be reachable from the value. A struct literal therefore stores a method on the new value, as a function-valued field under the method's name, when that method **can be reached through a trait** (it comes from an `impl Trait for Struct` block):
+
+```
+%v4 = MOV, "Square.area"
+SET_FIELD %v3, "area", %v4
+```
+
+Methods from a plain `impl Struct` block are only ever called directly and are not stored, so a struct without trait implementations carries nothing but its fields.
+
+The same lookup is the fallback when a receiver's type is not available to IR generation: if exactly one struct defines the method it is called directly; if several do, they all store it on their values and the lookup picks the right one.
+
+This is a simple form of dynamic dispatch with a known cost: a value of a struct implementing traits holds one function object per trait method, created with the value. A method table shared by all values of a struct would remove that; it needs VM support and is left for later.
+
+### Generic structs
+
+A generic struct is not duplicated per instantiation: `Box<Int>` and `Box<String>` are both values of `Box`, created with `NEW_STRUCT "Box"`, and the methods of `impl<T> Box<T>` are compiled once as `Box.get`, `Box.set`, ... Values do not carry their type arguments at runtime, so one copy serves all of them; the type checker is what keeps a `Box<Int>` and a `Box<String>` apart.
+
+## Casts
+
+`value as Type` is either free or a runtime check, and the type checker decides which (`types.Info.Casts`):
+
+*   a cast to a type the value always has (`n as Any`, `n as Int?`) emits nothing: the result is the value's register;
+*   a cast that can fail calls the host function `__cast` with the value and a **descriptor** of the type:
+
+```lumen
+v as Int
+```
+```
+%v2 = MOV, "__cast"
+%v3 = MOV, "int"
+%v4 = CALL, %v2, %v1, %v3       ; returns v, or stops with "cannot cast String to Int"
+```
+
+| Target type | Descriptor |
+|-------------|------------|
+| `Int` `Float` `Bool` `String` | `int` `float` `bool` `string` |
+| `Any`, or a type parameter | `any` |
+| a function type | `fn(D,D)->D`, with `...D` for a variadic parameter and `void` for no result |
+| `[T]` | `[D]`, checked for every element |
+| `T?` | `?D` |
+| a struct | `{Name}` |
+| a trait | `{A|B}`, the structs implementing it |
+| a generic struct | `{Name:field=D,...}` |
+
+A value does not record the type arguments of a generic struct, so a cast to `Box<Int>` is verified through the fields whose declared type mentions a type parameter: `{Box:value=int}`. Fields that do not depend on them are not listed. A struct that contains itself (`List<T>` with a `tail: List<T>?`) is described one level deep, `{List:head=int,tail=?{List}}`; descriptors are therefore always finite, which also bounds the check on values that contain themselves.
+
+**Function types.** A function value cannot be inspected for its parameter types, so every compiled function records its own signature, in the same descriptor form, in its prototype (`ir.Function.Signature`, from `types.Info.Signatures`). A cast to `fn(Int) -> Int` compares the two with subtyping: the function must accept what the type passes and return what it promises, so `toString` (`fn(any)->string`) casts to `fn(Int) -> String`. Type parameters are recorded as `any`. Methods have no signature; they are not values.
+
+### Type tests
+
+`value is Type` uses the same descriptors through the host function `__is`, which answers `true` or `false` instead of failing. A `match` on types is desugared to a chain of these tests. The narrowing they give (`value` is an `Int` inside the branch) is purely the type checker's doing; the generated code is the test and a branch.
+
+For the struct descriptors to be checkable, `NEW_STRUCT` records the struct's name on the value. Using a host function instead of a dedicated instruction keeps casts out of the instruction set; the name starts with `__` so it cannot be called from source.
 
 ## Calls and Variadic Functions
 
@@ -229,7 +295,6 @@ Errors use the `E5xxx` range; see [diagnosis.md](diagnosis.md).
 | `E5001` | A construct cannot be lowered (an undesugared `match`, an unknown operator or node) |
 | `E5002` | A name is used as a value but is not a variable or function |
 | `E5003` | The target of an assignment cannot be written |
-| `E5004` | A name is both a struct field and a method |
 | `E5005` | `break` or `continue` outside of a loop |
 
 ## Testing Strategy

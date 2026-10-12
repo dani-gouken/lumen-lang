@@ -55,7 +55,6 @@ fn grade(score: Int) -> String {
         case 9: { return "great"; }
         default: { return "ok"; }
     }
-    return "";
 }
 
 fn makeLogger(prefix: String) -> fn(String) -> Int {

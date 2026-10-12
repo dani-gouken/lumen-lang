@@ -5,6 +5,7 @@ import (
 	"io"
 	"math"
 	"os"
+	"strings"
 	"unsafe"
 )
 
@@ -45,6 +46,9 @@ type VM struct {
 	debugHook       DebugHook             // Optional debug hook
 	openUpvalues    []*UpvalueObj         // Linked list of open upvalues (for closure support)
 	out             io.Writer             // Destination of print/println
+	castTypes       map[string]*castType  // Parsed cast descriptors, by text
+
+	externSignatures map[string]string // Declared types of external functions
 }
 
 // NewVM creates a new VM instance.
@@ -59,6 +63,9 @@ func NewVM() *VM {
 		heap:        NewHeap(DefaultHeapSize),
 		externFuncs: make(map[string]ExternFunc),
 		out:         os.Stdout,
+		castTypes:   make(map[string]*castType),
+
+		externSignatures: make(map[string]string),
 	}
 	vm.registerBuiltins()
 	return vm
@@ -76,6 +83,9 @@ func NewVMWithHeapSize(heapSize uint64) *VM {
 		heap:        NewHeap(heapSize),
 		externFuncs: make(map[string]ExternFunc),
 		out:         os.Stdout,
+		castTypes:   make(map[string]*castType),
+
+		externSignatures: make(map[string]string),
 	}
 	vm.registerBuiltins()
 	return vm
@@ -84,6 +94,14 @@ func NewVMWithHeapSize(heapSize uint64) *VM {
 // RegisterExtern registers an external function.
 func (vm *VM) RegisterExtern(name string, fn ExternFunc) {
 	vm.externFuncs[name] = fn
+}
+
+// RegisterTypedExtern registers an external function together with its
+// type, written as a cast descriptor ("fn(any)->string"). A function with a
+// declared type can be cast to a function type; one without cannot.
+func (vm *VM) RegisterTypedExtern(name, signature string, fn ExternFunc) {
+	vm.externFuncs[name] = fn
+	vm.externSignatures[name] = signature
 }
 
 // SetOutput redirects the output of print/println (default: os.Stdout).
@@ -104,27 +122,57 @@ func (vm *VM) registerBuiltins() {
 	}
 
 	// print function
-	vm.RegisterExtern("print", func(vm *VM, args []Value) (Value, error) {
+	vm.RegisterTypedExtern("print", "fn(...any)->void", func(vm *VM, args []Value) (Value, error) {
 		write(args, "")
 		return NewNull(), nil
 	})
 
 	// println function
-	vm.RegisterExtern("println", func(vm *VM, args []Value) (Value, error) {
+	vm.RegisterTypedExtern("println", "fn(...any)->void", func(vm *VM, args []Value) (Value, error) {
 		write(args, "\n")
 		return NewNull(), nil
 	})
 
 	// toString function
-	vm.RegisterExtern("toString", func(vm *VM, args []Value) (Value, error) {
+	vm.RegisterTypedExtern("toString", "fn(any)->string", func(vm *VM, args []Value) (Value, error) {
 		if len(args) != 1 {
 			return NewNull(), fmt.Errorf("toString expects 1 argument, got %d", len(args))
 		}
 		return vm.newString(FormatValue(args[0]))
 	})
 
+	// __cast intrinsic: `value as Type`. Returns the value if it is what
+	// the descriptor says, fails otherwise.
+	vm.RegisterExtern("__cast", func(vm *VM, args []Value) (Value, error) {
+		if len(args) != 2 {
+			return NewNull(), fmt.Errorf("__cast expects 2 arguments, got %d", len(args))
+		}
+		descriptor, ok := stringValue(args[1])
+		if !ok {
+			return NewNull(), fmt.Errorf("__cast expects a type descriptor")
+		}
+		return vm.cast(args[0], descriptor)
+	})
+
+	// __is intrinsic: `value is Type`. True if the value is what the
+	// descriptor says.
+	vm.RegisterExtern("__is", func(vm *VM, args []Value) (Value, error) {
+		if len(args) != 2 {
+			return NewNull(), fmt.Errorf("__is expects 2 arguments, got %d", len(args))
+		}
+		descriptor, ok := stringValue(args[1])
+		if !ok {
+			return NewNull(), fmt.Errorf("__is expects a type descriptor")
+		}
+		typ, err := vm.castTypeFor(descriptor)
+		if err != nil {
+			return NewNull(), err
+		}
+		return NewBool(typ.mismatch(args[0]) == ""), nil
+	})
+
 	// push function: appends a value to an array
-	vm.RegisterExtern("push", func(vm *VM, args []Value) (Value, error) {
+	vm.RegisterTypedExtern("push", "fn(any,any)->void", func(vm *VM, args []Value) (Value, error) {
 		if len(args) != 2 {
 			return NewNull(), fmt.Errorf("push expects 2 arguments, got %d", len(args))
 		}
@@ -745,6 +793,11 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				// Call the extern function
 				retVal, err := externObj.Function()(vm, args)
 				if err != nil {
+					if strings.HasPrefix(externObj.Name(), "__") {
+						// Compiler intrinsic: the user wrote an operator,
+						// not a call, so the function name means nothing
+						return NewNull(), vm.runtimeError(err.Error())
+					}
 					return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s failed: %v", externObj.Name(), err))
 				}
 
@@ -885,6 +938,8 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("extern function allocation failed: %v", err))
 			}
 
+			funcObj.signature = vm.externSignatures[externName]
+
 			// Store function object pointer in destination register
 			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(funcObj)))
 
@@ -964,10 +1019,18 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			}
 
 		case OpNEWOBJ:
-			// Allocate a new object
+			// Allocate a new object: A = dest. With C = 1, B is the constant
+			// index of the name of the struct the object is a value of.
 			obj, shouldGC, err := vm.heap.AllocObject()
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("object allocation failed: %v", err))
+			}
+			if instr.C == 1 {
+				name, err := vm.fieldName("NEWOBJ", instr.B)
+				if err != nil {
+					return NewNull(), err
+				}
+				obj.typeName = name
 			}
 			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(obj)))
 			if shouldGC {
