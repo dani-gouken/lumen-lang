@@ -21,8 +21,8 @@ import (
 //	  let __len_N = collection.length;
 //	  while __iter_N < __len_N {
 //	    let item = collection[__iter_N];
-//	    body
 //	    __iter_N = __iter_N + 1;
+//	    body
 //	  }
 //	}
 func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
@@ -40,6 +40,23 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 	// Generate unique variable names
 	iterVar := d.generateIterVar()
 	lenVar := d.generateLenVar()
+
+	// Evaluate the iterable only once: anything but a plain variable is
+	// stored in a temporary first.
+	var srcInit ast.Stmt
+	if _, isIdent := iterableExpr.(*ast.Ident); !isIdent {
+		srcVar := d.generateTmpVar()
+		srcInit = &ast.LetStmt{
+			BaseNode: ast.BaseNode{Pos: pos},
+			Name:     srcVar,
+			Value:    iterableExpr,
+		}
+		srcIdent := d.createIdent(srcVar, pos)
+		if t, ok := d.typeInfo.Types[forStmt.Iterable]; ok {
+			d.typeInfo.Types[srcIdent] = t
+		}
+		iterableExpr = srcIdent
+	}
 
 	// Create iterator initialization: let __iter_N = 0;
 	iterInit := &ast.LetStmt{
@@ -157,11 +174,12 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 		},
 	}
 
-	// Build the while body: { let item = ...; <original body>; __iter_N = __iter_N + 1; }
+	// Build the while body: { let item = ...; __iter_N = __iter_N + 1; <original body> }
+	// The increment comes before the body so that `continue` cannot skip it.
 	whileBodyStmts := make([]ast.Stmt, 0, len(desugaredBody.Stmts)+2)
 	whileBodyStmts = append(whileBodyStmts, loopVarInit)
-	whileBodyStmts = append(whileBodyStmts, desugaredBody.Stmts...)
 	whileBodyStmts = append(whileBodyStmts, incrStmt)
+	whileBodyStmts = append(whileBodyStmts, desugaredBody.Stmts...)
 
 	whileBody := &ast.BlockStmt{
 		BaseNode: ast.BaseNode{Pos: pos},
@@ -177,6 +195,9 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 
 	// Wrap everything in a block
 	blockStmts := []ast.Stmt{iterInit, lenInit, whileStmt}
+	if srcInit != nil {
+		blockStmts = append([]ast.Stmt{srcInit}, blockStmts...)
+	}
 	block := d.wrapInBlock(blockStmts, pos)
 
 	// Record the mapping

@@ -1,9 +1,15 @@
 package ir
 
+import "github.com/dani-gouken/lumen/internal/token"
+
 // Builder helps construct the IR
 type Builder struct {
 	Func         *Function
 	CurrentBlock *BasicBlock
+
+	// Pos is attached to every emitted instruction. The IR generator
+	// updates it as it walks the AST.
+	Pos token.Position
 }
 
 // NewBuilder creates a new builder for a function
@@ -53,6 +59,7 @@ func (b *Builder) Emit(op OpType, dest *Register, operands ...Value) *Instructio
 		Op:       op,
 		Dest:     dest,
 		Operands: operands,
+		Pos:      b.Pos,
 	}
 	b.CurrentBlock.Instructions = append(b.CurrentBlock.Instructions, instr)
 	return instr

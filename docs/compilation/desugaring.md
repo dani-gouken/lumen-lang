@@ -78,8 +78,34 @@ for item in collection {
     let __len_N = collection.length;
     while __iter_N < __len_N {
         let item = collection[__iter_N];
-        body
         __iter_N = __iter_N + 1;
+        body
+    }
+}
+```
+
+The increment comes **before** the body. A `continue` in the body jumps back to
+the loop condition; with the increment at the end it would be skipped and the
+loop would never advance.
+
+When the iterable is anything but a plain variable, it is stored in a temporary
+first so that it is evaluated exactly once:
+
+```lumen
+// Before
+for item in loadItems() {
+    body
+}
+
+// After
+{
+    let __tmp_N = loadItems();
+    let __iter_M = 0;
+    let __len_M = __tmp_N.length;
+    while __iter_M < __len_M {
+        let item = __tmp_N[__iter_M];
+        __iter_M = __iter_M + 1;
+        body
     }
 }
 ```
@@ -97,17 +123,21 @@ for char in str {
     let __len_N = str.length;
     while __iter_N < __len_N {
         let char = str[__iter_N];  // char extraction
-        body
         __iter_N = __iter_N + 1;
+        body
     }
 }
 ```
+
+An iterable whose static type is `Any` (for example a value read from a generic
+container) is accepted as well; whether it really is an array or a string is
+checked when the loop runs.
 
 **Implementation Details**:
 - Generate unique variable names for iterator and length (`__iter_N`, `__len_N`)
 - Wrap the entire transformation in a block to ensure proper scoping
 - Preserve the loop variable name from the original `for` statement
-- Handle `break` and `continue` statements (they remain unchanged)
+- `break` and `continue` statements remain unchanged, which is why the increment precedes the body
 - Update type information for generated variables
 
 ### 2. Match Statements → If-Else Chains
@@ -187,6 +217,12 @@ match result {
 - For exhaustive matches (all cases covered), omit the final `else`
 - For enum variants, introduce runtime helper functions (`__is_variant`, `__extract_variant`)
 - Preserve source location information for error reporting
+
+**Patterns accepted today**: literals (including negative numbers such as
+`case -1:`) and `default:`. A `default:` case has no pattern and becomes the
+final `else`. Type patterns (`case Int:`) are desugared to a call to the
+`__is_type` intrinsic, which has no runtime implementation yet; the compiler
+driver rejects them up front with `E7001` (see [pipeline.md](pipeline.md)).
 
 ### 3. Optional Chaining (Future)
 
@@ -300,22 +336,52 @@ if condition1() || condition2() {
 }
 ```
 
-**Note**: Short-circuit operators in non-conditional contexts (e.g., assignments) also get desugared:
+**`let` statements**: a `let` whose initializer contains a short-circuit
+operator gets helper statements in front of it. They are inserted into the
+**enclosing block**, not wrapped in a block of their own, because a new block
+would end the scope of the declared variable immediately:
+
 ```lumen
 // Before
 let result = func1() && func2();
+use(result);
 
 // After
-{
-    let __tmp_N = func1();
-    let result;
+let __tmp_N = func1();
+let __tmp_M = false;
+if __tmp_N {
+    __tmp_M = func2();
+}
+let result = __tmp_M;
+use(result);          // `result` is still in scope
+```
+
+**`while` conditions**: the helper statements compute the condition, so they
+have to run before *every* iteration, including the ones reached through
+`continue`. The loop becomes an unconditional loop with an explicit exit:
+
+```lumen
+// Before
+while a() && b() {
+    body
+}
+
+// After
+while true {
+    let __tmp_N = a();
+    let __tmp_M = false;
     if __tmp_N {
-        result = func2();
-    } else {
-        result = false;
+        __tmp_M = b();
     }
+    if !__tmp_M { break; }
+    body
 }
 ```
+
+**Everywhere else** (return values, call arguments, assignments, nested
+operands) the operators are left in place and IR generation lowers them to
+branches directly; see [ir_generation.md](ir_generation.md). Both routes
+evaluate the right operand only when the left one does not decide the result.
 
 ### 6. String Interpolation (Future)
 
@@ -437,26 +503,27 @@ When generating new AST nodes during desugaring:
    - This ensures error messages point to the right place
    - Use the `BaseNode` position from the original construct
 
+### 7. Anonymous Functions
+
+The body of a function expression is desugared like the body of a declaration,
+so loops and matches inside lambdas are lowered too.
+
 ## Error Handling
 
 Desugaring should generally not introduce new errors, as it operates on a well-typed AST. However, some validation may be necessary:
 
-### E4001: Invalid Match Pattern
+The codes below are defined in `internal/desugar/errors.go`.
 
-**Description**: A match case pattern is malformed or cannot be desugared.
+| Code | Name | Raised when |
+|------|------|-------------|
+| `E4001` | Unsupported iterable | A `for-in` loop iterates over something that is neither an array, a string nor `Any` |
+| `E4002` | Invalid match pattern | A match case pattern is malformed or cannot be desugared |
+| `E4003` | Missing type info | The desugarer needs the type of an expression that the checker did not record |
+| `E4004` | Nested short-circuit | Warning: `&&`/`||` nested five or more levels deep |
+| `E4005` | Unsupported match type | A type pattern that cannot be lowered, e.g. a union type |
+| `E4006` | Enum variant extraction | Destructuring an enum variant in a pattern |
 
-**Example**:
-```lumen
-match x {
-    case 1..10: { action(); }  // Range patterns not supported yet
-}
-```
-
-**Error Message**: "Invalid match pattern: range patterns are not yet implemented"
-
-### E4002: Unsupported Iteration
-
-**Description**: A `for-in` loop attempts to iterate over a non-iterable type.
+### E4001: Unsupported Iterable
 
 **Example**:
 ```lumen
@@ -465,9 +532,19 @@ for x in 42 {  // Cannot iterate over Int
 }
 ```
 
-**Error Message**: "Cannot iterate over type 'Int'. Expected array or string."
+**Error Message**: "Cannot iterate over type 'int'" with the suggestion "Only arrays and strings are iterable."
 
-**Note**: This error should ideally be caught during type checking, not desugaring.
+**Note**: The type checker reports the same mistake first as `E2011`, so this
+code is only reached for programs built without it (as in the unit tests).
+
+### E4002: Invalid Match Pattern
+
+**Example**:
+```lumen
+match x {
+    case 1..10: { action(); }  // Range patterns not supported yet
+}
+```
 
 ## Interaction with Other Phases
 

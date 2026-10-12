@@ -42,8 +42,12 @@ const (
 	OpNewArray // Dest = NewArray Type, Size
 	OpGetIndex // Dest = Src1[Src2]
 	OpSetIndex // Src1[Src2] = Src3
+	OpLen      // Dest = length of Src1 (array or string)
+	OpPush     // Append Src2 to array Src1
 
 	// Closures
+	// A capture is either a Register (a local of the enclosing function) or
+	// a Constant of type "Upvalue" (an upvalue index of the enclosing function).
 	OpMakeClosure  // Dest = MakeClosure Func, Captures...
 	OpLoadUpvalue  // Dest = LoadUpvalue Index
 	OpStoreUpvalue // StoreUpvalue Index, Value
@@ -107,6 +111,10 @@ func (op OpType) String() string {
 		return "GET_INDEX"
 	case OpSetIndex:
 		return "SET_INDEX"
+	case OpLen:
+		return "LEN"
+	case OpPush:
+		return "PUSH"
 	case OpMakeClosure:
 		return "MAKE_CLOSURE"
 	case OpLoadUpvalue:

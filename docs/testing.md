@@ -2,7 +2,13 @@
 
 ## Overview
 
-Lumen uses a pragmatic, two-level testing approach focused on **concise, high-value tests** rather than exhaustive coverage. We don't need an army of tests—we need the right tests.
+Lumen uses a pragmatic, three-level testing approach focused on **concise, high-value tests** rather than exhaustive coverage. We don't need an army of tests—we need the right tests.
+
+| Level | What it exercises | Where | Run with |
+|-------|-------------------|-------|----------|
+| 1. Unit | One package at a time | `internal/*/..._test.go` | `make test-unit` |
+| 2. Toolchain | The assembler/disassembler/VM commands on `.lasm` files | `test/integration/test.sh` | `make test-integration` |
+| 3. End-to-end | `lumen run`/`build`/`ir` on real `.lum` programs | `test/e2e/` | `make test-e2e` |
 
 ## Testing Levels
 
@@ -40,6 +46,34 @@ Lumen uses a pragmatic, two-level testing approach focused on **concise, high-va
 - Use **real example files**
 - Verify **expected outcomes**
 - Keep test cases **minimal but representative**
+
+### Level 3: End-to-End Tests (Lumen programs)
+
+**What**: Build the `lumen` binary and run it on `.lum` source files, checking stdout, stderr and the exit code.
+
+**Why**: It is the only level that covers the whole chain a user depends on: CLI argument handling, every compiler stage, the VM, and how results and errors are presented.
+
+**How it is organized** (`test/e2e/e2e_test.go`):
+
+- `test/e2e/cases/NAME.lum` is run with `lumen run`. Optional files next to it state what to expect:
+  - `NAME.out` — exact stdout (absent: no output)
+  - `NAME.err` — lines that must each appear in stderr (absent: stderr must be empty)
+  - `NAME.exit` — exit code (absent: 0)
+- Every `examples/*.lum` is run too and compared with `examples/expected/NAME.out`, so the examples in the repository are guaranteed to work.
+- A few Go tests cover the other commands: `build` then `exec`, `build` to a `.lasm` listing, `ir`, a missing file, and usage errors.
+
+To add a case, drop a `.lum` file in `cases/` and generate its expected output:
+
+```bash
+go test ./test/e2e -update   # rewrites the .out files from actual output
+git diff test/e2e examples   # review what changed before committing
+```
+
+`-update` only writes `.out` files. `.err` and `.exit` are written by hand, because they state intent: which diagnostics matter and how the program should end.
+
+**Philosophy**:
+- `.err` files list the stable, meaningful lines (error code, message, location), not the whole rendered diagnostic, so a cosmetic change to the layout does not break every case
+- One program per behavior that only shows at this level (exit codes, error reporting); `features.lum` is the single broad program that touches everything
 
 ## What We Test
 
@@ -95,6 +129,43 @@ Lumen uses a pragmatic, two-level testing approach focused on **concise, high-va
 - ❌ Testing every possible corruption scenario
 - ❌ Backwards compatibility (only one version exists)
 
+### 5. Compiler front end
+
+Tests for the stages that turn source into IR are driven **from source text**: a small helper parses (and resolves, type checks, ...) a snippet and the test asserts on the result. This keeps them short and independent of how AST nodes are built by hand.
+
+| Package | File | Critical tests |
+|---------|------|----------------|
+| `internal/parser` | `lexer_test.go`, `parser_test.go` | Tokens and positions; operator precedence; `a < b` vs `f<T>(x)`; struct literal vs block; every error code; recovery after a broken statement |
+| `internal/resolve` | `source_test.go` | Builtins in scope; lambda parameters and bodies; `self` only in methods |
+| `internal/types` | `source_test.go` | Inferred types of member/index/lambda/generic expressions; programs that must be accepted; programs that must be rejected, with the message |
+| `internal/analysis` | `source_test.go` | Which variables each lambda captures, including ones passed through an intermediate lambda |
+| `internal/desugar` | `source_test.go` | `continue` cannot skip a for-loop increment; the iterable is evaluated once; `while a && b` re-evaluates its condition |
+| `internal/irgen` | `source_test.go` | `let` copies instead of aliasing; block scopes; short-circuit branches; struct fields by name; variadic packing; capture operands |
+
+### 6. Bytecode generation (`internal/codegen/codegen_test.go`)
+
+Each test builds a small IR function with `ir.Builder`, generates bytecode and **executes it**, asserting on the returned value. Testing behavior rather than the emitted instructions keeps the tests valid when the register allocator changes.
+
+**Critical tests**:
+- ✅ Every constant kind loads correctly
+- ✅ Arguments survive calls (the VM returns results in `r0`)
+- ✅ Closures share captured variables by reference
+- ✅ Temporaries share registers (a 400-step expression needs a handful)
+- ✅ Each limit and each unsupported construct reports its error code
+
+### 7. Whole pipeline (`internal/compiler/compiler_test.go`)
+
+Feature tests: one test per language feature, each a short program whose printed output is compared with the expected text. They run in-process (no binary), so they are fast and failures show the diagnostics directly.
+
+**Critical tests**:
+- ✅ One test per feature area: arithmetic, strings, scopes, control flow, short-circuit evaluation, functions, arrays, structs and methods, closures, generics and variadics, match
+- ✅ The garbage collector keeps live values while the heap is recycled many times
+- ✅ Runtime errors name the source line and function
+- ✅ One compile error per stage, checked by error code
+- ✅ The pipeline stops at the first failing stage
+
+**When a program misbehaves**, add the smallest reproduction here first; move down to the package that owns the bug once it is located.
+
 ## Test Organization
 
 ```
@@ -110,7 +181,19 @@ lumen/
       assembler_test.go    # Unit tests for assembler
       disassembler.go
       disassembler_test.go # Unit tests for disassembler
+    parser/ resolve/ types/ analysis/ desugar/ irgen/
+      source_test.go       # Stage tests driven from source text
+    codegen/
+      codegen_test.go      # IR -> bytecode, verified by execution
+    compiler/
+      compiler_test.go     # Feature tests through the whole pipeline
+  examples/
+    *.lum                  # Example programs, run by the e2e tests
+    expected/*.out         # Their expected output
   test/
+    e2e/
+      e2e_test.go          # Runs the lumen binary on .lum files
+      cases/               # Programs with expected .out/.err/.exit
     integration/           # Toolchain integration tests
       test.sh             # Main test script
     output/               # Test artifacts (gitignored)
@@ -118,21 +201,23 @@ lumen/
 
 ## Running Tests
 
-### Quick (Unit Tests Only)
+### Everything
 ```bash
-make test
+make test             # unit + end-to-end + toolchain
 ```
 
-### Full (Unit + Integration)
+### One Level
 ```bash
-make test-all
+make test-unit        # Go unit tests of every internal package
+make test-e2e         # lumen binary on .lum programs
+make test-integration # assembler/disassembler/VM commands
 ```
 
-### Individual Components
+### One Package or Test
 ```bash
-make test-vm          # Test VM only
-make test-asm         # Test assembler/disassembler only
-make test-integration # Test toolchain only
+go test ./internal/parser
+go test ./internal/compiler -run TestClosures -v
+go test ./test/e2e -run TestCases/features -v
 ```
 
 ## Test Naming Conventions

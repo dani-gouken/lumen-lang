@@ -10,8 +10,9 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 ## 1. Lexical Structure
 - Source files: UTF-8 `.lum`, one file = one module.
 - Identifiers: `Letter {Letter | Digit | _}`, case-sensitive.
-- Keywords: `fn let const struct enum if else match while for in break continue return true false null import as`.
-- Literals: ints (`123`, `-42`), floats (`1.0`, `10e3`), strings (`"hi"`), bools, `null`. No char literal in v0.
+- Keywords: `fn let const struct enum trait impl if else match case while for in break continue return true false null import as`, plus the type names `Int Float Bool String Any Void Self`.
+- Literals: ints (`123`), floats (`1.0`, `10e3`), strings (`"hi"`), bools, `null`. No char literal in v0. A leading `-` is the unary operator, so `-42` is the negation of `42`.
+- String literals stay on one line and support the escapes `\n \t \r \0 \\ \"`.
 - Comments: `// line`, `/* block */` (non-nested).
 
 ## 2. Types
@@ -68,16 +69,31 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
   - Comparison: numbers or strings → `Bool`.
   - Equality: any type → `Bool`.
   - Null-coalescing `a ?? b`: `a: T?`, `b: T|T?`, result `T`.
-- Member/index: `user.name`, `items[0]` (`Int` index; OOB is runtime error).
-- Calls: `callee(args...)` with arity/type check.
+- Member/index: `user.name`, `items[0]` (`Int` index; OOB is runtime error). Indexing a string yields a one-character string.
+- Length: `items.length` and `text.length` give the number of elements of an array and of characters of a string.
+- Calls: `callee(args...)` with arity/type check. Method calls: `value.method(args...)`.
+- Array literals: `[1, 2, 3]`, `[]`. All elements have the same type.
+- Struct literals: `Point { x: 1, y: 2 }`. In the header of `if`, `while`, `for` and `match`, a `{` after a name starts the body, so a struct literal there needs parentheses: `if (Point { x: 1 }).x == 1 { ... }`.
+- Anonymous functions: `fn(x: Int) -> Int { return x + 1; }`. They can use the variables of the enclosing function; see Closures below.
+- `&&` and `||` evaluate their right operand only if the left one does not decide the result. `a ?? b` evaluates `b` only if `a` is `null`.
 
 ## 5. Functions
 - Form: `fn add(a: Int, b: Int) -> Int { return a + b; }`.
 - Return type required (`Void` allowed). In `-> T`, all paths return `T`; in `-> Void`, `return;` only.
 - Entry point convention: `fn main() -> Int { ... }`.
-- Generics: `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { ... }`; instantiate with `map[Int, String](nums, toStr)`. No traits/interfaces in v0.
-- Variadic arguments: `fn printf(fmt: String, args: ...Any) -> Void { ... }`. The last parameter can be prefixed with `...` to accept zero or more arguments of that type.
-- Generic Variadic: `fn collect<T>(...T) -> [T] { ... }`.
+- Generics: `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { ... }`; instantiate with `map<Int, String>(nums, toStr)`. `name<...>` is read as type arguments only when the closing `>` is followed by `(` or `{`; otherwise `<` is the comparison operator.
+- Variadic arguments: `fn printf(fmt: String, args: ...Any) -> Void { ... }`. The last parameter can be prefixed with `...` to accept zero or more arguments of that type. Inside the function the parameter is an array (`args.length`, `for a in args`). Arguments are packed when the function is called by its name; a variadic function called through a variable receives its arguments as written.
+- Generic Variadic: `fn collect<T>(items: ...T) -> [T] { ... }`.
+
+### Methods
+- `impl Trait for Type { fn ... }` implements a trait; `impl Type { fn ... }` adds methods that belong to no trait.
+- Inside a method, `self` is the value the method was called on. It is implicit: methods do not list it among their parameters.
+- A method name must not also be the name of a struct field anywhere in the program (`E5004`).
+- A parameter typed with a trait accepts any struct that implements it; the method is looked up on the value at runtime.
+
+### Closures
+- A function expression captures the variables it uses **by reference**: it sees later assignments made by the enclosing function, and its own assignments are visible outside. A captured variable lives on after the enclosing function returns.
+- Variables declared inside a loop body are shared by all closures created in that loop; copy the value into a function parameter to give each closure its own.
 
 ## 6. Modules & Imports
 - One module per `.lum` file; module name = path relative to a chosen root (TBD).
@@ -111,11 +127,19 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Runtime: null deref, array OOB, type errors that escape checks, divide by zero. Runtime aborts with an error message is acceptable in v0.
 
 ## 10. Minimal Stdlib (host-provided)
-- `fn print(msg: String) -> Void;`
-- `fn println(msg: String) -> Void;`
-- `fn toString(v: Any) -> String;`
+- `fn print(args: ...Any) -> Void;` writes its arguments separated by spaces.
+- `fn println(args: ...Any) -> Void;` same, then a newline.
+- `fn toString(v: Any) -> String;` the text `print` would write.
+- `fn push(array: Any, value: Any) -> Void;` appends to an array. Assigning to `items[i]` replaces an existing element; `push` is how an array grows.
 
-## 11. Grammar (EBNF sketch)
+Values print as `42`, `2.5`, `true`, `null`, the text of a string, `[1, 2]` for arrays and `{x: 1, y: 2}` for structs.
+
+## 11. Program Entry and Exit
+- Execution starts at `fn main()`, which takes no parameters (`E6006` otherwise).
+- When `main` returns an `Int`, `lumen run` uses it as the process exit code (low 8 bits). Any other result exits with 0.
+- A runtime error prints the message with the source location and exits with 1.
+
+## 12. Grammar (EBNF sketch)
 ```
 Program      = { Import | Decl } EOF ;
 Import       = "import" StringLiteral [ "as" Ident ] ";" ;
@@ -124,7 +148,7 @@ Decl         = FnDecl | StructDecl | TraitDecl | ImplDecl ;
 TraitDecl    = "trait" Ident "{" { TraitMethod } "}" ;
 TraitMethod  = "fn" Ident "(" [ParamList] ")" "->" Type ";" ;
 
-ImplDecl     = "impl" Ident "for" Ident "{" { FnDecl } "}" ;
+ImplDecl     = "impl" [ Ident "for" ] Ident "{" { FnDecl } "}" ;
 
 FnDecl       = "fn" Ident [TypeParams] "(" [ParamList] ")" "->" Type Block ;
 TypeParams   = "<" TypeParam { "," TypeParam } ">" ;
@@ -133,18 +157,23 @@ ParamList    = Param { "," Param } [ "," VariadicParam ] | VariadicParam ;
 Param        = Ident ":" Type ;
 VariadicParam = Ident ":" "..." Type ;
 
-StructDecl   = "struct" Ident [TypeParams] "{" { Field [";" ] } "}" ;
+StructDecl   = "struct" Ident [TypeParams] "{" { Field [ ";" | "," ] } "}" ;
 Field        = Ident ":" Type ;
 
 Block        = "{" { Stmt } "}" ;
-Stmt         = LetDecl | IfStmt | WhileStmt | ForStmt | ReturnStmt | MatchStmt | ExprStmt ;
+Stmt         = LetDecl | IfStmt | WhileStmt | ForStmt | ReturnStmt | MatchStmt
+             | BreakStmt | ContinueStmt | Block | AssignStmt | ExprStmt ;
+BreakStmt    = "break" ";" ;
+ContinueStmt = "continue" ";" ;
+AssignStmt   = AssignTarget "=" Expr ";" ;
+AssignTarget = Ident | PostfixExpr Index | PostfixExpr Member ;
 LetDecl      = ("let" | "const") Ident [ ":" Type ] "=" Expr ";" ;
 IfStmt       = "if" Expr Block [ "else" (Block | IfStmt) ] ;
 WhileStmt    = "while" Expr Block ;
 ForStmt      = "for" Ident "in" Expr Block ;
 ReturnStmt   = "return" [ Expr ] ";" ;
 MatchStmt    = "match" Expr "{" { MatchCase } "}" ;
-MatchCase    = "case" Pattern ":" Block ;
+MatchCase    = ( "case" Pattern | "default" ) ":" ( Block | Expr ";" ) ;
 Pattern      = Expr | Type ;
 ExprStmt     = Expr ";" ;
 
@@ -162,10 +191,16 @@ Call         = "(" [ ArgList ] ")" ;
 ArgList      = Expr { "," Expr } ;
 Index        = "[" Expr "]" ;
 Member       = "." Ident ;
-Primary      = Literal | Ident [TypeArgs] | "(" Expr ")" ;
+Primary      = Literal | Ident [TypeArgs] | "(" Expr ")"
+             | ArrayLit | StructLit | FnExpr ;
+ArrayLit     = "[" [ ArgList ] "]" ;
+StructLit    = Ident [TypeArgs] "{" [ FieldInit { "," FieldInit } [ "," ] ] "}" ;
+FieldInit    = Ident ":" Expr ;
+FnExpr       = "fn" "(" [ParamList] ")" [ "->" Type ] Block ;
 TypeArgs     = "<" Type { "," Type } ">" ;
 
-Type         = SimpleType [ "?" ] ;
+Type         = OptType { "|" OptType } ;
+OptType      = SimpleType [ "?" ] ;
 SimpleType   = BuiltinType | Ident [TypeArgs] | "[" Type "]" | "(" Type ")" | FunctionType ;
 BuiltinType  = "Int" | "Float" | "Bool" | "String" | "Any" | "Void" | "Self" ;
 FunctionType = "fn" [TypeParams] "(" [TypeList] ")" "->" Type ;
@@ -174,3 +209,41 @@ TypeList     = Type { "," Type } [ "," "..." Type ] | "..." Type ;
 Ident        = Letter { Letter | Digit | "_" } ;
 Literal      = IntLit | FloatLit | StringLit | "true" | "false" | "null" ;
 ```
+
+## 13. Implementation Status
+
+What `lumen run` compiles and executes today. The pipeline is described in
+[compilation/pipeline.md](compilation/pipeline.md); gaps, missing checks and
+known defects are inventoried in [missing.md](missing.md).
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| `Int`, `Float`, `Bool`, `String`, `null` | Supported | Ints are 48-bit signed |
+| Arithmetic, comparison, `!`, unary `-` | Supported | No implicit Int/Float conversion; strings compare by content |
+| String concatenation, indexing, `.length` | Supported | |
+| `let`, `const`, assignment, block scopes | Supported | Assigning to a `const` is not rejected yet |
+| `if`/`else`, `while`, `for in`, `break`, `continue` | Supported | `for in` over arrays and strings |
+| `&&`, `||`, `??` | Supported | Short-circuit |
+| Functions, recursion, functions as values | Supported | |
+| Anonymous functions and closures | Supported | Capture by reference |
+| Arrays | Supported | Grow with `push` |
+| Structs, field access and assignment | Supported | |
+| Traits, `impl`, methods, `self` | Supported | Dispatch is by method name on the value |
+| Generic functions | Supported | Type arguments are explicit: `f<Int>(x)`. They are not inferred (`E3001`) |
+| Variadic functions | Supported | Packed at direct calls |
+| `match` on literals, `default` | Supported | |
+| `match` on types (`case Int:`) | Not yet | Rejected with `E7001` |
+| Enums | Not yet | Parsed, rejected with `E7001` |
+| Imports / multiple files | Not yet | Parsed, rejected with `E7001` |
+| Generic structs | Supported | `Box<Int> { value: 1 }`; their fields are not type checked |
+| "All paths return" check, unreachable code | Not yet | A function that falls off its end returns `null` |
+
+**Static typing is partial.** The checker verifies what it can prove and treats
+the rest as `Any`, which is checked when the program runs: results of method
+calls, values of generic type, optional types (`T?`) and trait-typed values.
+A mistake in those places surfaces as a runtime error with a source location
+rather than as a compile error.
+
+**Size limits** come from one-byte bytecode operands: 256 registers per
+function, 256 distinct constants and 256 functions per program. Exceeding one
+is a compile error (`E6001`-`E6003`), never silent corruption.

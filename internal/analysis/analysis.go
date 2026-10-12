@@ -9,7 +9,7 @@ import (
 
 // Error codes for closure analysis
 const (
-	ErrClosureCycle = "E4001" // Circular closure dependency
+	ErrClosureCycle = "E4101" // Circular closure dependency
 )
 
 // Analyzer performs closure analysis on the AST

@@ -23,13 +23,14 @@ func (a *Analyzer) visitDecl(decl ast.Decl) {
 	case *ast.ImplDecl:
 		for _, method := range d.Methods {
 			if method.Body != nil {
-				a.visitFunction(method, method.Body, method.Params)
+				// Methods receive the implicit `self` as a local
+				a.visitFunction(method, method.Body, method.Params, "self")
 			}
 		}
 	}
 }
 
-func (a *Analyzer) visitFunction(fn ast.Node, body *ast.BlockStmt, params []*ast.Param) {
+func (a *Analyzer) visitFunction(fn ast.Node, body *ast.BlockStmt, params []*ast.Param, implicitLocals ...string) {
 	// Create new scope for this function
 	scope := &functionScope{
 		function: fn,
@@ -39,12 +40,18 @@ func (a *Analyzer) visitFunction(fn ast.Node, body *ast.BlockStmt, params []*ast
 
 	// Register parameters as locals
 	fnScope := a.resolveTable.Scopes[fn]
-	if fnScope != nil {
-		for _, param := range params {
-			if sym := fnScope.Lookup(param.Name); sym != nil {
-				scope.locals[param.Name] = sym
-			}
+	for _, param := range params {
+		var sym *resolve.Symbol
+		if fnScope != nil {
+			sym = fnScope.Lookup(param.Name)
 		}
+		if sym == nil {
+			sym = &resolve.Symbol{Name: param.Name, Kind: resolve.SymbolVar, Decl: param}
+		}
+		scope.locals[param.Name] = sym
+	}
+	for _, name := range implicitLocals {
+		scope.locals[name] = &resolve.Symbol{Name: name, Kind: resolve.SymbolVar, Decl: fn}
 	}
 
 	// Push function onto stack
@@ -78,16 +85,11 @@ func (a *Analyzer) visitStmt(stmt ast.Stmt, scope *functionScope) {
 			a.visitStmt(st, scope)
 		}
 	case *ast.LetStmt:
-		// Register local variable
-		stmtScope := a.resolveTable.Scopes[scope.function]
-		if stmtScope != nil {
-			if sym := stmtScope.Lookup(s.Name); sym != nil {
-				scope.locals[s.Name] = sym
-			}
-		}
+		// The initializer is evaluated before the name comes into scope
 		if s.Value != nil {
 			a.visitExpr(s.Value, scope)
 		}
+		scope.locals[s.Name] = &resolve.Symbol{Name: s.Name, Kind: resolve.SymbolVar, Decl: s}
 	case *ast.ReturnStmt:
 		if s.Value != nil {
 			a.visitExpr(s.Value, scope)
@@ -105,6 +107,7 @@ func (a *Analyzer) visitStmt(stmt ast.Stmt, scope *functionScope) {
 		// For-in loop: for x in iterable { ... }
 		// Loop variable is local
 		a.visitExpr(s.Iterable, scope)
+		scope.locals[s.Var] = &resolve.Symbol{Name: s.Var, Kind: resolve.SymbolVar, Decl: s}
 		a.visitStmt(s.Body, scope)
 	case *ast.MatchStmt:
 		a.visitExpr(s.Cond, scope)
@@ -178,50 +181,38 @@ func (a *Analyzer) checkCapture(ident *ast.Ident, scope *functionScope) {
 		return
 	}
 
-	// Check if it's defined in a parent scope
-	scopeDistance := 0
-	fromUpvalue := false
-
-	// Search through parent scopes
+	// Find the enclosing function that declares the variable
 	for i := len(a.scopeStack) - 2; i >= 0; i-- {
-		parentScope := a.scopeStack[i]
-		scopeDistance++
+		if _, found := a.scopeStack[i].locals[ident.Name]; !found {
+			continue
+		}
 
-		if _, found := parentScope.locals[ident.Name]; found {
-			// Found in ancestor scope - this is a capture!
-			capturedVar := &CapturedVar{
+		// Every function between the declaring one and the current one has
+		// to carry the variable: the first takes it from the declaring
+		// function's locals, the deeper ones from their parent's upvalues.
+		for j := i + 1; j < len(a.scopeStack); j++ {
+			fn := a.scopeStack[j].function
+			if a.captures(fn, ident.Name) {
+				continue
+			}
+			a.info.AddCapture(fn, &CapturedVar{
 				Symbol:        sym,
 				Name:          ident.Name,
-				ScopeDistance: scopeDistance,
-				FromUpvalue:   fromUpvalue,
+				ScopeDistance: j - i,
+				FromUpvalue:   j > i+1,
 				Decl:          sym.Decl,
-			}
-
-			// Check if we already captured this variable
-			captures := a.info.Captures[scope.function]
-			alreadyCaptured := false
-			for _, cv := range captures.CapturedVars {
-				if cv.Symbol == sym {
-					alreadyCaptured = true
-					break
-				}
-			}
-
-			// Add to current function's captures if not already captured
-			if !alreadyCaptured {
-				a.info.AddCapture(scope.function, capturedVar)
-			}
-
-			return
+			})
 		}
+		return
+	}
+}
 
-		// Check if parent already captures this variable
-		parentCaptures := a.info.Captures[parentScope.function]
-		for _, cv := range parentCaptures.CapturedVars {
-			if cv.Symbol == sym {
-				fromUpvalue = true
-				break
-			}
+// captures reports whether fn already captures the named variable.
+func (a *Analyzer) captures(fn ast.Node, name string) bool {
+	for _, cv := range a.info.Captures[fn].CapturedVars {
+		if cv.Name == name {
+			return true
 		}
 	}
+	return false
 }

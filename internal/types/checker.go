@@ -23,6 +23,7 @@ const (
 	ErrNotIterable       = "E2011"
 	ErrMissingMethod     = "E2012"
 	ErrSignatureMismatch = "E2013"
+	ErrUnknownField      = "E2014"
 )
 
 type Checker struct {
@@ -34,6 +35,10 @@ type Checker struct {
 
 	// Context for return type checking
 	currentFn *ast.FnDecl
+
+	// Type parameters in scope. They are only bound by monomorphization,
+	// so until then they are treated as Any.
+	typeParams map[string]bool
 }
 
 func NewChecker(prog *ast.Program, table *resolve.Table, errs *errors.Handler) *Checker {
@@ -43,6 +48,7 @@ func NewChecker(prog *ast.Program, table *resolve.Table, errs *errors.Handler) *
 		errs:        errs,
 		info:        NewInfo(),
 		sourceLines: make(map[int]string),
+		typeParams:  make(map[string]bool),
 	}
 }
 
@@ -76,6 +82,7 @@ func (c *Checker) checkFnDecl(d *ast.FnDecl) {
 	prevFn := c.currentFn
 	c.currentFn = d
 	defer func() { c.currentFn = prevFn }()
+	defer c.bindTypeParams(d.TypeParams)()
 
 	if d.Body != nil {
 		c.checkBlockStmt(d.Body)
@@ -265,7 +272,7 @@ func (c *Checker) checkLetStmt(s *ast.LetStmt) {
 
 	if s.Type != nil {
 		declType := c.resolveType(s.Type)
-		if !IsAssignable(declType, valType, nil) {
+		if !c.assignable(declType, valType) {
 			c.errorfWithSuggestion(s.Value.Token(), ErrTypeMismatch, fmt.Sprintf("Ensure the value is of type %s", declType), "cannot assign type %s to %s", valType, declType)
 		}
 	}
@@ -285,7 +292,7 @@ func (c *Checker) checkReturnStmt(s *ast.ReturnStmt) {
 	if s.Value != nil {
 		valType := c.checkExpr(s.Value)
 		if valType != nil {
-			if !IsAssignable(returnType, valType, nil) {
+			if !c.assignable(returnType, valType) {
 				c.errorfWithSuggestion(s.Value.Token(), ErrReturnMismatch, fmt.Sprintf("Ensure the return value is of type %s", returnType), "cannot return type %s from function returning %s", valType, returnType)
 			}
 		}
@@ -298,7 +305,7 @@ func (c *Checker) checkReturnStmt(s *ast.ReturnStmt) {
 
 func (c *Checker) checkIfStmt(s *ast.IfStmt) {
 	condType := c.checkExpr(s.Cond)
-	if condType != nil && !condType.Equals(Bool) {
+	if condType != nil && !condType.Equals(Bool) && !isAny(condType) {
 		c.errorfWithSuggestion(s.Cond.Token(), ErrInvalidCondition, "Condition must evaluate to a boolean", "condition must be bool, got %s", condType)
 	}
 
@@ -314,7 +321,7 @@ func (c *Checker) checkIfStmt(s *ast.IfStmt) {
 
 func (c *Checker) checkWhileStmt(s *ast.WhileStmt) {
 	condType := c.checkExpr(s.Cond)
-	if condType != nil && !condType.Equals(Bool) {
+	if condType != nil && !condType.Equals(Bool) && !isAny(condType) {
 		c.errorfWithSuggestion(s.Cond.Token(), ErrInvalidCondition, "Condition must evaluate to a boolean", "condition must be bool, got %s", condType)
 	}
 	c.checkBlockStmt(s.Body)
@@ -329,8 +336,8 @@ func (c *Checker) checkForStmt(s *ast.ForStmt) {
 			// Valid: can iterate over arrays
 			// The loop variable will have the element type
 		case *PrimitiveType:
-			// Only String is iterable among primitives
-			if !t.Equals(String) {
+			// Only String is iterable among primitives (Any is checked at runtime)
+			if !t.Equals(String) && !isAny(t) {
 				c.errorfWithSuggestion(s.Iterable.Token(), ErrNotIterable, "Use an array or string in for loops", "cannot iterate over type %s", iterType)
 			}
 		default:
@@ -380,8 +387,14 @@ func (c *Checker) checkExpr(expr ast.Expr) Type {
 		t = c.checkStructInitExpr(e)
 	case *ast.ArrayLiteralExpr:
 		t = c.checkArrayLiteralExpr(e)
+	case *ast.MemberExpr:
+		t = c.checkMemberExpr(e)
+	case *ast.IndexExpr:
+		t = c.checkIndexExpr(e)
+	case *ast.FnExpr:
+		t = c.checkFnExpr(e)
 	default:
-		panic(fmt.Sprintf("unhandled expression type: %T", e))
+		t = Any
 	}
 
 	if t != nil {
@@ -425,6 +438,19 @@ func (c *Checker) checkIdent(id *ast.Ident) Type {
 			}
 		} else if param, ok := sym.Decl.(*ast.Param); ok {
 			return c.resolveType(param.Type)
+		} else if loop, ok := sym.Decl.(*ast.ForStmt); ok {
+			// Loop variable: element type of the iterable
+			switch iter := c.info.Types[loop.Iterable].(type) {
+			case *ArrayType:
+				return iter.ElementType
+			case *PrimitiveType:
+				if iter.Equals(String) {
+					return String
+				}
+			}
+		} else if impl, ok := sym.Decl.(*ast.ImplDecl); ok {
+			// Implicit `self` of an impl method
+			return c.resolveType(&ast.Type{Kind: ast.TypeBasic, Name: impl.StructName})
 		}
 	case resolve.SymbolFunc:
 		if fn, ok := sym.Decl.(*ast.FnDecl); ok {
@@ -444,6 +470,25 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 	right := c.checkExpr(e.Right)
 
 	if left == nil || right == nil {
+		return Any
+	}
+
+	switch e.Op {
+	case "=":
+		if !c.assignable(left, right) {
+			c.errorfWithSuggestion(e.Right.Token(), ErrTypeMismatch, fmt.Sprintf("Ensure the value is of type %s", left), "cannot assign type %s to %s", right, left)
+		}
+		return Void
+	case "??":
+		return right
+	}
+
+	// Operands whose type is only known at runtime are checked by the VM
+	if isAny(left) || isAny(right) {
+		switch e.Op {
+		case "==", "!=", "<", "<=", ">", ">=", "&&", "||":
+			return Bool
+		}
 		return Any
 	}
 
@@ -470,9 +515,14 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 		if e.Op == "+" {
 			return String
 		}
-		if e.Op == "==" || e.Op == "!=" {
+		switch e.Op {
+		case "==", "!=", "<", "<=", ">", ">=":
 			return Bool
 		}
+	}
+
+	if (e.Op == "==" || e.Op == "!=") && left.Equals(right) {
+		return Bool
 	}
 
 	if left.Equals(Bool) && right.Equals(Bool) {
@@ -487,7 +537,7 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 
 func (c *Checker) checkUnaryExpr(e *ast.UnaryExpr) Type {
 	operand := c.checkExpr(e.Expr)
-	if operand == nil {
+	if operand == nil || isAny(operand) {
 		return Any
 	}
 
@@ -550,7 +600,7 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 			continue
 		}
 
-		if !IsAssignable(paramType, argType, nil) {
+		if !c.assignable(paramType, argType) {
 			c.errorf(arg.Token(), ErrArgType, "cannot use type %s as argument of type %s", argType, paramType)
 		}
 	}
@@ -559,7 +609,91 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 }
 
 func (c *Checker) checkStructInitExpr(e *ast.StructInitExpr) Type {
+	decl := c.findStructDecl(e.Name)
+	for name, value := range e.Fields {
+		valType := c.checkExpr(value)
+		if decl == nil || valType == nil || len(decl.TypeParams) > 0 {
+			continue
+		}
+		field := findField(decl, name)
+		if field == nil {
+			c.errorf(value.Token(), ErrUnknownField, "struct %s has no field '%s'", e.Name, name)
+			continue
+		}
+		if fieldType := c.resolveType(field.Type); !c.assignable(fieldType, valType) {
+			c.errorf(value.Token(), ErrTypeMismatch, "cannot use type %s for field '%s' of type %s", valType, name, fieldType)
+		}
+	}
 	return &StructType{Name: e.Name}
+}
+
+// checkMemberExpr types `expr.name`: the length of an array or string, or a
+// struct field. Anything else (methods, generic structs) is left to runtime.
+func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
+	switch recv := c.checkExpr(e.Expr).(type) {
+	case *ArrayType:
+		if e.Name == "length" {
+			return Int
+		}
+	case *PrimitiveType:
+		if recv.Equals(String) && e.Name == "length" {
+			return Int
+		}
+	case *StructType:
+		decl := c.findStructDecl(recv.Name)
+		if decl == nil || len(decl.TypeParams) > 0 {
+			return Any
+		}
+		if field := findField(decl, e.Name); field != nil {
+			return c.resolveType(field.Type)
+		}
+	}
+	return Any
+}
+
+// checkIndexExpr types `expr[index]`.
+func (c *Checker) checkIndexExpr(e *ast.IndexExpr) Type {
+	recv := c.checkExpr(e.Expr)
+	index := c.checkExpr(e.Index)
+	if index != nil && !index.Equals(Int) && !isAny(index) {
+		c.errorfWithSuggestion(e.Index.Token(), ErrTypeMismatch, "Use an Int as index", "index must be int, got %s", index)
+	}
+
+	switch t := recv.(type) {
+	case *ArrayType:
+		return t.ElementType
+	case *PrimitiveType:
+		if t.Equals(String) {
+			return String
+		}
+	}
+	return Any
+}
+
+// checkFnExpr types an anonymous function and checks its body.
+func (c *Checker) checkFnExpr(e *ast.FnExpr) Type {
+	// Reuse the FnDecl machinery so `return` is checked against the lambda
+	fn := &ast.FnDecl{BaseNode: e.BaseNode, Params: e.Params, ReturnType: e.ReturnType, Body: e.Body}
+	c.checkFnDecl(fn)
+	return c.resolveFnType(fn)
+}
+
+func (c *Checker) findStructDecl(name string) *ast.StructDecl {
+	for _, decl := range c.prog.Decls {
+		if structDecl, ok := decl.(*ast.StructDecl); ok && structDecl.Name == name {
+			return structDecl
+		}
+	}
+	return nil
+}
+
+func findField(decl *ast.StructDecl, name string) *ast.Field {
+	for _, field := range decl.Fields {
+		if field.Name == name {
+			return field
+		}
+	}
+	return nil
 }
 
 func (c *Checker) checkArrayLiteralExpr(e *ast.ArrayLiteralExpr) Type {
@@ -578,7 +712,7 @@ func (c *Checker) checkArrayLiteralExpr(e *ast.ArrayLiteralExpr) Type {
 	// Check that all other elements have compatible types
 	for i := 1; i < len(e.Elements); i++ {
 		elemType := c.checkExpr(e.Elements[i])
-		if elemType != nil && !IsAssignable(firstType, elemType, nil) {
+		if elemType != nil && !c.assignable(firstType, elemType) {
 			c.errorfWithSuggestion(
 				e.Elements[i].Token(),
 				ErrTypeMismatch,
@@ -601,26 +735,42 @@ func (c *Checker) resolveType(n *ast.Type) Type {
 	}
 	switch n.Kind {
 	case ast.TypeBasic:
+		if c.typeParams[n.Name] {
+			return Any
+		}
 		switch n.Name {
-		case "int":
+		case "Int", "int":
 			return Int
-		case "float":
+		case "Float", "float":
 			return Float
-		case "bool":
+		case "Bool", "bool":
 			return Bool
-		case "string":
+		case "String", "string":
 			return String
-		case "void":
+		case "Void", "void":
 			return Void
+		case "Any", "any":
+			return Any
+		case "Self":
+			return Self
 		default:
+			if c.findTraitDecl(n.Name) != nil {
+				// Any struct implementing the trait fits; methods are
+				// looked up on the value at runtime.
+				return Any
+			}
 			// Look up type name in table?
 			// Again, `ast.Type` has `Name string`. No `Ident`.
 			// This is a limitation.
 			return &StructType{Name: n.Name}
 		}
-	case ast.TypeArray:
+	case ast.TypeArray, ast.TypeVariadic:
+		// A variadic parameter is seen as an array inside the function
 		elem := c.resolveType(n.ElemType)
 		return NewArray(elem)
+	case ast.TypeOption:
+		// T? also admits null, which only the runtime can tell apart
+		return Any
 	case ast.TypeFunction:
 		var params []Type
 		for _, p := range n.ParamTypes {
@@ -642,8 +792,17 @@ func (c *Checker) resolveType(n *ast.Type) Type {
 }
 
 func (c *Checker) resolveFnType(fn *ast.FnDecl) Type {
+	defer c.bindTypeParams(fn.TypeParams)()
+
+	variadic := false
 	var params []Type
-	for _, p := range fn.Params {
+	for i, p := range fn.Params {
+		if p.Type != nil && p.Type.Kind == ast.TypeVariadic && i == len(fn.Params)-1 {
+			// Callers pass the elements one by one
+			variadic = true
+			params = append(params, c.resolveType(p.Type.ElemType))
+			continue
+		}
 		params = append(params, c.resolveType(p.Type))
 	}
 
@@ -652,7 +811,59 @@ func (c *Checker) resolveFnType(fn *ast.FnDecl) Type {
 		ret = c.resolveType(fn.ReturnType)
 	}
 
+	if variadic {
+		return NewVariadicFunction(params, ret)
+	}
 	return NewFunction(params, ret)
+}
+
+// bindTypeParams brings type parameters into scope and returns a function
+// that restores the previous scope.
+func (c *Checker) bindTypeParams(names []string) func() {
+	var added []string
+	for _, name := range names {
+		if !c.typeParams[name] {
+			c.typeParams[name] = true
+			added = append(added, name)
+		}
+	}
+	return func() {
+		for _, name := range added {
+			delete(c.typeParams, name)
+		}
+	}
+}
+
+// assignable reports whether a value of type source can be stored in target.
+// A source of type Any is only known at runtime, so it is accepted here.
+func (c *Checker) assignable(target, source Type) bool {
+	if isAny(source) || isAny(target) || target.Equals(Self) || source.Equals(Self) {
+		return true
+	}
+
+	// Any may also sit inside a type: [] is an [any] that fits every array,
+	// and a generic function has Any where its type parameters were.
+	switch t := target.(type) {
+	case *ArrayType:
+		if src, ok := source.(*ArrayType); ok {
+			return c.assignable(t.ElementType, src.ElementType)
+		}
+	case *FunctionType:
+		src, ok := source.(*FunctionType)
+		if ok && len(t.Params) == len(src.Params) && t.IsVariadic == src.IsVariadic {
+			for i := range t.Params {
+				if !c.assignable(t.Params[i], src.Params[i]) {
+					return false
+				}
+			}
+			return c.assignable(t.ReturnType, src.ReturnType)
+		}
+	}
+	return IsAssignable(target, source, nil)
+}
+
+func isAny(t Type) bool {
+	return t != nil && t.Equals(Any)
 }
 
 func (c *Checker) errorf(tok token.Token, code string, format string, args ...interface{}) {

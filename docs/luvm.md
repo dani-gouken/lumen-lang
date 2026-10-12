@@ -46,9 +46,14 @@ When all exponent bits are set (0x7FF), the value is NaN. We exploit this:
 ```go
 expMask     = 0x7FF0000000000000  // exponent bits
 mantMask    = 0x000FFFFFFFFFFFFF  // mantissa bits
-tagMask     = 0x0000F00000000000  // tag nibble (high 4 bits of mantissa)
+tagMask     = 0x000F000000000000  // tag nibble (high 4 bits of mantissa)
 payloadMask = 0x0000FFFFFFFFFFFF  // payload (low 48 bits)
 ```
+
+The tag occupies bits 48-51 and the payload bits 0-47, so they never overlap.
+A full 48-bit payload matters for heap pointers: the Go runtime may place its
+heap anywhere in the 48-bit address space, and a narrower payload would
+truncate the pointer.
 
 ## VM Execution Model
 
@@ -100,10 +105,16 @@ type Chunk struct {
 
 ### Arithmetic
 
-- `ADD r_dest r_a r_b` - Addition
+- `ADD r_dest r_a r_b` - Addition, or concatenation of two strings
 - `SUB r_dest r_a r_b` - Subtraction
 - `MUL r_dest r_a r_b` - Multiplication
 - `DIV r_dest r_a r_b` - Division
+- `MOD r_dest r_a r_b` - Remainder
+- `NEG r_dest r_a` - Negation
+- `NOT r_dest r_a` - Boolean negation
+
+Both operands must be of the same kind (two Ints or two Numbers); there is no
+implicit conversion. Int division and remainder by zero raise a runtime error.
 
 ### Comparison
 
@@ -114,11 +125,33 @@ type Chunk struct {
 - `GT r_dest r_a r_b` - Greater than
 - `GE r_dest r_a r_b` - Greater than or equal
 
+`EQ`/`NE` compare strings by content and every other heap object by identity.
+The ordering instructions accept two Ints, two Numbers or two Strings.
+
+### Heap Objects
+
+- `NEWSTR r_dest const_idx` - Create a string from a string constant
+- `NEWARRAY r_dest capacity` - Create an empty array
+- `NEWOBJ r_dest` - Create an empty object (used for struct values)
+- `GETINDEX r_dest r_arr r_idx` / `SETINDEX r_arr r_idx r_val` - Element access
+- `ARRPUSH r_arr r_val` - Append to an array
+- `ARRLEN r_dest r_val` - Length of an array or string
+- `GETFIELD r_dest r_obj const_idx` / `SETFIELD r_obj const_idx r_val` - Field access
+- `HASFIELD` / `DELFIELD` - Field presence and removal
+
+These instructions check the type of their operand and report a runtime error
+instead of reinterpreting memory: indexing a number, reading a field of an
+array, or going past the end of an array all stop the program with a message.
+See [assembly.md](assembly.md) for the exact rules of each instruction.
+
 ### Control Flow
 
 - `JMP offset` - Unconditional jump
 - `JMPIF r_cond offset` - Jump if true
 - `JMPIFNOT r_cond offset` - Jump if false
+- `LONG` + `JMP32` / `JMPIF32` / `JMPIFNOT32` + offset word - The same jumps
+  with a 32-bit relative offset, for targets a one-byte address cannot reach.
+  The compiler always emits this form.
 
 ### Function Calls
 
@@ -132,6 +165,44 @@ type Chunk struct {
 - `CAPUPVAL r_func upval_idx parent_upval_idx` - Capture an existing upvalue into a closure's upvalue slot.
 - `LDCAP r_dest upval_idx` - Load value from an upvalue.
 - `STCAP upval_idx r_src` - Store value to an upvalue.
+
+## Host Functions
+
+A chunk lists the host functions it uses by name (`ExternNames`). `NEWEXFUNC`
+turns a name into a callable object, and `CALL` invokes it like any other
+function. The VM registers these by default:
+
+| Name       | Arguments        | Result  | Description                                   |
+|------------|------------------|---------|-----------------------------------------------|
+| `print`    | any number       | null    | Writes the values separated by spaces         |
+| `println`  | any number       | null    | Same, followed by a newline                   |
+| `toString` | 1                | String  | The text `print` would write for the value    |
+| `push`     | array, value     | null    | Appends the value to the array                |
+
+Values are written the way a program shows them: `42`, `2.5`, `true`, `null`,
+the text of a string, `[1, "a"]` for arrays and `{x: 1, y: 2}` for objects
+(fields sorted by name, function-valued fields omitted). This is
+`vm.FormatValue`; `Value.String()` remains the debug form (`Int(42)`).
+
+Output goes to standard output unless redirected with `VM.SetOutput`, which is
+how tests capture it. More functions can be added with `VM.RegisterExtern`.
+
+## Operand Limits
+
+Every operand is one byte, which bounds what a single function or chunk can
+address:
+
+| What                              | Limit | Reported by the compiler as |
+|-----------------------------------|-------|-----------------------------|
+| Registers per function            | 256   | `E6001`                     |
+| Distinct constants per chunk      | 256   | `E6002`                     |
+| Functions per chunk               | 256   | `E6003`                     |
+| Arguments per call                | bounded by the register window | `E6007` |
+
+Strings have no length limit of their own: a string constant stores an index
+into the string pool, and bytecode files encode string lengths in 32 bits.
+What counts against the constant limit is the number of *distinct* strings,
+field names, floats and integers outside 0-255.
 
 ## Instruction Encoding
 
@@ -173,7 +244,9 @@ Object types:
 
 - `StringObj` - Immutable string
 - `ArrayObj` - Dynamic array
+- `ObjectObj` - Field map (struct values)
 - `FunctionObj` - Function closure
+- `ExternFunctionObj` - Host function
 - `UpvalueObj` - Captured variable
 
 ## Example Execution

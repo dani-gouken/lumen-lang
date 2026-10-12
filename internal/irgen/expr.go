@@ -1,10 +1,13 @@
 package irgen
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
 
 	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/ir"
+	"github.com/dani-gouken/lumen/internal/resolve"
 )
 
 // compileExpr compiles an expression and returns the register containing the result
@@ -12,6 +15,7 @@ func (fc *FunctionCompiler) compileExpr(expr ast.Expr) *ir.Register {
 	if expr == nil {
 		return nil
 	}
+	fc.setPos(expr)
 
 	switch e := expr.(type) {
 	case *ast.Literal:
@@ -36,12 +40,7 @@ func (fc *FunctionCompiler) compileExpr(expr ast.Expr) *ir.Register {
 		return fc.compileLambda(e)
 	default:
 		// Unsupported expression type
-		fc.gen.errs.ReportErrorFromToken(
-			ErrUnsupportedConstruct,
-			"Unsupported expression type in IR generation",
-			expr.Token(),
-			fc.gen.sourceLines,
-		)
+		fc.gen.errorAt(expr, ErrUnsupportedConstruct, "Unsupported expression type in IR generation", "")
 		return fc.builder.NewRegister()
 	}
 }
@@ -81,7 +80,7 @@ func (fc *FunctionCompiler) compileLiteral(lit *ast.Literal) *ir.Register {
 // compileIdent compiles an identifier
 func (fc *FunctionCompiler) compileIdent(ident *ast.Ident) *ir.Register {
 	// Check if it's a local variable
-	if reg, ok := fc.locals[ident.Name]; ok {
+	if reg, ok := fc.lookup(ident.Name); ok {
 		return reg
 	}
 
@@ -90,23 +89,35 @@ func (fc *FunctionCompiler) compileIdent(ident *ast.Ident) *ir.Register {
 		return fc.builder.CreateLoadUpvalue(upvalIdx)
 	}
 
-	// Must be a global/function reference
-	// Create a constant reference
+	// Must be a global function reference
+	if _, ok := fc.gen.funcs[ident.Name]; !ok {
+		fc.gen.errorAt(ident, ErrNotAValue,
+			fmt.Sprintf("'%s' cannot be used as a value", ident.Name),
+			"Only variables and functions can be used in expressions")
+	}
 	return fc.builder.CreateMov(ir.Constant{Val: ident.Name, Type: "FuncRef"})
 }
 
 // compileBinaryExpr compiles a binary expression
 func (fc *FunctionCompiler) compileBinaryExpr(expr *ast.BinaryExpr) *ir.Register {
+	switch expr.Op {
+	case "=":
+		return fc.compileAssignment(expr)
+	case "&&", "||", "??":
+		return fc.compileShortCircuit(expr)
+	}
+
 	left := fc.compileExpr(expr.Left)
 	right := fc.compileExpr(expr.Right)
+	fc.setPos(expr)
 
 	dest := fc.builder.NewRegister()
 
 	switch expr.Op {
 	case "+":
-		return fc.builder.CreateAdd(left, right)
+		fc.builder.Emit(ir.OpAdd, dest, left, right)
 	case "-":
-		return fc.builder.CreateSub(left, right)
+		fc.builder.Emit(ir.OpSub, dest, left, right)
 	case "*":
 		fc.builder.Emit(ir.OpMul, dest, left, right)
 	case "/":
@@ -125,25 +136,95 @@ func (fc *FunctionCompiler) compileBinaryExpr(expr *ast.BinaryExpr) *ir.Register
 		fc.builder.Emit(ir.OpGt, dest, left, right)
 	case ">=":
 		fc.builder.Emit(ir.OpGte, dest, left, right)
-	case "&&":
-		fc.builder.Emit(ir.OpAnd, dest, left, right)
-	case "||":
-		fc.builder.Emit(ir.OpOr, dest, left, right)
 	default:
-		fc.gen.errs.ReportErrorFromToken(
-			ErrUnsupportedConstruct,
-			"Unsupported binary operator: "+expr.Op,
-			expr.Token(),
-			fc.gen.sourceLines,
-		)
+		fc.gen.errorAt(expr, ErrUnsupportedConstruct, "Unsupported binary operator: "+expr.Op, "")
 	}
 
 	return dest
 }
 
+// compileShortCircuit compiles &&, || and ??. The right operand is only
+// evaluated when the left one does not already decide the result.
+//
+//	result = left
+//	br <needs right>, rhs, end
+//	rhs: result = right; jmp end
+//	end:
+func (fc *FunctionCompiler) compileShortCircuit(expr *ast.BinaryExpr) *ir.Register {
+	left := fc.compileExpr(expr.Left)
+	fc.setPos(expr)
+
+	// The result register is written on both paths
+	result := fc.builder.CreateMov(left)
+	fc.varRegs[result.ID] = true
+
+	rhsBlock := fc.builder.NewBlock()
+	endBlock := fc.builder.NewBlock()
+
+	switch expr.Op {
+	case "&&":
+		fc.builder.CreateBr(result, rhsBlock, endBlock)
+	case "||":
+		fc.builder.CreateBr(result, endBlock, rhsBlock)
+	case "??":
+		null := fc.builder.CreateMov(ir.Constant{Val: nil, Type: "Null"})
+		isNull := fc.builder.NewRegister()
+		fc.builder.Emit(ir.OpEq, isNull, result, null)
+		fc.builder.CreateBr(isNull, rhsBlock, endBlock)
+	}
+
+	fc.builder.SetBlock(rhsBlock)
+	right := fc.compileExpr(expr.Right)
+	fc.builder.Emit(ir.OpMov, result, right)
+	fc.builder.CreateJmp(endBlock)
+
+	fc.builder.SetBlock(endBlock)
+	return result
+}
+
+// compileAssignment compiles `target = value` for variables, array elements
+// and struct fields.
+func (fc *FunctionCompiler) compileAssignment(expr *ast.BinaryExpr) *ir.Register {
+	switch target := expr.Left.(type) {
+	case *ast.Ident:
+		value := fc.compileExpr(expr.Right)
+		fc.setPos(expr)
+		if reg, ok := fc.lookup(target.Name); ok {
+			fc.builder.Emit(ir.OpMov, reg, value)
+		} else if upvalIdx, ok := fc.upvalues[target.Name]; ok {
+			fc.builder.CreateStoreUpvalue(upvalIdx, value)
+		} else {
+			fc.gen.errorAt(target, ErrInvalidAssignment,
+				fmt.Sprintf("cannot assign to '%s'", target.Name),
+				"Only variables declared with 'let' can be assigned to")
+		}
+		return value
+
+	case *ast.IndexExpr:
+		arr := fc.compileExpr(target.Expr)
+		index := fc.compileExpr(target.Index)
+		value := fc.compileExpr(expr.Right)
+		fc.setPos(expr)
+		fc.builder.Emit(ir.OpSetIndex, nil, arr, index, value)
+		return value
+
+	case *ast.MemberExpr:
+		obj := fc.compileExpr(target.Expr)
+		value := fc.compileExpr(expr.Right)
+		fc.setPos(expr)
+		fc.builder.Emit(ir.OpSetField, nil, obj, ir.Constant{Val: target.Name, Type: "String"}, value)
+		return value
+	}
+
+	fc.gen.errorAt(expr.Left, ErrInvalidAssignment, "invalid assignment target",
+		"Only variables, fields and array elements can be assigned to")
+	return fc.builder.NewRegister()
+}
+
 // compileUnaryExpr compiles a unary expression
 func (fc *FunctionCompiler) compileUnaryExpr(expr *ast.UnaryExpr) *ir.Register {
 	operand := fc.compileExpr(expr.Expr)
+	fc.setPos(expr)
 	dest := fc.builder.NewRegister()
 
 	switch expr.Op {
@@ -152,75 +233,168 @@ func (fc *FunctionCompiler) compileUnaryExpr(expr *ast.UnaryExpr) *ir.Register {
 	case "!":
 		fc.builder.Emit(ir.OpNot, dest, operand)
 	default:
-		fc.gen.errs.ReportErrorFromToken(
-			ErrUnsupportedConstruct,
-			"Unsupported unary operator: "+expr.Op,
-			expr.Token(),
-			fc.gen.sourceLines,
-		)
+		fc.gen.errorAt(expr, ErrUnsupportedConstruct, "Unsupported unary operator: "+expr.Op, "")
 	}
 
 	return dest
 }
 
-// compileCallExpr compiles a function call
+// compileCallExpr compiles a function or method call
 func (fc *FunctionCompiler) compileCallExpr(expr *ast.CallExpr) *ir.Register {
-	fn := fc.compileExpr(expr.Func)
-
-	// Compile arguments
-	args := make([]ir.Value, len(expr.Args))
-	for i, arg := range expr.Args {
-		args[i] = fc.compileExpr(arg)
+	if member, ok := expr.Func.(*ast.MemberExpr); ok && fc.gen.methodNames[member.Name] {
+		return fc.compileMethodCall(expr, member)
 	}
 
+	fn := fc.compileExpr(expr.Func)
+	args := fc.compileArgs(expr)
+	fc.setPos(expr)
 	return fc.builder.CreateCall(fn, args...)
+}
+
+// compileMethodCall compiles `receiver.method(args)`. Methods are stored on
+// the struct value, so the call looks the function up on the receiver and
+// passes the receiver as `self`.
+func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.MemberExpr) *ir.Register {
+	if fc.gen.fieldNames[member.Name] {
+		fc.gen.errorAt(member, ErrAmbiguousMember,
+			fmt.Sprintf("'%s' is both a struct field and a method name", member.Name),
+			"Rename the field or the method")
+	}
+
+	receiver := fc.compileExpr(member.Expr)
+	fc.setPos(member)
+	fn := fc.builder.CreateGetField(receiver, member.Name)
+
+	args := []ir.Value{receiver}
+	for _, arg := range expr.Args {
+		args = append(args, fc.compileExpr(arg))
+	}
+	fc.setPos(expr)
+	return fc.builder.CreateCall(fn, args...)
+}
+
+// compileArgs compiles call arguments. When the callee is a known function
+// with a variadic last parameter, the extra arguments are packed into an
+// array, which is what the callee sees.
+func (fc *FunctionCompiler) compileArgs(expr *ast.CallExpr) []ir.Value {
+	decl := fc.calleeDecl(expr.Func)
+	if decl == nil || !isVariadic(decl) {
+		args := make([]ir.Value, len(expr.Args))
+		for i, arg := range expr.Args {
+			args[i] = fc.compileExpr(arg)
+		}
+		return args
+	}
+
+	fixed := len(decl.Params) - 1
+	if fixed > len(expr.Args) {
+		fixed = len(expr.Args)
+	}
+
+	args := make([]ir.Value, 0, fixed+1)
+	for _, arg := range expr.Args[:fixed] {
+		args = append(args, fc.compileExpr(arg))
+	}
+	return append(args, fc.compileArray(expr.Args[fixed:]))
+}
+
+// calleeDecl returns the declaration when the callee is a direct reference
+// to a user-defined top-level function, and nil otherwise.
+func (fc *FunctionCompiler) calleeDecl(callee ast.Expr) *ast.FnDecl {
+	ident, ok := callee.(*ast.Ident)
+	if !ok || resolve.IsBuiltin(ident.Name) {
+		return nil // Builtins are variadic natively
+	}
+	if _, isLocal := fc.lookup(ident.Name); isLocal {
+		return nil
+	}
+	if _, isUpvalue := fc.upvalues[ident.Name]; isUpvalue {
+		return nil
+	}
+	return fc.gen.funcs[ident.Name]
+}
+
+func isVariadic(fn *ast.FnDecl) bool {
+	if len(fn.Params) == 0 {
+		return false
+	}
+	last := fn.Params[len(fn.Params)-1]
+	return last.Type != nil && last.Type.Kind == ast.TypeVariadic
 }
 
 // compileIndexExpr compiles an index expression (array access)
 func (fc *FunctionCompiler) compileIndexExpr(expr *ast.IndexExpr) *ir.Register {
 	arr := fc.compileExpr(expr.Expr)
 	index := fc.compileExpr(expr.Index)
+	fc.setPos(expr)
 
 	dest := fc.builder.NewRegister()
 	fc.builder.Emit(ir.OpGetIndex, dest, arr, index)
 	return dest
 }
 
-// compileMemberExpr compiles a member access expression
+// compileMemberExpr compiles a member access expression. `.length` is the
+// length of an array or string; on a struct it reads the field of that name.
 func (fc *FunctionCompiler) compileMemberExpr(expr *ast.MemberExpr) *ir.Register {
 	obj := fc.compileExpr(expr.Expr)
+	fc.setPos(expr)
+
+	if expr.Name == "length" {
+		dest := fc.builder.NewRegister()
+		fc.builder.Emit(ir.OpLen, dest, obj)
+		return dest
+	}
 	return fc.builder.CreateGetField(obj, expr.Name)
 }
 
 // compileArrayLiteral compiles an array literal
 func (fc *FunctionCompiler) compileArrayLiteral(expr *ast.ArrayLiteralExpr) *ir.Register {
+	return fc.compileArray(expr.Elements)
+}
+
+// compileArray builds an array holding the given expressions in order
+func (fc *FunctionCompiler) compileArray(elements []ast.Expr) *ir.Register {
 	// Compile each element
-	elements := make([]ir.Value, len(expr.Elements))
-	for i, elem := range expr.Elements {
-		elements[i] = fc.compileExpr(elem)
+	values := make([]ir.Value, len(elements))
+	for i, elem := range elements {
+		values[i] = fc.compileExpr(elem)
 	}
 
-	// Create array with size
+	// Create array with capacity, then append each element
 	dest := fc.builder.NewRegister()
-	size := ir.Constant{Val: len(expr.Elements), Type: "Int"}
-	fc.builder.Emit(ir.OpNewArray, dest, size)
-
-	// Initialize each element
-	for i, elem := range elements {
-		index := ir.Constant{Val: i, Type: "Int"}
-		fc.builder.Emit(ir.OpSetIndex, nil, dest, index, elem)
+	fc.builder.Emit(ir.OpNewArray, dest, ir.Constant{Val: len(elements), Type: "Int"})
+	for _, value := range values {
+		fc.builder.Emit(ir.OpPush, nil, dest, value)
 	}
 
 	return dest
 }
 
-// compileStructInit compiles a struct initialization
+// compileStructInit compiles a struct initialization. Fields are set by
+// name, then the struct's methods are attached to the new value.
 func (fc *FunctionCompiler) compileStructInit(expr *ast.StructInitExpr) *ir.Register {
-	// Compile field values
-	fields := make([]ir.Value, 0, len(expr.Fields))
-	for _, fieldValue := range expr.Fields {
-		fields = append(fields, fc.compileExpr(fieldValue))
+	// Map iteration order is random; sort for deterministic output
+	names := make([]string, 0, len(expr.Fields))
+	for name := range expr.Fields {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	values := make([]ir.Value, len(names))
+	for i, name := range names {
+		values[i] = fc.compileExpr(expr.Fields[name])
+	}
+	fc.setPos(expr)
+
+	dest := fc.builder.CreateNewStruct(expr.Name)
+	for i, name := range names {
+		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: name, Type: "String"}, values[i])
 	}
 
-	return fc.builder.CreateNewStruct(expr.Name, fields...)
+	for _, m := range fc.gen.structMethods[expr.Name] {
+		fn := fc.builder.CreateMov(ir.Constant{Val: m.irName, Type: "FuncRef"})
+		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: m.name, Type: "String"}, fn)
+	}
+
+	return dest
 }

@@ -4,9 +4,35 @@ Lumen is a prototype programming language with a focus on simplicity and efficie
 
 ## What is Lumen?
 
-Lumen is a statically-typed programming language currently in early development. This repository contains the core compiler infrastructure and runtime.
+Lumen is a statically-typed programming language currently in early development. This repository contains the compiler, which turns `.lum` source files into bytecode, and the virtual machine that runs it.
 
-For the surface language syntax and semantics, see [docs/language-spec.md](docs/language-spec.md) (draft).
+```lumen
+struct Point { x: Int; y: Int; }
+
+impl Point {
+    fn area() -> Int { return self.x * self.y; }
+}
+
+fn main() -> Int {
+    let points = [Point { x: 2, y: 3 }, Point { x: 4, y: 5 }];
+    let total = 0;
+    for p in points {
+        total = total + p.area();
+    }
+    println("total area:", total);
+    return 0;
+}
+```
+
+```bash
+go run ./cmd/lumen run program.lum
+# total area: 26
+```
+
+- **Getting started and language tour**: [docs/guide.md](docs/guide.md)
+- **Syntax and semantics**: [docs/language-spec.md](docs/language-spec.md) (draft, with an implementation status table)
+- **How the compiler works**: [docs/compilation/pipeline.md](docs/compilation/pipeline.md)
+- **What is not there yet**: [docs/missing.md](docs/missing.md)
 
 ## What is luvm?
 
@@ -21,19 +47,31 @@ See [docs/luvm.md](docs/luvm.md) for detailed VM specification.
 
 ## Current Status
 
-This is a prototype implementation. The following components are implemented:
+This is a prototype implementation. A Lumen program goes through the whole chain, from source text to execution:
 
-- ✅ luvm bytecode virtual machine
-- ✅ NaN-boxed value representation
-- ✅ Opcode definitions and execution
-- ✅ Binary bytecode format (.lc files)
-- ✅ Assembler (text → bytecode)
-- ✅ Disassembler (bytecode → text)
-- ✅ Arithmetic operations (ADD, SUB, MUL, DIV)
-- ✅ CLI interface with asm/disasm/exec commands
-- ⚠️ Parser (stub only)
-- ⚠️ Type checker (stub only)
-- ⚠️ Code generation (stub only)
+- ✅ Lexer and parser, with error recovery
+- ✅ Name resolution and type checking (partial: see below)
+- ✅ Generic functions and structs (monomorphization)
+- ✅ Desugaring (`for`, `match`, short-circuit operators)
+- ✅ Closure analysis
+- ✅ IR generation
+- ✅ Bytecode generation with register allocation
+- ✅ luvm bytecode virtual machine with mark-sweep GC
+- ✅ Binary bytecode format (.lc files), assembler and disassembler
+- ✅ Interactive debugger, showing Lumen source lines
+- ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`
+
+Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, `if`/`while`/`for`/`match`, short-circuit operators.
+
+Not there yet:
+
+- ⚠️ Imports / multi-file programs, enums, `match` on types
+- ⚠️ Type checking is partial: method call results, generic values and optionals are checked at runtime
+- ⚠️ No standard library beyond `print`, `println`, `toString`, `push`
+- ⚠️ REPL (stub only)
+- ⚠️ Bytecode limits: 256 registers per function, 256 distinct constants and 256 functions per program
+
+What works is listed in the [implementation status table](docs/language-spec.md#13-implementation-status); what does not, with the way it fails today, in [docs/missing.md](docs/missing.md).
 
 ## Repository Structure
 
@@ -41,13 +79,28 @@ This is a prototype implementation. The following components are implemented:
 lumen/
   cmd/lumen/       - CLI entry point
   docs/            - Documentation
-  examples/        - Example assembly files
+    compilation/   - One document per compiler stage
+  examples/        - Example programs (.lum) and assembly files (.lasm)
   internal/
+    token/         - Tokens and source positions
+    ast/           - AST definitions
+    errors/        - Diagnostics shared by all stages
+    parser/        - Lexer and parser
+    resolve/       - Name resolution, builtin functions
+    types/         - Type system and type checker
+    monomorph/     - Generics instantiation
+    desugar/       - AST simplification
+    analysis/      - Closure analysis
+    ir/            - Intermediate representation
+    irgen/         - AST -> IR
+    codegen/       - IR -> bytecode
+    compiler/      - Pipeline driver
     vm/            - Virtual machine implementation
     asm/           - Assembler and disassembler
-    ast/           - AST definitions (stub)
-    parser/        - Parser (stub)
-    types/         - Type system (stub)
+    debugger/      - Debugger support
+  test/
+    e2e/           - End-to-end tests on .lum programs
+    integration/   - Toolchain tests on .lasm files
 ```
 
 ## Building and Running
@@ -62,6 +115,44 @@ go build ./...
 # Run the CLI
 go run ./cmd/lumen
 ```
+
+## Working with Lumen Programs
+
+```bash
+# Compile and run a source file
+go run ./cmd/lumen run examples/hello.lum
+
+# Compile to bytecode, run it later
+go run ./cmd/lumen build examples/fibonacci.lum fib.lc
+go run ./cmd/lumen exec fib.lc
+
+# Look at what the compiler produced
+go run ./cmd/lumen ir examples/hello.lum                 # intermediate representation
+go run ./cmd/lumen build examples/hello.lum hello.lasm   # bytecode listing
+
+# Step through a program
+go run ./cmd/lumen lumdbg examples/fibonacci.lum
+```
+
+`run` exits with the `Int` returned by `main`, or with 1 after a compile or runtime error. Errors are reported with their source location:
+
+```text
+[ERROR] E1001: undefined identifier 'cuont'
+  --> main.lum:3:12
+   |
+ 3 |     return cuont + 1;
+   |            ^^^^^
+   |
+   = Suggestion: Did you mean 'count'?
+```
+
+Example programs in [examples/](examples/):
+
+- **hello.lum** - The smallest program
+- **fibonacci.lum** - Functions, recursion, loops, arrays
+- **shapes.lum** - Structs, traits, methods
+- **closures.lum** - Anonymous functions and captured variables
+- **generics.lum** - Generic and variadic functions, `match`
 
 ## Working with Bytecode
 
@@ -88,6 +179,7 @@ Lumen assembly (.lasm) uses a simple text format:
 - **Integers**: `42i`, `-100i` (48-bit signed)
 - **Booleans**: `true`, `false`
 - **Null**: `null`
+- **Strings**: `"text"` (used with `NEWSTR` and as field names)
 
 ### Available Commands
 
@@ -109,7 +201,7 @@ go run ./cmd/lumen exec add.lc
 
 ### Examples
 
-See the [examples/](examples/) directory for sample assembly programs:
+The full instruction reference is in [docs/assembly.md](docs/assembly.md). See the [examples/](examples/) directory for sample assembly programs:
 
 - **add.lasm** - Simple addition
 - **complex.lasm** - Multiple arithmetic operations
@@ -117,29 +209,29 @@ See the [examples/](examples/) directory for sample assembly programs:
 
 ## Testing
 
-Lumen has a two-level testing approach. See [docs/testing.md](docs/testing.md) for philosophy and details.
+Lumen has a three-level testing approach. See [docs/testing.md](docs/testing.md) for philosophy and details.
 
 ```bash
-# Run all tests (unit + integration)
-make test-all
-
-# Run only Go unit tests
+# Run everything
 make test
 
-# Run only integration tests
-make test-integration
+# One level at a time
+make test-unit          # Go unit tests of every internal package
+make test-e2e           # the lumen binary on real .lum programs
+make test-integration   # assembler / disassembler / VM commands
 
-# Run specific test suites
-make test-vm          # VM tests only
-make test-asm         # Assembler/disassembler tests only
-make test-bytecode    # Bytecode serialization tests only
+# Or directly with go
+go test ./...
+go test ./internal/compiler -run TestClosures -v
 ```
 
-Test output is written to `test/output/` (gitignored).
+End-to-end expectations live next to the programs in `test/e2e/cases/` and `examples/expected/`; regenerate them after an intended change with `go test ./test/e2e -update`.
+
+Toolchain test output is written to `test/output/` (gitignored).
 
 ## Requirements
 
-- Go 1.22 or later
+- Go 1.24 or later
 
 ## License
 

@@ -1,6 +1,10 @@
 package ir
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/dani-gouken/lumen/internal/token"
+)
 
 // TypeRef is a reference to a type (just the name/reference).
 type TypeRef string
@@ -37,6 +41,9 @@ type Instruction struct {
 	Op       OpType
 	Dest     *Register // The result goes here (can be nil)
 	Operands []Value   // Variable number of operands
+
+	// Source position the instruction was generated from (zero if unknown)
+	Pos token.Position
 }
 
 // BasicBlock is a sequence of instructions without internal control flow
@@ -58,6 +65,9 @@ type Function struct {
 	Blocks     []*BasicBlock
 	EntryBlock *BasicBlock
 	RegCount   int // Counter for generating unique registers
+
+	// Number of variables captured from enclosing functions
+	UpvalueCount int
 }
 
 // Program represents the complete compilation unit

@@ -6,13 +6,18 @@ The diagnosis system is responsible for collecting, formatting, and reporting er
 
 The system is centralized around the `internal/errors` package. A `Handler` instance is passed through the compilation pipeline, allowing each stage to report diagnostics without aborting immediately (where possible).
 
+**Every stage reports through the handler.** A stage does not print, does not
+panic on bad input and does not invent its own error type for problems in the
+user's program. This is what lets the CLI, the tests and any future tool treat
+all compile errors uniformly.
+
 ## Data Structures
 
 ### Diagnostic
 A single unit of feedback.
 
 *   **Severity**: `INFO`, `WARNING`, `ERROR`.
-*   **Code**: A unique identifier (e.g., `E0123`) for documentation lookup.
+*   **Code**: A unique identifier (e.g., `E1001`) for documentation lookup.
 *   **Message**: A concise description of the issue.
 *   **Position**: File, Line, Column.
 *   **Context**: The source code line where the error occurred.
@@ -22,40 +27,168 @@ A single unit of feedback.
 ### Handler
 Collects diagnostics and manages the compilation state (e.g., determining if compilation should halt).
 
+```go
+errs := errors.NewHandler()
+
+// Report at a token: the handler fills in the source line and the underline
+errs.ReportErrorFromToken(code, message, node.Token(), sourceLines)
+errs.ReportErrorWithSuggestion(code, message, suggestion, node.Token(), sourceLines)
+errs.ReportWarningFromToken(code, message, node.Token(), sourceLines)
+
+errs.HasErrors()     // true if any diagnostic has severity ERROR
+errs.Diagnostics     // everything reported so far, in order
+```
+
+`sourceLines` maps 1-based line numbers to the text of each line;
+`parser.SourceLines(src)` builds it. Every AST node keeps the token it was
+parsed from (`node.Token()`), so a stage can point at the exact span without
+tracking positions itself.
+
+### Reporting a new error
+
+1.  Add a constant for the code next to the others of that stage, with a
+    comment saying when it is raised.
+2.  Report it with `ReportErrorFromToken`, or `ReportErrorWithSuggestion` when
+    there is something concrete the user can do. A suggestion should name the
+    fix ("Add ';' to end the statement"), not restate the problem.
+3.  Add a case to that stage's error test, asserting on the **code** and a
+    fragment of the message.
+4.  Add the code to the table below.
+
+Stages that work on data without AST nodes (bytecode generation works on IR)
+build a token from the recorded position; see `Generator.report` in
+`internal/codegen/codegen.go`.
+
 ## Error Categories & Codes
 
-Errors are categorized by the pipeline stage that detects them:
+Codes are `E` followed by four digits. The first digit is the pipeline stage
+that detects the problem.
 
-*   **Lexical/Syntax (P0000 - P0999)**: Parser errors (e.g., missing semicolon, invalid token).
-*   **Resolution (R1000 - R1999)**: Name resolution errors (e.g., undefined variable, redeclaration).
-*   **Type System (T2000 - T2999)**: Type mismatches, invalid casts, missing trait implementations.
-*   **Control Flow (C3000 - C3999)**: Unreachable code, missing return statements.
-*   **Limits (L4000 - L4999)**: Stack overflow, too many constants.
+### E0xxx — Parsing (`internal/parser`)
+
+| Code | Meaning | Recovery |
+|------|---------|----------|
+| `E0001` | Unexpected token or malformed construct | Skips to the end of the statement, or to the next declaration |
+| `E0002` | Lexical error: unknown character, unterminated string or comment, bad escape | Same |
+| `E0003` | Missing `;` after a statement | Continues as if it were there |
+| `E0004` | Left side of `=` is not a variable, field or element | Skips the statement |
+| `E0005` | Field given twice in a struct literal | Skips the statement |
+
+### E1xxx — Name resolution (`internal/resolve`)
+
+| Code | Meaning |
+|------|---------|
+| `E1001` | Undefined identifier, type or trait. Suggests the closest known name |
+| `E1002` | Name already declared in the same scope (includes redeclaring a builtin) |
+
+### E2xxx — Type checking (`internal/types`)
+
+| Code | Meaning |
+|------|---------|
+| `E2001` | Type mismatch in a declaration, assignment, array literal or struct field |
+| `E2002` | `return` outside of a function |
+| `E2003` | Returned value does not match the function's return type |
+| `E2004` | `return;` in a function that must return a value |
+| `E2005` | Condition of `if`/`while` is not a `Bool` |
+| `E2006` | Binary operator not defined for the operand types |
+| `E2007` | Unary operator not defined for the operand type |
+| `E2008` | Call of something that is not a function |
+| `E2009` | Wrong number of arguments |
+| `E2010` | Argument type does not match the parameter type |
+| `E2011` | `for-in` over a type that cannot be iterated |
+| `E2012` | `impl` is missing a method required by the trait |
+| `E2013` | Method signature differs from the trait's |
+| `E2014` | Struct literal names a field the struct does not have |
+
+### E3xxx — Monomorphization (`internal/monomorph`)
+
+| Code | Meaning |
+|------|---------|
+| `E3001` | Generic used without type arguments that can be determined |
+| `E3002` | Recursive generic types causing infinite instantiation |
+| `E3003` | Number of type arguments differs from the number of type parameters |
+
+### E4xxx — Desugaring and closure analysis
+
+| Code | Package | Meaning |
+|------|---------|---------|
+| `E4001` | `desugar` | `for-in` over something that is not iterable |
+| `E4002` | `desugar` | Invalid match pattern |
+| `E4003` | `desugar` | Type information missing for an expression |
+| `E4004` | `desugar` | Warning: deeply nested short-circuit operators |
+| `E4005` | `desugar` | Unsupported type pattern in a match |
+| `E4006` | `desugar` | Enum variant destructuring |
+| `E4101` | `analysis` | Circular closure dependency (reserved, not raised yet) |
+
+### E5xxx — IR generation (`internal/irgen`)
+
+| Code | Meaning |
+|------|---------|
+| `E5001` | Construct that cannot be lowered to IR yet |
+| `E5002` | Name used as a value that is neither a variable nor a function (e.g. a struct name) |
+| `E5003` | Assignment to something that is not a variable (e.g. a function) |
+| `E5004` | Name is both a struct field and a method, so `x.name(...)` would be ambiguous |
+| `E5005` | `break` or `continue` outside of a loop |
+
+### E6xxx — Bytecode generation (`internal/codegen`)
+
+| Code | Meaning |
+|------|---------|
+| `E6001` | Function needs more than 256 registers |
+| `E6002` | Program uses more than 256 distinct constants |
+| `E6003` | Program has more than 256 functions |
+| `E6004` | IR operation with no bytecode equivalent |
+| `E6005` | Reference to a function that does not exist |
+| `E6006` | No `main` function, or `main` takes parameters |
+| `E6007` | Call with more arguments than fit in the register window |
+
+`E6001`-`E6003` and `E6007` are limits of the bytecode format (one-byte
+operands), not mistakes in the program; their suggestions say how to stay
+within them.
+
+### E7xxx — Compiler driver (`internal/compiler`)
+
+| Code | Meaning |
+|------|---------|
+| `E7001` | Language feature that parses but cannot be compiled yet (imports, enums, type patterns) |
 
 ## Reporting Strategy
 
-1.  **Non-Fatal Errors**: The compiler should attempt to recover and continue parsing/analyzing to report as many errors as possible in a single run.
-    *   *Example*: If a statement is missing a semicolon, assume it's there and continue parsing the next statement.
-2.  **Fatal Errors**: Issues that prevent further processing (e.g., file not found, internal compiler error). These halt the pipeline immediately.
+1.  **Within a stage**: The compiler recovers and continues to report as many errors as possible in a single run.
+    *   *Example*: If a statement is missing a semicolon, the parser assumes it is there and continues with the next statement.
+2.  **Between stages**: The pipeline stops after the first stage that reported an error, so a later stage never analyses a program that is already known to be broken (which would produce confusing follow-up errors).
+3.  **Fatal Errors**: Issues that prevent any processing (e.g., file not found) are returned as a Go `error` by `compiler.CompileFile` and are not diagnostics.
+
+Runtime errors (index out of bounds, division by zero, ...) are not part of
+this system: the VM returns them as a Go `error` from `Exec`. They use the
+debug information attached to each instruction to name the source location.
 
 ## Output Format
 
-Diagnostics are printed to `stderr` in a human-readable format by default, with support for structured output (JSON) for tools.
+Diagnostics are printed to `stderr` in a human-readable format; the process
+exits with code 1 if any of them is an error.
 
 **Human-Readable Example:**
 ```text
-[ERROR] E1001: undefined variable 'count'
-  --> src/main.lum:10:5
+[ERROR] E1001: undefined identifier 'cuont'
+  --> src/main.lum:3:12
    |
-10 |     print(cont)
-   |           ^^^^
+ 3 |     return cuont + 1;
+   |            ^^^^^
    |
    = Suggestion: Did you mean 'count'?
 ```
 
-## Integration Plan
+**Runtime error example:**
+```text
+Runtime error: index out of bounds: 7 (length 3)
+  at src/main.lum:3:17 in function 'pick'
+        return items[index];
+                    ^
+```
 
-1.  **Parser**: Enhance `internal/parser` to accept an `*errors.Handler`. Implement synchronization points for error recovery.
-2.  **Resolver**: Update `internal/resolve` to report scope errors via the handler instead of returning simple errors.
-3.  **Type Checker**: Update `internal/types` to report mismatches via the handler.
-4.  **CLI**: Add flags for output format (`--format=json`) and verbosity.
+## Not Implemented Yet
+
+*   Structured output (`--format=json`) for tools.
+*   Verbosity flags.
+*   A per-code documentation page that the code could link to.

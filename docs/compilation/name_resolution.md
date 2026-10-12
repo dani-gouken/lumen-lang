@@ -77,6 +77,16 @@ type Table struct {
 
 The resolution process is performed in two passes to support forward references for top-level declarations.
 
+### Builtins
+
+Before either pass runs, the global scope is seeded with the host-provided
+functions (`print`, `println`, `toString`, `push`). They are declared in
+`internal/resolve/builtins.go` as ordinary `ast.FnDecl` nodes without a body,
+so the rest of the pipeline treats them like user functions: the type checker
+reads their signatures, and a user declaration with the same name is reported
+as a redeclaration (`E1002`). `resolve.IsBuiltin(name)` tells later stages
+which calls go to the host.
+
 ### Pass 1: Top-Level Declaration Collection
 
 Traverse the `ast.Program` to collect all top-level declarations into the Global Scope.
@@ -94,6 +104,8 @@ Traverse the AST again to resolve function bodies and variable initializers.
     *   Enter a new scope when entering a `FnDecl` (add parameters to this scope).
     *   Enter a new scope when entering a `BlockStmt`.
     *   Enter a new scope for `ForStmt` (loop variable) and `MatchCase` (pattern variables).
+    *   Enter a new scope when entering a `FnExpr` (anonymous function); its parameters are added to it. The enclosing scopes stay visible, which is what lets a lambda refer to the variables it captures.
+    *   Each method of an `ImplDecl` is resolved inside a scope that declares `self`. Outside of methods `self` is an undefined identifier.
 *   **Declarations**:
     *   When encountering `LetStmt`, add the variable to the current scope.
     *   Ensure the initializer expression is resolved *before* the variable is added (prevents `let x = x;`).
@@ -101,6 +113,8 @@ Traverse the AST again to resolve function bodies and variable initializers.
     *   When encountering an `Ident` (in an expression context), look it up in the current scope chain.
     *   If found, record the link in the `Table`.
     *   If not found, report an "Undefined identifier" error.
+*   **Array literals**: every element expression is resolved.
+*   **Types**: names inside `[T]`, `T?`, `...T`, unions and function types are checked, not just the outermost name. `Self` is a builtin type name.
 *   **Member Access**:
     *   `MemberExpr` (e.g., `obj.prop`) is **NOT** fully resolved here. We resolve `obj`. The property `prop` depends on the type of `obj`, which is determined during Type Checking.
 

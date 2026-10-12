@@ -1,0 +1,49 @@
+// Generic functions, variadic parameters and match.
+
+fn first<T>(items: [T]) -> T {
+    return items[0];
+}
+
+// A variadic parameter collects the remaining arguments into an array.
+fn collect<T>(items: ...T) -> [T] {
+    return items;
+}
+
+fn join(separator: String, parts: ...String) -> String {
+    let out = "";
+    let i = 0;
+    for part in parts {
+        if i > 0 {
+            out = out + separator;
+        }
+        out = out + part;
+        i = i + 1;
+    }
+    return out;
+}
+
+fn spell(n: Int) -> String {
+    match n {
+        case 0: { return "zero"; }
+        case 1: { return "one"; }
+        case 2: { return "two"; }
+        default: { return "many"; }
+    }
+    return "";
+}
+
+fn main() -> Int {
+    println(first<Int>([7, 8, 9]), first<String>(["a", "b"]));
+    println(collect<Int>(1, 2, 3));
+    println(join(", ", "red", "green", "blue"));
+
+    for n in [0, 1, 2, 3] {
+        print(spell(n), "");
+    }
+    println("");
+
+    // ?? supplies a default for null, && and || stop as soon as they can
+    let missing: String? = null;
+    println(missing ?? "default");
+    return 0;
+}

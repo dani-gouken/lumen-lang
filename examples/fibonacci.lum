@@ -1,0 +1,38 @@
+// Functions, recursion, loops and arrays.
+
+fn fib(n: Int) -> Int {
+    if n < 2 {
+        return n;
+    }
+    return fib(n - 1) + fib(n - 2);
+}
+
+// Iterative version: builds the whole sequence in an array.
+fn fibSequence(count: Int) -> [Int] {
+    let seq = [];
+    let a = 0;
+    let b = 1;
+    let i = 0;
+    while i < count {
+        push(seq, a);
+        let next = a + b;
+        a = b;
+        b = next;
+        i = i + 1;
+    }
+    return seq;
+}
+
+fn main() -> Int {
+    println("fib(20) =", fib(20));
+
+    let seq = fibSequence(10);
+    println("first", seq.length, "numbers:", seq);
+
+    let total = 0;
+    for n in seq {
+        total = total + n;
+    }
+    println("sum =", total);
+    return 0;
+}

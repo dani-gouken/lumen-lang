@@ -21,12 +21,18 @@ type Resolver struct {
 }
 
 func NewResolver(errs *errors.Handler) *Resolver {
-	return &Resolver{
+	r := &Resolver{
 		table:       NewTable(),
 		current:     NewScope(nil), // Global scope
 		errs:        errs,
 		sourceLines: make(map[int]string),
 	}
+
+	// Host-provided functions live in the global scope
+	for _, fn := range Builtins() {
+		r.current.Insert(fn.Name, &Symbol{Name: fn.Name, Kind: SymbolFunc, Decl: fn})
+	}
+	return r
 }
 
 // SetSourceLines sets the source lines for error reporting.
@@ -126,6 +132,13 @@ func (r *Resolver) visitFnDecl(d *ast.FnDecl) {
 }
 
 func (r *Resolver) visitStructDecl(d *ast.StructDecl) {
+	// Type parameters are visible in the field types
+	r.pushScope(d)
+	defer r.popScope()
+	for _, tp := range d.TypeParams {
+		r.current.Insert(tp, &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: d})
+	}
+
 	// Resolve field types
 	for _, f := range d.Fields {
 		r.visitType(f.Type)
@@ -177,8 +190,17 @@ func (r *Resolver) visitImplDecl(d *ast.ImplDecl) {
 	}
 
 	for _, m := range d.Methods {
-		r.visitFnDecl(m)
+		r.visitMethodDecl(d, m)
 	}
+}
+
+// visitMethodDecl resolves an impl method, which has an implicit `self`.
+func (r *Resolver) visitMethodDecl(impl *ast.ImplDecl, m *ast.FnDecl) {
+	r.pushScope(impl)
+	defer r.popScope()
+
+	r.current.Insert("self", &Symbol{Name: "self", Kind: SymbolVar, Decl: impl})
+	r.visitFnDecl(m)
 }
 
 func (r *Resolver) visitBlockStmt(b *ast.BlockStmt) {
@@ -343,10 +365,32 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 		for _, v := range e.Fields {
 			r.visitExpr(v)
 		}
+	case *ast.ArrayLiteralExpr:
+		for _, elem := range e.Elements {
+			r.visitExpr(elem)
+		}
+	case *ast.FnExpr:
+		r.visitFnExpr(e)
 	case *ast.Ident:
 		r.resolveIdent(e)
 	case *ast.Literal:
 		// Nothing to resolve
+	}
+}
+
+func (r *Resolver) visitFnExpr(e *ast.FnExpr) {
+	r.pushScope(e)
+	defer r.popScope()
+
+	for _, param := range e.Params {
+		r.visitType(param.Type)
+		r.declare(param.Name, SymbolVar, param)
+	}
+	if e.ReturnType != nil {
+		r.visitType(e.ReturnType)
+	}
+	if e.Body != nil {
+		r.visitBlockStmt(e.Body)
 	}
 }
 
@@ -393,6 +437,12 @@ func (r *Resolver) visitType(t *ast.Type) {
 			r.visitType(p)
 		}
 		r.visitType(t.ReturnType)
+	case ast.TypeArray, ast.TypeOption, ast.TypeVariadic:
+		r.visitType(t.ElemType)
+	case ast.TypeUnion:
+		for _, u := range t.UnionTypes {
+			r.visitType(u)
+		}
 	}
 }
 
@@ -408,7 +458,7 @@ func (r *Resolver) popScope() {
 
 func isBuiltinType(name string) bool {
 	switch name {
-	case "Int", "Float", "String", "Bool", "Void", "Any":
+	case "Int", "Float", "String", "Bool", "Void", "Any", "Self":
 		return true
 	}
 	return false

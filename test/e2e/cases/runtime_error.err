@@ -1,0 +1,3 @@
+Runtime error: index out of bounds: 7 (length 3)
+runtime_error.lum:3:17 in function 'pick'
+return items[index];

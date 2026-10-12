@@ -167,8 +167,8 @@ func (d *Desugarer) validateForLoopIterable(forStmt *ast.ForStmt) bool {
 		// Arrays are iterable
 		return true
 	case *types.PrimitiveType:
-		if t.Name == types.PrimitiveString {
-			// Strings are iterable
+		if t.Name == types.PrimitiveString || t.Name == types.PrimitiveAny {
+			// Strings are iterable; Any is checked when the loop runs
 			return true
 		}
 		// Other primitives are not iterable
@@ -184,8 +184,11 @@ func (d *Desugarer) validateForLoopIterable(forStmt *ast.ForStmt) bool {
 // validateMatchPattern validates a match pattern
 func (d *Desugarer) validateMatchPattern(pattern ast.Node) bool {
 	switch p := pattern.(type) {
-	case *ast.Literal:
-		// Literals are always valid
+	case nil:
+		// `default:` has no pattern and always matches
+		return true
+	case *ast.Literal, *ast.UnaryExpr:
+		// Literals (including negative numbers) are always valid
 		return true
 	case *ast.Ident:
 		// Identifiers are valid (variable binding or enum variant)

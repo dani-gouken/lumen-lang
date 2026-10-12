@@ -785,6 +785,26 @@ fib_base:
 .endfunc
 ```
 
+## Calls in Compiled Code
+
+The convention above is what hand-written assembly follows. The compiler (`internal/codegen`) follows it too, with a fixed way of meeting its two awkward requirements:
+
+*   **The result of every call lands in `r0`.** Compiled functions never keep a variable in `r0`. A function's first argument arrives there, so the first instruction of a compiled function moves it to another register (omitted when the argument is unused).
+*   **The callee and its arguments must be in consecutive registers.** Each function reserves a block of registers above all its variables, the *call window*. A call copies the callee and the arguments into it, executes `CALL`, then copies the result out of `r0`:
+
+    ```assembly
+    MOV  r5 r3      ; callee
+    MOV  r6 r2      ; argument 1
+    CALL r5 1
+    MOV  r3 r0      ; result
+    ```
+
+*   **Methods** receive the value they were called on as their first argument (`self`), ahead of the declared parameters.
+*   **Variadic functions** receive the extra arguments as one array in their last parameter; the caller builds it.
+*   **The process exit code** of `lumen run` is the `Int` returned by `main`.
+
+Details: [compilation/bytecode_generation.md](compilation/bytecode_generation.md) and [compilation/ir_generation.md](compilation/ir_generation.md).
+
 ## See Also
 
 - [Assembly Documentation](assembly.md) - Complete assembly language reference

@@ -1,0 +1,45 @@
+// Anonymous functions and closures.
+//
+// A closure captures the variables it uses by reference: it sees later
+// changes to them, and its own changes are visible outside.
+
+fn makeCounter() -> fn() -> Int {
+    let count = 0;
+    return fn() -> Int {
+        count = count + 1;
+        return count;
+    };
+}
+
+fn map(xs: [Int], f: fn(Int) -> Int) -> [Int] {
+    let out = [];
+    for x in xs {
+        push(out, f(x));
+    }
+    return out;
+}
+
+fn compose(f: fn(Int) -> Int, g: fn(Int) -> Int) -> fn(Int) -> Int {
+    return fn(x: Int) -> Int { return g(f(x)); };
+}
+
+fn main() -> Int {
+    let next = makeCounter();
+    next();
+    next();
+    println("counter:", next());
+
+    let factor = 3;
+    let triple = fn(x: Int) -> Int { return x * factor; };
+    let addOne = fn(x: Int) -> Int { return x + 1; };
+    println(map([1, 2, 3], triple));
+    println(map([1, 2, 3], compose(triple, addOne)));
+
+    // The closure and the enclosing function share `total`
+    let total = 0;
+    let add = fn(x: Int) -> Void { total = total + x; };
+    add(10);
+    add(5);
+    println("total:", total);
+    return 0;
+}

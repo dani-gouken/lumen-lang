@@ -5,11 +5,14 @@ import (
 	"github.com/dani-gouken/lumen/internal/ir"
 )
 
-// compileBlock compiles a block of statements
+// compileBlock compiles a block of statements in its own scope
 func (fc *FunctionCompiler) compileBlock(block *ast.BlockStmt) {
 	if block == nil {
 		return
 	}
+
+	fc.pushScope()
+	defer fc.popScope()
 
 	for _, stmt := range block.Stmts {
 		fc.compileStmt(stmt)
@@ -21,6 +24,7 @@ func (fc *FunctionCompiler) compileStmt(stmt ast.Stmt) {
 	if stmt == nil {
 		return
 	}
+	fc.setPos(stmt)
 
 	switch s := stmt.(type) {
 	case *ast.LetStmt:
@@ -38,18 +42,13 @@ func (fc *FunctionCompiler) compileStmt(stmt ast.Stmt) {
 	case *ast.ExprStmt:
 		fc.compileExpr(s.Expr)
 	case *ast.BreakStmt:
-		fc.compileBreakStmt()
+		fc.compileBreakStmt(s)
 	case *ast.ContinueStmt:
-		fc.compileContinueStmt()
+		fc.compileContinueStmt(s)
 	case *ast.MatchStmt:
 		fc.compileMatchStmt(s)
 	default:
-		fc.gen.errs.ReportErrorFromToken(
-			ErrUnsupportedConstruct,
-			"Unsupported statement type in IR generation",
-			stmt.Token(),
-			fc.gen.sourceLines,
-		)
+		fc.gen.errorAt(stmt, ErrUnsupportedConstruct, "Unsupported statement type in IR generation", "")
 	}
 }
 
@@ -64,11 +63,12 @@ func (fc *FunctionCompiler) compileLetStmt(stmt *ast.LetStmt) {
 		reg = fc.builder.CreateMov(ir.Constant{Val: nil, Type: "Null"})
 	}
 
-	// Store in locals map
-	fc.locals[stmt.Name] = reg
-
-	// If this variable is captured, we might need to handle it specially
-	// For now, we just store it as a local
+	// The variable needs a register of its own. A temporary can be adopted;
+	// another variable's register must be copied, or the two would alias.
+	if fc.varRegs[reg.ID] {
+		reg = fc.builder.CreateMov(reg)
+	}
+	fc.declare(stmt.Name, reg)
 }
 
 // compileReturnStmt compiles a return statement
@@ -78,4 +78,5 @@ func (fc *FunctionCompiler) compileReturnStmt(stmt *ast.ReturnStmt) {
 		val = fc.compileExpr(stmt.Value)
 	}
 	fc.builder.CreateRet(val)
+	fc.startDeadBlock()
 }

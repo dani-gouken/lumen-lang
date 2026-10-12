@@ -19,7 +19,7 @@ func TestMemoryIntegrationArrayManipulation(t *testing.T) {
 		Code: []Instr{
 			NewInstr(OpNEWARRAY, 0, 5, 0), // r0 = new array(5)
 			NewInstr(OpLOADK, 1, 0, 0),    // r1 = 10
-			NewInstr(OpLOADK, 2, 0, 0),    // r2 = 0 (index)
+			NewInstr(OpLOADK, 2, 3, 0),    // r2 = 0 (index)
 			NewInstr(OpSETINDEX, 0, 2, 1), // r0[r2] = r1
 			NewInstr(OpLOADK, 1, 1, 0),    // r1 = 20
 			NewInstr(OpLOADK, 2, 2, 0),    // r2 = 1 (index)
@@ -32,6 +32,7 @@ func TestMemoryIntegrationArrayManipulation(t *testing.T) {
 			NewInt(10),
 			NewInt(20),
 			NewInt(1),
+			NewInt(0),
 		},
 		Prototypes: []FunctionPrototype{
 			{

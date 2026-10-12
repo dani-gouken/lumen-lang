@@ -1,0 +1,61 @@
+// Structs, traits and methods.
+//
+// A trait lists the methods a struct must provide. A function that takes
+// the trait accepts any struct implementing it.
+
+trait Shape {
+    fn area() -> Int;
+    fn name() -> String;
+}
+
+struct Rect {
+    width: Int;
+    height: Int;
+}
+
+struct Square {
+    side: Int;
+}
+
+impl Shape for Rect {
+    fn area() -> Int {
+        return self.width * self.height;
+    }
+    fn name() -> String {
+        return "rect";
+    }
+}
+
+impl Shape for Square {
+    fn area() -> Int {
+        return self.side * self.side;
+    }
+    fn name() -> String {
+        return "square";
+    }
+}
+
+// Methods that do not belong to a trait go in a plain impl block.
+impl Rect {
+    fn scaled(factor: Int) -> Rect {
+        return Rect { width: self.width * factor, height: self.height * factor };
+    }
+}
+
+fn describe(shape: Shape) -> Void {
+    println(shape.name(), "with area", shape.area());
+}
+
+fn main() -> Int {
+    let rect = Rect { width: 2, height: 3 };
+    let big = rect.scaled(10);
+    let square = Square { side: 4 };
+
+    describe(rect);
+    describe(big);
+    describe(square);
+
+    square.side = 5;
+    println("after resize:", square, square.area());
+    return 0;
+}

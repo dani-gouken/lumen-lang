@@ -1,4 +1,4 @@
-.PHONY: help build clean test test-vm test-asm test-bytecode test-integration test-all run
+.PHONY: help build clean test test-unit test-e2e test-integration run
 
 # Go binary location
 GO := /usr/local/go/bin/go
@@ -8,9 +8,10 @@ help:
 	@echo ""
 	@echo "Usage:"
 	@echo "  make build              Build the lumen binary"
-	@echo "  make test               Run Go unit tests"
+	@echo "  make test               Run all tests (unit + e2e + integration)"
+	@echo "  make test-unit          Run Go unit tests"
+	@echo "  make test-e2e           Run end-to-end tests (lumen run on .lum files)"
 	@echo "  make test-integration   Run integration tests (toolchain)"
-	@echo "  make test-all           Run all tests (unit + integration)"
 	@echo "  make clean              Clean build artifacts and test output"
 	@echo "  make run                Run lumen CLI (shows help)"
 
@@ -21,14 +22,18 @@ build:
 
 test-unit:
 	@echo "Running unit tests..."
-	@$(GO) test ./internal/vm ./internal/asm ./internal/types  ./internal/ir  ./internal/ast ./internal/resolve -v
+	@$(GO) test ./internal/...
+
+test-e2e:
+	@echo "Running end-to-end tests..."
+	@$(GO) test ./test/e2e
 
 
 test-integration:
 	@echo "Running integration tests..."
 	@./test/integration/test.sh
 
-test: test-unit test-integration
+test: test-unit test-e2e test-integration
 	@echo ""
 	@echo "All tests completed successfully!"
 

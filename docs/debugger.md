@@ -1,12 +1,26 @@
 # Lumen Debugger (lumdbg)
 
-The `lumdbg` debugger is an interactive command-line tool for debugging Lumen programs written in assembly (.lasm) or compiled to bytecode (.lc).
+The `lumdbg` debugger is an interactive command-line tool for debugging Lumen programs written in Lumen (.lum), in assembly (.lasm) or compiled to bytecode (.lc).
 
 ## Usage
 
 ```bash
-lumen lumdbg <file.lasm|file.lc>
+lumen lumdbg <file.lum|file.lasm|file.lc>
 ```
+
+A `.lum` file is compiled first; if it has errors they are printed and the
+debugger does not start. Execution is still stepped one bytecode instruction
+at a time, but each instruction is shown with the Lumen source line it was
+compiled from:
+
+```
+IP 24  LOADI r2 0  [main]
+  examples/fibonacci.lum:16  let a = 0;
+```
+
+Several instructions usually belong to the same source line. Bytecode built
+with `lumen build` carries the same information, so debugging the resulting
+`.lc` file shows source lines as well.
 
 ## Features
 
@@ -250,6 +264,8 @@ This information is displayed during execution to help with debugging.
 
 ## Current Limitations
 
+1. No source-level stepping: `s` advances one instruction, not one Lumen statement
+1. Registers are shown by number; variable names from `.lum` sources are not mapped back
 1. No execution history navigation (backward/forward)
 2. No call frame inspection (can't navigate up/down call stack)
 3. No conditional breakpoints (can't break on conditions)

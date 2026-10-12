@@ -1,0 +1,8 @@
+// The smallest Lumen program.
+//
+// Run it with: lumen run examples/hello.lum
+
+fn main() -> Int {
+    println("Hello, Lumen!");
+    return 0;
+}

@@ -1,0 +1,4 @@
+[ERROR] E2001: cannot assign type int to string
+type_error.lum:8:25
+[ERROR] E2010: cannot use type string as argument of type int
+type_error.lum:9:19

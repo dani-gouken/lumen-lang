@@ -485,12 +485,11 @@ func TestDesugarLetWithShortCircuit(t *testing.T) {
 		t.Error("Expected temporary variables to be generated for let with &&")
 	}
 
-	// The let statement with && should be wrapped in a block
+	// The helper statements are placed in the enclosing block, in front of
+	// the let. Wrapping them in a block of their own would hide `result`
+	// from the statements that follow.
 	fnDecl := desugaredProg.Decls[0].(*ast.FnDecl)
-	blockStmt, ok := fnDecl.Body.Stmts[0].(*ast.BlockStmt)
-	if !ok {
-		t.Fatalf("Expected let with && to be wrapped in block, got %T", fnDecl.Body.Stmts[0])
-	}
+	blockStmt := fnDecl.Body
 
 	// Should have multiple statements for the short-circuit logic plus the final let
 	if len(blockStmt.Stmts) < 3 {

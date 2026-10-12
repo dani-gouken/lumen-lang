@@ -137,6 +137,13 @@ Strings support standard escape sequences:
 2: "Quote: \"Hello\""
 ```
 
+**How string constants are stored:**
+The text of a string literal goes into the chunk's string pool; the constant
+itself holds the pool index. A string constant is therefore not a string value
+and cannot be loaded with `LOADK`. It is consumed by the instructions that
+expect one: `NEWSTR` (create a string object) and `GETFIELD`, `SETFIELD`,
+`HASFIELD`, `DELFIELD` (field name).
+
 **Usage with NEWSTR:**
 String constants are used with the `NEWSTR` instruction to create string objects on the heap:
 ```assembly
@@ -223,6 +230,14 @@ Result is stored in `r_dest`, operands are in `r_src1` and `r_src2`.
 ```assembly
 ADD r2 r0 r1   ; r2 = r0 + r1
 ```
+Both operands must be Int, both Number, or both String. Two strings are
+concatenated into a new string object:
+```assembly
+NEWSTR r0 0    ; "foo"
+NEWSTR r1 1    ; "bar"
+ADD r2 r0 r1   ; r2 = "foobar"
+```
+Mixing kinds (Int + Number, String + Int, ...) is a runtime error.
 
 #### SUB - Subtraction
 ```assembly
@@ -238,11 +253,14 @@ MUL r2 r0 r1   ; r2 = r0 * r1
 ```assembly
 DIV r2 r0 r1   ; r2 = r0 / r1
 ```
+Int division truncates. Dividing an Int by zero is a runtime error
+(`division by zero`); Number division follows IEEE 754 and yields infinity.
 
 #### MOD - Remainder
 ```assembly
 MOD r2 r0 r1   ; r2 = r0 % r1
 ```
+Int remainder by zero is a runtime error (`division by zero`).
 
 #### NEG - Negation
 ```assembly
@@ -299,6 +317,9 @@ Result (boolean) is stored in `r_dest`.
 ```assembly
 EQ r2 r0 r1    ; r2 = (r0 == r1)
 ```
+Strings are equal when their contents are equal. Arrays, objects and functions
+are equal only to themselves (identity). Values of different kinds are never
+equal, so `1i` and `1.0` differ.
 
 #### NE - Not Equal
 ```assembly
@@ -309,6 +330,8 @@ NE r2 r0 r1    ; r2 = (r0 != r1)
 ```assembly
 LT r2 r0 r1    ; r2 = (r0 < r1)
 ```
+`LT`, `LE`, `GT` and `GE` accept two Ints, two Numbers or two Strings. Strings
+are ordered byte by byte (`"a" < "b"`, `"Z" < "a"`).
 
 #### LE - Less or Equal
 ```assembly
@@ -423,17 +446,18 @@ SETFIELD r0 0 r2  ; obj["key"] = 42
 ```assembly
 GETINDEX r_dest r_array r_index
 ```
-Get element at index from array.
+Get the element at an index of an array, or the character at an index of a
+string.
 
 **Arguments:**
 - `r_dest`: destination register for the value
-- `r_array`: register containing array heap pointer
+- `r_array`: register containing an array or a string
 - `r_index`: register containing integer index
 
 **Behavior:**
-- Retrieves element at `r_index` from array in `r_array`
-- Stores result in `r_dest`
-- Returns null if index is out of bounds
+- Array: stores the element at `r_index` in `r_dest`
+- String: stores a new one-character string in `r_dest`. Indices count
+  characters (Unicode code points), not bytes
 
 **Example:**
 ```assembly
@@ -447,9 +471,10 @@ GETINDEX r4 r0 r3 ; r4 = array[0] (42)
 ```
 
 **Error Conditions:**
-- Runtime error if `r_array` is not a heap pointer
+- Runtime error if `r_array` is neither an array nor a string
 - Runtime error if `r_index` is not an integer
-- Returns null for out-of-bounds access
+- Runtime error if the index is negative or not below the length
+  (`index out of bounds: 3 (length 2)`)
 
 #### SETINDEX - Set Array Element
 ```assembly
@@ -464,8 +489,9 @@ Set element at index in array.
 
 **Behavior:**
 - Stores `r_value` at index `r_index` in array
-- Array grows automatically if needed
-- Elements between current length and index filled with null
+- An index between the current length and the capacity given to `NEWARRAY`
+  grows the array; skipped elements are filled with null
+- To grow an array beyond its capacity, use `ARRPUSH`
 
 **Example:**
 ```assembly
@@ -480,32 +506,36 @@ SETINDEX r0 r1 r2 ; array[2] = 30 (array[1] becomes null)
 ```
 
 **Error Conditions:**
-- Runtime error if `r_array` is not a heap pointer
+- Runtime error if `r_array` is not an array
 - Runtime error if `r_index` is not an integer
-- Runtime error if index is negative
+- Runtime error if the index is negative or not below the capacity
 
 #### ARRPUSH - Append to Array
 ```assembly
 ARRPUSH r_array r_value
 ```
-Append `r_value` to the end of `r_array`.
+Append `r_value` to the end of `r_array`. The array grows as needed; this is
+the only way to extend an array past its initial capacity.
 
 **Error Conditions:**
-- Runtime error if `r_array` is not a heap pointer to an array
+- Runtime error if `r_array` is not an array
 
-#### ARRLEN - Get Array Length
+#### ARRLEN - Get Length
 ```assembly
-ARRLEN r_dest r_array
+ARRLEN r_dest r_value
 ```
-Get the length of an array.
+Get the length of an array or a string.
 
 **Arguments:**
 - `r_dest`: destination register for the length (as integer)
-- `r_array`: register containing array heap pointer
+- `r_value`: register containing an array, a string or an object
 
 **Behavior:**
-- Returns the number of elements in the array
-- Stores result as integer in `r_dest`
+- Array: the number of elements
+- String: the number of characters (Unicode code points)
+- Object: the value of its field named `length`, or null if it has none. This
+  lets the compiler lower `value.length` to one instruction without knowing
+  whether `value` is an array or a struct that happens to have such a field
 
 **Example:**
 ```assembly
@@ -518,7 +548,7 @@ ARRLEN r3 r0      ; r3 = 1 (length)
 ```
 
 **Error Conditions:**
-- Runtime error if `r_array` is not a heap pointer to an array
+- Runtime error if `r_value` is not an array, a string or an object
 
 ### Object Operations
 
@@ -542,22 +572,21 @@ Get field value from object.
 ```assembly
 .constants 2
   0: "name"
-  1: "age"
+  1: 30i
 
 
 .func main 4 0
   NEWOBJ r0         ; Create object
-  NEWSTR r1 0       ; r1 = "name"
-  LOADK r2 1        ; r2 = "John"
-  SETFIELD r0 0 r2  ; obj["name"] = "John"
+  LOADK r2 1        ; r2 = 30
+  SETFIELD r0 0 r2  ; obj["name"] = 30
   
-  GETFIELD r3 r0 0  ; r3 = obj["name"] ("John")
+  GETFIELD r3 r0 0  ; r3 = obj["name"] (30)
 .endfunc
 ```
 
 **Error Conditions:**
-- Runtime error if `r_object` is not a heap pointer to an object
-- Runtime error if constant at `const_index` is not a string
+- Runtime error if `r_object` is not an object (`GETFIELD requires object, got array`)
+- Runtime error if constant at `const_index` is not a string constant
 
 #### SETFIELD - Set Object Field
 ```assembly
@@ -594,8 +623,8 @@ Set field value in object.
 ```
 
 **Error Conditions:**
-- Runtime error if `r_object` is not a heap pointer to an object
-- Runtime error if constant at `const_index` is not a string
+- Runtime error if `r_object` is not an object
+- Runtime error if constant at `const_index` is not a string constant
 
 #### HASFIELD - Check Object Field Presence
 ```assembly
@@ -604,8 +633,8 @@ HASFIELD r_dest r_object const_index
 Store a boolean indicating whether the object has a field with the given name.
 
 **Error Conditions:**
-- Runtime error if `r_object` is not a heap pointer to an object
-- Runtime error if constant at `const_index` is not a string
+- Runtime error if `r_object` is not an object
+- Runtime error if constant at `const_index` is not a string constant
 
 #### DELFIELD - Delete Object Field
 ```assembly
@@ -614,8 +643,8 @@ DELFIELD r_dest r_object const_index
 Delete a field from an object, storing `true` in `r_dest` if it existed, `false` otherwise.
 
 **Error Conditions:**
-- Runtime error if `r_object` is not a heap pointer to an object
-- Runtime error if constant at `const_index` is not a string
+- Runtime error if `r_object` is not an object
+- Runtime error if constant at `const_index` is not a string constant
 
 ### Garbage Collection
 

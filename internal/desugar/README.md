@@ -22,16 +22,19 @@ Short-circuit operators (`&&`, `||`, `??`) are **fully desugared** when they app
 // Original
 let result = func1() && func2();
 
-// Desugared
-{
-  let __tmp_0 = func1();
-  let __tmp_1 = false;
-  if __tmp_0 {
-    __tmp_1 = func2();
-  }
-  let result = __tmp_1;
+// Desugared (the helpers are added to the enclosing block, so `result`
+// stays in scope for the statements that follow)
+let __tmp_0 = func1();
+let __tmp_1 = false;
+if __tmp_0 {
+  __tmp_1 = func2();
 }
+let result = __tmp_1;
 ```
+
+A `while` whose condition contains these operators becomes `while true` with the
+helpers and an `if !cond { break; }` at the top of the body, so the condition is
+recomputed before every iteration.
 
 The key insight: **We CAN transform expressions into statements** by:
 1. Detecting short-circuit operators at the statement level (`containsShortCircuit`)
@@ -96,11 +99,15 @@ for item in collection {
     let __len_0 = collection.length;
     while __iter_0 < __len_0 {
         let item = collection[__iter_0];
-        body
         __iter_0 = __iter_0 + 1;
+        body
     }
 }
 ```
+
+The increment precedes the body so that a `continue` in the body cannot skip it.
+An iterable that is not a plain variable is first stored in a temporary, so it is
+evaluated once.
 
 **Implementation**: [for_loop.go:20](./for_loop.go#L20)
 
@@ -108,7 +115,7 @@ for item in collection {
 - Generates unique iterator (`__iter_N`) and length (`__len_N`) variables
 - Preserves original loop variable name
 - Updates type information for generated variables
-- Handles both arrays and strings
+- Handles both arrays and strings (and `Any`, checked when the loop runs)
 
 ### 2. Match Statement Desugaring
 

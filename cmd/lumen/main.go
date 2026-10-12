@@ -1,0 +1,700 @@
+package main
+
+import (
+	"fmt"
+	"os"
+	"strings"
+	"unsafe"
+
+	"github.com/dani-gouken/lumen/internal/asm"
+	"github.com/dani-gouken/lumen/internal/compiler"
+	"github.com/dani-gouken/lumen/internal/debugger"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/vm"
+)
+
+func main() {
+	if len(os.Args) < 2 {
+		printHelp()
+		return
+	}
+
+	command := os.Args[1]
+
+	switch command {
+	case "run":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: lumen run <file>")
+			os.Exit(1)
+		}
+		cmdRun(os.Args[2])
+
+	case "build":
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: lumen build <input.lum> <output.lc|output.lasm>")
+			os.Exit(1)
+		}
+		cmdBuild(os.Args[2], os.Args[3])
+
+	case "ir":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: lumen ir <file.lum>")
+			os.Exit(1)
+		}
+		cmdIR(os.Args[2])
+
+	case "repl":
+		fmt.Println("[stub] Starting REPL...")
+
+	case "asm":
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: lumen asm <input.lasm> <output.lc>")
+			os.Exit(1)
+		}
+		cmdAssemble(os.Args[2], os.Args[3])
+
+	case "disasm":
+		if len(os.Args) < 4 {
+			fmt.Println("Usage: lumen disasm <input.lc> <output.lasm>")
+			os.Exit(1)
+		}
+		cmdDisassemble(os.Args[2], os.Args[3])
+
+	case "exec":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: lumen exec <file.lc>")
+			os.Exit(1)
+		}
+		cmdExecute(os.Args[2])
+
+	case "runasm":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: lumen runasm <file.lasm>")
+			os.Exit(1)
+		}
+		cmdRunAsm(os.Args[2])
+
+	case "lumdbg":
+		if len(os.Args) < 3 {
+			fmt.Println("Usage: lumen lumdbg <file.lum|file.lasm|file.lc>")
+			os.Exit(1)
+		}
+		cmdDebug(os.Args[2])
+
+	default:
+		fmt.Printf("Unknown command: %s\n", command)
+		printHelp()
+		os.Exit(1)
+	}
+}
+
+func printHelp() {
+	fmt.Println("Lumen Programming Language")
+	fmt.Println()
+	fmt.Println("Usage:")
+	fmt.Println("  lumen run <file.lum>       Compile and run a Lumen source file")
+	fmt.Println("  lumen build <in> <out>     Compile .lum to .lc bytecode (or .lasm text)")
+	fmt.Println("  lumen ir <file.lum>        Print the intermediate representation")
+	fmt.Println("  lumen repl                 Start interactive REPL (not implemented)")
+	fmt.Println("  lumen asm <in> <out>       Assemble .lasm to .lc bytecode")
+	fmt.Println("  lumen disasm <in> <out>    Disassemble .lc to .lasm text")
+	fmt.Println("  lumen exec <file>          Execute .lc bytecode file")
+	fmt.Println("  lumen runasm <file>        Assemble and run .lasm file directly")
+	fmt.Println("  lumen lumdbg <file>        Debug a .lum, .lasm or .lc file")
+}
+
+// compileSource runs the compilation pipeline on a .lum file. Diagnostics
+// are printed to stderr; the process exits if the program does not compile.
+func compileSource(inputFile string) *compiler.Result {
+	errs := errors.NewHandler()
+	result, err := compiler.CompileFile(inputFile, errs)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		os.Exit(1)
+	}
+
+	for _, d := range errs.Diagnostics {
+		fmt.Fprintln(os.Stderr, d.String())
+	}
+	if errs.HasErrors() {
+		os.Exit(1)
+	}
+	return result
+}
+
+// cmdRun compiles and executes a .lum file. An Int returned by main becomes
+// the process exit code.
+func cmdRun(inputFile string) {
+	chunk := compileSource(inputFile).Chunk
+
+	result, err := vm.NewVM().Exec(chunk)
+	if err != nil {
+		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
+		os.Exit(1)
+	}
+	if result.IsInt() {
+		os.Exit(int(result.AsInt() & 0xFF))
+	}
+}
+
+// cmdBuild compiles a .lum file to bytecode, or to assembly text when the
+// output name ends in .lasm.
+func cmdBuild(inputFile, outputFile string) {
+	chunk := compileSource(inputFile).Chunk
+
+	var output []byte
+	if strings.HasSuffix(outputFile, ".lasm") {
+		output = []byte(asm.Disassemble(chunk))
+	} else {
+		bytecode, err := vm.SerializeChunk(chunk)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Serialization error: %v\n", err)
+			os.Exit(1)
+		}
+		output = bytecode
+	}
+
+	if err := os.WriteFile(outputFile, output, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Compiled %s -> %s\n", inputFile, outputFile)
+}
+
+// cmdIR prints the intermediate representation of a .lum file.
+func cmdIR(inputFile string) {
+	fmt.Print(compileSource(inputFile).IR.Dump())
+}
+
+func cmdAssemble(inputFile, outputFile string) {
+	// Read input assembly file
+	data, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Assemble to chunk with debug info
+	chunk, err := asm.AssembleFromFile(string(data), inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Assembly error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Serialize to bytecode
+	bytecode, err := vm.SerializeChunk(chunk)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Serialization error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Write output file
+	if err := os.WriteFile(outputFile, bytecode, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Assembled %s -> %s (%d bytes)\n", inputFile, outputFile, len(bytecode))
+}
+
+func cmdDisassemble(inputFile, outputFile string) {
+	// Read input bytecode file
+	data, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Deserialize to chunk
+	chunk, err := vm.DeserializeChunk(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Disassemble to text
+	asmText := asm.Disassemble(chunk)
+
+	// Write output file
+	if err := os.WriteFile(outputFile, []byte(asmText), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Disassembled %s -> %s\n", inputFile, outputFile)
+}
+
+func cmdExecute(inputFile string) {
+	// Read bytecode file
+	data, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Deserialize to chunk
+	chunk, err := vm.DeserializeChunk(data)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create VM and execute
+	v := vm.NewVM()
+	result, err := v.Exec(chunk)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Result: %s\n", formatValue(result))
+}
+
+func cmdRunAsm(inputFile string) {
+	// Read assembly file
+	data, err := os.ReadFile(inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Assemble to chunk
+	chunk, err := asm.AssembleFromFile(string(data), inputFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Assembly error: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Create VM and execute directly
+	v := vm.NewVM()
+	result, err := v.Exec(chunk)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Result: %s\n", formatValue(result))
+}
+
+func formatValue(val vm.Value) string {
+	if val.IsHeapPtr() {
+		// Try to dereference and get the actual object
+		ptr := val.AsHeapPtr()
+		obj := (*vm.ObjHeader)(unsafe.Pointer(ptr))
+		if obj != nil {
+			switch obj.Type {
+			case vm.ObjTypeString:
+				strObj := (*vm.StringObj)(unsafe.Pointer(ptr))
+				return fmt.Sprintf("String(%q)", strObj.String())
+			case vm.ObjTypeArray:
+				return "Array(...)"
+			case vm.ObjTypeObject:
+				return "Object(...)"
+			default:
+				return fmt.Sprintf("HeapPtr(0x%x)", ptr)
+			}
+		}
+	}
+	return val.String()
+}
+
+func cmdDebug(inputFile string) {
+	var chunk *vm.Chunk
+
+	// Determine if file is .lum, .lc or .lasm
+	if strings.HasSuffix(inputFile, ".lum") {
+		chunk = compileSource(inputFile).Chunk
+	} else if len(inputFile) > 3 && inputFile[len(inputFile)-3:] == ".lc" {
+		// Load bytecode file
+		data, err := os.ReadFile(inputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+			os.Exit(1)
+		}
+
+		chunk, err = vm.DeserializeChunk(data)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		// Assume .lasm file
+		data, err := os.ReadFile(inputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
+			os.Exit(1)
+		}
+
+		chunk, err = asm.AssembleFromFile(string(data), inputFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Assembly error: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// Create VM
+	v := vm.NewVM()
+
+	// Print header
+	printDebuggerHeader()
+
+	// Breakpoints for continue mode
+	breakpoints := debugger.NewBreakpointManager(chunk)
+
+	// Load breakpoints from source file (marked with ;BREAK comments)
+	if len(chunk.Breakpoints) > 0 {
+		fmt.Printf("Loaded %d breakpoint(s) from source\n", len(chunk.Breakpoints))
+		for _, ip := range chunk.Breakpoints {
+			breakpoints.AddBreakpoint(ip)
+		}
+	}
+
+	continueMode := false
+	instrCount := 0
+
+	// Set up debug hook
+	v.SetDebugHook(func(snapshot interface{}) bool {
+		// Convert snapshot
+		s, ok := snapshot.(struct {
+			IP            int
+			Instr         vm.Instr
+			DebugInfo     *vm.DebugInfo
+			Registers     []vm.Value
+			Constants     []vm.Value
+			Code          []vm.Instr
+			StackPointer  int
+			FramePointer  int
+			FrameCount    int
+			HeapAllocated uint64
+			HeapMax       uint64
+			RegisterCount int
+			ArgCount      int
+		})
+		if !ok {
+			return false
+		}
+
+		instrCount++
+
+		// In continue mode, only stop at breakpoints
+		if continueMode {
+			if breakpoints.ShouldBreak(s.IP) {
+				continueMode = false
+				fmt.Printf("\nBreakpoint at IP %d\n", s.IP)
+			} else {
+				return false // Don't pause
+			}
+		}
+
+		// Print current state
+		printDebuggerState(s.IP, instrCount, s, breakpoints, chunk)
+
+		// Wait for user command
+		for {
+			fmt.Print("\n> ")
+			var input string
+			// Read full line including spaces
+			fmt.Scanln(&input)
+
+			// If empty, default to step
+			if input == "" {
+				input = "s"
+			}
+
+			handled := handleDebugCommand(input, s.IP, s, breakpoints, chunk, &continueMode)
+			if handled {
+				return false // Continue execution
+			}
+		}
+	})
+
+	// Execute the chunk with debugging
+	result, err := v.Exec(chunk)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nExecution complete: %s (%d instructions)\n", formatValue(result), instrCount)
+}
+
+func printDebuggerHeader() {
+	fmt.Println("Lumen Debugger")
+	fmt.Println("Commands: s=step, c=continue, r=registers, b=breakpoint, i=info, l=labels, h=help, q=quit")
+	fmt.Println()
+}
+
+func printDebuggerState(ip int, instrCount int, snapshot interface{}, bpm *debugger.BreakpointManager, chunk *vm.Chunk) {
+	s := snapshot.(struct {
+		IP            int
+		Instr         vm.Instr
+		DebugInfo     *vm.DebugInfo
+		Registers     []vm.Value
+		Constants     []vm.Value
+		Code          []vm.Instr
+		StackPointer  int
+		FramePointer  int
+		FrameCount    int
+		HeapAllocated uint64
+		HeapMax       uint64
+		RegisterCount int
+		ArgCount      int
+	})
+
+	fmt.Println()
+
+	// Show basic info
+	if bpm.ShouldBreak(ip) {
+		fmt.Print("* ")
+	}
+	fmt.Printf("IP %d  %s", ip, asm.FormatInstruction(s.Instr, chunk))
+
+	// Show function name if available
+	if s.DebugInfo != nil && s.DebugInfo.FuncName != "" {
+		fmt.Printf("  [%s]", s.DebugInfo.FuncName)
+	}
+	fmt.Println()
+
+	// Source location (compact)
+	if s.DebugInfo != nil && s.DebugInfo.FilePath != "" {
+		fmt.Printf("  %s:%d", s.DebugInfo.FilePath, s.DebugInfo.Line)
+		if s.DebugInfo.SourceLine != "" {
+			fmt.Printf("  %s", strings.TrimSpace(s.DebugInfo.SourceLine))
+		}
+		fmt.Println()
+	}
+}
+
+func handleDebugCommand(input string, currentIP int, snapshot interface{}, bpm *debugger.BreakpointManager, chunk *vm.Chunk, continueMode *bool) bool {
+	s := snapshot.(struct {
+		IP            int
+		Instr         vm.Instr
+		DebugInfo     *vm.DebugInfo
+		Registers     []vm.Value
+		Constants     []vm.Value
+		Code          []vm.Instr
+		StackPointer  int
+		FramePointer  int
+		FrameCount    int
+		HeapAllocated uint64
+		HeapMax       uint64
+		RegisterCount int
+		ArgCount      int
+	})
+
+	// Parse command
+	parts := splitCommand(input)
+	if len(parts) == 0 {
+		parts = []string{"s"} // Default to step
+	}
+
+	cmd := parts[0]
+	args := parts[1:]
+
+	switch cmd {
+	case "s", "step", "":
+		return true // Continue execution (step)
+
+	case "c", "continue":
+		*continueMode = true
+		if bpm.Count() > 0 {
+			fmt.Printf("Continuing (%d breakpoint(s) set)\n", bpm.Count())
+		}
+		return true
+
+	case "b", "break", "breakpoint":
+		handleBreakpointCommand(args, currentIP, bpm, chunk)
+		return false
+
+	case "r", "regs", "registers":
+		handleRegisterCommand(args, s.Registers)
+		return false
+
+	case "i", "info":
+		printDetailedInfo(s)
+		return false
+
+	case "l", "labels":
+		handleLabelsCommand(bpm)
+		return false
+
+	case "h", "help":
+		printDebuggerHeader()
+		return false
+
+	case "q", "quit", "exit":
+		fmt.Println("Exiting.")
+		os.Exit(0)
+		return false
+
+	default:
+		fmt.Printf("Unknown command: %s\n", cmd)
+		return false
+	}
+}
+
+func splitCommand(input string) []string {
+	var parts []string
+	current := ""
+
+	for _, ch := range input {
+		if ch == ' ' || ch == '\t' {
+			if current != "" {
+				parts = append(parts, current)
+				current = ""
+			}
+		} else {
+			current += string(ch)
+		}
+	}
+
+	if current != "" {
+		parts = append(parts, current)
+	}
+
+	return parts
+}
+
+func handleBreakpointCommand(args []string, currentIP int, bpm *debugger.BreakpointManager, chunk *vm.Chunk) {
+	if len(args) == 0 {
+		fmt.Println("Usage: b <ip> | b list | b clear | b del <ip>")
+		return
+	}
+
+	subCmd := args[0]
+
+	switch subCmd {
+	case "list", "ls", "l":
+		bps := bpm.List()
+		if len(bps) == 0 {
+			fmt.Println("No breakpoints")
+			return
+		}
+		fmt.Printf("Breakpoints:\n")
+		for _, ip := range bps {
+			debugInfo := chunk.GetDebugInfo(ip)
+			location := ""
+			if debugInfo != nil {
+				if debugInfo.FuncName != "" {
+					location = fmt.Sprintf(" [%s]", debugInfo.FuncName)
+				}
+			}
+			fmt.Printf("  IP %d%s\n", ip, location)
+		}
+
+	case "clear", "c":
+		count := bpm.Count()
+		bpm.RemoveAll()
+		fmt.Printf("Cleared %d breakpoint(s)\n", count)
+
+	case "del", "delete", "rm", "remove":
+		if len(args) < 2 {
+			fmt.Println("Usage: b del <ip>")
+			return
+		}
+		var ip int
+		_, err := fmt.Sscanf(args[1], "%d", &ip)
+		if err != nil {
+			fmt.Printf("Invalid IP: %s\n", args[1])
+			return
+		}
+		if !bpm.ShouldBreak(ip) {
+			fmt.Printf("No breakpoint at IP %d\n", ip)
+			return
+		}
+		bpm.RemoveBreakpoint(ip)
+		fmt.Printf("Removed breakpoint at IP %d\n", ip)
+
+	default:
+		// Try to parse as IP
+		var ip int
+		_, err := fmt.Sscanf(subCmd, "%d", &ip)
+		if err != nil {
+			fmt.Printf("Invalid IP: %s\n", subCmd)
+			return
+		}
+
+		if ip < 0 || ip >= len(chunk.Code) {
+			fmt.Printf("IP %d out of range (0-%d)\n", ip, len(chunk.Code)-1)
+			return
+		}
+
+		err = bpm.AddBreakpoint(ip)
+		if err != nil {
+			fmt.Printf("Failed to set breakpoint: %v\n", err)
+			return
+		}
+
+		fmt.Printf("Breakpoint set at IP %d\n", ip)
+	}
+}
+
+func handleRegisterCommand(args []string, registers []vm.Value) {
+	if len(args) == 0 {
+		// Show all registers
+		for i, val := range registers {
+			fmt.Printf("r%d = %s\n", i, debugger.InspectValue(val))
+		}
+		return
+	}
+
+	// Show specific register
+	var regNum int
+	_, err := fmt.Sscanf(args[0], "%d", &regNum)
+	if err != nil {
+		fmt.Printf("Invalid register: %s\n", args[0])
+		return
+	}
+
+	if regNum < 0 || regNum >= len(registers) {
+		fmt.Printf("Register r%d out of range (0-%d)\n", regNum, len(registers)-1)
+		return
+	}
+
+	fmt.Printf("r%d = %s\n", regNum, debugger.InspectValue(registers[regNum]))
+}
+
+func printDetailedInfo(snapshot interface{}) {
+	s := snapshot.(struct {
+		IP            int
+		Instr         vm.Instr
+		DebugInfo     *vm.DebugInfo
+		Registers     []vm.Value
+		Constants     []vm.Value
+		Code          []vm.Instr
+		StackPointer  int
+		FramePointer  int
+		FrameCount    int
+		HeapAllocated uint64
+		HeapMax       uint64
+		RegisterCount int
+		ArgCount      int
+	})
+
+	fmt.Printf("IP: %d/%d\n", s.IP, len(s.Code))
+	fmt.Printf("Opcode: %v  A=%d B=%d C=%d\n", s.Instr.Op, s.Instr.A, s.Instr.B, s.Instr.C)
+
+	if s.DebugInfo != nil {
+		if s.DebugInfo.FilePath != "" {
+			fmt.Printf("Source: %s:%d\n", s.DebugInfo.FilePath, s.DebugInfo.Line)
+		}
+		if s.DebugInfo.FuncName != "" {
+			fmt.Printf("Function: %s\n", s.DebugInfo.FuncName)
+		}
+	}
+
+	fmt.Printf("Frames: %d  Heap: %d/%d bytes\n", s.FrameCount, s.HeapAllocated, s.HeapMax)
+}
+
+func handleLabelsCommand(bpm *debugger.BreakpointManager) {
+	labels := bpm.ListLabels()
+	if len(labels) == 0 {
+		fmt.Println("No labels")
+		return
+	}
+
+	for _, label := range labels {
+		ip, _ := bpm.GetLabelIP(label)
+		fmt.Printf("%-20s  IP %d\n", label, ip)
+	}
+}

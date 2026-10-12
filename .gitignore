@@ -1,5 +1,5 @@
 # Binaries
-lumen
+/lumen
 cmd/lumen/lumen
 *.exe
 *.exe~
@@ -20,6 +20,10 @@ exercises/**/*
 *.o
 *.a
 *.out
+
+# ...except the expected output of example and end-to-end programs
+!examples/expected/*.out
+!test/e2e/cases/*.out
 
 # Go coverage
 coverage.txt

@@ -2,7 +2,9 @@ package vm
 
 import (
 	"fmt"
+	"io"
 	"math"
+	"os"
 	"unsafe"
 )
 
@@ -42,6 +44,7 @@ type VM struct {
 	externFuncs     map[string]ExternFunc // External functions
 	debugHook       DebugHook             // Optional debug hook
 	openUpvalues    []*UpvalueObj         // Linked list of open upvalues (for closure support)
+	out             io.Writer             // Destination of print/println
 }
 
 // NewVM creates a new VM instance.
@@ -55,6 +58,7 @@ func NewVM() *VM {
 		chunk:       nil,
 		heap:        NewHeap(DefaultHeapSize),
 		externFuncs: make(map[string]ExternFunc),
+		out:         os.Stdout,
 	}
 	vm.registerBuiltins()
 	return vm
@@ -71,6 +75,7 @@ func NewVMWithHeapSize(heapSize uint64) *VM {
 		chunk:       nil,
 		heap:        NewHeap(heapSize),
 		externFuncs: make(map[string]ExternFunc),
+		out:         os.Stdout,
 	}
 	vm.registerBuiltins()
 	return vm
@@ -81,30 +86,148 @@ func (vm *VM) RegisterExtern(name string, fn ExternFunc) {
 	vm.externFuncs[name] = fn
 }
 
+// SetOutput redirects the output of print/println (default: os.Stdout).
+func (vm *VM) SetOutput(w io.Writer) {
+	vm.out = w
+}
+
 // registerBuiltins registers built-in external functions.
 func (vm *VM) registerBuiltins() {
-	// print function
-	vm.RegisterExtern("print", func(vm *VM, args []Value) (Value, error) {
+	write := func(args []Value, end string) {
 		for i, arg := range args {
 			if i > 0 {
-				fmt.Print(" ")
+				fmt.Fprint(vm.out, " ")
 			}
-			fmt.Print(arg.String())
+			fmt.Fprint(vm.out, FormatValue(arg))
 		}
+		fmt.Fprint(vm.out, end)
+	}
+
+	// print function
+	vm.RegisterExtern("print", func(vm *VM, args []Value) (Value, error) {
+		write(args, "")
 		return NewNull(), nil
 	})
 
 	// println function
 	vm.RegisterExtern("println", func(vm *VM, args []Value) (Value, error) {
-		for i, arg := range args {
-			if i > 0 {
-				fmt.Print(" ")
-			}
-			fmt.Print(arg.String())
-		}
-		fmt.Println()
+		write(args, "\n")
 		return NewNull(), nil
 	})
+
+	// toString function
+	vm.RegisterExtern("toString", func(vm *VM, args []Value) (Value, error) {
+		if len(args) != 1 {
+			return NewNull(), fmt.Errorf("toString expects 1 argument, got %d", len(args))
+		}
+		return vm.newString(FormatValue(args[0]))
+	})
+
+	// push function: appends a value to an array
+	vm.RegisterExtern("push", func(vm *VM, args []Value) (Value, error) {
+		if len(args) != 2 {
+			return NewNull(), fmt.Errorf("push expects 2 arguments, got %d", len(args))
+		}
+		if t, ok := heapType(args[0]); !ok || t != ObjTypeArray {
+			return NewNull(), fmt.Errorf("push expects an array, got %s", typeName(args[0]))
+		}
+		(*ArrayObj)(unsafe.Pointer(args[0].AsHeapPtr())).Append(args[1])
+		return NewNull(), nil
+	})
+}
+
+// newString allocates a string on the VM heap. It does not collect garbage:
+// the caller must store the value in a register first.
+func (vm *VM) newString(s string) (Value, error) {
+	strObj, _, err := vm.heap.AllocString(s)
+	if err != nil {
+		return NewNull(), err
+	}
+	return NewHeapPtr(uintptr(unsafe.Pointer(strObj))), nil
+}
+
+// collectIfNeeded runs the GC when the heap has passed its threshold. Call
+// it only when every live value is reachable from a register.
+func (vm *VM) collectIfNeeded() {
+	if vm.heap.ShouldCollect() {
+		vm.CollectGarbage()
+	}
+}
+
+// fieldName resolves the field name operand of GETFIELD/SETFIELD/HASFIELD/
+// DELFIELD. The constant is either an index into the string pool (what the
+// assembler and compiler emit) or a pre-allocated heap string.
+func (vm *VM) fieldName(op string, constIdx byte) (string, error) {
+	if int(constIdx) >= len(vm.chunk.Constants) {
+		return "", vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", constIdx))
+	}
+
+	constVal := vm.chunk.Constants[constIdx]
+	if constVal.IsInt() {
+		strIdx := int(constVal.AsInt())
+		if strIdx < 0 || strIdx >= len(vm.chunk.StringPool) {
+			return "", vm.runtimeError(fmt.Sprintf("string pool index out of bounds: %d", strIdx))
+		}
+		return vm.chunk.StringPool[strIdx], nil
+	}
+	if name, ok := stringValue(constVal); ok {
+		return name, nil
+	}
+	return "", vm.runtimeError(op + " requires string constant for field name")
+}
+
+// objectOperand returns the object a field instruction operates on.
+func (vm *VM) objectOperand(op string, v Value) (*ObjectObj, error) {
+	if t, ok := heapType(v); !ok || t != ObjTypeObject {
+		return nil, vm.runtimeError(fmt.Sprintf("%s requires object, got %s", op, typeName(v)))
+	}
+	return (*ObjectObj)(unsafe.Pointer(v.AsHeapPtr())), nil
+}
+
+// arrayOperand returns the array an array instruction operates on.
+func (vm *VM) arrayOperand(op string, v Value) (*ArrayObj, error) {
+	if t, ok := heapType(v); !ok || t != ObjTypeArray {
+		return nil, vm.runtimeError(fmt.Sprintf("%s requires array, got %s", op, typeName(v)))
+	}
+	return (*ArrayObj)(unsafe.Pointer(v.AsHeapPtr())), nil
+}
+
+// compareStrings applies an ordering operator to two strings.
+func compareStrings(op OpCode, a, b string) bool {
+	switch op {
+	case OpLT:
+		return a < b
+	case OpLE:
+		return a <= b
+	case OpGT:
+		return a > b
+	default:
+		return a >= b
+	}
+}
+
+// stringPair returns both operands as strings when both are strings.
+func stringPair(a, b Value) (string, string, bool) {
+	sa, ok := stringValue(a)
+	if !ok {
+		return "", "", false
+	}
+	sb, ok := stringValue(b)
+	return sa, sb, ok
+}
+
+// valuesEqual implements EQ: strings compare by content, everything else by
+// identity.
+func valuesEqual(a, b Value) bool {
+	if a == b {
+		return true
+	}
+	if sa, ok := stringValue(a); ok {
+		if sb, ok := stringValue(b); ok {
+			return sa == sb
+		}
+	}
+	return false
 }
 
 // GetHeap returns the VM's heap.
@@ -257,6 +380,18 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				vm.regs[instr.A] = NewNumber(a.AsNumber() + b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewInt(a.AsInt() + b.AsInt())
+			} else if sa, ok := stringValue(a); ok {
+				// String concatenation
+				sb, ok := stringValue(b)
+				if !ok {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("ADD cannot concatenate String and %s", typeName(b)))
+				}
+				str, err := vm.newString(sa + sb)
+				if err != nil {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
+				}
+				vm.regs[instr.A] = str
+				vm.collectIfNeeded()
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("ADD requires numeric operands, got: %s + %s", a.String(), b.String()))
 			}
@@ -289,6 +424,9 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if a.IsNumber() && b.IsNumber() {
 				vm.regs[instr.A] = NewNumber(a.AsNumber() / b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
+				if b.AsInt() == 0 {
+					return NewNull(), vm.runtimeError("division by zero")
+				}
 				vm.regs[instr.A] = NewInt(a.AsInt() / b.AsInt())
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("DIV requires numeric operands, got: %s / %s", a.String(), b.String()))
@@ -300,6 +438,9 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if a.IsNumber() && b.IsNumber() {
 				vm.regs[instr.A] = NewNumber(math.Mod(a.AsNumber(), b.AsNumber()))
 			} else if a.IsInt() && b.IsInt() {
+				if b.AsInt() == 0 {
+					return NewNull(), vm.runtimeError("division by zero")
+				}
 				vm.regs[instr.A] = NewInt(a.AsInt() % b.AsInt())
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("MOD requires numeric operands, got: %s %% %s", a.String(), b.String()))
@@ -401,12 +542,12 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 		case OpEQ:
 			a := vm.regs[instr.B]
 			b := vm.regs[instr.C]
-			vm.regs[instr.A] = NewBool(a == b)
+			vm.regs[instr.A] = NewBool(valuesEqual(a, b))
 
 		case OpNE:
 			a := vm.regs[instr.B]
 			b := vm.regs[instr.C]
-			vm.regs[instr.A] = NewBool(a != b)
+			vm.regs[instr.A] = NewBool(!valuesEqual(a, b))
 
 		case OpLT:
 			a := vm.regs[instr.B]
@@ -415,6 +556,8 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				vm.regs[instr.A] = NewBool(a.AsNumber() < b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() < b.AsInt())
+			} else if sa, sb, ok := stringPair(a, b); ok {
+				vm.regs[instr.A] = NewBool(compareStrings(OpLT, sa, sb))
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("LT requires numeric operands, got: %s < %s", a.String(), b.String()))
 			}
@@ -426,6 +569,8 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				vm.regs[instr.A] = NewBool(a.AsNumber() <= b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() <= b.AsInt())
+			} else if sa, sb, ok := stringPair(a, b); ok {
+				vm.regs[instr.A] = NewBool(compareStrings(OpLE, sa, sb))
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("LE requires numeric operands, got: %s <= %s", a.String(), b.String()))
 			}
@@ -437,6 +582,8 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				vm.regs[instr.A] = NewBool(a.AsNumber() > b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() > b.AsInt())
+			} else if sa, sb, ok := stringPair(a, b); ok {
+				vm.regs[instr.A] = NewBool(compareStrings(OpGT, sa, sb))
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("GT requires numeric operands, got: %s > %s", a.String(), b.String()))
 			}
@@ -448,6 +595,8 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				vm.regs[instr.A] = NewBool(a.AsNumber() >= b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
 				vm.regs[instr.A] = NewBool(a.AsInt() >= b.AsInt())
+			} else if sa, sb, ok := stringPair(a, b); ok {
+				vm.regs[instr.A] = NewBool(compareStrings(OpGE, sa, sb))
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("GE requires numeric operands, got: %s >= %s", a.String(), b.String()))
 			}
@@ -601,6 +750,9 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 				// Store return value in r0
 				vm.regs[0] = retVal
+
+				// Extern functions may allocate; collect now that the result is rooted
+				vm.collectIfNeeded()
 
 			default:
 				return NewNull(), vm.runtimeError(fmt.Sprintf("CALL requires function object, got %v", objHeader.Type))
@@ -823,59 +975,66 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			}
 
 		case OpGETINDEX:
-			// Get array element: A = dest, B = array, C = index
-			arrayVal := vm.regs[instr.B]
+			// Get element: A = dest, B = array or string, C = index
 			indexVal := vm.regs[instr.C]
-
-			if !arrayVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("GETINDEX requires array")
-			}
 			if !indexVal.IsInt() {
 				return NewNull(), vm.runtimeError("GETINDEX requires integer index")
 			}
-
-			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
 			index := int(indexVal.AsInt())
+
+			if str, ok := stringValue(vm.regs[instr.B]); ok {
+				// Indexing a string yields the character as a string
+				chars := []rune(str)
+				if index < 0 || index >= len(chars) {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, len(chars)))
+				}
+				char, err := vm.newString(string(chars[index]))
+				if err != nil {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
+				}
+				vm.regs[instr.A] = char
+				vm.collectIfNeeded()
+				break
+			}
+
+			arrayObj, err := vm.arrayOperand("GETINDEX", vm.regs[instr.B])
+			if err != nil {
+				return NewNull(), err
+			}
+			if index < 0 || index >= arrayObj.Len() {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
+			}
 			vm.regs[instr.A] = arrayObj.Get(index)
 
 		case OpSETINDEX:
 			// Set array element: A = array, B = index, C = value
-			arrayVal := vm.regs[instr.A]
 			indexVal := vm.regs[instr.B]
-			value := vm.regs[instr.C]
-
-			if !arrayVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("SETINDEX requires array")
-			}
 			if !indexVal.IsInt() {
 				return NewNull(), vm.runtimeError("SETINDEX requires integer index")
 			}
-
-			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
 			index := int(indexVal.AsInt())
-			arrayObj.Set(index, value)
+
+			arrayObj, err := vm.arrayOperand("SETINDEX", vm.regs[instr.A])
+			if err != nil {
+				return NewNull(), err
+			}
+			// Writing past the length grows the array, up to its capacity
+			if index < 0 || index >= cap(arrayObj.elements) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
+			}
+			arrayObj.Set(index, vm.regs[instr.C])
 
 		case OpGETFIELD:
 			// Get object field: A = dest, B = object, C = const index (field name)
-			objVal := vm.regs[instr.B]
-			if !objVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("GETFIELD requires object")
+			objObj, err := vm.objectOperand("GETFIELD", vm.regs[instr.B])
+			if err != nil {
+				return NewNull(), err
+			}
+			fieldName, err := vm.fieldName("GETFIELD", instr.C)
+			if err != nil {
+				return NewNull(), err
 			}
 
-			if int(instr.C) >= len(vm.chunk.Constants) {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.C))
-			}
-
-			// Get field name from constant
-			fieldNameVal := vm.chunk.Constants[instr.C]
-			if !fieldNameVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("GETFIELD requires string constant for field name")
-			}
-
-			fieldNameObj := (*StringObj)(unsafe.Pointer(fieldNameVal.AsHeapPtr()))
-			fieldName := fieldNameObj.Data()
-
-			objObj := (*ObjectObj)(unsafe.Pointer(objVal.AsHeapPtr()))
 			if value, ok := objObj.Get(fieldName); ok {
 				vm.regs[instr.A] = value
 			} else {
@@ -884,89 +1043,69 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 
 		case OpSETFIELD:
 			// Set object field: A = object, B = const index (field name), C = value
-			objVal := vm.regs[instr.A]
-			if !objVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("SETFIELD requires object")
+			objObj, err := vm.objectOperand("SETFIELD", vm.regs[instr.A])
+			if err != nil {
+				return NewNull(), err
 			}
-
-			if int(instr.B) >= len(vm.chunk.Constants) {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.B))
+			fieldName, err := vm.fieldName("SETFIELD", instr.B)
+			if err != nil {
+				return NewNull(), err
 			}
-
-			// Get field name from constant
-			fieldNameVal := vm.chunk.Constants[instr.B]
-			if !fieldNameVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("SETFIELD requires string constant for field name")
-			}
-
-			fieldNameObj := (*StringObj)(unsafe.Pointer(fieldNameVal.AsHeapPtr()))
-			fieldName := fieldNameObj.Data()
-
-			value := vm.regs[instr.C]
-
-			objObj := (*ObjectObj)(unsafe.Pointer(objVal.AsHeapPtr()))
-			objObj.Set(fieldName, value)
+			objObj.Set(fieldName, vm.regs[instr.C])
 
 		case OpARRLEN:
-			// Get array length: A = dest, B = array
-			arrayVal := vm.regs[instr.B]
-			if !arrayVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("ARRLEN requires array")
+			// Get length: A = dest, B = array or string.
+			// On an object it reads the field named "length".
+			val := vm.regs[instr.B]
+			if str, ok := stringValue(val); ok {
+				vm.regs[instr.A] = NewInt(int64(len([]rune(str))))
+				break
+			}
+			if t, ok := heapType(val); ok && t == ObjTypeObject {
+				field, _ := (*ObjectObj)(unsafe.Pointer(val.AsHeapPtr())).Get("length")
+				vm.regs[instr.A] = field
+				break
 			}
 
-			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
+			arrayObj, err := vm.arrayOperand("ARRLEN", val)
+			if err != nil {
+				return NewNull(), err
+			}
 			vm.regs[instr.A] = NewInt(int64(arrayObj.Len()))
 
 		case OpARRPUSH:
 			// Push value into array: A = array, B = value
-			arrayVal := vm.regs[instr.A]
-			if !arrayVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("ARRPUSH requires array")
+			arrayObj, err := vm.arrayOperand("ARRPUSH", vm.regs[instr.A])
+			if err != nil {
+				return NewNull(), err
 			}
-			arrayObj := (*ArrayObj)(unsafe.Pointer(arrayVal.AsHeapPtr()))
 			arrayObj.Append(vm.regs[instr.B])
 
 		case OpHASFIELD:
 			// Check if object has field: A = dest bool, B = object, C = const index
-			objVal := vm.regs[instr.B]
-			if !objVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("HASFIELD requires object")
+			objObj, err := vm.objectOperand("HASFIELD", vm.regs[instr.B])
+			if err != nil {
+				return NewNull(), err
+			}
+			fieldName, err := vm.fieldName("HASFIELD", instr.C)
+			if err != nil {
+				return NewNull(), err
 			}
 
-			if int(instr.C) >= len(vm.chunk.Constants) {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.C))
-			}
-
-			fieldNameVal := vm.chunk.Constants[instr.C]
-			if !fieldNameVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("HASFIELD requires string constant for field name")
-			}
-			fieldNameObj := (*StringObj)(unsafe.Pointer(fieldNameVal.AsHeapPtr()))
-			fieldName := fieldNameObj.Data()
-
-			objObj := (*ObjectObj)(unsafe.Pointer(objVal.AsHeapPtr()))
 			_, ok := objObj.Get(fieldName)
 			vm.regs[instr.A] = NewBool(ok)
 
 		case OpDELFIELD:
 			// Delete object field: A = dest bool, B = object, C = const index
-			objVal := vm.regs[instr.B]
-			if !objVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("DELFIELD requires object")
+			objObj, err := vm.objectOperand("DELFIELD", vm.regs[instr.B])
+			if err != nil {
+				return NewNull(), err
+			}
+			fieldName, err := vm.fieldName("DELFIELD", instr.C)
+			if err != nil {
+				return NewNull(), err
 			}
 
-			if int(instr.C) >= len(vm.chunk.Constants) {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("constant index out of bounds: %d", instr.C))
-			}
-
-			fieldNameVal := vm.chunk.Constants[instr.C]
-			if !fieldNameVal.IsHeapPtr() {
-				return NewNull(), vm.runtimeError("DELFIELD requires string constant for field name")
-			}
-			fieldNameObj := (*StringObj)(unsafe.Pointer(fieldNameVal.AsHeapPtr()))
-			fieldName := fieldNameObj.Data()
-
-			objObj := (*ObjectObj)(unsafe.Pointer(objVal.AsHeapPtr()))
 			_, existed := objObj.fields[fieldName]
 			delete(objObj.fields, fieldName)
 			vm.regs[instr.A] = NewBool(existed)

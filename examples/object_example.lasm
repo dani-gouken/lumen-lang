@@ -1,23 +1,23 @@
-; Example: Create an object (simplified for testing)
+; Example: Create an object and use its fields
 ;
 ; This program demonstrates:
 ; - Object allocation with NEWOBJ
-; - Simple arithmetic to return a value
-;
-; Note: Full SETFIELD/GETFIELD require pre-allocated string constants
-; which are not yet supported in the assembler. This example shows
-; object allocation and returns a test value.
+; - Writing a field with SETFIELD and reading it back with GETFIELD
+; - Field names as string constants
 
-.constants 1
+.constants 2
 0: 25i          ; Age value
+1: "age"        ; Field name
 
-.func main 2 0
-  ; Create new object (demonstrates heap allocation)
+.func main 3 0
+  ; Create new object
   NEWOBJ r0
 
-  ; Load test value
-  LOADK r1 0      ; r1 = 25
+  ; obj.age = 25
+  LOADK r1 0
+  SETFIELD r0 1 r1
 
-  ; Return the value
-  RET r1
+  ; Read the field back and return it
+  GETFIELD r2 r0 1
+  RET r2
 .endfunc

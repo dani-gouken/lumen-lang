@@ -191,16 +191,17 @@ pass
 test_name "Execute extern_call.lasm"
 $LUMEN asm "$EXAMPLES_DIR/extern_call.lasm" "$OUTPUT_DIR/extern_call.lc" > /dev/null 2>&1 || fail "assembly failed"
 result=$($LUMEN exec "$OUTPUT_DIR/extern_call.lc" 2>&1)
-echo "$result" | grep -q "Int(42)" || fail "println output not found"
-echo "$result" | grep -q "Int(100)" || fail "println output not found"
+# println prints values the way a program shows them, not the debug form
+echo "$result" | grep -qx "42" || fail "println output not found"
+echo "$result" | grep -qx "100" || fail "println output not found"
 pass
 
 # Test 20: Comprehensive functions
 test_name "Execute comprehensive_functions.lasm"
 $LUMEN asm "$EXAMPLES_DIR/comprehensive_functions.lasm" "$OUTPUT_DIR/comprehensive.lc" > /dev/null 2>&1 || fail "assembly failed"
 result=$($LUMEN exec "$OUTPUT_DIR/comprehensive.lc" 2>&1)
-echo "$result" | grep -q "Int(6)" || fail "factorial(3) output not found"
-echo "$result" | grep -q "Int(4)" || fail "multiply(2,2) output not found"
+echo "$result" | grep -qx "6" || fail "factorial(3) output not found"
+echo "$result" | grep -qx "4" || fail "multiply(2,2) output not found"
 pass
 
 # Test 21: Disassemble function call bytecode
@@ -328,6 +329,32 @@ EOF
 $LUMEN asm "$OUTPUT_DIR/conversion_ops.lasm" "$OUTPUT_DIR/conversion_ops.lc" > /dev/null 2>&1 || fail "assembly failed"
 result=$($LUMEN exec "$OUTPUT_DIR/conversion_ops.lc" 2>&1)
 echo "$result" | grep -q "Result: Number(4)" || fail "unexpected conversion result: $result"
+pass
+
+# Compile and run a Lumen source file
+test_name "Run hello.lum from source"
+result=$($LUMEN run "$EXAMPLES_DIR/hello.lum" 2>&1) || fail "run failed: $result"
+[ "$result" = "Hello, Lumen!" ] || fail "unexpected output: $result"
+pass
+
+# Compile to bytecode, then execute it
+test_name "Build fibonacci.lum to bytecode and execute it"
+$LUMEN build "$EXAMPLES_DIR/fibonacci.lum" "$OUTPUT_DIR/fibonacci.lc" > /dev/null 2>&1 || fail "build failed"
+result=$($LUMEN exec "$OUTPUT_DIR/fibonacci.lc" 2>&1)
+echo "$result" | grep -qx "fib(20) = 6765" || fail "unexpected output: $result"
+pass
+
+# Compile errors stop the run
+test_name "Report a compile error and exit non-zero"
+cat > "$OUTPUT_DIR/broken.lum" << 'EOF'
+fn main() -> Int {
+    return missing;
+}
+EOF
+if result=$($LUMEN run "$OUTPUT_DIR/broken.lum" 2>&1); then
+    fail "expected a non-zero exit code"
+fi
+echo "$result" | grep -q "E1001: undefined identifier 'missing'" || fail "unexpected diagnostic: $result"
 pass
 
 # Summary

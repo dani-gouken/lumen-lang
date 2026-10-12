@@ -130,3 +130,60 @@ Stores the value of a register into an upvalue.
     RET r0
 .endfunc
 ```
+
+## How the Compiler Uses These Instructions
+
+The sections above describe the VM mechanism. This is how Lumen source maps onto it.
+
+```lumen
+fn makeCounter() -> fn() -> Int {
+    let count = 0;
+    return fn() -> Int {
+        count = count + 1;
+        return count;
+    };
+}
+```
+
+1.  **Closure analysis** (`internal/analysis`) finds that the function expression uses `count`, a local of the enclosing function, and records it as capture 0. The order of a function's captures is its upvalue numbering.
+2.  **IR generation** (`internal/irgen`) compiles the lambda as its own function. Inside it, reads of `count` become `LOAD_UPVALUE 0` and writes `STORE_UPVALUE 0`. At the place of the expression it emits `MAKE_CLOSURE "lambda_0", <register of count>`.
+3.  **Bytecode generation** (`internal/codegen`) turns `MAKE_CLOSURE` into `NEWFUNC` followed by one capture instruction per variable, and the upvalue operations into `LDCAP`/`STCAP`. The prototype's upvalue count comes from step 1.
+
+### Captures are by reference
+
+`CAPLOCAL` points the upvalue at the *register* of the variable, not at its current value. Consequences visible in the language:
+
+*   A closure sees assignments made after it was created, and the enclosing function sees assignments made by the closure.
+*   Two closures capturing the same variable share it (`findOrCreateUpvalue` returns the same upvalue for the same register).
+*   When the enclosing function returns, `RET` closes the upvalue: the value moves into the upvalue object and lives as long as a closure references it.
+
+For this to hold, the register of a captured variable must keep holding that variable for the whole function. The register allocator therefore never reuses the register of anything passed to `MAKE_CLOSURE` (see [compilation/bytecode_generation.md](compilation/bytecode_generation.md#register-allocation)).
+
+One consequence to know about: a variable declared in a loop body has one register for all iterations, so closures created in different iterations share it and all see its last value. Passing the value through a function parameter gives each closure its own variable, because every call has its own registers.
+
+### Nested closures
+
+When a lambda uses a variable declared two or more functions up, every function in between has to carry it, even if it never mentions it:
+
+```lumen
+fn main() -> Int {
+    let a = 1;
+    let outer = fn() -> Int {
+        let inner = fn() -> Int { return a; };   // uses main's `a`
+        return inner();
+    };
+    return outer();
+}
+```
+
+| Function | Captures | How it obtains `a` |
+|----------|----------|--------------------|
+| `outer` (`lambda_0`) | `a` | `main` passes its register: `CAPLOCAL` |
+| `inner` (`lambda_1`) | `a` | `outer` passes its own upvalue 0: `CAPUPVAL` |
+
+Closure analysis adds the capture to the intermediate function and marks it `FromUpvalue` in the inner one. In the IR the two cases are distinguished by the capture operand: a register, or a constant of type `Upvalue`.
+
+### `self` in methods
+
+Inside a method `self` is an ordinary local (the first parameter), so a lambda in a method captures it like any other variable.
+
