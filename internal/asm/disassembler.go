@@ -69,7 +69,7 @@ func Disassemble(chunk *vm.Chunk) string {
 
 					i += 2 // Skip the opcode and offset words
 				} else {
-					sb.WriteString(fmt.Sprintf("  %s\n", formatInstruction(instr, chunk)))
+					sb.WriteString(fmt.Sprintf("  %s\n", FormatInstruction(instr, chunk)))
 				}
 			}
 
@@ -101,7 +101,7 @@ func Disassemble(chunk *vm.Chunk) string {
 
 				i += 2 // Skip the opcode and offset words
 			} else {
-				sb.WriteString(fmt.Sprintf("  %04d: %s\n", i, formatInstruction(instr, chunk)))
+				sb.WriteString(fmt.Sprintf("  %04d: %s\n", i, FormatInstruction(instr, chunk)))
 			}
 		}
 		sb.WriteString("\n")
@@ -158,8 +158,8 @@ func formatValue(val vm.Value) string {
 	}
 }
 
-// formatInstruction converts an instruction to assembly syntax.
-func formatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
+// FormatInstruction converts an instruction to assembly syntax.
+func FormatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 	switch instr.Op {
 	case vm.OpNOP:
 		return "NOP"

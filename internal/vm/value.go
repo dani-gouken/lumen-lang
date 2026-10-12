@@ -12,14 +12,14 @@ type Value uint64
 const (
 	expMask      uint64 = 0x7FF0000000000000
 	mantMask     uint64 = 0x000FFFFFFFFFFFFF
-	tagMask      uint64 = 0x0000F00000000000
-	payloadMask  uint64 = 0x00000FFFFFFFFFFF // 48 bits for payload (no tag bits)
-	fullPayload  uint64 = 0x0000FFFFFFFFFFFF // 52 bits (tag + payload)
+	tagMask      uint64 = 0x000F000000000000
+	payloadMask  uint64 = 0x0000FFFFFFFFFFFF // 48 bits for payload (no tag bits)
+	fullPayload  uint64 = 0x000FFFFFFFFFFFFF // 52 bits (tag + payload)
 
 	tagNull    uint64 = 0x0000000000000000
-	tagBool    uint64 = 0x0000100000000000
-	tagInt     uint64 = 0x0000200000000000
-	tagHeapPtr uint64 = 0x0000300000000000
+	tagBool    uint64 = 0x0001000000000000
+	tagInt     uint64 = 0x0002000000000000
+	tagHeapPtr uint64 = 0x0003000000000000
 
 	nanBase uint64 = 0x7FF0000000000000
 )
