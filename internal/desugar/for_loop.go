@@ -169,8 +169,20 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 
 	// Build the while body: { let item = ...; __iter_N = __iter_N + 1; <original body> }
 	// The increment comes before the body so that `continue` cannot skip it.
-	whileBodyStmts := make([]ast.Stmt, 0, len(desugaredBody.Stmts)+2)
+	whileBodyStmts := make([]ast.Stmt, 0, len(desugaredBody.Stmts)+3)
 	whileBodyStmts = append(whileBodyStmts, loopVarInit)
+	if forStmt.Index != nil {
+		// for i, item in ...: i is a copy of the position, taken before
+		// the increment. The type checker rejects assignments to it.
+		position := d.createIdent(iterVar, pos)
+		d.typeInfo.Types[position] = types.Int
+		whileBodyStmts = append(whileBodyStmts, &ast.LetStmt{
+			BaseNode: forStmt.Index.BaseNode,
+			Name:     forStmt.Index.Name,
+			Type:     &ast.Type{BaseNode: ast.BaseNode{Pos: pos}, Kind: ast.TypeBasic, Name: "Int"},
+			Value:    position,
+		})
+	}
 	whileBodyStmts = append(whileBodyStmts, incrStmt)
 	whileBodyStmts = append(whileBodyStmts, desugaredBody.Stmts...)
 

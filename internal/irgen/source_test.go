@@ -281,6 +281,63 @@ func TestMethodsOfGenericStructs(t *testing.T) {
 	expectLines(t, dumpFunction(t, src, "main"), `NEW_STRUCT, "Box"`, `MOV, "Box.get"`)
 }
 
+func TestCompoundAssignmentEvaluatesItsTargetOnce(t *testing.T) {
+	// A variable: its register is operand and destination
+	dump := dumpFunction(t, `fn main() -> Int { let i = 1; i += 2; i++; return i; }`, "main")
+	expectLines(t, dump, "%v1 = ADD, %v1, %v2", "%v1 = ADD, %v1, %v3", "RET %v1")
+
+	// An element: array and index are computed once, then read and written
+	src := `
+		fn next() -> Int { return 0; }
+		fn main() -> Int { let xs = [1]; xs[next()] *= 3; return xs[0]; }`
+	dump = dumpFunction(t, src, "main")
+	if n := strings.Count(dump, `MOV, "next"`); n != 1 {
+		t.Errorf("expected next() to be called once, found %d calls in:\n%s", n, dump)
+	}
+	// %v2 is the array, %v4 the index returned by next()
+	expectLines(t, dump, "%v5 = GET_INDEX, %v2, %v4", "%v7 = MUL, %v5, %v6", "SET_INDEX %v2, %v4, %v7")
+
+	// A field: the object is computed once
+	src = `
+		struct P { n: Int; }
+		fn make() -> P { return P { n: 1 }; }
+		fn main() -> Int { make().n -= 4; return 0; }`
+	dump = dumpFunction(t, src, "main")
+	if n := strings.Count(dump, `MOV, "make"`); n != 1 {
+		t.Errorf("expected make() to be called once, found %d calls in:\n%s", n, dump)
+	}
+	expectLines(t, dump, `GET_FIELD, %v2, "n"`, "SUB, %v", `SET_FIELD %v2, "n", %v`)
+
+	// A captured variable: read, compute, write back through the upvalue
+	src = `fn main() -> Int { let t = 0; let f = fn() -> Void { t += 5; }; f(); return t; }`
+	expectLines(t, dumpFunction(t, src, "lambda_0"), "LOAD_UPVALUE, 0", "ADD, %v", "STORE_UPVALUE 0, %v")
+}
+
+func TestForLoopIndexIsACopyOfThePosition(t *testing.T) {
+	// The fallback loop (not desugared here) keeps its own counter and
+	// hands the body a copy of it
+	dump := dumpFunction(t, `fn main() -> Int { let t = 0; for i, x in [5, 6] { t += i + x; } return t; }`, "main")
+
+	// %v5 is the loop's counter; the body's `i` is the copy %v10
+	expectLines(t, dump,
+		"%v8 = LT, %v5, %v7",        // the condition uses the counter
+		"%v9 = GET_INDEX, %v4, %v5", // so does fetching the element
+		"%v10 = MOV, %v5",           // i is a copy
+		"%v5 = ADD, %v5, %v6",       // the counter advances on its own
+		"ADD, %v10, %v9",            // the body reads the copy
+	)
+}
+
+func TestNegativeLiteralsAreConstants(t *testing.T) {
+	dump := dumpFunction(t, `fn main() -> Int { let a = -5; let b = -140737488355328; let c = -2.5; let d = 1; return -d; }`, "main")
+
+	// No negation at runtime for literals; the smallest Int is expressible
+	expectLines(t, dump, "%v1 = MOV, -5", "%v2 = MOV, -140737488355328", "%v3 = MOV, -2.5")
+	if n := strings.Count(dump, "NEG"); n != 1 {
+		t.Errorf("expected only `-d` to be negated at runtime, found %d NEG in:\n%s", n, dump)
+	}
+}
+
 func TestInstructionsCarrySourcePositions(t *testing.T) {
 	prog, _ := generateSource(t, "fn main() -> Int {\n  let a = 1;\n  return a + 2;\n}")
 

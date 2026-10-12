@@ -609,10 +609,18 @@ func (p *Parser) parseStmt() ast.Stmt {
 		return &ast.WhileStmt{BaseNode: base(tok), Cond: cond, Body: p.parseBlock()}
 	case token.FOR:
 		p.next()
-		name := p.expect(token.IDENT, "loop variable name").Literal
+		// for item in items, or for index, item in items
+		stmt := &ast.ForStmt{BaseNode: base(tok)}
+		nameTok := p.expect(token.IDENT, "loop variable name")
+		stmt.Var = nameTok.Literal
+		if p.accept(token.COMMA) {
+			stmt.Index = &ast.ForIndex{BaseNode: base(nameTok), Name: nameTok.Literal}
+			stmt.Var = p.expect(token.IDENT, "loop variable name").Literal
+		}
 		p.expect(token.IN, "'in'")
-		iterable := p.parseHeaderExpr()
-		return &ast.ForStmt{BaseNode: base(tok), Var: name, Iterable: iterable, Body: p.parseBlock()}
+		stmt.Iterable = p.parseHeaderExpr()
+		stmt.Body = p.parseBlock()
+		return stmt
 	case token.MATCH:
 		return p.parseMatchStmt()
 	case token.RETURN:
@@ -730,24 +738,39 @@ func (p *Parser) tryTypePattern() (typ *ast.Type) {
 }
 
 // parseExprStmt parses an expression statement or an assignment. Assignments
-// are represented as a BinaryExpr with Op "=".
+// are represented as a BinaryExpr with Op "=", or "+=" and the like for the
+// compound forms. `i++` and `i--` are `i += 1` and `i -= 1`; they are
+// statements, so there is no value of `i++` to define.
 func (p *Parser) parseExprStmt() *ast.ExprStmt {
 	tok := p.cur()
 	expr := p.parseExpr()
 
-	if p.at(token.ASSIGN) {
-		switch expr.(type) {
-		case *ast.Ident, *ast.IndexExpr, *ast.MemberExpr:
-		default:
-			p.failWith(ErrInvalidAssign, "Only variables, fields and array elements can be assigned to",
-				"invalid assignment target")
-		}
-		assignTok := p.next()
-		expr = &ast.BinaryExpr{BaseNode: base(assignTok), Left: expr, Op: "=", Right: p.parseExpr()}
+	opTok := p.cur()
+	switch opTok.Type {
+	case token.ASSIGN, token.PLUS_ASSIGN, token.MINUS_ASSIGN, token.STAR_ASSIGN, token.SLASH_ASSIGN, token.PERCENT_ASSIGN:
+		p.checkAssignable(expr)
+		p.next()
+		expr = &ast.BinaryExpr{BaseNode: base(opTok), Left: expr, Op: opTok.Literal, Right: p.parseExpr()}
+
+	case token.INC, token.DEC:
+		p.checkAssignable(expr)
+		p.next()
+		one := &ast.Literal{BaseNode: base(opTok), Value: "1", Kind: "int"}
+		expr = &ast.BinaryExpr{BaseNode: base(opTok), Left: expr, Op: opTok.Literal[:1] + "=", Right: one}
 	}
 
 	p.expectSemicolon()
 	return &ast.ExprStmt{BaseNode: base(tok), Expr: expr}
+}
+
+// checkAssignable fails unless expr can stand on the left of an assignment.
+func (p *Parser) checkAssignable(expr ast.Expr) {
+	switch expr.(type) {
+	case *ast.Ident, *ast.IndexExpr, *ast.MemberExpr:
+	default:
+		p.failWith(ErrInvalidAssign, "Only variables, fields and array elements can be assigned to",
+			"invalid assignment target")
+	}
 }
 
 // --- Expressions ---

@@ -373,3 +373,54 @@ func TestAssembleErrorWrongArgumentCount(t *testing.T) {
 		})
 	}
 }
+
+// TestAssembleCheckedElementWrite covers SETELEM, the element write that
+// never grows the array, next to SETINDEX, which does.
+func TestAssembleCheckedElementWrite(t *testing.T) {
+	source := `
+.constants 1
+  0: 7i
+
+.func main 4 0
+  NEWARRAY r0 4
+  LOADK r1 0
+  ARRPUSH r0 r1
+  LOADI r2 0
+  SETELEM r0 r2 r1
+  LOADI r2 1
+  SETELEM r0 r2 r1
+  RET r0
+.endfunc
+`
+	chunk, err := Assemble(source)
+	if err != nil {
+		t.Fatalf("assembly failed: %v", err)
+	}
+
+	writes := 0
+	for _, instr := range chunk.Code {
+		if instr.Op == vm.OpSETELEM {
+			writes++
+			if instr.A != 0 || instr.B != 2 || instr.C != 1 {
+				t.Errorf("expected SETELEM r0 r2 r1, got %d %d %d", instr.A, instr.B, instr.C)
+			}
+		}
+	}
+	if writes != 2 {
+		t.Fatalf("expected 2 SETELEM instructions, got %d", writes)
+	}
+	if text := Disassemble(chunk); !strings.Contains(text, "SETELEM r0 r2 r1") {
+		t.Errorf("expected the disassembly to show SETELEM, got:\n%s", text)
+	}
+
+	// The first write replaces element 0; the second names an element that
+	// does not exist, although the capacity would allow it
+	_, err = vm.NewVM().Exec(chunk)
+	if err == nil || !strings.Contains(err.Error(), "index out of bounds: 1 (length 1)") {
+		t.Errorf("expected the second write to be out of bounds, got %v", err)
+	}
+
+	if _, err := Assemble(".func main 1 0\n  SETELEM r0 r1\n.endfunc\n"); err == nil {
+		t.Error("expected an error for SETELEM with 2 arguments")
+	}
+}

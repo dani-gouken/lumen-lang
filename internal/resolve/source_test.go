@@ -117,3 +117,42 @@ func TestResolveNestedTypes(t *testing.T) {
 		t.Errorf("expected 3 undefined type errors, got %v", msgs)
 	}
 }
+
+func TestResolveLoopIndex(t *testing.T) {
+	// The index and the element are both in scope in the body, and only there
+	msgs := resolveSource(t, `
+		fn main() -> Int {
+			for i, item in [1, 2] {
+				let sum = i + item;
+				let f = fn() -> Int { return i; };
+			}
+			for i, item in [3] { }
+			return 0;
+		}
+	`)
+	if len(msgs) != 0 {
+		t.Errorf("expected no errors, got %v", msgs)
+	}
+
+	msgs = resolveSource(t, `
+		fn main() -> Int {
+			for i, item in [1] { }
+			return i + item;
+		}
+	`)
+	if len(msgs) != 2 || !strings.Contains(msgs[0], "undefined identifier 'i'") || !strings.Contains(msgs[1], "undefined identifier 'item'") {
+		t.Errorf("expected the loop variables to be out of scope after the loop, got %v", msgs)
+	}
+
+	// One name cannot be both
+	msgs = resolveSource(t, `fn main() -> Int { for x, x in [1] { } return 0; }`)
+	if len(msgs) != 1 || !strings.Contains(msgs[0], "'x' is already declared") {
+		t.Errorf("expected a redeclaration error, got %v", msgs)
+	}
+
+	// The iterable is evaluated outside the loop's scope
+	msgs = resolveSource(t, `fn main() -> Int { for i, item in [i] { } return 0; }`)
+	if len(msgs) != 1 || !strings.Contains(msgs[0], "undefined identifier 'i'") {
+		t.Errorf("expected the index to be undefined in the iterable, got %v", msgs)
+	}
+}

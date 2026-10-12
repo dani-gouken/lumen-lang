@@ -84,6 +84,18 @@ for item in collection {
 }
 ```
 
+With an index, `for i, item in collection`, the position is copied into `i`
+after the element is read and before the increment:
+
+```lumen
+let item = collection[__iter_N];
+let i = __iter_N;
+__iter_N = __iter_N + 1;
+```
+
+The type checker has already rejected any assignment to `i` or `item`, so
+these declarations are only ever read.
+
 The increment comes **before** the body. A `continue` in the body jumps back to
 the loop condition; with the increment at the end it would be skipped and the
 loop would never advance.

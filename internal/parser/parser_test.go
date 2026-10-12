@@ -49,6 +49,8 @@ func TestParseExpressionPrecedence(t *testing.T) {
 		{"a || b && c", "(a || (b && c))"},
 		{"a ?? b == c", "(a ?? (b == c))"},
 		{"-a * !b", "((-a) * (!b))"},
+		{"a - -b", "(a - (-b))"},
+		{"a + -b * -c", "(a + ((-b) * (-c)))"},
 		{"a.b[0](1, 2).c", "a.b[0](1, 2).c"},
 		{"f(x)(y)", "f(x)(y)"},
 		{"[1, [2, 3], f()]", "[1, [2, 3], f()]"},
@@ -196,6 +198,106 @@ func TestParseStatements(t *testing.T) {
 
 	if _, ok := stmts[7].(*ast.ReturnStmt).Value.(*ast.FnExpr); !ok {
 		t.Errorf("expected lambda as return value")
+	}
+}
+
+func TestParseCompoundAssignment(t *testing.T) {
+	stmts := parseBody(t, `
+		x += 1;
+		xs[i] -= 2;
+		p.count *= 3;
+		a.b[0].c /= 4;
+		x %= 5;
+		x++;
+		xs[i]--;
+		p.count++;
+	`)
+
+	want := []struct{ target, op, value string }{
+		{"x", "+=", "1"},
+		{"xs[i]", "-=", "2"},
+		{"p.count", "*=", "3"},
+		{"a.b[0].c", "/=", "4"},
+		{"x", "%=", "5"},
+		// ++ and -- are += 1 and -= 1
+		{"x", "+=", "1"},
+		{"xs[i]", "-=", "1"},
+		{"p.count", "+=", "1"},
+	}
+	for i, w := range want {
+		assign, ok := stmts[i].(*ast.ExprStmt).Expr.(*ast.BinaryExpr)
+		if !ok {
+			t.Errorf("statement %d: expected an assignment, got %s", i, stmts[i])
+			continue
+		}
+		if assign.Left.String() != w.target || assign.Op != w.op || assign.Right.String() != w.value {
+			t.Errorf("statement %d: expected %s %s %s, got %s %s %s",
+				i, w.target, w.op, w.value, assign.Left, assign.Op, assign.Right)
+		}
+		if base, compound := ast.CompoundOp(assign.Op); !compound || base != w.op[:1] {
+			t.Errorf("statement %d: expected %s to be a compound assignment of %s", i, assign.Op, w.op[:1])
+		}
+	}
+
+	// The right side is a full expression
+	assign := parseBody(t, "total += a * b + f(c);")[0].(*ast.ExprStmt).Expr.(*ast.BinaryExpr)
+	if got := assign.Right.String(); got != "((a * b) + f(c))" {
+		t.Errorf("expected the whole expression on the right, got %s", got)
+	}
+
+	// They are statements: none has a value, and the target must be assignable
+	for _, src := range []string{
+		"let y = x++;",
+		"f(x += 1);",
+		"1 += 2;",
+		"f()++;",
+		"(a + b) -= 1;",
+		"x++ + 1;",
+	} {
+		errs := errors.NewHandler()
+		Parse("fn main() -> Void {\n"+src+"\n}", "test.lum", errs)
+		if !errs.HasErrors() {
+			t.Errorf("%q: expected a syntax error", src)
+		}
+	}
+}
+
+func TestParseForLoopWithIndex(t *testing.T) {
+	stmts := parseBody(t, `
+		for item in items { }
+		for i, item in items { }
+		for row, cells in grid[0].rows { for col, cell in cells { } }
+	`)
+
+	plain := stmts[0].(*ast.ForStmt)
+	if plain.Index != nil || plain.Var != "item" {
+		t.Errorf("expected a loop without index, got %s", plain)
+	}
+
+	indexed := stmts[1].(*ast.ForStmt)
+	if indexed.Index == nil || indexed.Index.Name != "i" || indexed.Var != "item" {
+		t.Fatalf("expected index i and variable item, got %s", indexed)
+	}
+	// The index points at its own name, for diagnostics
+	if tok := indexed.Index.Token(); tok.Literal != "i" || tok.Pos.Line != 4 {
+		t.Errorf("expected the index to carry its token, got %q on line %d", tok.Literal, tok.Pos.Line)
+	}
+	if got := indexed.String(); !strings.HasPrefix(got, "for i, item in items") {
+		t.Errorf("expected the loop to print with its index, got %s", got)
+	}
+
+	outer := stmts[2].(*ast.ForStmt)
+	inner := outer.Body.Stmts[0].(*ast.ForStmt)
+	if outer.Index.Name != "row" || inner.Index.Name != "col" || outer.Iterable.String() != "grid[0].rows" {
+		t.Errorf("unexpected nested loops: %s", outer)
+	}
+
+	for _, src := range []string{"for i, in items { }", "for i, j, k in items { }", "for , item in items { }"} {
+		errs := errors.NewHandler()
+		Parse("fn main() -> Void {\n"+src+"\n}", "test.lum", errs)
+		if !errs.HasErrors() {
+			t.Errorf("%q: expected a syntax error", src)
+		}
 	}
 }
 

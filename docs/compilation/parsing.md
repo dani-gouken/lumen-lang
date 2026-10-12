@@ -36,7 +36,7 @@ The lexer turns characters into `token.Token` values. Each token records its typ
 | Integers | Digits: `42` |
 | Floats | Digits with a fraction and/or exponent: `3.14`, `10e3`, `1.5e-2`. A `.` only starts a fraction when a digit follows, so `xs.length` and `1.x` are not floats |
 | Strings | `"..."` on one line, with escapes `\n \t \r \0 \\ \"` |
-| Operators | Longest match first: `...`, `->`, `==`, `!=`, `<=`, `>=`, `&&`, `||`, `??` before the single-character ones |
+| Operators | Longest match first: `...`, `->`, `==`, `!=`, `<=`, `>=`, `&&`, `||`, `??`, `+=`, `-=`, `*=`, `/=`, `%=`, `++`, `--` before the single-character ones. As a consequence `a--b` is `a`, `--`, `b`; write `a - -b` |
 
 There is no token for negative numbers: `-1` is the unary operator applied to `1`.
 
@@ -65,6 +65,8 @@ x = 1;        BinaryExpr{ Left: Ident(x),        Op: "=", Right: 1 }
 xs[0] = 1;    BinaryExpr{ Left: IndexExpr(...),  Op: "=", Right: 1 }
 p.x = 1;      BinaryExpr{ Left: MemberExpr(...), Op: "=", Right: 1 }
 ```
+
+The compound forms use the same node with their operator: `x += 1` has Op `"+="`. `x++` and `x--` are parsed as `x += 1` and `x -= 1`; they exist only as statements, so there is no prefix form and no value to define. `ast.CompoundOp` and `ast.IsAssignment` classify the operators for later stages.
 
 The left side must be an identifier, an index expression or a member expression (`E0004` otherwise). The desugarer builds the same shape for the assignments it generates, so every later stage handles one representation.
 

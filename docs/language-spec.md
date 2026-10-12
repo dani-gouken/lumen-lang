@@ -31,12 +31,14 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
   - Unions are not implicitly converted: a value must explicitly correspond to one of the types.
   - Unions are statically checked.
 - `let` mutable, `const` immutable; must initialize at declaration. Reassigning a `const` is a static error (`E2022`).
-- Assignment: `x = x + 1;`.
+- Assignment: `x = x + 1;`. Compound forms `+=`, `-=`, `*=`, `/=`, `%=` read the target, combine and store back; the target is evaluated once (`xs[next()] += 1` calls `next` once). `x++;` and `x--;` are `x += 1;` and `x -= 1;`. All of these are statements: they have no value.
 - Blocks create scope: `{ let x = 1; }`.
 - Control flow:
   - `if/else` with `Bool` condition.
   - `while` with `Bool` condition.
-  - `for item in items { ... }` over arrays or strings (iteration unit TBD).
+  - `for item in items { ... }` over arrays or strings; a string yields its characters.
+  - `for i, item in items { ... }` also gives the position, from 0.
+  - The loop's variables cannot be assigned (`E2026`). Assigning to the index would not move the loop, and assigning to the element would not change the collection; both look like they would. To change the collection write `items[i] = ...`; to control the position use `while`. Changing a value *through* the element is fine: `for p in points { p.x = 0; }`.
   - `break`/`continue` only in loops.
 
 ### Behaviors (Traits)
@@ -137,7 +139,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 
 ## 9. Errors
 - Static: unknown identifier, type mismatch, bad arity, assign to `const`.
-- Runtime: null deref, array OOB, type errors that escape checks, divide by zero. Runtime aborts with an error message is acceptable in v0.
+- Runtime: array index out of bounds (read or write), integer overflow (an `Int` is 48 bits and never wraps), division by zero, a failed cast. The program stops with a message naming the source line.
 
 ## 10. Minimal Stdlib (host-provided)
 - `fn print(args: ...Any) -> Void;` writes its arguments separated by spaces.
@@ -178,12 +180,13 @@ Stmt         = LetDecl | IfStmt | WhileStmt | ForStmt | ReturnStmt | MatchStmt
              | BreakStmt | ContinueStmt | Block | AssignStmt | ExprStmt ;
 BreakStmt    = "break" ";" ;
 ContinueStmt = "continue" ";" ;
-AssignStmt   = AssignTarget "=" Expr ";" ;
+AssignStmt   = AssignTarget AssignOp Expr ";" | AssignTarget ( "++" | "--" ) ";" ;
+AssignOp     = "=" | "+=" | "-=" | "*=" | "/=" | "%=" ;
 AssignTarget = Ident | PostfixExpr Index | PostfixExpr Member ;
 LetDecl      = ("let" | "const") Ident [ ":" Type ] "=" Expr ";" ;
 IfStmt       = "if" Expr Block [ "else" (Block | IfStmt) ] ;
 WhileStmt    = "while" Expr Block ;
-ForStmt      = "for" Ident "in" Expr Block ;
+ForStmt      = "for" [ Ident "," ] Ident "in" Expr Block ;
 ReturnStmt   = "return" [ Expr ] ";" ;
 MatchStmt    = "match" Expr "{" { MatchCase } "}" ;
 MatchCase    = ( "case" Pattern | "default" ) ":" ( Block | Expr ";" ) ;
@@ -232,11 +235,11 @@ known defects are inventoried in [missing.md](missing.md).
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| `Int`, `Float`, `Bool`, `String`, `null` | Supported | Ints are 48-bit signed |
+| `Int`, `Float`, `Bool`, `String`, `null` | Supported | Ints are 48-bit signed; overflow is a runtime error |
 | Arithmetic, comparison, `!`, unary `-` | Supported | No implicit Int/Float conversion; strings compare by content |
 | String concatenation, indexing, `.length` | Supported | |
-| `let`, `const`, assignment, block scopes | Supported | Assigning to a `const` is not rejected yet |
-| `if`/`else`, `while`, `for in`, `break`, `continue` | Supported | `for in` over arrays and strings |
+| `let`, `const`, assignment, `+=` and `++`, block scopes | Supported | `++`/`--` are statements |
+| `if`/`else`, `while`, `for in`, `break`, `continue` | Supported | `for in` over arrays and strings, optionally with the index |
 | `&&`, `||`, `??` | Supported | Short-circuit |
 | Functions, recursion, functions as values | Supported | |
 | Anonymous functions and closures | Supported | Capture by reference |

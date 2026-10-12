@@ -109,6 +109,8 @@ that detects the problem.
 | `E2022` | Assignment to a name declared with `const` |
 | `E2023` | **Warning**: unreachable code after a statement that always leaves the block. Reported once per block |
 | `E2024` | Type arguments of a method call that cannot be inferred, are superfluous or of the wrong number |
+| `E2025` | Integer literal outside the 48-bit range of an `Int` |
+| `E2026` | Assignment to the index or the element variable of a `for` loop. The suggestion names what works instead |
 
 ### E3xxx — Monomorphization (`internal/monomorph`)
 

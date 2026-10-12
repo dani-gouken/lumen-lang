@@ -685,6 +685,121 @@ func TestTraitMethodTypeParametersMatchByPosition(t *testing.T) {
 	`, "[7, 7] [\"x\", \"x\"]\n")
 }
 
+func TestCompoundAssignmentAndIncrement(t *testing.T) {
+	decls := `
+		struct Counter { hits: Int; names: [String]; }
+
+		impl Counter {
+			// Counts how often it was asked for the next slot
+			fn next() -> Int { self.hits++; return self.hits - 1; }
+			fn rename(i: Int, suffix: String) -> Void { self.names[i] += suffix; }
+		}
+
+		fn total(values: [Int]) -> Int {
+			let sum = 0;
+			for v in values { sum += v; }
+			return sum;
+		}
+	`
+	expectOutput(t, decls, `
+		let i = 0;
+		i += 5; i -= 2; i *= 4; i /= 3; i %= 3; i++; i--; i++;
+		let text = "a"; text += "b"; text += toString(i);
+		let ratio = 1.5; ratio *= 2.0; ratio -= 0.5; ratio /= 0.5;
+		println(i, text, ratio);
+
+		// The target is evaluated once: next() runs once per statement
+		let slots = [10, 20, 30];
+		let counter = Counter { hits: 0, names: ["x", "y"] };
+		slots[counter.next()] += 1;
+		slots[counter.next()] *= 2;
+		slots[counter.next()]--;
+		println(slots, counter.hits, total(slots));
+
+		counter.rename(1, "!");
+		counter.names[0] += counter.names[1];
+		println(counter.names);
+
+		// Through a closure, and on a variable that started as null
+		let sum = 0;
+		let add = fn(v: Int) -> Void { sum += v; };
+		add(4); add(5);
+		let maybe: Int? = null;
+		maybe = 10;
+		maybe += sum;
+		println(sum, maybe);
+
+		// Nested: a field of an element of a field
+		let grid = [[1, 2], [3, 4]];
+		grid[1][0] += grid[0][1];
+		grid[0][0]++;
+		println(grid);
+	`, "2 ab2 5\n[11, 40, 29] 3 80\n[\"xy!\", \"y!\"]\n9 19\n[[2, 2], [5, 4]]\n")
+}
+
+func TestForLoopIndex(t *testing.T) {
+	decls := `
+		struct Entry { rank: Int; name: String; }
+
+		fn ranked(names: [String]) -> [Entry] {
+			let out: [Entry] = [];
+			for i, name in names { push(out, Entry { rank: i + 1, name: name }); }
+			return out;
+		}
+
+		fn indexOf<T>(items: [T], wanted: T) -> Int {
+			for i, item in items {
+				if item == wanted { return i; }
+			}
+			return -1;
+		}
+	`
+	expectOutput(t, decls, `
+		for i, name in ["ada", "bob"] { print(i, name, ""); }
+		println("");
+
+		// Strings, with continue and break not disturbing the count
+		for i, ch in "héllo" {
+			if i == 1 { continue; }
+			if i == 4 { break; }
+			print(i, ch, "");
+		}
+		println("");
+
+		for entry in ranked(["x", "y", "z"]) { print(entry.rank, entry.name, ""); }
+		println("");
+		println(indexOf(["a", "b", "c"], "c"), indexOf([1, 2], 9));
+
+		// Nested loops each have their own index
+		let pairs: [String] = [];
+		let letters = ["a", "b", "c"];
+		for i, first in letters {
+			for j, second in letters {
+				if i < j { push(pairs, first + second); }
+			}
+		}
+		println(pairs);
+
+		// Changing the collection goes through the index
+		let scores = [10, 20, 30];
+		for i, score in scores {
+			scores[i] = score * 2;
+			scores[i] += i;
+		}
+		println(scores);
+
+		// Each closure created in the loop captures the same variable
+		let readers: [fn() -> Int] = [];
+		for i, v in [7, 8, 9] { push(readers, fn() -> Int { return i * 10 + v; }); }
+		println(readers[0](), readers[2]());
+
+		// An empty collection runs no iteration
+		let nothing: [Int] = [];
+		for i, v in nothing { println("never", i, v); }
+		println("done");
+	`, "0 ada 1 bob \n0 h 2 l 3 l \n1 x 2 y 3 z \n2 -1\n[\"ab\", \"ac\", \"bc\"]\n[20, 41, 62]\n29 29\ndone\n")
+}
+
 func TestCasts(t *testing.T) {
 	decls := `
 		trait Shape { fn area() -> Int; }
@@ -831,6 +946,15 @@ func TestRuntimeErrorsPointAtSource(t *testing.T) {
 		{"index out of bounds", "let xs = [1];\nreturn xs[3];", "index out of bounds: 3 (length 1)", 4},
 		{"division by zero", "let zero = 0;\nreturn 1 / zero;", "division by zero", 4},
 		{"empty array", "let xs: [Int] = [];\nreturn xs[0];", "index out of bounds: 0 (length 0)", 4},
+		{"write past the end", "let xs = [1, 2];\nxs[2] = 3;\nreturn 0;", "index out of bounds: 2 (length 2)", 4},
+		{"write past the end after growing", "let xs = [1, 2, 3];\npush(xs, 4);\nxs[5] = 9;\nreturn 0;", "index out of bounds: 5 (length 4)", 5},
+		{"write at a negative index", "let xs = [1];\nlet i = 0 - 1;\nxs[i] = 2;\nreturn 0;", "index out of bounds: -1 (length 1)", 5},
+		{"compound write past the end", "let xs = [1];\nxs[1] += 1;\nreturn 0;", "index out of bounds: 1 (length 1)", 4},
+		{"sum overflows", "let big = 140737488355327;\nreturn big + 1;", "integer overflow", 4},
+		{"product overflows", "let big = 16777216;\nreturn big * big;", "integer overflow", 4},
+		{"increment overflows", "let big = 140737488355327;\nbig++;\nreturn 0;", "integer overflow", 4},
+		{"negation overflows", "let small = -140737488355328;\nreturn -small;", "integer overflow", 4},
+		{"compound division by zero", "let n = 4;\nlet zero = 0;\nn /= zero;\nreturn n;", "division by zero", 5},
 		{"cast of the wrong kind", "let v: Any = \"text\";\nreturn v as Int;", "cannot cast String to Int", 4},
 		{"cast of null", "let n: Int? = null;\nreturn n as Int;", "cannot cast null to Int", 4},
 		{"cast to the wrong struct", "let v: Any = Empty {};\nlet o = v as Other;\nreturn 0;", "cannot cast Empty to Other", 4},
@@ -910,6 +1034,12 @@ func TestCompileErrors(t *testing.T) {
 		{"field used after a call that may change it", "struct P { x: Int?; }\nfn touch(p: P) -> Void { p.x = null; }\nfn main() -> Int { let p = P { x: 1 }; if p.x != null { touch(p); return p.x + 1; } return 0; }", "E2017", "the value may be null"},
 		{"type test that can never succeed", "fn main() -> Int { let n = 1; if n is String { return 1; } return 0; }", "E2021", "int can never be string"},
 		{"null test on a variable a lambda assigns", "fn main() -> Int {\n let n: Int? = 1;\n let clear = fn() -> Void { n = null; };\n if n != null { clear(); return n + 1; }\n return 0;\n}", "E2017", "the value may be null"},
+		{"compound assignment to a constant", "fn main() -> Int { const c = 1; c += 1; return c; }", "E2022", "cannot assign to constant 'c'"},
+		{"compound assignment of another type", "fn main() -> Int { let n = 1; n += \"one\"; return n; }", "E2006", "operator + not defined for types int and string"},
+		{"increment as an expression", "fn main() -> Int { let n = 1; let m = n++; return m; }", "E0003", "expected ';'"},
+		{"integer literal out of range", "fn main() -> Int { return 140737488355328; }", "E2025", "is out of range"},
+		{"assignment to a loop index", "fn main() -> Int { for i, v in [1] { i = i + 1; } return 0; }", "E2026", "cannot assign to loop index 'i'"},
+		{"assignment to a loop variable", "fn main() -> Int { let xs = [1]; for v in xs { v *= 2; } return 0; }", "E2026", "cannot assign to loop variable 'v'"},
 		{"undefined struct", "fn main() -> Int { let p = Nope { x: 1 }; return 0; }", "E2016", "undefined struct 'Nope'"},
 		{"assign to function", "fn f() -> Int { return 1; }\nfn main() -> Int { f = f; return 0; }", "E5003", "cannot assign to 'f'"},
 		{"break outside loop", "fn main() -> Void { break; }", "E5005", "'break' outside of a loop"},

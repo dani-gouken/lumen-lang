@@ -60,12 +60,16 @@ if nothing != null {        // ...or a test: inside, `nothing` is an Int
 let names: [String] = [];   // an empty array needs its type stated
 
 count = count + 1;          // reassignment
+count += 1;                 // also -=, *=, /=, %=
+count++;                    // count += 1; a statement, not an expression
 {
     let count = 100;        // a block has its own scope
 }
 ```
 
 There is no implicit conversion between `Int` and `Float`: `1 + 2.5` is a compile error.
+
+An `Int` holds 48 bits, from -140737488355328 to 140737488355327. Arithmetic that leaves this range stops the program with `integer overflow`; it never wraps around.
 
 ### Strings
 
@@ -90,6 +94,10 @@ while i < 10 {
 
 for item in [1, 2, 3] { ... }     // arrays
 for char in "abc" { ... }         // strings
+for i, item in items { ... }      // with the position, starting at 0
+for i, item in items {
+    items[i] = item * 2;          // change the collection through the index;
+}                                 // `item = ...` and `i = ...` are errors
 
 match n {
     case 0: { println("zero"); }
@@ -131,7 +139,7 @@ push(xs, 40);               // grow
 xs.length                   // 4
 ```
 
-All elements have the same type. Reading or writing an index that does not exist is a runtime error.
+All elements have the same type. Reading or writing an index that does not exist is a runtime error; `xs[i] = v` replaces an element and never grows the array, `push` does.
 
 ### Structs, traits and methods
 

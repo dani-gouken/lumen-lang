@@ -68,6 +68,36 @@ func TestForLoopEvaluatesIterableOnce(t *testing.T) {
 	}
 }
 
+func TestForLoopIndexIsACopyTakenBeforeTheIncrement(t *testing.T) {
+	out := desugarBody(t, `let xs = [1, 2]; for i, v in xs { if i == 0 { continue; } print(i, v); }`)
+
+	// let v = xs[__iter]; let i = __iter; __iter = __iter + 1; body
+	if !before(out, "let v: int = xs[__iter_0];", "let i: Int = __iter_0;") {
+		t.Errorf("expected the element, then the index, got: %s", out)
+	}
+	if !before(out, "let i: Int = __iter_0;", "(__iter_0 = (__iter_0 + 1));") {
+		t.Errorf("expected the index to be copied before the increment, got: %s", out)
+	}
+	if !before(out, "(__iter_0 = (__iter_0 + 1));", "continue;") {
+		t.Errorf("expected the increment before the body, got: %s", out)
+	}
+
+	// Without an index nothing extra is declared
+	out = desugarBody(t, `let xs = [1]; for v in xs { print(v); }`)
+	if strings.Count(out, "let ") != 4 { // xs, __iter, __len, v
+		t.Errorf("expected no index variable, got: %s", out)
+	}
+}
+
+func TestCompoundAssignmentsPassThrough(t *testing.T) {
+	out := desugarBody(t, `let i = 0; let xs = [1]; i += 2; xs[0] *= 3; i++;`)
+	for _, want := range []string{"(i += 2);", "(xs[0] *= 3);", "(i += 1);"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in: %s", want, out)
+		}
+	}
+}
+
 func TestShortCircuitOperatorsAreKept(t *testing.T) {
 	// &&, || and ?? are lowered to branches by IR generation. They stay in
 	// the tree so that the type checker, which runs again on the desugared

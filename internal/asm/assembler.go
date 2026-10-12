@@ -901,6 +901,24 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 		}
 		instr = vm.NewInstr(vm.OpSETINDEX, a, b, c)
 
+	case "SETELEM":
+		if len(args) != 3 {
+			return fmt.Errorf("SETELEM requires 3 arguments, got %d", len(args))
+		}
+		a, err := parseReg(args[0])
+		if err != nil {
+			return err
+		}
+		b, err := parseReg(args[1])
+		if err != nil {
+			return err
+		}
+		c, err := parseReg(args[2])
+		if err != nil {
+			return err
+		}
+		instr = vm.NewInstr(vm.OpSETELEM, a, b, c)
+
 	case "GETFIELD":
 		if len(args) != 3 {
 			return fmt.Errorf("GETFIELD requires 3 arguments, got %d", len(args))

@@ -174,6 +174,122 @@ func TestRuntimeTypeAndBoundsErrors(t *testing.T) {
 	}
 }
 
+func TestCheckedElementWrite(t *testing.T) {
+	// r1 = [10, 20] with capacity 8; r2 = index; r3 = 99
+	setup := func(index byte) []Instr {
+		return []Instr{
+			NewInstr(OpNEWARRAY, 1, 8, 0),
+			NewInstr(OpLOADI, 4, 10, 0),
+			NewInstr(OpARRPUSH, 1, 4, 0),
+			NewInstr(OpLOADI, 4, 20, 0),
+			NewInstr(OpARRPUSH, 1, 4, 0),
+			NewInstr(OpLOADI, 2, index, 0),
+			NewInstr(OpLOADI, 3, 99, 0),
+		}
+	}
+	run := func(index byte, write OpCode) (string, error) {
+		code := append(setup(index), NewInstr(write, 1, 2, 3), NewInstr(OpRET, 1, 0, 0))
+		result, _, err := execMain(t, nil, nil, code...)
+		return FormatValue(result), err
+	}
+
+	// SETELEM replaces an existing element...
+	if got, err := run(1, OpSETELEM); err != nil || got != "[10, 99]" {
+		t.Errorf("expected [10, 99], got %s, %v", got, err)
+	}
+	// ...and refuses anything past the length, even within the capacity
+	for _, index := range []byte{2, 5, 7, 200} {
+		_, err := run(index, OpSETELEM)
+		if err == nil || !strings.Contains(err.Error(), "index out of bounds") || !strings.Contains(err.Error(), "(length 2)") {
+			t.Errorf("SETELEM at %d: expected an out-of-bounds error, got %v", index, err)
+		}
+	}
+
+	// SETINDEX, used by hand-written assembly, grows up to the capacity
+	if got, err := run(4, OpSETINDEX); err != nil || got != "[10, 20, null, null, 99]" {
+		t.Errorf("expected SETINDEX to grow the array, got %s, %v", got, err)
+	}
+
+	// Both check what they are given
+	notArray := []Instr{NewInstr(OpLOADI, 1, 1, 0), NewInstr(OpLOADI, 2, 0, 0), NewInstr(OpSETELEM, 1, 2, 2), NewInstr(OpRET, 1, 0, 0)}
+	if _, _, err := execMain(t, nil, nil, notArray...); err == nil || !strings.Contains(err.Error(), "SETELEM requires array, got Int") {
+		t.Errorf("expected a type error, got %v", err)
+	}
+	badIndex := append(setup(0), NewInstr(OpLOADBOOL, 2, 1, 0), NewInstr(OpSETELEM, 1, 2, 3), NewInstr(OpRET, 1, 0, 0))
+	if _, _, err := execMain(t, nil, nil, badIndex...); err == nil || !strings.Contains(err.Error(), "SETELEM requires integer index") {
+		t.Errorf("expected an index type error, got %v", err)
+	}
+}
+
+func TestIntegerOverflow(t *testing.T) {
+	// r1 op r2 with both loaded from constants
+	run := func(op OpCode, a, b int64) (Value, error) {
+		result, _, err := execMain(t, nil, []Value{NewInt(a), NewInt(b)},
+			NewInstr(OpLOADK, 1, 0, 0),
+			NewInstr(OpLOADK, 2, 1, 0),
+			NewInstr(op, 3, 1, 2),
+			NewInstr(OpRET, 3, 0, 0),
+		)
+		return result, err
+	}
+
+	within := []struct {
+		name string
+		op   OpCode
+		a, b int64
+		want int64
+	}{
+		{"largest sum", OpADD, MaxInt - 1, 1, MaxInt},
+		{"smallest difference", OpSUB, MinInt + 1, 1, MinInt},
+		{"largest product", OpMUL, MaxInt, 1, MaxInt},
+		{"product of large factors", OpMUL, 1 << 23, 1 << 23, 1 << 46},
+		{"negative product", OpMUL, -(1 << 23), 1 << 24, MinInt},
+		{"division", OpDIV, MinInt, 2, MinInt / 2},
+		{"remainder", OpMOD, MinInt, -1, 0},
+	}
+	for _, tt := range within {
+		result, err := run(tt.op, tt.a, tt.b)
+		if err != nil || !result.IsInt() || result.AsInt() != tt.want {
+			t.Errorf("%s: expected %d, got %s, %v", tt.name, tt.want, FormatValue(result), err)
+		}
+	}
+
+	overflowing := []struct {
+		name string
+		op   OpCode
+		a, b int64
+	}{
+		{"sum past the largest", OpADD, MaxInt, 1},
+		{"sum past the smallest", OpADD, MinInt, -1},
+		{"difference past the smallest", OpSUB, MinInt, 1},
+		{"difference past the largest", OpSUB, MaxInt, -1},
+		{"product just past the range", OpMUL, 1 << 24, 1 << 23},
+		{"product past 64 bits", OpMUL, MaxInt, MaxInt},
+		{"negative product past 64 bits", OpMUL, MinInt, MaxInt},
+		{"smallest divided by minus one", OpDIV, MinInt, -1},
+	}
+	for _, tt := range overflowing {
+		result, err := run(tt.op, tt.a, tt.b)
+		if err == nil || !strings.Contains(err.Error(), "integer overflow") {
+			t.Errorf("%s: expected an overflow error, got %s, %v", tt.name, FormatValue(result), err)
+		}
+	}
+
+	// Negating the smallest Int has no Int result either
+	_, _, err := execMain(t, nil, []Value{NewInt(MinInt)},
+		NewInstr(OpLOADK, 1, 0, 0), NewInstr(OpNEG, 2, 1, 0), NewInstr(OpRET, 2, 0, 0))
+	if err == nil || !strings.Contains(err.Error(), "integer overflow") {
+		t.Errorf("expected negating the smallest Int to overflow, got %v", err)
+	}
+
+	// Floats follow IEEE 754 and do not fail
+	result, _, err := execMain(t, nil, []Value{NewNumber(1e308)},
+		NewInstr(OpLOADK, 1, 0, 0), NewInstr(OpADD, 2, 1, 1), NewInstr(OpRET, 2, 0, 0))
+	if err != nil || !result.IsNumber() {
+		t.Errorf("expected float arithmetic not to fail, got %s, %v", FormatValue(result), err)
+	}
+}
+
 func TestBuiltinFunctions(t *testing.T) {
 	// print("n =", 42); println(toString(true)); push(arr, 7); return arr
 	result, out, err := execMain(t, []string{"n ="}, []Value{NewInt(0)},

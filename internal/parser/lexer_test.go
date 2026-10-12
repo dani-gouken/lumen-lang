@@ -31,6 +31,16 @@ func TestLexerTokens(t *testing.T) {
 			token.ASSIGN, token.LT, token.GT, token.NOT, token.QUESTION, token.PIPE, token.AMPERSAND,
 		}},
 		{"ellipsis and dot", "... .", []token.TokenType{token.ELLIPSIS, token.DOT}},
+		{"compound assignment", "+= -= *= /= %=", []token.TokenType{
+			token.PLUS_ASSIGN, token.MINUS_ASSIGN, token.STAR_ASSIGN, token.SLASH_ASSIGN, token.PERCENT_ASSIGN,
+		}},
+		{"increment and decrement", "i++ j--", []token.TokenType{token.IDENT, token.INC, token.IDENT, token.DEC}},
+		{"spaced signs stay separate", "a - -b + +c", []token.TokenType{
+			token.IDENT, token.MINUS, token.MINUS, token.IDENT, token.PLUS, token.PLUS, token.IDENT,
+		}},
+		{"arrow is not minus and greater", "a->b a - >b", []token.TokenType{
+			token.IDENT, token.ARROW, token.IDENT, token.IDENT, token.MINUS, token.GT, token.IDENT,
+		}},
 		{"comments are skipped", "a // line\n/* block\n */ b", []token.TokenType{token.IDENT, token.IDENT}},
 	}
 

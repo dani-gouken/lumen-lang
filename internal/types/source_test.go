@@ -286,6 +286,25 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 			fn main() -> Int { let xs: [String] = convert(1, toString); return xs.length; }`},
 		{"method type argument from the expected type", `struct U { n: Int; } impl U { fn none<T>() -> [T] { return []; } }
 			fn main() -> Int { let u = U { n: 1 }; let xs: [Int] = u.none(); return xs.length; }`},
+		{"compound assignment on numbers", `fn main() -> Int { let i = 1; i += 2; i -= 1; i *= 3; i /= 2; i %= 4; i++; i--; return i; }`},
+		{"compound assignment on floats and strings", `fn main() -> Int { let f = 1.5; f *= 2.0; f -= 0.5; let s = "a"; s += "b"; return s.length; }`},
+		{"compound assignment on elements and fields", `struct P { n: Int; tags: [String]; }
+			fn main() -> Int { let xs = [1, 2]; xs[0] += 5; xs[1]++; let p = P { n: 1, tags: ["a"] }; p.n *= 2; p.tags[0] += "b"; p.n--; return xs[0] + p.n; }`},
+		{"compound assignment on a narrowed optional", `fn f(n: Int?) -> Int { if n == null { return 0; } n += 1; n++; return n; }`},
+		{"compound assignment keeps a variable non-null", `fn main() -> Int { let n: Int? = null; n = 1; n += 2; return n + 1; }`},
+		{"compound assignment in a lambda", `fn main() -> Int { let total = 0; let add = fn(v: Int) -> Void { total += v; }; add(2); return total; }`},
+		{"compound assignment through self", `struct C { n: Int; } impl C { fn bump(by: Int) -> Int { self.n += by; self.n++; return self.n; } }`},
+		{"loop index", `fn main() -> Int { let t = 0; for i, x in [10, 20] { t += i * x; } return t; }`},
+		{"loop index over a string", `fn main() -> Int { let t = 0; for i, c in "abc" { let s: String = c; t += i; } return t; }`},
+		{"loop variables read, and a copy changed", `fn main() -> Int { let t = 0; for i, x in [1] { let j = i; j += x; let y = x; y *= 2; t += j + y; } return t; }`},
+		{"value reached through the loop variable changed", `struct P { n: Int; items: [Int]; }
+			fn main() -> Int { let ps = [P { n: 1, items: [1] }]; for i, p in ps { p.n = 5; p.n += i; p.items[0]++; push(p.items, 2); } return ps[0].n; }`},
+		{"collection changed by index inside its loop", `fn main() -> Int { let xs = [1, 2]; for i, x in xs { xs[i] = x * 2; xs[i] += 1; } return xs[0]; }`},
+		{"same name reused after the loop", `fn main() -> Int { for i, x in [1] { } let i = 0; i = 1; let x = 2; x++; return i + x; }`},
+		{"loop variable shadowed inside the body", `fn main() -> Int { for i, x in [1] { { let i = 5; i++; let x = "s"; x += "t"; } } return 0; }`},
+		{"nested loop indexes", `fn main() -> Int { let t = 0; for i, row in [[1], [2, 3]] { for j, cell in row { t += i + j + cell; } } return t; }`},
+		{"loop index captured by a lambda", `fn main() -> Int { let fs: [fn() -> Int] = []; for i, x in [1, 2] { push(fs, fn() -> Int { return i + x; }); } return fs[0](); }`},
+		{"largest and smallest Int literals", `fn main() -> Int { let big = 140737488355327; let small = -140737488355328; return 0; }`},
 		{"Any compared and printed", `fn same(a: Any, b: Any) -> Bool { return a == b; }`},
 	}
 
@@ -449,6 +468,36 @@ func TestCheckRejectsInvalidPrograms(t *testing.T) {
 		{"match case sees only its own type", `fn f(v: Any) -> Int { match v { case String: { return v + 1; } default: { return 0; } } }`, "operator + not defined for types string and int"},
 		{"inferred type argument conflicts with a later argument", `fn same<T>(a: T, b: T) -> T { return a; } fn main() -> Int { return same(1, "two"); }`, "cannot use type string as argument of type int"},
 		{"inferred result is checked", `fn first<T>(xs: [T]) -> T { return xs[0]; } fn main() -> Int { return first(["a"]); }`, "cannot return type string"},
+		{"compound assignment of another type", `fn main() -> Int { let i = 1; i += "a"; return i; }`, "operator + not defined for types int and string"},
+		{"compound assignment mixing Int and Float", `fn main() -> Int { let i = 1; i *= 2.5; return i; }`, "operator * not defined for types int and float"},
+		{"compound assignment not defined for the type", `fn main() -> Int { let s = "a"; s -= "b"; return 0; }`, "operator - not defined for types string and string"},
+		{"compound assignment on a Bool", `fn main() -> Int { let b = true; b += 1; return 0; }`, "operator + not defined for types bool and int"},
+		{"increment of a String", `fn main() -> Int { let s = "a"; s++; return 0; }`, "operator + not defined for types string and int"},
+		{"compound assignment to a constant", `fn main() -> Int { const c = 1; c += 1; return c; }`, "cannot assign to constant 'c'"},
+		{"increment of a constant", `fn main() -> Int { const c = 1; c++; return c; }`, "cannot assign to constant 'c'"},
+		{"compound assignment on an optional", `fn f(n: Int?) -> Int { n += 1; return 0; }`, "the value may be null"},
+		{"compound assignment on an optional field", `struct P { n: Int?; } fn f(p: P) -> Void { p.n += 1; }`, "the value may be null"},
+		{"compound assignment on a wrong element type", `fn main() -> Int { let xs = ["a"]; xs[0] += 1; return 0; }`, "operator + not defined for types string and int"},
+		{"compound assignment ends narrowing of fields", `struct P { x: Int?; n: Int; }
+			fn f(p: P, q: P) -> Int { if p.x != null { q.n += 1; return p.x + 1; } return 0; }`, "the value may be null"},
+		{"function with a compound field assignment is a writer", `struct P { x: Int?; n: Int; } fn bump(p: P) -> Void { p.n++; }
+			fn f(p: P) -> Int { if p.x != null { bump(p); return p.x + 1; } return 0; }`, "the value may be null"},
+		{"variable compound-assigned by a lambda is shared", `fn f(n: Int?) -> Int { let bump = fn() -> Void { if n != null { n += 1; } };
+			if n != null { bump(); return n + 1; } return 0; }`, "the value may be null"},
+		{"loop index is an Int", `fn main() -> Int { for i, x in ["a"] { let s: String = i; } return 0; }`, "cannot assign type int to string"},
+		{"integer literal too large", `fn main() -> Int { let n = 140737488355328; return 0; }`, "integer literal 140737488355328 is out of range"},
+		{"negative integer literal too small", `fn main() -> Int { let n = -140737488355329; return 0; }`, "integer literal 140737488355329 is out of range"},
+		{"integer literal far too large", `fn main() -> Int { let n = 99999999999999999999999; return 0; }`, "is out of range"},
+		{"assignment to a loop index", `fn main() -> Int { for i, x in [1] { i = 5; } return 0; }`, "cannot assign to loop index 'i'"},
+		{"compound assignment to a loop index", `fn main() -> Int { for i, x in [1] { i += 1; } return 0; }`, "cannot assign to loop index 'i'"},
+		{"increment of a loop index", `fn main() -> Int { for i, x in [1] { i++; } return 0; }`, "cannot assign to loop index 'i'"},
+		{"assignment to a loop variable", `fn main() -> Int { for x in [1] { x = 5; } return 0; }`, "cannot assign to loop variable 'x'"},
+		{"compound assignment to a loop variable", `fn main() -> Int { for x in [1] { x *= 2; } return 0; }`, "cannot assign to loop variable 'x'"},
+		{"decrement of a loop variable", `fn main() -> Int { for i, x in [1] { x--; } return 0; }`, "cannot assign to loop variable 'x'"},
+		{"assignment to a character of a string loop", `fn main() -> Int { for c in "ab" { c = "z"; } return 0; }`, "cannot assign to loop variable 'c'"},
+		{"assignment to a loop variable in a nested block", `fn main() -> Int { for i, x in [1] { if x > 0 { while true { i = 0; break; } } } return 0; }`, "cannot assign to loop index 'i'"},
+		{"assignment to a loop variable from a lambda", `fn main() -> Int { for i, x in [1] { let f = fn() -> Void { x = 2; }; f(); } return 0; }`, "cannot assign to loop variable 'x'"},
+		{"assignment to an outer loop's index", `fn main() -> Int { for i, row in [[1]] { for j, cell in row { i = j; } } return 0; }`, "cannot assign to loop index 'i'"},
 		{"push wrong element", `fn main() -> Int { let xs: [Int] = []; push(xs, true); return 0; }`, "cannot push type bool onto [int]"},
 		{"push onto a non-array", `fn main() -> Int { push(1, 2); return 0; }`, "push expects an array, got int"},
 		{"mixed arithmetic", `fn main() -> Int { return 1 + 2.5; }`, "operator + not defined for types int and float"},
@@ -689,6 +738,34 @@ func TestFunctionSignaturesAreRecorded(t *testing.T) {
 			if got := info.Signatures[lambda]; got != "fn(string)->[int]" {
 				t.Errorf("lambda: expected signature fn(string)->[int], got %q", got)
 			}
+		}
+	}
+}
+
+func TestLoopVariableAssignmentSuggestsTheFix(t *testing.T) {
+	tests := []struct {
+		src  string
+		want string // part of the suggestion
+	}{
+		{`fn main() -> Void { for i, x in [1] { i = 0; } }`, "use a while loop to control the position"},
+		// With an index at hand, the suggestion spells out the assignment that works
+		{`fn main() -> Void { let scores = [1]; for i, score in scores { score = 0; } }`, "assign to scores[i]"},
+		{`fn main() -> Void { let scores = [1]; for score in scores { score = 0; } }`, "assign to it by index"},
+	}
+
+	for _, tt := range tests {
+		errs := errors.NewHandler()
+		prog := parser.Parse(tt.src, "test.lum", errs)
+		table := resolve.NewResolver(errs).Resolve(prog)
+		NewChecker(prog, table, errs).Check()
+
+		if len(errs.Diagnostics) != 1 {
+			t.Errorf("%s: expected exactly one diagnostic, got %v", tt.src, errs.Diagnostics)
+			continue
+		}
+		d := errs.Diagnostics[0]
+		if d.Code != ErrAssignToLoopVar || !strings.Contains(d.Suggestion, tt.want) {
+			t.Errorf("%s: expected %s with a suggestion containing %q, got %s: %q", tt.src, ErrAssignToLoopVar, tt.want, d.Code, d.Suggestion)
 		}
 	}
 }

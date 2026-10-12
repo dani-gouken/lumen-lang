@@ -163,6 +163,7 @@ func (m *Monomorphizer) cloneAndSubstituteStmt(stmt ast.Stmt, subst TypeSubstitu
 		return &ast.ForStmt{
 			BaseNode: s.BaseNode,
 			Var:      s.Var,
+			Index:    s.Index,
 			Iterable: m.cloneAndSubstituteExpr(s.Iterable, subst),
 			Body:     m.cloneAndSubstituteBlock(s.Body, subst),
 		}

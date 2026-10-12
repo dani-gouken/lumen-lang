@@ -81,6 +81,9 @@ const (
 
 	// Garbage collection
 	OpGC // Trigger GC manually
+
+	// Checked element write (added after OpGC to keep earlier opcodes stable)
+	OpSETELEM // A = array, B = index, C = value; index must be below the length
 )
 
 // Instr represents a single bytecode instruction.
@@ -204,6 +207,8 @@ func (i Instr) String() string {
 		return formatInstr("HASFIELD", i.A, i.B, i.C)
 	case OpDELFIELD:
 		return formatInstr("DELFIELD", i.A, i.B, i.C)
+	case OpSETELEM:
+		return formatInstr("SETELEM", i.A, i.B, i.C)
 	case OpGC:
 		return "GC"
 	default:

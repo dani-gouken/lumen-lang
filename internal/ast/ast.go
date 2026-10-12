@@ -397,14 +397,28 @@ func (s *WhileStmt) String() string {
 type ForStmt struct {
 	BaseNode
 	Var      string
+	Index    *ForIndex // `for i, item in items`: the position variable, or nil
 	Iterable Expr
 	Body     *BlockStmt
 }
 
 func (s *ForStmt) stmtNode() {}
 func (s *ForStmt) String() string {
-	return fmt.Sprintf("for %s in %s %s", s.Var, s.Iterable.String(), s.Body.String())
+	vars := s.Var
+	if s.Index != nil {
+		vars = s.Index.Name + ", " + s.Var
+	}
+	return fmt.Sprintf("for %s in %s %s", vars, s.Iterable.String(), s.Body.String())
 }
+
+// ForIndex is the position variable of a for loop. It is a node of its own
+// so that a use of the variable can be told from a use of the element.
+type ForIndex struct {
+	BaseNode
+	Name string
+}
+
+func (i *ForIndex) String() string { return i.Name }
 
 type BreakStmt struct{ BaseNode }
 
@@ -455,11 +469,30 @@ func (s *ExprStmt) String() string {
 
 // --- Expressions ---
 
+// BinaryExpr is a binary operation. Assignments are binary expressions too:
+// Op is "=" for `target = value`, and "+=", "-=", "*=", "/=", "%=" for the
+// compound forms (`i++` is `i += 1`).
 type BinaryExpr struct {
 	BaseNode
 	Left  Expr
 	Op    string
 	Right Expr
+}
+
+// CompoundOp returns the arithmetic operator of a compound assignment
+// ("+" for "+="), and whether op is one.
+func CompoundOp(op string) (string, bool) {
+	switch op {
+	case "+=", "-=", "*=", "/=", "%=":
+		return op[:1], true
+	}
+	return "", false
+}
+
+// IsAssignment reports whether op assigns to its left operand.
+func IsAssignment(op string) bool {
+	_, compound := CompoundOp(op)
+	return op == "=" || compound
 }
 
 func (e *BinaryExpr) exprNode() {}

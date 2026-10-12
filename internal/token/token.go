@@ -87,7 +87,14 @@ const (
 	QUESTION_QUESTION // ??
 
 	// Assignment
-	ASSIGN // =
+	ASSIGN         // =
+	PLUS_ASSIGN    // +=
+	MINUS_ASSIGN   // -=
+	STAR_ASSIGN    // *=
+	SLASH_ASSIGN   // /=
+	PERCENT_ASSIGN // %=
+	INC            // ++
+	DEC            // --
 
 	// Bitwise (reserved for future)
 	AMPERSAND // &
@@ -289,6 +296,20 @@ func (typ TokenType) String() string {
 	// Operators - Assignment
 	case ASSIGN:
 		return "ASSIGN"
+	case PLUS_ASSIGN:
+		return "PLUS_ASSIGN"
+	case MINUS_ASSIGN:
+		return "MINUS_ASSIGN"
+	case STAR_ASSIGN:
+		return "STAR_ASSIGN"
+	case SLASH_ASSIGN:
+		return "SLASH_ASSIGN"
+	case PERCENT_ASSIGN:
+		return "PERCENT_ASSIGN"
+	case INC:
+		return "INC"
+	case DEC:
+		return "DEC"
 
 	// Operators - Bitwise
 	case AMPERSAND:

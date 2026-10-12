@@ -7,6 +7,11 @@ import (
 
 // Value represents a NaN-boxed 64-bit value.
 // Layout: [sign:1][exp:11][tag:4][payload:48]
+//
+// A value whose exponent bits are not all ones is an ordinary float. With
+// all ones, the tag says what it is. Tag 0 is left to the floats that have
+// that exponent themselves, infinity and NaN, so that they stay numbers;
+// every other kind of value has a non-zero tag.
 type Value uint64
 
 const (
@@ -16,18 +21,26 @@ const (
 	payloadMask  uint64 = 0x0000FFFFFFFFFFFF // 48 bits for payload (no tag bits)
 	fullPayload  uint64 = 0x000FFFFFFFFFFFFF // 52 bits (tag + payload)
 
-	tagNull    uint64 = 0x0000000000000000
+	tagFloat   uint64 = 0x0000000000000000 // infinity and NaN
 	tagBool    uint64 = 0x0001000000000000
 	tagInt     uint64 = 0x0002000000000000
 	tagHeapPtr uint64 = 0x0003000000000000
+	tagNull    uint64 = 0x0004000000000000
 
 	nanBase uint64 = 0x7FF0000000000000
+
+	// The one bit pattern used for a float NaN. Go's NaNs set mantissa bits
+	// that would read as a tag.
+	canonicalNaN uint64 = nanBase | tagFloat | 1
 )
 
 // Constructors
 
 // NewNumber creates a Number value from a float64.
 func NewNumber(f float64) Value {
+	if f != f {
+		return Value(canonicalNaN)
+	}
 	return Value(math.Float64bits(f))
 }
 
@@ -57,14 +70,15 @@ func NewHeapPtr(ptr uintptr) Value {
 
 // Predicates
 
-// IsNumber returns true if v is a Number.
+// IsNumber returns true if v is a Number, including infinity and NaN.
 func (v Value) IsNumber() bool {
-	return (uint64(v) & expMask) != expMask
+	return (uint64(v)&expMask) != expMask || (uint64(v)&tagMask) == tagFloat
 }
 
-// IsNaN returns true if v is a NaN-boxed value.
+// IsNaN returns true if v is a NaN-boxed value, that is, anything but a
+// Number.
 func (v Value) IsNaN() bool {
-	return (uint64(v) & expMask) == expMask
+	return !v.IsNumber()
 }
 
 // IsNull returns true if v is Null.

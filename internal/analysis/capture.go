@@ -108,6 +108,9 @@ func (a *Analyzer) visitStmt(stmt ast.Stmt, scope *functionScope) {
 		// Loop variable is local
 		a.visitExpr(s.Iterable, scope)
 		scope.locals[s.Var] = &resolve.Symbol{Name: s.Var, Kind: resolve.SymbolVar, Decl: s}
+		if s.Index != nil {
+			scope.locals[s.Index.Name] = &resolve.Symbol{Name: s.Index.Name, Kind: resolve.SymbolVar, Decl: s.Index}
+		}
 		a.visitStmt(s.Body, scope)
 	case *ast.MatchStmt:
 		a.visitExpr(s.Cond, scope)

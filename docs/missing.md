@@ -10,8 +10,8 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | `+=` / `++`, index in `for`, ranges, sized arrays |
-| Correctness | array bounds on write, integer overflow |
+| Everyday syntax | ranges, sized arrays, more builtins |
+| Correctness | unused variables, heap accounting |
 | Types | inference from the expected type, richer `match` patterns, array literals of mixed structs |
 | Runtime | heap size and accounting, recursion depth, integer overflow |
 | Program structure | imports, enums, global constants |
@@ -19,24 +19,6 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 ---
 
 ## 1. Syntax and Language Features
-
-### Compound assignment and increment — S
-
-`i += 1`, `i -= 1`, `*=`, `/=`, `%=`, `i++`, `i--`.
-
-**Today**: syntax error (`E0001: expected expression, found '='`). Write `i = i + 1;`.
-
-**Notes**: Needs new tokens, then one of two designs. Rewriting to `i = i + 1` in the parser is the smallest change but evaluates the target twice, which is wrong for `xs[next()] += 1`. Keeping the operator through to IR generation and evaluating the target once is the correct version. Making `++` a statement rather than an expression (as in Go) avoids the pre/post-increment question.
-
-### Index in `for` loops — S
-
-```lumen
-for i, item in items { ... }
-```
-
-**Today**: only `for item in items`. Keep a counter by hand, and increment it *before* any `continue`.
-
-**Notes**: The desugarer already maintains a hidden index (`__iter_N`) for every loop; this only gives it a name. Touches the parser, `ast.ForStmt`, the resolver, the checker and the desugarer.
 
 ### Ranges — M
 
@@ -105,6 +87,14 @@ const LIMIT = 100;      // at the top level
 
 `&`, `|`, `^`, `<<`, `>>`. The tokens `&` and `|` are lexed and the VM has `BAND`, `BOR`, `BXOR`, `SHL`, `SHR`; the parser and the stages in between do not handle them.
 
+### Loop variables are read-only — by design
+
+`for i, item in items` does not allow `i = ...` or `item = ...` (`E2026`). Neither would do what it looks like: the loop keeps its own position, and `item` is a copy of the element. Change the collection with `items[i] = ...`, and use `while` to control the position.
+
+### `++` and `--` are statements only — by design
+
+`i++;` and `i--;` are statements, short for `i += 1;` and `i -= 1;`. They have no value, so `let j = i++;` and `xs[i++]` are syntax errors, and there is no prefix form (`++i`). This avoids the pre/post-increment distinction.
+
 ### Smaller gaps
 
 | Missing | Today |
@@ -165,19 +155,6 @@ A cast to a function type is checked against the signature recorded when the fun
 
 ## 3. Runtime and VM
 
-### Writes past the end of an array can succeed — S (defect)
-
-```lumen
-let xs = [1, 2, 3];
-push(xs, 4);
-xs[5] = 9;              // no error
-println(xs);            // [1, 2, 3, 4, null, 9]
-```
-
-**Why**: `SETINDEX` accepts any index below the array's *capacity*, and capacity doubles on append. Reads are checked against the length; writes are not.
-
-**Notes**: The capacity rule is intentional for hand-written assembly (`NEWARRAY 5` then `SETINDEX` at 0..4) and VM tests rely on it. The fix is to have compiled code check against the length, either with a separate instruction or by emitting the check.
-
 ### Heap size and accounting — M
 
 *   The heap is fixed at 1 MB and cannot be changed from the command line.
@@ -188,17 +165,6 @@ println(xs);            // [1, 2, 3, 4, null, 9]
 ### Recursion depth — S
 
 The call stack is limited to 256 frames (`maxCallDepth`), so `down(1000)` fails with `stack overflow: max call depth 256 exceeded`. There is no tail-call optimization.
-
-### Integer overflow wraps silently — S
-
-Ints are 48-bit. Exceeding the range wraps around without an error:
-
-```lumen
-let big = 140737488355327;
-println(big + 1);       // -140737488355328
-```
-
-Integer literals too large for 48 bits are truncated the same way.
 
 ### Method dispatch cost — M
 
@@ -247,8 +213,8 @@ Operands are one byte: 256 registers per function, 256 distinct constants and 25
 
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
-1.  **Close the silent failures**: array writes past the length, integer overflow. These make existing programs fail loudly instead of misbehaving.
-2.  **Everyday syntax**: `+=` and `++`, index in `for`, `array(n, value)`, a first batch of string and array builtins, `toInt`/`toFloat`.
+1.  **Runtime headroom first**, now that the silent failures are closed (see 3).
+2.  **Everyday syntax**: ranges, `array(n, value)`, a first batch of string and array builtins, `toInt`/`toFloat`.
 3.  **Runtime headroom**: count array growth, collect before failing an allocation, a clearer out-of-memory message, a configurable heap and call depth.
 4.  **Types**: inference from the expected result type, `match` as an expression with bindings and guards.
 5.  **Program structure**: global constants, then imports, then enums with pattern matching.

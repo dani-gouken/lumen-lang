@@ -184,6 +184,22 @@ func (vm *VM) registerBuiltins() {
 	})
 }
 
+// Ints are 48-bit signed.
+const (
+	MaxInt = int64(1)<<47 - 1
+	MinInt = -(int64(1) << 47)
+)
+
+// intResult makes an Int of the result of an integer operation, or fails
+// if it does not fit: an Int silently wrapping around would turn a large
+// positive number into a negative one.
+func (vm *VM) intResult(n int64) (Value, error) {
+	if n < MinInt || n > MaxInt {
+		return NewNull(), vm.runtimeError("integer overflow")
+	}
+	return NewInt(n), nil
+}
+
 // newString allocates a string on the VM heap. It does not collect garbage:
 // the caller must store the value in a register first.
 func (vm *VM) newString(s string) (Value, error) {
@@ -427,7 +443,11 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if a.IsNumber() && b.IsNumber() {
 				vm.regs[instr.A] = NewNumber(a.AsNumber() + b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
-				vm.regs[instr.A] = NewInt(a.AsInt() + b.AsInt())
+				sum, err := vm.intResult(a.AsInt() + b.AsInt())
+				if err != nil {
+					return NewNull(), err
+				}
+				vm.regs[instr.A] = sum
 			} else if sa, ok := stringValue(a); ok {
 				// String concatenation
 				sb, ok := stringValue(b)
@@ -450,7 +470,11 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if a.IsNumber() && b.IsNumber() {
 				vm.regs[instr.A] = NewNumber(a.AsNumber() - b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
-				vm.regs[instr.A] = NewInt(a.AsInt() - b.AsInt())
+				diff, err := vm.intResult(a.AsInt() - b.AsInt())
+				if err != nil {
+					return NewNull(), err
+				}
+				vm.regs[instr.A] = diff
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("SUB requires numeric operands, got: %s - %s", a.String(), b.String()))
 			}
@@ -461,7 +485,18 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if a.IsNumber() && b.IsNumber() {
 				vm.regs[instr.A] = NewNumber(a.AsNumber() * b.AsNumber())
 			} else if a.IsInt() && b.IsInt() {
-				vm.regs[instr.A] = NewInt(a.AsInt() * b.AsInt())
+				// Both operands fit in 48 bits, so their product can exceed
+				// 64; dividing back detects that as well
+				x, y := a.AsInt(), b.AsInt()
+				product := x * y
+				if x != 0 && product/x != y {
+					return NewNull(), vm.runtimeError("integer overflow")
+				}
+				result, err := vm.intResult(product)
+				if err != nil {
+					return NewNull(), err
+				}
+				vm.regs[instr.A] = result
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("MUL requires numeric operands, got: %s * %s", a.String(), b.String()))
 			}
@@ -475,7 +510,12 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				if b.AsInt() == 0 {
 					return NewNull(), vm.runtimeError("division by zero")
 				}
-				vm.regs[instr.A] = NewInt(a.AsInt() / b.AsInt())
+				// The smallest Int divided by -1 has no Int result
+				quotient, err := vm.intResult(a.AsInt() / b.AsInt())
+				if err != nil {
+					return NewNull(), err
+				}
+				vm.regs[instr.A] = quotient
 			} else {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("DIV requires numeric operands, got: %s / %s", a.String(), b.String()))
 			}
@@ -500,7 +540,11 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			case a.IsNumber():
 				vm.regs[instr.A] = NewNumber(-a.AsNumber())
 			case a.IsInt():
-				vm.regs[instr.A] = NewInt(-a.AsInt())
+				negated, err := vm.intResult(-a.AsInt())
+				if err != nil {
+					return NewNull(), err
+				}
+				vm.regs[instr.A] = negated
 			default:
 				return NewNull(), vm.runtimeError(fmt.Sprintf("NEG requires numeric operand, got: %s", a.String()))
 			}
@@ -1083,6 +1127,25 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			}
 			// Writing past the length grows the array, up to its capacity
 			if index < 0 || index >= cap(arrayObj.elements) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
+			}
+			arrayObj.Set(index, vm.regs[instr.C])
+
+		case OpSETELEM:
+			// Replace an array element: A = array, B = index, C = value.
+			// Unlike SETINDEX it never grows the array: the index has to
+			// name an existing element. This is what `xs[i] = v` compiles to.
+			indexVal := vm.regs[instr.B]
+			if !indexVal.IsInt() {
+				return NewNull(), vm.runtimeError("SETELEM requires integer index")
+			}
+			index := int(indexVal.AsInt())
+
+			arrayObj, err := vm.arrayOperand("SETELEM", vm.regs[instr.A])
+			if err != nil {
+				return NewNull(), err
+			}
+			if index < 0 || index >= arrayObj.Len() {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
 			}
 			arrayObj.Set(index, vm.regs[instr.C])

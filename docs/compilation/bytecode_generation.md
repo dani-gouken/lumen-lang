@@ -138,7 +138,8 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 | `NEW_STRUCT` | `NEWOBJ` with the struct's name as a string constant, which casts check |
 | `GET_FIELD` / `SET_FIELD` | `GETFIELD` / `SETFIELD` with the field name as a string constant |
 | `NEW_ARRAY` | `NEWARRAY` (capacity capped at 255; it is only a hint) |
-| `GET_INDEX` / `SET_INDEX` / `LEN` / `PUSH` | `GETINDEX` / `SETINDEX` / `ARRLEN` / `ARRPUSH` |
+| `GET_INDEX` / `LEN` / `PUSH` | `GETINDEX` / `ARRLEN` / `ARRPUSH` |
+| `SET_INDEX` | `SETELEM`, which refuses an index at or past the length (`SETINDEX` would grow the array up to its capacity) |
 | `MAKE_CLOSURE` | `NEWFUNC`, then one `CAPLOCAL` (register capture) or `CAPUPVAL` (upvalue capture) per captured variable |
 | `LOAD_UPVALUE` / `STORE_UPVALUE` | `LDCAP` / `STCAP` |
 | `AND` `OR` `CALL_TRAIT` | none: `E6004` |

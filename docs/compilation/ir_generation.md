@@ -98,6 +98,19 @@ Assignments arrive as `BinaryExpr` with operator `"="`:
 | `obj.field` | `SET_FIELD obj, "field", value` |
 | anything else | `E5003` (for example assigning to a function) |
 
+### Compound assignment
+
+`target op= value` reads the target, applies the operator and stores the result. The target is compiled **once**, so side effects in it happen once:
+
+| Target | Generated |
+|--------|-----------|
+| local variable | the operation with the variable's register as operand and destination: `%v1 = ADD, %v1, %v2` |
+| captured variable | `LOAD_UPVALUE`, the operation, `STORE_UPVALUE` |
+| `arr[i]` | `arr` and `i` once; `GET_INDEX`, the operation, `SET_INDEX` |
+| `obj.field` | `obj` once; `GET_FIELD`, the operation, `SET_FIELD` |
+
+A negative number literal (`-5`) is compiled as one constant rather than a negation, which is also what makes the smallest Int expressible.
+
 ## Control Flow
 
 `if`, `while` and `for` produce the usual block structure:
@@ -117,7 +130,7 @@ exit:                            index = index + 1
                              exit:
 ```
 
-`for` loops are normally rewritten by desugaring before they get here; IR generation still compiles any that reach it as a real loop, with the increment before the body so `continue` cannot skip it.
+`for` loops are normally rewritten by desugaring before they get here; IR generation still compiles any that reach it as a real loop, with the increment before the body so `continue` cannot skip it. With `for i, v in xs`, the body's `i` is a copy of the loop's own counter. The type checker rejects assignments to either loop variable, so the copy is never written.
 
 `break` and `continue` jump to the exit and condition blocks of the innermost loop, tracked on a loop stack. Outside a loop they are `E5005`.
 

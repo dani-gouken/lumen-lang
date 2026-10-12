@@ -206,7 +206,7 @@ func (c *Checker) forgetAssignedIn(node ast.Node) {
 // an assignment to a plain variable.
 func (c *Checker) assignedVariable(expr ast.Expr) *resolve.Symbol {
 	assign, ok := expr.(*ast.BinaryExpr)
-	if !ok || assign.Op != "=" {
+	if !ok || !ast.IsAssignment(assign.Op) {
 		return nil
 	}
 	ident, ok := assign.Left.(*ast.Ident)
@@ -265,7 +265,7 @@ func (c *Checker) mayWriteFields(node ast.Node) bool {
 	walkExprs(node, func(expr ast.Expr) {
 		switch e := expr.(type) {
 		case *ast.BinaryExpr:
-			if _, toField := e.Left.(*ast.MemberExpr); toField && e.Op == "=" {
+			if _, toField := e.Left.(*ast.MemberExpr); toField && ast.IsAssignment(e.Op) {
 				writes = true
 			}
 		case *ast.CallExpr:
@@ -330,9 +330,14 @@ func (c *Checker) findSharedVariables(body *ast.BlockStmt) {
 			own[param] = true
 		}
 		walk(lambda.Body, func(ast.Expr) {}, func(stmt ast.Stmt) {
-			switch stmt.(type) {
-			case *ast.LetStmt, *ast.ForStmt:
-				own[stmt] = true
+			switch s := stmt.(type) {
+			case *ast.LetStmt:
+				own[s] = true
+			case *ast.ForStmt:
+				own[s] = true
+				if s.Index != nil {
+					own[s.Index] = true
+				}
 			}
 		})
 

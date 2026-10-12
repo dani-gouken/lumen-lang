@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/dani-gouken/lumen/internal/ast"
@@ -36,6 +37,8 @@ const (
 	ErrAssignToConst     = "E2022"
 	ErrUnreachableCode   = "E2023"
 	ErrMethodTypeArgs    = "E2024"
+	ErrIntOutOfRange     = "E2025"
+	ErrAssignToLoopVar   = "E2026"
 )
 
 type Checker struct {
@@ -274,6 +277,79 @@ func (c *Checker) declaredTargetType(target ast.Expr) Type {
 	return typ
 }
 
+// checkCompoundAssignment types `target op= value`: the target is read,
+// combined with the value, and the result is stored back.
+func (c *Checker) checkCompoundAssignment(e *ast.BinaryExpr, op string) Type {
+	var declared Type
+	var sym *resolve.Symbol
+
+	if ident, ok := e.Left.(*ast.Ident); ok {
+		declared = c.declaredIdentType(ident)
+		sym = c.table.Defs[ident]
+		c.checkNotConst(ident, sym)
+	} else {
+		declared = c.declaredTargetType(e.Left)
+	}
+
+	// The computation is an ordinary binary expression on the target's
+	// current value, which may be narrowed: `n += 1` is fine for an Int?
+	// known to be non-null here
+	computation := &ast.BinaryExpr{BaseNode: e.BaseNode, Left: e.Left, Op: op, Right: e.Right}
+	result := c.checkBinaryExpr(computation)
+
+	if result != nil && !isUnknown(result) && declared != nil && !c.assignable(declared, result) {
+		c.errorf(e.Token(), ErrTypeMismatch, "cannot assign the %s result of %s to %s", result, e.Op, declared)
+	}
+
+	if sym != nil && sym.Kind == resolve.SymbolVar {
+		c.recordWrite(sym)
+		// The result of arithmetic is never null
+		if declared != nil && result != nil && !isUnknown(result) && !c.shared[sym] {
+			if value := withoutNull(declared); value != nil && !value.Equals(declared) && c.assignable(value, result) {
+				c.narrowed[sym] = value
+			}
+		}
+	}
+	if _, toField := e.Left.(*ast.MemberExpr); toField {
+		c.forgetFields()
+	}
+	return Void
+}
+
+// checkNotConst reports an assignment to a name that cannot be assigned:
+// one declared with const, or a variable of a for loop.
+func (c *Checker) checkNotConst(ident *ast.Ident, sym *resolve.Symbol) {
+	if sym == nil {
+		return
+	}
+
+	switch decl := sym.Decl.(type) {
+	case *ast.LetStmt:
+		if decl.IsConst {
+			c.errorfWithSuggestion(ident.Token(), ErrAssignToConst,
+				fmt.Sprintf("Declare it with 'let %s' to make it assignable", ident.Name),
+				"cannot assign to constant '%s'", ident.Name)
+		}
+
+	case *ast.ForIndex:
+		// Assigning would not move the loop, which is what it looks like
+		c.errorfWithSuggestion(ident.Token(), ErrAssignToLoopVar,
+			"The index follows the loop and cannot be changed; use a while loop to control the position",
+			"cannot assign to loop index '%s'", ident.Name)
+
+	case *ast.ForStmt:
+		// Assigning would not change the collection, which is what it
+		// looks like
+		suggestion := fmt.Sprintf("'%s' is a copy of the element; to change the collection, assign to it by index", ident.Name)
+		if decl.Index != nil {
+			suggestion = fmt.Sprintf("'%s' is a copy of the element; to change the collection, assign to %s[%s]",
+				ident.Name, decl.Iterable.String(), decl.Index.Name)
+		}
+		c.errorfWithSuggestion(ident.Token(), ErrAssignToLoopVar, suggestion,
+			"cannot assign to loop variable '%s'", ident.Name)
+	}
+}
+
 // checkAssignment types `target = value`.
 func (c *Checker) checkAssignment(e *ast.BinaryExpr) Type {
 	var left Type
@@ -286,13 +362,7 @@ func (c *Checker) checkAssignment(e *ast.BinaryExpr) Type {
 		c.info.Types[ident] = left
 		sym = c.table.Defs[ident]
 
-		if sym != nil {
-			if decl, ok := sym.Decl.(*ast.LetStmt); ok && decl.IsConst {
-				c.errorfWithSuggestion(ident.Token(), ErrAssignToConst,
-					fmt.Sprintf("Declare it with 'let %s' to make it assignable", ident.Name),
-					"cannot assign to constant '%s'", ident.Name)
-			}
-		}
+		c.checkNotConst(ident, sym)
 	} else {
 		left = c.declaredTargetType(e.Left)
 	}
@@ -688,6 +758,7 @@ func (c *Checker) checkExpr(expr ast.Expr) Type {
 func (c *Checker) checkLiteral(l *ast.Literal) Type {
 	switch l.Kind {
 	case "int":
+		c.checkIntLiteral(l, false)
 		return Int
 	case "float":
 		return Float
@@ -743,6 +814,9 @@ func (c *Checker) declaredIdentType(id *ast.Ident) Type {
 					return String
 				}
 			}
+		case *ast.ForIndex:
+			// Position variable of `for i, item in items`
+			return Int
 		case *ast.ImplDecl:
 			// Implicit `self` of an impl method
 			return c.implSelfType(decl)
@@ -780,6 +854,9 @@ func (c *Checker) functionType(fn *ast.FnDecl, id *ast.Ident) Type {
 func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 	if e.Op == "=" {
 		return c.checkAssignment(e)
+	}
+	if base, ok := ast.CompoundOp(e.Op); ok {
+		return c.checkCompoundAssignment(e, base)
 	}
 
 	left := c.checkExpr(e.Left)
@@ -878,7 +955,37 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 	return Unknown
 }
 
+// Ints are 48-bit signed: -(2^47) to 2^47 - 1.
+const (
+	maxInt = int64(1)<<47 - 1
+	minInt = -(int64(1) << 47)
+)
+
+// checkIntLiteral reports an integer literal that does not fit an Int.
+// negated says the literal is the operand of a unary minus, which makes
+// the magnitude 2^47 valid.
+func (c *Checker) checkIntLiteral(l *ast.Literal, negated bool) {
+	limit := uint64(maxInt)
+	if negated {
+		limit++
+	}
+	if n, err := strconv.ParseUint(l.Value, 10, 64); err == nil && n <= limit {
+		return
+	}
+	c.errorfWithSuggestion(l.Token(), ErrIntOutOfRange,
+		fmt.Sprintf("Ints range from %d to %d; use a Float for larger values", minInt, maxInt),
+		"integer literal %s is out of range", l.Value)
+}
+
 func (c *Checker) checkUnaryExpr(e *ast.UnaryExpr) Type {
+	// The literal of `-140737488355328` is one larger than the largest Int;
+	// it is in range only together with its sign
+	if lit, ok := e.Expr.(*ast.Literal); ok && lit.Kind == "int" && e.Op == "-" {
+		c.checkIntLiteral(lit, true)
+		c.info.Types[lit] = Int
+		return Int
+	}
+
 	operand := c.checkExpr(e.Expr)
 	if operand == nil || isUnknown(operand) {
 		return Unknown

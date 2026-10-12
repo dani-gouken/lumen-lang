@@ -1,0 +1,2 @@
+Runtime error: index out of bounds: 2 (length 2)
+program_matrix.lum:35:53 in function 'Matrix.at'

@@ -516,6 +516,20 @@ SETINDEX r0 r1 r2 ; array[2] = 30 (array[1] becomes null)
 - Runtime error if `r_index` is not an integer
 - Runtime error if the index is negative or not below the capacity
 
+#### SETELEM - Replace Array Element
+```assembly
+SETELEM r_array r_index r_value
+```
+Store `r_value` at an existing index. Unlike `SETINDEX` it never grows the
+array: the index must be below the current **length**, whatever the capacity.
+The compiler uses it for `xs[i] = v`, so that writing past the end is an error
+instead of silently extending the array.
+
+**Error Conditions:**
+- Runtime error if `r_array` is not an array
+- Runtime error if `r_index` is not an integer
+- Runtime error if the index is negative or not below the length
+
 #### ARRPUSH - Append to Array
 ```assembly
 ARRPUSH r_array r_value

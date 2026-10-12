@@ -110,6 +110,9 @@ func (fc *FunctionCompiler) compileBinaryExpr(expr *ast.BinaryExpr) *ir.Register
 	case "&&", "||", "??":
 		return fc.compileShortCircuit(expr)
 	}
+	if base, ok := ast.CompoundOp(expr.Op); ok {
+		return fc.compileCompoundAssignment(expr, base)
+	}
 
 	left := fc.compileExpr(expr.Left)
 	right := fc.compileExpr(expr.Right)
@@ -225,8 +228,82 @@ func (fc *FunctionCompiler) compileAssignment(expr *ast.BinaryExpr) *ir.Register
 	return fc.builder.NewRegister()
 }
 
+var arithmeticOps = map[string]ir.OpType{
+	"+": ir.OpAdd,
+	"-": ir.OpSub,
+	"*": ir.OpMul,
+	"/": ir.OpDiv,
+	"%": ir.OpMod,
+}
+
+// compileCompoundAssignment compiles `target op= value`. The target is
+// evaluated once: in `xs[next()] += 1`, next() is called a single time.
+func (fc *FunctionCompiler) compileCompoundAssignment(expr *ast.BinaryExpr, op string) *ir.Register {
+	irOp := arithmeticOps[op]
+
+	switch target := expr.Left.(type) {
+	case *ast.Ident:
+		value := fc.compileExpr(expr.Right)
+		fc.setPos(expr)
+		if reg, ok := fc.lookup(target.Name); ok {
+			// The variable's register is both operand and destination
+			fc.builder.Emit(irOp, reg, reg, value)
+			return reg
+		}
+		if upvalIdx, ok := fc.upvalues[target.Name]; ok {
+			current := fc.builder.CreateLoadUpvalue(upvalIdx)
+			result := fc.builder.NewRegister()
+			fc.builder.Emit(irOp, result, current, value)
+			fc.builder.CreateStoreUpvalue(upvalIdx, result)
+			return result
+		}
+		fc.gen.errorAt(target, ErrInvalidAssignment,
+			fmt.Sprintf("cannot assign to '%s'", target.Name),
+			"Only variables declared with 'let' can be assigned to")
+
+	case *ast.IndexExpr:
+		arr := fc.compileExpr(target.Expr)
+		index := fc.compileExpr(target.Index)
+		fc.setPos(target)
+		current := fc.builder.NewRegister()
+		fc.builder.Emit(ir.OpGetIndex, current, arr, index)
+
+		value := fc.compileExpr(expr.Right)
+		fc.setPos(expr)
+		result := fc.builder.NewRegister()
+		fc.builder.Emit(irOp, result, current, value)
+		fc.builder.Emit(ir.OpSetIndex, nil, arr, index, result)
+		return result
+
+	case *ast.MemberExpr:
+		obj := fc.compileExpr(target.Expr)
+		fc.setPos(target)
+		current := fc.builder.CreateGetField(obj, target.Name)
+
+		value := fc.compileExpr(expr.Right)
+		fc.setPos(expr)
+		result := fc.builder.NewRegister()
+		fc.builder.Emit(irOp, result, current, value)
+		fc.builder.Emit(ir.OpSetField, nil, obj, ir.Constant{Val: target.Name, Type: "String"}, result)
+		return result
+
+	default:
+		fc.gen.errorAt(expr.Left, ErrInvalidAssignment, "invalid assignment target",
+			"Only variables, fields and array elements can be assigned to")
+	}
+	return fc.builder.NewRegister()
+}
+
 // compileUnaryExpr compiles a unary expression
 func (fc *FunctionCompiler) compileUnaryExpr(expr *ast.UnaryExpr) *ir.Register {
+	// A negative number literal is one constant. This is also the only way
+	// to write the smallest Int: its magnitude alone is not an Int.
+	if lit, ok := expr.Expr.(*ast.Literal); ok && expr.Op == "-" && (lit.Kind == "int" || lit.Kind == "float") {
+		negative := *lit
+		negative.Value = "-" + lit.Value
+		return fc.compileLiteral(&negative)
+	}
+
 	operand := fc.compileExpr(expr.Expr)
 	fc.setPos(expr)
 	dest := fc.builder.NewRegister()

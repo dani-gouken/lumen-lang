@@ -463,8 +463,10 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 			f.emit(vm.OpGETINDEX, f.dest(instr), f.reg(instr.Operands[0]), f.reg(instr.Operands[1]))
 		}
 	case ir.OpSetIndex:
+		// SETELEM, not SETINDEX: assigning to an element must not grow
+		// the array
 		if f.arity(instr, 3) {
-			f.emit(vm.OpSETINDEX, f.reg(instr.Operands[0]), f.reg(instr.Operands[1]), f.reg(instr.Operands[2]))
+			f.emit(vm.OpSETELEM, f.reg(instr.Operands[0]), f.reg(instr.Operands[1]), f.reg(instr.Operands[2]))
 		}
 	case ir.OpLen:
 		if f.arity(instr, 1) {

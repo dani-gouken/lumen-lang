@@ -223,6 +223,13 @@ var multiCharOps = []struct {
 	{"&&", token.AND},
 	{"||", token.OR},
 	{"??", token.QUESTION_QUESTION},
+	{"+=", token.PLUS_ASSIGN},
+	{"-=", token.MINUS_ASSIGN},
+	{"*=", token.STAR_ASSIGN},
+	{"/=", token.SLASH_ASSIGN},
+	{"%=", token.PERCENT_ASSIGN},
+	{"++", token.INC},
+	{"--", token.DEC},
 }
 
 var singleCharOps = map[rune]token.TokenType{

@@ -36,10 +36,16 @@ When all exponent bits are set (0x7FF), the value is NaN. We exploit this:
 
 | Tag | Type     | Payload                              |
 |-----|----------|--------------------------------------|
-| 0x0 | Null     | (unused)                             |
+| 0x0 | (Number) | infinity and NaN: floats that have this exponent themselves |
 | 0x1 | Bool     | 0 = false, 1 = true                  |
 | 0x2 | Int      | 48-bit signed integer                |
 | 0x3 | HeapPtr  | 48-bit pointer to heap object        |
+| 0x4 | Null     | (unused)                             |
+
+Tag 0 is deliberately not given to a boxed kind. `+Inf` is the bit pattern
+`0x7FF0000000000000`, exponent all ones and everything else zero; if null had
+tag 0 it would be the same pattern, and a float overflowing to infinity would
+turn into null. NaN is stored as one canonical pattern with tag 0.
 
 ### Bit Masks
 
@@ -114,7 +120,10 @@ type Chunk struct {
 - `NOT r_dest r_a` - Boolean negation
 
 Both operands must be of the same kind (two Ints or two Numbers); there is no
-implicit conversion. Int division and remainder by zero raise a runtime error.
+implicit conversion. Int division and remainder by zero raise a runtime error,
+and so does an Int result outside the 48-bit range (`integer overflow`): Ints
+never wrap around. Number arithmetic follows IEEE 754, including infinity and
+NaN.
 
 ### Comparison
 
@@ -134,6 +143,7 @@ The ordering instructions accept two Ints, two Numbers or two Strings.
 - `NEWARRAY r_dest capacity` - Create an empty array
 - `NEWOBJ r_dest [const_idx 1]` - Create an empty object (used for struct values). The compiler passes the struct's name, which is recorded on the object
 - `GETINDEX r_dest r_arr r_idx` / `SETINDEX r_arr r_idx r_val` - Element access
+- `SETELEM r_arr r_idx r_val` - Replace an existing element; never grows the array. What the compiler emits for `xs[i] = v`
 - `ARRPUSH r_arr r_val` - Append to an array
 - `ARRLEN r_dest r_val` - Length of an array or string
 - `GETFIELD r_dest r_obj const_idx` / `SETFIELD r_obj const_idx r_val` - Field access
@@ -201,8 +211,8 @@ runtime, and exists so that `value as fn(Int) -> Int` and
 
 ### Bytecode file version
 
-`.lc` files start with a format version, currently **2** (version 1 predates
-the 48-bit value payload and the signature field). A file of another version
+`.lc` files start with a format version, currently **3** (1 predates the
+48-bit value payload, 2 the tag of null). A file of another version
 is refused with `unsupported bytecode version` rather than misread; rebuild it
 from source.
 

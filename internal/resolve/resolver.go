@@ -269,6 +269,9 @@ func (r *Resolver) visitForStmt(s *ast.ForStmt) {
 	if err := r.current.Insert(s.Var, sym); err != nil {
 		r.errs.ReportErrorFromToken(ErrRedeclaration, err.Error(), s.Token(), r.sourceLines)
 	}
+	if s.Index != nil {
+		r.declare(s.Index.Name, SymbolVar, s.Index)
+	}
 
 	r.visitBlockStmt(s.Body)
 }

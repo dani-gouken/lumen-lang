@@ -61,6 +61,7 @@ Lumen uses a pragmatic, three-level testing approach focused on **concise, high-
   - `NAME.exit` — exit code (absent: 0)
 - Every `examples/*.lum` is run too and compared with `examples/expected/NAME.out`, so the examples in the repository are guaranteed to work.
 - A few Go tests cover the other commands: `build` then `exec`, `build` to a `.lasm` listing, `ir`, a missing file, and usage errors.
+- The `program_*.lum` cases are complete programs of 150 to 250 lines (a bank, matrix arithmetic, a calculator with tokenizer and parser). Each combines most of the language in one place: traits and generics, closures, optionals and narrowing, casts and `match` on types, loops with indexes. They catch interactions that one-feature tests cannot.
 
 To add a case, drop a `.lum` file in `cases/` and generate its expected output:
 
@@ -167,6 +168,8 @@ Feature tests: one test per language feature, each a short program whose printed
 - ✅ The pipeline stops at the first failing stage
 
 **When a program misbehaves**, add the smallest reproduction here first; move down to the package that owns the bug once it is located.
+
+**When a feature is added**, it gets tests at every level in the same change: accept/reject cases in the package that owns the rule, a feature test here that also combines it with existing features, and, if it changes how programs are written, a use in one of the `program_*.lum` end-to-end cases.
 
 ## Test Organization
 

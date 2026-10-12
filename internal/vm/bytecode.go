@@ -10,7 +10,8 @@ const (
 	bytecodeFileMagic uint32 = 0x4C554D4E
 	// Current bytecode format version
 	// 2: value tags moved to bits 48-51; prototypes carry a signature
-	bytecodeVersion uint32 = 2
+	// 3: null has its own tag, so float infinity is no longer read as null
+	bytecodeVersion uint32 = 3
 )
 
 // SerializeChunk converts a Chunk to binary bytecode format.

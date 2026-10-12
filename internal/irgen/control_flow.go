@@ -117,6 +117,10 @@ func (fc *FunctionCompiler) compileForStmt(stmt *ast.ForStmt) {
 	item := fc.builder.NewRegister()
 	fc.builder.Emit(ir.OpGetIndex, item, iterable, index)
 	fc.declare(stmt.Var, item)
+	if stmt.Index != nil {
+		// A copy of the position: assigning to it must not move the loop
+		fc.declare(stmt.Index.Name, fc.builder.CreateMov(index))
+	}
 	// Advance before the body so `continue` cannot skip it
 	fc.builder.Emit(ir.OpAdd, index, index, one)
 	fc.compileStmt(stmt.Body)
