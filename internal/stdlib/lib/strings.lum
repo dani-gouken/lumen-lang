@@ -10,7 +10,7 @@ pub extern fn byteLength(text: String) -> Int;
 
 // How many characters a text has.
 pub fn len(text: String) -> Int {
-    return text.length;
+    return __len(text);
 }
 
 // --- Taking apart ---

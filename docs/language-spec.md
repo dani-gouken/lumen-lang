@@ -116,7 +116,7 @@ Full description: [enums.md](enums.md).
 - Return type required (`Void` allowed). In `-> T`, all paths return `T`; in `-> Void`, `return;` only.
 - Entry point convention: `fn main() -> Int { ... }`.
 - Generics: `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { ... }`; instantiate with `map<Int, String>(nums, toStr)`. `name<...>` is read as type arguments only when the closing `>` is followed by `(` or `{`; otherwise `<` is the comparison operator.
-- Variadic arguments: `fn printf(fmt: String, args: ...Any) -> Void { ... }`. The last parameter can be prefixed with `...` to accept zero or more arguments of that type. Inside the function the parameter is an array (`args.length`, `for a in args`). Arguments are packed when the function is called by its name; a variadic function called through a variable receives its arguments as written.
+- Variadic arguments: `fn printf(fmt: String, args: ...Any) -> Void { ... }`. The last parameter can be prefixed with `...` to accept zero or more arguments of that type. Inside the function the parameter is an array (`arrays.len(args)`, `for a in args`). Arguments are packed when the function is called by its name; a variadic function called through a variable receives its arguments as written.
 - Generic Variadic: `fn collect<T>(items: ...T) -> [T] { ... }`.
 
 ### Methods

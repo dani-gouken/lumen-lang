@@ -8,7 +8,7 @@ import std.dict.{Dict};
 
 // How many items an array holds.
 pub fn len<T>(items: [T]) -> Int {
-    return items.length;
+    return __len(items);
 }
 
 // --- Making ---

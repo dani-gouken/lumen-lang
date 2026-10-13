@@ -135,7 +135,7 @@ func TestNamesBecomeProgramWide(t *testing.T) {
 			impl Shape for Body { fn left() -> Int { return self.x; } }
 			pub fn new(x: Int) -> Body { return checked(Body { x: x }); }
 			fn checked(b: Body) -> Body { return b; }
-			pub fn count<T>(items: [T]) -> Int { return items.length; }
+			pub fn count<T>(items: [T]) -> Int { return __len(items); }
 		`,
 		"physics/collide.lum": `
 			pub trait Shape { fn left() -> Int; }
@@ -498,7 +498,7 @@ func TestRootOtherThanTheEntryFolder(t *testing.T) {
 			fn main() -> Int { return text.size(flags.name()); }
 		`,
 		"proj/src/cmd/tool/flags.lum": `import lib.text; pub fn name() -> String { return text.same("tool"); }`,
-		"proj/src/lib/text.lum":       `pub fn size(s: String) -> Int { return s.length; } pub fn same(s: String) -> String { return s; }`,
+		"proj/src/lib/text.lum":       `pub fn size(s: String) -> Int { return __len(s); } pub fn same(s: String) -> String { return s; }`,
 		// Next to the entry file, where it would be found without a root
 		"proj/src/cmd/tool/lib/text.lum": `pub fn size(s: String) -> Int { return 0 - 1; }`,
 	}
@@ -693,7 +693,7 @@ func TestConstantsAcrossModules(t *testing.T) {
 			fn main() -> Int {
 				let a = LIMIT + config.LIMIT + c.LIMIT + DOUBLE;
 				let LIMIT = 5;
-				return a + LIMIT + NAME.length;
+				return a + LIMIT + __len(NAME);
 			}
 			fn shadow(STEP: Int) -> Int { return STEP + config.STEP; }
 		`,
@@ -728,7 +728,7 @@ func TestConstantsAcrossModules(t *testing.T) {
 
 	// Every way of naming it leads to the same constant; a local hides it
 	// from its declaration on
-	want := "{ let a = (((config.LIMIT + config.LIMIT) + config.LIMIT) + DOUBLE); let LIMIT = 5; return ((a + LIMIT) + config.NAME.length); }"
+	want := "{ let a = (((config.LIMIT + config.LIMIT) + config.LIMIT) + DOUBLE); let LIMIT = 5; return ((a + LIMIT) + __len(config.NAME)); }"
 	if got := body(t, prog, "main"); got != want {
 		t.Errorf("unexpected body of main:\n  want %s\n   got %s", want, got)
 	}

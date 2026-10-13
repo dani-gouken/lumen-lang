@@ -45,7 +45,7 @@ numbers |> arrays.filter(isEven) |> arrays.map(double) |> arrays.sum()
 
 Arrays and texts have no members. `items.length` is an error (`E2033`); the length is `arrays.len(items)` or `strings.len(text)`, and everything else done to them is likewise a function of the standard library. A dot reaches a field or a method of a struct or an enum, and nothing else.
 
-The cost is an `import std.arrays;` in almost every program. Calls of the two functions are compiled to the same single instruction `.length` was, so there is none at runtime.
+The cost is an `import std.arrays;` in almost every program. Calls of the two functions are compiled to a single instruction, so there is none at runtime. Nothing in the compiler or the library is written with `.length` any more: the two functions are made of a builtin, `__len`, that no program writes, and a struct is free to have a field called `length`.
 
 ### More for failures — S to M each
 

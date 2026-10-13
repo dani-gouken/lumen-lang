@@ -94,7 +94,7 @@ func TestDesugarForLoop(t *testing.T) {
 
 	// The for loop should be desugared into a block with 3 statements:
 	// 1. let __iter_N = 0
-	// 2. let __len_N = arr.length
+	// 2. let __len_N = __len(arr)
 	// 3. while __iter_N < __len_N { ... }
 	if len(blockStmt.Stmts) != 3 {
 		t.Errorf("Expected 3 statements in desugared for loop, got %d", len(blockStmt.Stmts))
@@ -114,8 +114,12 @@ func TestDesugarForLoop(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected second statement to be let statement for length")
 	}
-	if memberExpr, ok := lenInit.Value.(*ast.MemberExpr); !ok || memberExpr.Name != "length" {
-		t.Error("Expected length variable to be initialized to arr.length")
+	call, ok := lenInit.Value.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 || call.Args[0].String() != "arr" {
+		t.Fatal("Expected length variable to be initialized to __len(arr)")
+	}
+	if callee, ok := call.Func.(*ast.Ident); !ok || callee.Name != "__len" {
+		t.Error("Expected the length to be asked with the builtin __len")
 	}
 
 	// Check third statement is while loop

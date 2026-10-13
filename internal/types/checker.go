@@ -1419,14 +1419,9 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 
 // checkLengthMember reports `.length` on an array or a text. Only structs
 // and enums have members; the length of an array or a text is asked with a
-// function of the standard library. Those two functions, arrays.len and
-// strings.len, are written with `.length` themselves: it is the primitive
-// they are made of, and their modules are the only place it is accepted.
+// function of the standard library. It is only recognized to say so: a
+// program that comes from a language where it exists is told what to write.
 func (c *Checker) checkLengthMember(e *ast.MemberExpr, function, module string) {
-	// The two modules whose `len` it is the body of
-	if c.currentFn != nil && (c.currentFn.Module == "std.arrays" || c.currentFn.Module == "std.strings") {
-		return
-	}
 	what := "an array"
 	if function == "strings.len" {
 		what = "a text"

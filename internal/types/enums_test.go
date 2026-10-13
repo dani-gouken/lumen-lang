@@ -27,7 +27,7 @@ func TestEnumsAccepted(t *testing.T) {
 		{"variants with and without values", `fn main() -> Int {
 			let a = Shape.Circle(1.0); let b = Shape.Rect(1.0, 2.0); let c = Shape.Empty;
 			let all: [Shape] = [a, b, c, Shape.Empty];
-			return all.length; }`},
+			return __len(all); }`},
 		{"enum as parameter, result and field", `struct Tile { color: Color; shape: Shape?; }
 			fn paint(c: Color) -> Tile { return Tile { color: c, shape: null }; }
 			fn main() -> Int { let t = paint(Color.Red); t.color = Color.Blue; t.shape = Shape.Empty; return 0; }`},
@@ -92,8 +92,8 @@ func TestEnumsAccepted(t *testing.T) {
 			fn main() -> Int { let l = List.Cons(1, List.Cons(2, List.Nil)); return length(l); }`},
 		{"values of a generic pattern take the type arguments", `fn first(r: Result<[Int], String>) -> Int {
 			match r {
-				case Result.Ok(items): { return items[0] + items.length; }
-				case Result.Err(message): { return message.length; }
+				case Result.Ok(items): { return items[0] + __len(items); }
+				case Result.Err(message): { return __len(message); }
 			} }`},
 		{"generic function over a generic enum", `fn unwrapOr<T>(o: Option<T>, fallback: T) -> T {
 			match o { case Option.Some(v): { return v; } case Option.None: { return fallback; } } }
@@ -107,7 +107,7 @@ func TestEnumsAccepted(t *testing.T) {
 				let s = Shape.Circle(1.0);
 				let n: Named = s;
 				let a: Float = s.scaled(2.0).area();
-				return n.name().length; }`},
+				return __len(n.name()); }`},
 		{"methods on a generic enum", `impl<T> Option<T> {
 				fn map<U>(f: fn(T) -> U) -> Option<U> {
 					match self { case Option.Some(v): { return Option.Some(f(v)); } case Option.None: { return Option.None; } } }
@@ -115,7 +115,7 @@ func TestEnumsAccepted(t *testing.T) {
 				fn orElse(fallback: T) -> T { match self { case Option.Some(v): { return v; } case Option.None: { return fallback; } } }
 			}
 			fn main() -> Int {
-				let n: Int = Option.Some("ab").map(fn(s: String) -> Int { return s.length; }).orElse(0);
+				let n: Int = Option.Some("ab").map(fn(s: String) -> Int { return __len(s); }).orElse(0);
 				let o: Option<String> = Option.Some(1).map(toString);
 				return n; }`},
 		{"a variant with values is a function", `fn apply(f: fn(Float) -> Shape, x: Float) -> Shape { return f(x); }
@@ -146,7 +146,7 @@ func TestEnumsAccepted(t *testing.T) {
 			return r + 1; }`},
 		{"a variant named like a builtin type", `enum Json { Null, Bool(Bool), String(String), Int(Int) }
 			fn f(j: Json) -> Int {
-				match j { case Json.Bool(b): { if b { return 1; } return 0; } case Json.String(s): { return s.length; } case Json.Int(n): { return n; } case Json.Null: { return 0; } } }
+				match j { case Json.Bool(b): { if b { return 1; } return 0; } case Json.String(s): { return __len(s); } case Json.Int(n): { return n; } case Json.Null: { return 0; } } }
 			fn main() -> Int { return f(Json.Bool(true)) + f(Json.String("x")) + f(Json.Int(1)) + f(Json.Null); }`},
 		{"match that changes what it matches", `fn drain(l: List<Int>) -> Int {
 			let total = 0; let rest = l;
@@ -461,8 +461,8 @@ func TestConstantsAccepted(t *testing.T) {
 				if N > 2 { return twice(N) + xs[N - 3] + p.x + f(); }
 				match N { case 3: { return 1; } default: { return 0; } } }`},
 		{"hidden by a local of the same name", `const N = 3;
-			fn main() -> Int { let N = "text"; N = "other"; return N.length; }`},
-		{"hidden by a parameter", `const N = 3; fn f(N: String) -> Int { return N.length; } fn main() -> Int { return f("x") + N; }`},
+			fn main() -> Int { let N = "text"; N = "other"; return __len(N); }`},
+		{"hidden by a parameter", `const N = 3; fn f(N: String) -> Int { return __len(N); } fn main() -> Int { return f("x") + N; }`},
 		{"in a generic function and a method", `const STEP = 2; struct C { n: Int; }
 			impl C { fn next() -> Int { return self.n + STEP; } }
 			fn bump<T>(v: T) -> Int { return STEP; }
@@ -548,7 +548,7 @@ func TestExhaustivenessLooksInsidePatterns(t *testing.T) {
 		{"two levels down", `fn f(o: Option<Result<Int, String>>) -> Int {
 			match o {
 				case Option.Some(Result.Ok(n)): { return n; }
-				case Option.Some(Result.Err(e)): { return e.length; }
+				case Option.Some(Result.Err(e)): { return __len(e); }
 				case Option.None: { return 0; }
 			} }`},
 		{"an inner enum in one of two values", `fn f(r: Report) -> Int {

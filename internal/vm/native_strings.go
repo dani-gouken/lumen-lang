@@ -11,7 +11,7 @@ import (
 )
 
 // Positions in a string count characters, not bytes, as `text[i]` and
-// `text.length` do.
+// strings.len do.
 
 func init() {
 	// transform wraps a function from a string to a string

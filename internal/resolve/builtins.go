@@ -2,6 +2,11 @@ package resolve
 
 import "github.com/dani-gouken/lumen/internal/ast"
 
+// LengthFunction is the builtin that gives the length of an array or of
+// a text. The standard library's two `len` are written with it; the
+// language has no `.length`.
+const LengthFunction = "__len"
+
 // Builtins returns declarations for the host-provided functions that every
 // module can call without importing anything. They have no body; the VM
 // supplies the implementation as extern functions of the same name.
@@ -30,6 +35,15 @@ func Builtins() []*ast.FnDecl {
 			Name:       "__text",
 			Params:     []*ast.Param{{Name: "value", Type: basic("Any")}},
 			ReturnType: basic("String"),
+		},
+		// How many items an array holds, or characters a text: what
+		// arrays.len and strings.len are made of, and what a loop over a
+		// collection counts with. One instruction, under a name no
+		// program writes.
+		{
+			Name:       LengthFunction,
+			Params:     []*ast.Param{{Name: "collection", Type: basic("Any")}},
+			ReturnType: basic("Int"),
 		},
 		// Stops the program with a message. It never returns.
 		{Name: "panic", Params: variadicAny("message"), ReturnType: basic("Void")},

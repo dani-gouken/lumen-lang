@@ -55,7 +55,7 @@ func TestTraitRequirementsAreTyped(t *testing.T) {
 		{"methods only some have", `fn f(b: Box<Version>, c: Box<Point>) -> String { let p: Point = c.get(); return b.label(); }`},
 		{"a value seen through a trait fits a requirement", `fn f<T: Show>(a: T) -> String { return a.show(); } fn g(s: Show) -> String { return f(s); }`},
 		{"a number as a value of a trait", `fn f(o: Ordered) -> Int { return 1; } fn g() -> Int { return f(3); }`},
-		{"a method a trait gives a number", `fn f() -> Int { return 5.compare(3) + "a".show().length; }`},
+		{"a method a trait gives a number", `fn f() -> Int { return 5.compare(3) + __len("a".show()); }`},
 
 		{"a trait with a type parameter", `fn f(s: Source<Int>) -> Int { return s.next() ?? 0; }`},
 		{"the struct fits it with the right argument", `fn f(s: Source<Int>) -> Int { return 0; } fn g() -> Int { return f(Counter { n: 1 }) + f(Repeat<Int> { item: 2 }); }`},
@@ -63,7 +63,7 @@ func TestTraitRequirementsAreTyped(t *testing.T) {
 		{"...through a requirement", `fn first<T, S: Source<T>>(s: S) -> T? { return s.next(); } fn g() -> Int? { return first(Counter { n: 1 }); }`},
 		{"two type parameters", `fn f(p: Pairs<String, Int>) -> Int? { return p.value(p.pairs()[0]); } fn g() -> Int? { return f(Table<Int> { keys: [], values: [] }); }`},
 		{"in an array", `fn f() -> Int { let all: [Source<Int>] = [Counter { n: 1 }, Repeat<Int> { item: 2 }]; return all[0].next() ?? 0; }`},
-		{"required of a type parameter", `fn f<S: Source<String>>(s: S) -> Int { return (s.next() ?? "").length; } fn g() -> Int { return f(Repeat<String> { item: "x" }); }`},
+		{"required of a type parameter", `fn f<S: Source<String>>(s: S) -> Int { return __len((s.next() ?? "")); } fn g() -> Int { return f(Repeat<String> { item: "x" }); }`},
 
 		{"a field with a value of its own", `struct C { port: Int = 80; name: String; tags: [String] = []; next: C? = null; } fn f() -> C { return C { name: "x" }; }`},
 		{"...given anyway", `struct C { port: Int = 80; } fn f() -> Int { return C { port: 1 }.port + C { }.port; }`},

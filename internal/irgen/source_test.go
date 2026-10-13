@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/dani-gouken/lumen/internal/analysis"
-	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/errors"
 	"github.com/dani-gouken/lumen/internal/ir"
 	"github.com/dani-gouken/lumen/internal/parser"
@@ -19,18 +18,6 @@ func generateSource(t *testing.T, src string) (*ir.Program, *errors.Handler) {
 
 	errs := errors.NewHandler()
 	prog := parser.Parse(src, "test.lum", errs)
-	// Checked as library code, where `.length` is allowed: it is the
-	// primitive behind arrays.len and strings.len
-	for _, decl := range prog.Decls {
-		switch d := decl.(type) {
-		case *ast.FnDecl:
-			d.Module = "std.arrays"
-		case *ast.ImplDecl:
-			for _, m := range d.Methods {
-				m.Module = "std.arrays"
-			}
-		}
-	}
 	table := resolve.NewResolver(errs).Resolve(prog)
 	typeInfo := types.NewChecker(prog, table, errs).Check()
 	if errs.HasErrors() {
@@ -206,7 +193,7 @@ func TestVariadicArgumentsArePacked(t *testing.T) {
 }
 
 func TestLengthAndForLoop(t *testing.T) {
-	dump := dumpFunction(t, `fn main() -> Int { let xs = [1]; return xs.length; }`, "main")
+	dump := dumpFunction(t, `fn main() -> Int { let xs = [1]; return __len(xs); }`, "main")
 	expectLines(t, dump, "LEN, %v")
 
 	// A for loop that was not desugared is still compiled as a real loop

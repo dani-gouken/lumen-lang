@@ -18,7 +18,6 @@ func checkSource(t *testing.T, src string) ([]string, *Info, *ast.Program) {
 
 	errs := errors.NewHandler()
 	prog := parser.Parse(src, "test.lum", errs)
-	asLibrary(prog)
 	table := resolve.NewResolver(errs).Resolve(prog)
 	if errs.HasErrors() {
 		t.Fatalf("test source is invalid: %s", errs.Diagnostics[0].Message)
@@ -41,7 +40,6 @@ func checkSourceLoose(src string) ([]string, bool) {
 	if errs.HasErrors() {
 		return nil, false
 	}
-	asLibrary(prog)
 	table := resolve.NewResolver(errs).Resolve(prog)
 	NewChecker(prog, table, errs).Check()
 
@@ -61,7 +59,6 @@ func checkSourceDiagnostics(t *testing.T, src string) []errors.Diagnostic {
 	if errs.HasErrors() {
 		t.Fatalf("test source does not parse: %s", errs.Diagnostics[0].Message)
 	}
-	asLibrary(prog)
 	table := resolve.NewResolver(errs).Resolve(prog)
 	NewChecker(prog, table, errs).Check()
 	return errs.Diagnostics
@@ -92,7 +89,7 @@ func TestCheckInfersExpressionTypes(t *testing.T) {
 	msgs, info, prog := checkSource(t, `
 		struct Point { x: Int; label: String; }
 		fn id<T>(v: T) -> T { return v; }
-		fn total(nums: ...Int) -> Int { return nums.length; }
+		fn total(nums: ...Int) -> Int { return __len(nums); }
 
 		fn main() -> Int {
 			let p = Point { x: 1, label: "a" };
@@ -100,9 +97,9 @@ func TestCheckInfersExpressionTypes(t *testing.T) {
 			let text = p.label;
 			let xs = [1.5, 2.5];
 			let elem = xs[0];
-			let count = xs.length;
+			let count = __len(xs);
 			let char = text[0];
-			let size = text.length;
+			let size = __len(text);
 			let lambda = fn(a: Int) -> Bool { return a > 0; };
 			let called = lambda(1);
 			let generic = id<Int>(1);
@@ -142,8 +139,8 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 	}{
 		{"assignment", `fn main() -> Int { let a = 1; a = a + 1; return a; }`},
 		{"empty array takes the expected type", `fn f() -> [Int] { return []; }
-			fn g(xs: [String]) -> Int { return xs.length; }
-			fn main() -> Int { let a: [Int] = []; a = []; return g([]) + f().length; }`},
+			fn g(xs: [String]) -> Int { return __len(xs); }
+			fn main() -> Int { let a: [Int] = []; a = []; return g([]) + __len(f()); }`},
 		{"optional accepts null", `fn main() -> Int { let a: Int? = null; return 0; }`},
 		{"loop variable", `fn main() -> Int { let t = 0; for v in [1, 2] { t = t + v; } return t; }`},
 		{"string loop variable", `fn main() -> Int { for c in "ab" { let s: String = c; } return 0; }`},
@@ -195,8 +192,8 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 		{"narrowed in the else branch", `fn f(n: Int?) -> Int { if n == null { return 0; } else { return n + 1; } }`},
 		{"narrowed by null on the left", `fn f(n: Int?) -> Int { if null != n { return n + 1; } return 0; }`},
 		{"narrowed by a negated test", `fn f(n: Int?) -> Int { if !(n == null) { return n + 1; } return 0; }`},
-		{"narrowed across &&", `fn f(s: String?) -> Bool { return s != null && s.length > 2; }`},
-		{"narrowed across ||", `fn f(s: String?) -> Bool { return s == null || s.length == 0; }`},
+		{"narrowed across &&", `fn f(s: String?) -> Bool { return s != null && __len(s) > 2; }`},
+		{"narrowed across ||", `fn f(s: String?) -> Bool { return s == null || __len(s) == 0; }`},
 		{"both narrowed by &&", `fn f(a: Int?, b: Int?) -> Int { if a != null && b != null { return a + b; } return 0; }`},
 		{"narrowed after early exit on ||", `fn f(a: Int?, b: Int?) -> Int { if a == null || b == null { return 0; } return a + b; }`},
 		{"narrowed in a while condition", `struct Node { value: Int; next: Node?; }
@@ -217,7 +214,7 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 			impl T for P { fn m() -> Int { return self.x; } }
 			fn f(t: T) -> Int { return (t as P).x; }`},
 		{"cast to a wider type", `fn f(n: Int) -> Any { let a = n as Any; let o = n as Int?; return a; }`},
-		{"cast to an array or optional", `fn f(v: Any) -> Int { let xs = v as [Int]; let s = v as String?; return xs.length; }`},
+		{"cast to an array or optional", `fn f(v: Any) -> Int { let xs = v as [Int]; let s = v as String?; return __len(xs); }`},
 		{"method of a generic struct", `struct Box<T> { value: T; }
 			impl<T> Box<T> { fn get() -> T { return self.value; } fn set(v: T) -> Void { self.value = v; } }
 			fn main() -> Int { let b = Box<Int> { value: 1 }; b.set(2); return b.get() + 1; }`},
@@ -225,14 +222,14 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 			impl<T> Box<T> { fn copy() -> Box<T> { return Box<T> { value: self.value }; } fn me() -> Self { return self; } }
 			fn main() -> Int { let b = Box<Int> { value: 1 }; return b.copy().me().value; }`},
 		{"trait for a generic struct", `trait Sized { fn size() -> Int; } struct List<T> { items: [T]; }
-			impl<T> Sized for List<T> { fn size() -> Int { return self.items.length; } }
+			impl<T> Sized for List<T> { fn size() -> Int { return __len(self.items); } }
 			fn measure(s: Sized) -> Int { return s.size(); }
 			fn main() -> Int { return measure(List<String> { items: ["a"] }); }`},
 		{"method with its own type parameter", `struct Stack<T> { items: [T]; }
 			impl<T> Stack<T> { fn map<U>(f: fn(T) -> U) -> Stack<U> { let out = Stack<U> { items: [] }; for i in self.items { push(out.items, f(i)); } return out; } }
-			fn main() -> Int { let s = Stack<Int> { items: [1] }; let t: Stack<String> = s.map<String>(toString); return t.items[0].length; }`},
+			fn main() -> Int { let s = Stack<Int> { items: [1] }; let t: Stack<String> = s.map<String>(toString); return __len(t.items[0]); }`},
 		{"generic method on a plain struct", `struct U { n: Int; } impl U { fn id<T>(v: T) -> T { return v; } }
-			fn main() -> Int { let u = U { n: 1 }; return u.id<Int>(1) + u.id<String>("s").length; }`},
+			fn main() -> Int { let u = U { n: 1 }; return u.id<Int>(1) + __len(u.id<String>("s")); }`},
 		{"generic method with two parameters", `struct U { n: Int; } impl U { fn first<A, B>(a: A, b: B) -> A { return a; } }
 			fn main() -> Int { let u = U { n: 1 }; return u.first<Int, String>(1, "s"); }`},
 		{"generic method called from a generic method", `struct S<T> { v: T; }
@@ -266,17 +263,17 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 			fn last(n: N) -> Int { let cur = n; while cur.next != null { cur = cur.next; } return cur.v; }`},
 		{"type test narrows a variable", `fn f(v: Any) -> Int { if v is Int { return v + 1; } return 0; }`},
 		{"type test narrows after an early return", `fn f(v: Any) -> Int { if !(v is Int) { return 0; } return v + 1; }`},
-		{"type test across &&", `fn f(v: Any) -> Bool { return v is String && v.length > 2; }`},
+		{"type test across &&", `fn f(v: Any) -> Bool { return v is String && __len(v) > 2; }`},
 		{"type test from a trait to a struct", `trait S { fn a() -> Int; } struct Q { side: Int; }
 			impl S for Q { fn a() -> Int { return 1; } }
 			fn f(s: S) -> Int { if s is Q { return s.side; } return s.a(); }`},
 		{"type test on a field", `struct H { v: Any; } fn f(h: H) -> Int { if h.v is Int { return h.v + 1; } return 0; }`},
 		{"type test result is a Bool", `fn f(v: Any) -> Bool { let isInt = v is Int; return isInt || v is [String] || v is Int?; }`},
 		{"match on types narrows each case", `struct P { x: Int; }
-			fn f(v: Any) -> Int { match v { case Int: { return v + 1; } case String: { return v.length; } case [Int]: { return v[0]; } case P: { return v.x; } default: { return 0; } } }`},
+			fn f(v: Any) -> Int { match v { case Int: { return v + 1; } case String: { return __len(v); } case [Int]: { return v[0]; } case P: { return v.x; } default: { return 0; } } }`},
 		{"type argument inferred from an array", `fn first<T>(xs: [T]) -> T { return xs[0]; } fn main() -> Int { return first([1, 2]) + 1; }`},
 		{"type arguments inferred from a function", `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { let out: [U] = []; for x in xs { push(out, f(x)); } return out; }
-			fn main() -> Int { let ls: [String] = map([1], toString); let ns: [Int] = map(["a"], fn(s: String) -> Int { return s.length; }); return ns[0]; }`},
+			fn main() -> Int { let ls: [String] = map([1], toString); let ns: [Int] = map(["a"], fn(s: String) -> Int { return __len(s); }); return ns[0]; }`},
 		{"type argument inferred from variadic arguments", `fn collect<T>(items: ...T) -> [T] { return items; }
 			fn main() -> Int { let xs: [String] = collect("a", "b"); return collect(1, 2, 3)[0]; }`},
 		{"type argument inferred from an optional", `fn orElse<T>(v: T?, d: T) -> T { return v ?? d; }
@@ -310,20 +307,20 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 			trait Job { fn run(p: P) -> Int; } struct A { n: Int; } struct B { n: Int; }
 			impl Job for A { fn run(p: P) -> Int { return 1; } } impl Job for B { fn run(p: P) -> Int { return 2; } }
 			fn f(p: P, job: Job) -> Int { if p.x != null { job.run(p); return p.x + 1; } return 0; }`},
-		{"type argument from a declared type", `fn none<T>() -> [T] { return []; } fn main() -> Int { let xs: [Int] = none(); return xs.length; }`},
+		{"type argument from a declared type", `fn none<T>() -> [T] { return []; } fn main() -> Int { let xs: [Int] = none(); return __len(xs); }`},
 		{"type argument from the return type", `fn none<T>() -> [T] { return []; } fn empty() -> [String] { return none(); }`},
-		{"type argument from a parameter type", `fn none<T>() -> [T] { return []; } fn size(xs: [Bool]) -> Int { return xs.length; }
+		{"type argument from a parameter type", `fn none<T>() -> [T] { return []; } fn size(xs: [Bool]) -> Int { return __len(xs); }
 			fn main() -> Int { return size(none()); }`},
 		{"type argument from a field type", `fn none<T>() -> [T] { return []; } struct S { items: [Int]; }
 			fn main() -> Int { let s = S { items: none() }; s.items = none(); return 0; }`},
 		{"type argument from an assignment", `fn none<T>() -> [T] { return []; } fn main() -> Int { let xs = [1]; xs = none(); return 0; }`},
 		{"type argument from an optional expected type", `fn nothing<T>() -> T? { return null; } fn main() -> Int { let n: Int? = nothing(); return n ?? 0; }`},
 		{"one type argument from an argument, one from the expected type", `fn convert<A, B>(a: A, f: fn(A) -> Any) -> [B] { return []; }
-			fn main() -> Int { let xs: [String] = convert(1, toString); return xs.length; }`},
+			fn main() -> Int { let xs: [String] = convert(1, toString); return __len(xs); }`},
 		{"method type argument from the expected type", `struct U { n: Int; } impl U { fn none<T>() -> [T] { return []; } }
-			fn main() -> Int { let u = U { n: 1 }; let xs: [Int] = u.none(); return xs.length; }`},
+			fn main() -> Int { let u = U { n: 1 }; let xs: [Int] = u.none(); return __len(xs); }`},
 		{"compound assignment on numbers", `fn main() -> Int { let i = 1; i += 2; i -= 1; i *= 3; i /= 2; i %= 4; i++; i--; return i; }`},
-		{"compound assignment on floats and strings", `fn main() -> Int { let f = 1.5; f *= 2.0; f -= 0.5; let s = "a"; s += "b"; return s.length; }`},
+		{"compound assignment on floats and strings", `fn main() -> Int { let f = 1.5; f *= 2.0; f -= 0.5; let s = "a"; s += "b"; return __len(s); }`},
 		{"compound assignment on elements and fields", `struct P { n: Int; tags: [String]; }
 			fn main() -> Int { let xs = [1, 2]; xs[0] += 5; xs[1]++; let p = P { n: 1, tags: ["a"] }; p.n *= 2; p.tags[0] += "b"; p.n--; return xs[0] + p.n; }`},
 		{"compound assignment on a narrowed optional", `fn f(n: Int?) -> Int { if n == null { return 0; } n += 1; n++; return n; }`},
@@ -380,7 +377,7 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 		{"match on types after a case that assigns", `fn f(v: Any, n: Int?) -> Int {
 				if n == null { return 0; }
 				match v {
-					case String: { n = null; return v.length; }
+					case String: { n = null; return __len(v); }
 					case Int: { return v + n; }
 					default: { return n; }
 				}
@@ -487,7 +484,7 @@ func TestCheckRejectsInvalidPrograms(t *testing.T) {
 			fn main() -> Int { let b: Box<String> = Box<Int> { value: 1 }; return 0; }`, "cannot assign type Box<int> to Box<string>"},
 		{"type parameter opaque in a method", `struct Box<T> { value: T; } impl<T> Box<T> { fn bad() -> Int { return self.value; } }`, "cannot return type T from function returning int"},
 		{"method type argument that nothing determines", `struct U { n: Int; } impl U { fn none<T>() -> [T] { return []; } }
-			fn main() -> Int { let u = U { n: 1 }; return u.none().length; }`, "cannot infer the type arguments of method 'none'"},
+			fn main() -> Int { let u = U { n: 1 }; return __len(u.none()); }`, "cannot infer the type arguments of method 'none'"},
 		{"method takes no type arguments", `struct U { n: Int; } impl U { fn get() -> Int { return self.n; } }
 			fn main() -> Int { let u = U { n: 1 }; return u.get<Int>(); }`, "method 'get' takes no type arguments"},
 		{"wrong number of type arguments", `struct U { n: Int; } impl U { fn id<T>(v: T) -> T { return v; } }
@@ -706,7 +703,6 @@ func TestUnreachableCodeIsAWarning(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			errs := errors.NewHandler()
 			prog := parser.Parse(tt.src, "test.lum", errs)
-			asLibrary(prog)
 			table := resolve.NewResolver(errs).Resolve(prog)
 			NewChecker(prog, table, errs).Check()
 
@@ -742,7 +738,7 @@ func TestInferredTypeArgumentsAreWrittenIntoTheProgram(t *testing.T) {
 		fn orElse<T>(v: T?, d: T) -> T { return v ?? d; }
 		fn unbox<T>(b: Box<T>) -> T { return b.value; }
 		fn none<T>() -> [T] { return []; }
-		fn len(s: String) -> Int { return s.length; }
+		fn len(s: String) -> Int { return __len(s); }
 	`
 	tests := []struct {
 		call string
@@ -769,7 +765,6 @@ func TestInferredTypeArgumentsAreWrittenIntoTheProgram(t *testing.T) {
 			src := decls + "fn main() -> Void { let r = " + tt.call + "; }"
 			errs := errors.NewHandler()
 			prog := parser.Parse(src, "test.lum", errs)
-			asLibrary(prog)
 			table := resolve.NewResolver(errs).Resolve(prog)
 			NewChecker(prog, table, errs).Check()
 
@@ -805,7 +800,7 @@ func TestFunctionSignaturesAreRecorded(t *testing.T) {
 		fn id<T>(v: T) -> T { return v; }
 		fn make() -> P? { return null; }
 		fn main() -> Int {
-			let f = fn(s: String) -> [Int] { return [s.length]; };
+			let f = fn(s: String) -> [Int] { return [__len(s)]; };
 			return 0;
 		}
 	`
@@ -852,7 +847,6 @@ func TestLoopVariableAssignmentSuggestsTheFix(t *testing.T) {
 	for _, tt := range tests {
 		errs := errors.NewHandler()
 		prog := parser.Parse(tt.src, "test.lum", errs)
-		asLibrary(prog)
 		table := resolve.NewResolver(errs).Resolve(prog)
 		NewChecker(prog, table, errs).Check()
 
@@ -863,23 +857,6 @@ func TestLoopVariableAssignmentSuggestsTheFix(t *testing.T) {
 		d := errs.Diagnostics[0]
 		if d.Code != ErrAssignToLoopVar || !strings.Contains(d.Suggestion, tt.want) {
 			t.Errorf("%s: expected %s with a suggestion containing %q, got %s: %q", tt.src, ErrAssignToLoopVar, tt.want, d.Code, d.Suggestion)
-		}
-	}
-}
-
-// asLibrary marks every function of a program as part of the standard
-// library. The tests of this stage work on snippets that never go through
-// module loading, and use `.length`, the primitive the library's length
-// functions are written with; it is only allowed in library code.
-func asLibrary(prog *ast.Program) {
-	for _, decl := range prog.Decls {
-		switch d := decl.(type) {
-		case *ast.FnDecl:
-			d.Module = "std.arrays"
-		case *ast.ImplDecl:
-			for _, m := range d.Methods {
-				m.Module = "std.arrays"
-			}
 		}
 	}
 }

@@ -925,3 +925,48 @@ func TestConditionsAndTextsBuiltInLoops(t *testing.T) {
 		"Héllowörld日本語 | , ! 12 . true",
 		"true true 80 .-")
 }
+
+// Arrays and texts have no members, so `length` is a name like any other:
+// a field of a struct, a method, a variable. The length of a collection is
+// asked with a function, alone or given to another.
+func TestLengthIsOnlyAName(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+		import std.strings;
+
+		struct Rope { length: Int; pieces: [String]; }
+		impl Rope {
+			fn add(piece: String) {
+				push(self.pieces, piece);
+				self.length += strings.len(piece);
+			}
+		}
+		struct Queue { items: [Int]; }
+		impl Queue {
+			fn length() -> Int { return arrays.len(self.items); }
+		}
+
+		fn main() {
+			let rope = Rope { length: 0, pieces: [] };
+			rope.add("été");
+			rope.add("日本");
+			println(rope.length, arrays.len(rope.pieces));
+			rope.length = 100;
+			println(rope.length);
+
+			let length = Queue { items: [1, 2, 3] }.length();
+			println(length);
+
+			// Given to another function, and over what a loop walks
+			println(arrays.map(["a", "bcd", ""], strings.len));
+			println(arrays.map([[1], [], [1, 2]], xs -> arrays.len(xs)));
+			let seen = 0;
+			for piece in rope.pieces { for c in piece { seen++; } }
+			println(seen);
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	expectLines(t, out, "5 2", "100", "3", "[1, 3, 0]", "[1, 0, 2]", "5")
+}

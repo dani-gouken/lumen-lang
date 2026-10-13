@@ -950,3 +950,19 @@ func BenchmarkFields(b *testing.B) {
 		}
 	}
 }
+
+// The length instruction is for arrays and texts: it does not read a field
+// called "length" of an object, which is a field like any other.
+func TestLengthIsNotAField(t *testing.T) {
+	chunk := NewChunk()
+	chunk.Code = []Instr{
+		NewInstr(OpNEWOBJ, 0, 0, 0),
+		NewInstr(OpARRLEN, 1, 0, 0),
+		NewInstr(OpRET, 1, 0, 0),
+	}
+	addMainProto(chunk, 3, 0)
+	_, err := NewVM().Exec(chunk)
+	if err == nil || !strings.Contains(err.Error(), "ARRLEN") {
+		t.Errorf("expected the length of an object to be refused, got %v", err)
+	}
+}

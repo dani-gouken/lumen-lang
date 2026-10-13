@@ -2,6 +2,7 @@ package desugar
 
 import (
 	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/resolve"
 	"github.com/dani-gouken/lumen/internal/token"
 	"github.com/dani-gouken/lumen/internal/types"
 )
@@ -18,7 +19,7 @@ import (
 //
 //	{
 //	  let __iter_N = 0;
-//	  let __len_N = collection.length;
+//	  let __len_N = __len(collection);
 //	  while __iter_N < __len_N {
 //	    let item = collection[__iter_N];
 //	    __iter_N = __iter_N + 1;
@@ -83,8 +84,13 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 	iterIdent := d.createIdent(iterVar, pos)
 	d.typeInfo.Types[iterIdent] = types.Int
 
-	// Create length variable: let __len_N = collection.length;
-	lengthExpr := d.createMemberExpr(iterableExpr, "length", pos)
+	// Create length variable: let __len_N = __len(collection);
+	lengthExpr := &ast.CallExpr{
+		BaseNode: ast.BaseNode{Pos: pos},
+		Func:     d.createIdent(resolve.LengthFunction, pos),
+		Args:     []ast.Expr{iterableExpr},
+	}
+	d.typeInfo.Types[lengthExpr] = types.Int
 	lenInit := &ast.LetStmt{
 		BaseNode: ast.BaseNode{Pos: pos},
 		Name:     lenVar,

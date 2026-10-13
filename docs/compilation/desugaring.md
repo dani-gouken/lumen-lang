@@ -35,7 +35,7 @@ After desugaring:
 fn sum_evens(nums: [Int]) -> Int {
     let total = 0;
     let __iter_0 = 0;
-    let __len_0 = nums.length;
+    let __len_0 = __len(nums);
     while __iter_0 < __len_0 {
         let num = nums[__iter_0];
         if num % 2 == 0 {
@@ -75,7 +75,7 @@ for item in collection {
 // After (for arrays)
 {
     let __iter_N = 0;
-    let __len_N = collection.length;
+    let __len_N = __len(collection);
     while __iter_N < __len_N {
         let item = collection[__iter_N];
         __iter_N = __iter_N + 1;
@@ -113,7 +113,7 @@ for item in loadItems() {
 {
     let __tmp_N = loadItems();
     let __iter_M = 0;
-    let __len_M = __tmp_N.length;
+    let __len_M = __len(__tmp_N);
     while __iter_M < __len_M {
         let item = __tmp_N[__iter_M];
         __iter_M = __iter_M + 1;
@@ -132,7 +132,7 @@ for char in str {
 // After
 {
     let __iter_N = 0;
-    let __len_N = str.length;
+    let __len_N = __len(str);
     while __iter_N < __len_N {
         let char = str[__iter_N];  // char extraction
         __iter_N = __iter_N + 1;
@@ -183,7 +183,7 @@ if x == 1 {
 // Before
 match value {
     case Int: { handleInt(value + 1); }
-    case String: { handleString(value.length); }
+    case String: { handleString(strings.len(value)); }
     default: { handleOther(); }
 }
 
@@ -191,7 +191,7 @@ match value {
 if value is Int {
     handleInt(value + 1);
 } else if value is String {
-    handleString(value.length);
+    handleString(strings.len(value));
 } else {
     handleOther();
 }
@@ -738,7 +738,7 @@ for item in collection {
 // After (alternative)
 {
     let __iter_N = 0;
-    let __len_N = collection.length;
+    let __len_N = __len(collection);
     loop {
         if __iter_N >= __len_N { break; }
         let item = collection[__iter_N];

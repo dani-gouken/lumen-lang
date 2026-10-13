@@ -465,11 +465,13 @@ func (fc *FunctionCompiler) compileCallExpr(expr *ast.CallExpr) *ir.Register {
 	return fc.builder.CreateCall(fn, args...)
 }
 
-// isLengthFunction reports whether a function is one of the standard
-// library's two length functions: strings.len, and arrays.len, which is
-// generic and so has one name per type it is used with.
+// isLengthFunction reports whether a function gives the length of an
+// array or of a text: the builtin, or one of the standard library's two
+// functions written with it, strings.len and arrays.len, which is generic
+// and so has one name per type it is used with.
 func isLengthFunction(name string) bool {
-	return name == "std.strings.len" || name == "std.arrays.len" || strings.HasPrefix(name, "std.arrays.len_")
+	return name == resolve.LengthFunction ||
+		name == "std.strings.len" || name == "std.arrays.len" || strings.HasPrefix(name, "std.arrays.len_")
 }
 
 // compileMethodCall compiles `receiver.method(args)`. The receiver is passed
@@ -590,17 +592,11 @@ func (fc *FunctionCompiler) compileIndexExpr(expr *ast.IndexExpr) *ir.Register {
 	return dest
 }
 
-// compileMemberExpr compiles a member access expression. `.length` is the
-// length of an array or string; on a struct it reads the field of that name.
+// compileMemberExpr compiles a member access expression: a field of a
+// struct, whatever its name.
 func (fc *FunctionCompiler) compileMemberExpr(expr *ast.MemberExpr) *ir.Register {
 	obj := fc.compileExpr(expr.Expr)
 	fc.setPos(expr)
-
-	if expr.Name == "length" {
-		dest := fc.builder.NewRegister()
-		fc.builder.Emit(ir.OpLen, dest, obj)
-		return dest
-	}
 	return fc.builder.CreateGetField(obj, expr.Name)
 }
 

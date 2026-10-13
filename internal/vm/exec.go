@@ -1520,7 +1520,6 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpARRLEN:
 			// Get length: A = dest, B = array or string.
-			// On an object it reads the field named "length".
 			target := header(regs[instr.B])
 			if target == nil {
 				_, err := vm.arrayOperand("ARRLEN", regs[instr.B])
@@ -1531,8 +1530,6 @@ func (vm *VM) execute(base int) (Value, error) {
 				regs[instr.A] = NewInt(int64(len((*ArrayObj)(unsafe.Pointer(target)).elements)))
 			case ObjTypeString:
 				regs[instr.A] = NewInt(int64((*StringObj)(unsafe.Pointer(target)).RuneLen()))
-			case ObjTypeObject:
-				regs[instr.A], _ = (*ObjectObj)(unsafe.Pointer(target)).Get("length")
 			default:
 				_, err := vm.arrayOperand("ARRLEN", regs[instr.B])
 				return NewNull(), err

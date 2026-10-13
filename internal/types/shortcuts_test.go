@@ -12,6 +12,7 @@ import (
 const shortcutDecls = `
 struct Address { city: String; zip: String?; }
 struct User { name: String; address: Address?; }
+struct Account { owner: User; }
 impl User {
 	fn shout() -> String { return self.name; }
 	fn rename(to: String) { self.name = to; }
@@ -37,9 +38,9 @@ func TestSafeAccessAndTryAreTyped(t *testing.T) {
 		{"a method that returns an optional", `fn f(u: User?) -> String? { return u?.boss()?.boss()?.name; }`},
 		{"a method called for what it does", `fn f(u: User?) { u?.rename("x"); }`},
 		{"on a call", `fn f() -> String? { return find(1)?.name; }`},
-		{"all that follows is done with the value", `fn f(u: User?) -> Int? { return u?.name.length; }`},
+		{"all that follows is done with the value", `fn f(a: Account?) -> String? { return a?.owner.name; }`},
 		{"...calls and indexes too", `fn f(u: User?) -> String? { return u?.shout()[0]; }`},
-		{"...up to the next thing that may be null", `fn f(u: User?) -> Int? { return u?.address?.city.length; }`},
+		{"...up to the next thing that may be null", `fn f(a: Account?) -> String? { return a?.owner.address?.city; }`},
 		{"on a field path", `fn f(u: User) -> String? { return u.address?.city; }`},
 
 		{"try on an optional, in a function that may return null", `fn f(text: String) -> Int? { return number(text)? + 1; }`},
@@ -56,14 +57,14 @@ func TestSafeAccessAndTryAreTyped(t *testing.T) {
 		{"...inside the branch of an if", `fn f(n: Int?) -> Int { if n != null { let g = fn() -> Int { return n + 1; }; return g(); } return 0; }`},
 		{"...through a lambda in a lambda", `fn f(n: Int?) -> Int { if n == null { return 0; } let g = fn() -> fn() -> Int { return fn() -> Int { return n + 1; }; }; return g()(); }`},
 		{"...for a type test", `fn f(v: Any) -> Int { if v is Int { let g = fn() -> Int { return v + 1; }; return g(); } return 0; }`},
-		{"...for the variable of a loop", `fn f(items: [Int?]) -> Int { let fs: [fn() -> Int] = []; for item in items { if item != null { push(fs, fn() -> Int { return item + 1; }); } } return fs.length; }`},
+		{"...for the variable of a loop", `fn f(items: [Int?]) -> Int { let fs: [fn() -> Int] = []; for item in items { if item != null { push(fs, fn() -> Int { return item + 1; }); } } return __len(fs); }`},
 		{"a lambda may assign its own variables", `fn f(n: Int?) -> Int { if n == null { return 0; } let g = fn() -> Int { let m = n; m = m + 1; return m; }; return g(); }`},
 
 		{"a tuple and its positions", `fn f() -> Int { let p = (1, "a"); let n: Int = p.0; let s: String = p.1; return n; }`},
 		{"a tuple type", `fn f(p: (Int, String)) -> (String, Int) { return (p.1, p.0); }`},
 		{"tuples in tuples", `fn f(p: ((Int, Bool), [String])) -> Bool { return p.0.1; }`},
 		{"taken apart", `fn f(p: (Int, String, Bool)) -> String { let (n, s, _) = p; let m: Int = n; return s; }`},
-		{"in a loop", `fn f(ps: [(String, Int)]) -> Int { let t = 0; for (name, n) in ps { t += n + name.length; } return t; }`},
+		{"in a loop", `fn f(ps: [(String, Int)]) -> Int { let t = 0; for (name, n) in ps { t += n + __len(name); } return t; }`},
 		{"generic", `fn swap<A, B>(p: (A, B)) -> (B, A) { return (p.1, p.0); } fn f() -> String { return swap((1, "a")).0; }`},
 		{"compared", `fn f(p: (Int, Int)) -> Bool { return p == (1, 2) || p != (3, 4); }`},
 		{"an optional tuple", `fn f(p: (Int, String)?) -> Int? { return p?.0; }`},
@@ -86,7 +87,7 @@ func TestSafeAccessAndTryAreTyped(t *testing.T) {
 		{"a method that does not exist", `fn f(u: User?) -> String? { return u?.nope(); }`, "nope"},
 		{"the result is optional", `fn f(u: User?) -> String { return u?.name; }`, "cannot return type string? from function returning string"},
 		{"a field that may be null needs '?.' of its own", `fn f(u: User?) -> String? { return u?.address.city; }`, "the value may be null"},
-		{"in brackets the chain ends", `fn f(u: User?) -> Int? { return (u?.name).length; }`, "the value may be null"},
+		{"in brackets the chain ends", `fn f(a: Account?) -> String? { return (a?.owner).name; }`, "the value may be null"},
 		{"wrong argument in a safe call", `fn f(u: User?) { u?.rename(1); }`, "cannot use type int as argument"},
 
 		{"try on what is neither", `fn f(n: Int) -> Int? { return n?; }`, "'?' is for a Result or a value that may be null, and this is a Int"},
