@@ -90,7 +90,18 @@ type ObjectObj struct {
 	// Name of the struct this object is a value of; empty for a plain
 	// object created from assembly. Used by casts.
 	typeName string
+
+	// variant marks a value of an enum. typeName is then "Enum.Variant"
+	// and the values it holds are the fields "0", "1", ... Such a value is
+	// compared and printed by what it holds.
+	variant bool
 }
+
+// Third operand of NEWOBJ: what the object is.
+const (
+	ObjectIsNamed   = 1 // A value of a struct; B is the constant of its name
+	ObjectIsVariant = 2 // A value of an enum; B is the constant of "Enum.Variant"
+)
 
 // TypeName returns the name of the struct the object is a value of.
 func (o *ObjectObj) TypeName() string {

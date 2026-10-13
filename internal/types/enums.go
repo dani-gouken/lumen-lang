@@ -1,0 +1,813 @@
+package types
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/resolve"
+)
+
+// Error codes for enums and constants
+const (
+	ErrNonExhaustiveMatch = "E2028" // match on an enum that leaves variants out
+	ErrInvalidPattern     = "E2029" // Pattern that cannot match the value
+	ErrInvalidEnumUse     = "E2030" // Unknown variant, wrong number of values, enum used as a value
+	ErrConstantCycle      = "E2031" // Constant defined in terms of itself
+	ErrNotConstant        = "E2032" // Value of a constant that is not made of constants
+)
+
+// An enum is a type whose values are one of several variants, each with
+// values of its own:
+//
+//	enum Shape { Circle(Float), Rect(Float, Float), Empty }
+//
+// To the checker the type of a value of Shape is a StructType named Shape.
+// That gives enums, without more code, what structs have: type arguments
+// (Option<Int>), methods (impl Shape { ... }) and traits (impl Area for
+// Shape). What differs is handled here: a value is made by naming a
+// variant (Shape.Circle(2.0)) and taken apart by a match.
+
+// enumOf returns the enum an expression names, if it is the bare name of
+// one, as in the `Shape` of `Shape.Circle`.
+func (c *Checker) enumOf(expr ast.Expr) (*ast.EnumDecl, *ast.Ident) {
+	ident, ok := expr.(*ast.Ident)
+	if !ok {
+		return nil, nil
+	}
+	sym := c.table.Defs[ident]
+	if sym == nil || sym.Kind != resolve.SymbolEnum {
+		return nil, nil
+	}
+	decl, _ := sym.Decl.(*ast.EnumDecl)
+	return decl, ident
+}
+
+// isVariantRef reports whether an expression is `Enum.Variant`.
+func (c *Checker) isVariantRef(expr ast.Expr) bool {
+	member, ok := expr.(*ast.MemberExpr)
+	if !ok {
+		return false
+	}
+	decl, _ := c.enumOf(member.Expr)
+	return decl != nil
+}
+
+func findVariant(decl *ast.EnumDecl, name string) *ast.EnumVariant {
+	for _, v := range decl.Variants {
+		if v.Name == name {
+			return v
+		}
+	}
+	return nil
+}
+
+// enumType is the type of the values of an enum.
+func enumType(decl *ast.EnumDecl, typeArgs []Type) *StructType {
+	return &StructType{Name: decl.Name, BaseName: decl.Name, TypeArgs: typeArgs}
+}
+
+// enumOfType returns the enum a type is, if it is one.
+func (c *Checker) enumOfType(t Type) (*ast.EnumDecl, *StructType) {
+	if t == nil {
+		return nil, nil
+	}
+	st, ok := t.(*StructType)
+	if !ok {
+		return nil, nil
+	}
+	// A type made by filling in type parameters is named after its
+	// arguments ("List[int]"); BaseName is the enum's own name
+	decl := c.enums[st.Name]
+	if decl == nil {
+		decl = c.enums[st.BaseName]
+	}
+	if decl == nil {
+		return nil, nil
+	}
+	return decl, st
+}
+
+// variantFields returns the types of the values of a variant, in an enum
+// with the given type arguments. A type parameter without an argument is
+// unknown.
+func (c *Checker) variantFields(decl *ast.EnumDecl, variant *ast.EnumVariant, typeArgs []Type) []Type {
+	bindings := make(map[string]Type, len(decl.TypeParams))
+	for i, name := range decl.TypeParams {
+		bindings[name] = Unknown
+		if i < len(typeArgs) && typeArgs[i] != nil {
+			bindings[name] = typeArgs[i]
+		}
+	}
+	defer c.bind(bindings)()
+
+	fields := make([]Type, len(variant.Values))
+	for i, value := range variant.Values {
+		fields[i] = c.resolveType(value)
+	}
+	return fields
+}
+
+// describeVariant writes a variant the way it is declared: Rect(Float, Float).
+func describeVariant(decl *ast.EnumDecl, variant *ast.EnumVariant) string {
+	return decl.Name + "." + variant.String()
+}
+
+func (c *Checker) checkEnumDecl(d *ast.EnumDecl) {
+	defer c.bindTypeParams(d.TypeParams)()
+
+	seen := make(map[string]bool)
+	for _, variant := range d.Variants {
+		if seen[variant.Name] {
+			c.errorf(variant.Token(), ErrInvalidEnumUse, "enum %s already has a variant '%s'", d.Name, variant.Name)
+		}
+		seen[variant.Name] = true
+		for _, value := range variant.Values {
+			c.resolveType(value)
+		}
+		// Shape.area would be both the variant and the method
+		if c.methods[d.Name][variant.Name] != nil {
+			c.errorf(variant.Token(), ErrInvalidEnumUse, "'%s' is both a variant and a method of enum %s", variant.Name, d.Name)
+		}
+	}
+}
+
+// checkVariant types `Enum.Variant` and `Enum.Variant(args)`: the creation
+// of a value of an enum, or, for a variant with values named without
+// calling it, the function that creates one.
+func (c *Checker) checkVariant(member *ast.MemberExpr, args []ast.Expr, called bool, expected Type) Type {
+	decl, ident := c.enumOf(member.Expr)
+
+	variant := findVariant(decl, member.Name)
+	if variant == nil {
+		var names []string
+		for _, v := range decl.Variants {
+			names = append(names, v.Name)
+		}
+		suggestion := "Its variants are " + strings.Join(names, ", ")
+		if similar := resolve.ClosestName(member.Name, names); similar != "" {
+			suggestion = "Did you mean '" + similar + "'?"
+		}
+		c.errorfWithSuggestion(member.Token(), ErrInvalidEnumUse, suggestion,
+			"enum %s has no variant '%s'", decl.Name, member.Name)
+		c.typesOf(args)
+		return Unknown
+	}
+
+	// Type arguments written after the enum's name: Option<Int>.None
+	found := make(map[string]Type)
+	isParam := make(map[string]bool, len(decl.TypeParams))
+	for _, name := range decl.TypeParams {
+		isParam[name] = true
+	}
+	if len(ident.TypeArgs) > 0 {
+		if len(ident.TypeArgs) != len(decl.TypeParams) {
+			c.errorf(ident.Token(), ErrInvalidEnumUse, "enum %s takes %d type arguments, got %d",
+				decl.Name, len(decl.TypeParams), len(ident.TypeArgs))
+		}
+		for i, arg := range ident.TypeArgs {
+			if i < len(decl.TypeParams) {
+				found[decl.TypeParams[i]] = c.resolveType(arg)
+			}
+		}
+	}
+
+	// The types of the values as declared, type parameters left open
+	restore := c.bindTypeParams(decl.TypeParams)
+	declared := make([]Type, len(variant.Values))
+	for i, value := range variant.Values {
+		declared[i] = c.resolveType(value)
+	}
+	restore()
+
+	var argTypes []Type
+	if called {
+		switch {
+		case len(variant.Values) == 0:
+			c.errorfWithSuggestion(member.Token(), ErrInvalidEnumUse,
+				fmt.Sprintf("Write %s.%s without parentheses", decl.Name, variant.Name),
+				"%s.%s holds no values", decl.Name, variant.Name)
+			c.typesOf(args)
+			return enumType(decl, c.typeArgsFrom(decl, found, expected))
+		case len(args) != len(variant.Values):
+			c.errorfWithSuggestion(member.Token(), ErrInvalidEnumUse,
+				"It is declared as "+describeVariant(decl, variant),
+				"%s.%s holds %s, got %d", decl.Name, variant.Name, values(len(variant.Values)), len(args))
+			c.typesOf(args)
+			return enumType(decl, c.typeArgsFrom(decl, found, expected))
+		}
+
+		// What each argument is says what the type parameters are. Until
+		// then, the type the whole value is expected to have says what
+		// each argument is expected to be, so that the type arguments reach
+		// values inside values: let o: Option<Result<Int, String>> =
+		// Option.Some(Result.Ok(1));
+		hint := c.hintFrom(decl, expected)
+		for i, arg := range args {
+			argType := c.checkExprAs(arg, c.partial(declared[i], isParam, found, hint))
+			argTypes = append(argTypes, argType)
+			if argType != nil {
+				unify(declared[i], argType, isParam, found)
+			}
+		}
+	}
+
+	typeArgs := c.typeArgsFrom(decl, found, expected)
+	for i, arg := range typeArgs {
+		if isUnknown(arg) {
+			c.errorfWithSuggestion(member.Token(), ErrInvalidEnumUse,
+				fmt.Sprintf("Write the type: %s<...>.%s", decl.Name, variant.Name),
+				"nothing here says what %s of %s is", decl.TypeParams[i], decl.Name)
+			break
+		}
+	}
+	result := enumType(decl, typeArgs)
+	fields := c.variantFields(decl, variant, typeArgs)
+
+	if !called {
+		if len(variant.Values) == 0 {
+			return result
+		}
+		// The variant as a function: arrays.map(numbers, Shape.Circle)
+		return NewFunction(fields, result)
+	}
+
+	for i, arg := range args {
+		if argTypes[i] != nil && !c.assignable(fields[i], argTypes[i]) {
+			c.errorf(arg.Token(), ErrArgType, "cannot use type %s as value %d of %s.%s, which is of type %s",
+				argTypes[i], i+1, decl.Name, variant.Name, fields[i])
+		}
+	}
+	return result
+}
+
+// partial is a declared type with the type parameters known so far filled
+// in, to be the expected type of an argument; nil when one is still open,
+// since an expected type with a hole would only mislead.
+func (c *Checker) partial(declared Type, isParam map[string]bool, found, hint map[string]Type) Type {
+	open := false
+	bindings := make(map[string]Type)
+	for name := range isParam {
+		if t, ok := found[name]; ok {
+			bindings[name] = t
+		} else if t, ok := hint[name]; ok {
+			bindings[name] = t
+		} else {
+			open = true
+		}
+	}
+	if open && mentionsParam(declared, isParam) {
+		return nil
+	}
+	return Instantiate(declared, bindings)
+}
+
+func mentionsParam(t Type, isParam map[string]bool) bool {
+	switch t := t.(type) {
+	case *TypeParam:
+		return isParam[t.Name]
+	case *ArrayType:
+		return mentionsParam(t.ElementType, isParam)
+	case *UnionType:
+		for _, member := range t.Types {
+			if mentionsParam(member, isParam) {
+				return true
+			}
+		}
+	case *FunctionType:
+		for _, p := range t.Params {
+			if mentionsParam(p, isParam) {
+				return true
+			}
+		}
+		return mentionsParam(t.ReturnType, isParam)
+	case *StructType:
+		for _, arg := range t.TypeArgs {
+			if mentionsParam(arg, isParam) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hintFrom returns the type arguments the expected type gives an enum.
+func (c *Checker) hintFrom(decl *ast.EnumDecl, expected Type) map[string]Type {
+	hint := make(map[string]Type)
+	if expected == nil {
+		return hint
+	}
+	if hintDecl, st := c.enumOfType(withoutNull(expected)); hintDecl == decl {
+		for i, name := range decl.TypeParams {
+			if i < len(st.TypeArgs) && st.TypeArgs[i] != nil && !isUnknown(st.TypeArgs[i]) {
+				hint[name] = st.TypeArgs[i]
+			}
+		}
+	}
+	return hint
+}
+
+// typeArgsFrom completes the type arguments of an enum: those already
+// found, then, for what is left, those of the type the value is expected
+// to have (`let o: Option<Int> = Option.None;`).
+func (c *Checker) typeArgsFrom(decl *ast.EnumDecl, found map[string]Type, expected Type) []Type {
+	if len(decl.TypeParams) == 0 {
+		return nil
+	}
+
+	var hint *StructType
+	if expected != nil {
+		target := withoutNull(expected)
+		if fn, ok := target.(*FunctionType); ok {
+			target = fn.ReturnType // The variant used as a function
+		}
+		if hintDecl, st := c.enumOfType(target); hintDecl == decl {
+			hint = st
+		}
+	}
+
+	args := make([]Type, len(decl.TypeParams))
+	for i, name := range decl.TypeParams {
+		switch {
+		case found[name] != nil:
+			args[i] = found[name]
+		case hint != nil && i < len(hint.TypeArgs):
+			args[i] = hint.TypeArgs[i]
+		default:
+			args[i] = Unknown
+		}
+	}
+	return args
+}
+
+// --- Patterns ---
+
+// checkVariantPattern checks `Enum.Variant(patterns...)` against the type
+// of the value being matched, and gives the names it binds their types.
+// It returns the variant, and whether the pattern matches every value of
+// that variant: a pattern with a literal or another variant inside it only
+// matches some.
+func (c *Checker) checkVariantPattern(p *ast.VariantPattern, subject Type) (variant string, covers bool) {
+	// Whatever goes wrong, the names of the pattern exist in the case
+	fail := func() (string, bool) {
+		c.bindUnknown(p)
+		return "", false
+	}
+
+	member, ok := p.Target.(*ast.MemberExpr)
+	if !ok {
+		c.errorf(p.Token(), ErrInvalidPattern, "'%s' is not a variant of an enum", p.Target)
+		return fail()
+	}
+	decl, _ := c.enumOf(member.Expr)
+	if decl == nil {
+		c.errorfWithSuggestion(p.Token(), ErrInvalidPattern,
+			"A case matches a literal, a type, or a variant written Enum.Variant",
+			"'%s' is not a variant of an enum", p.Target)
+		return fail()
+	}
+	v := findVariant(decl, member.Name)
+	if v == nil {
+		var names []string
+		for _, each := range decl.Variants {
+			names = append(names, each.Name)
+		}
+		suggestion := "Its variants are " + strings.Join(names, ", ")
+		if similar := resolve.ClosestName(member.Name, names); similar != "" {
+			suggestion = "Did you mean '" + similar + "'?"
+		}
+		c.errorfWithSuggestion(p.Token(), ErrInvalidPattern, suggestion, "enum %s has no variant '%s'", decl.Name, member.Name)
+		return fail()
+	}
+
+	// The value has to be able to be of this enum
+	var typeArgs []Type
+	subjectDecl, subjectType := c.enumOfType(withoutNullOrNil(subject))
+	switch {
+	case subjectDecl == decl:
+		typeArgs = subjectType.TypeArgs
+	case subject == nil || isUnknown(subject) || subject.Equals(Any):
+		// Only known when the program runs
+	case c.assignable(subject, enumType(decl, nil)):
+		// A union or a trait the enum is part of
+	default:
+		c.errorf(p.Token(), ErrInvalidPattern, "a value of type %s is never a %s", subject, describeVariant(decl, v))
+		return fail()
+	}
+
+	fields := c.variantFields(decl, v, typeArgs)
+	if !p.HasArgs {
+		return v.Name, true
+	}
+	if len(p.Args) != len(fields) {
+		form := decl.Name + "." + v.Name
+		if len(fields) > 0 {
+			names := make([]string, len(fields))
+			for i := range names {
+				names[i] = string(rune('a' + i%26))
+			}
+			form += "(" + strings.Join(names, ", ") + ")"
+		}
+		c.errorfWithSuggestion(p.Token(), ErrInvalidPattern, "Write the pattern as "+form,
+			"%s holds %s, the pattern has %d", describeVariant(decl, v), values(len(fields)), len(p.Args))
+		return fail()
+	}
+
+	covers = true
+	for i, arg := range p.Args {
+		switch a := arg.(type) {
+		case *ast.BindingPattern:
+			if !a.Ignored() {
+				c.bindings[a] = fields[i]
+			}
+		case *ast.VariantPattern:
+			c.checkVariantPattern(a, fields[i])
+			covers = false
+		case ast.Expr:
+			literal := c.checkExpr(a)
+			if literal != nil && fields[i] != nil && !isUnknown(fields[i]) && !c.comparable(fields[i], literal) {
+				c.errorf(a.Token(), ErrInvalidPattern, "a value of type %s is never equal to a %s", fields[i], literal)
+			}
+			covers = false
+		}
+	}
+	return v.Name, covers
+}
+
+func withoutNullOrNil(t Type) Type {
+	if t == nil {
+		return nil
+	}
+	return withoutNull(t)
+}
+
+// bindUnknown gives every name of a broken pattern an unknown type, so
+// that the body of the case does not add errors of its own.
+func (c *Checker) bindUnknown(p *ast.VariantPattern) {
+	for _, arg := range p.Args {
+		switch a := arg.(type) {
+		case *ast.BindingPattern:
+			c.bindings[a] = Unknown
+		case *ast.VariantPattern:
+			c.bindUnknown(a)
+		}
+	}
+}
+
+// checkExhaustive verifies that a match on an enum value handles every
+// value it can have, and marks the match when it does. covered holds, for
+// each case in order, the variant it handles completely ("" when it does
+// not handle one completely); it is what the warning about a case that is
+// never reached goes by.
+func (c *Checker) checkExhaustive(s *ast.MatchStmt, subject Type, covered []string) {
+	decl, _ := c.enumOfType(subject)
+	if decl == nil {
+		return
+	}
+
+	handled := make(map[string]bool)
+	hasDefault := false
+	var rows [][]ast.Node
+	for i, matchCase := range s.Cases {
+		switch pattern := matchCase.Pattern.(type) {
+		case nil:
+			hasDefault = true
+			rows = append(rows, []ast.Node{nil})
+		case *ast.VariantPattern:
+			if name := c.patternVariant(pattern); name != "" && handled[name] {
+				c.errs.ReportWarningFromToken(ErrUnreachableCode,
+					fmt.Sprintf("this case is never reached: %s.%s is handled above", decl.Name, name),
+					pattern.Token(), c.sourceLines)
+			}
+			if covered[i] != "" {
+				handled[covered[i]] = true
+			}
+			rows = append(rows, []ast.Node{pattern})
+		case *ast.Type:
+			// `case Shape:` on a Shape takes every value
+			if target := c.resolveType(pattern); c.assignable(target, subject) {
+				rows = append(rows, []ast.Node{nil})
+			}
+		}
+	}
+	if hasDefault {
+		return
+	}
+
+	// Every variant has to be taken, with every value it can hold. A
+	// variant is reported once, by the first of its values left out.
+	var missing []string
+	for _, variant := range decl.Variants {
+		if witness, open := c.uncovered(c.specialize(rows, decl, variant), c.variantFields(decl, variant, typeArgsOf(subject))); open {
+			missing = append(missing, describeWitness(decl, variant, witness))
+		}
+	}
+	if len(missing) == 0 {
+		s.Exhaustive = true
+		return
+	}
+	sort.Strings(missing)
+	c.errorfWithSuggestion(s.Token(), ErrNonExhaustiveMatch,
+		fmt.Sprintf("Add a case for each, or a 'default' case: case %s: { ... }", missing[0]),
+		"match on %s does not handle %s", decl.Name, strings.Join(missing, ", "))
+	// Reported once: what follows the match is checked as if it were complete
+	s.Exhaustive = true
+}
+
+func typeArgsOf(t Type) []Type {
+	if st, ok := t.(*StructType); ok {
+		return st.TypeArgs
+	}
+	return nil
+}
+
+// uncovered looks for values that no row of patterns matches. Each row has
+// one pattern per column; types gives the type of each column. A nil
+// pattern, like a name or `_`, matches anything.
+//
+// When something is left out it returns an example, one pattern per
+// column. The method is the usual one for pattern matching: look at the
+// first column, and for each form its values can take keep the rows that
+// accept that form, with the patterns for what is inside it put in front.
+func (c *Checker) uncovered(rows [][]ast.Node, types []Type) (witness []string, open bool) {
+	if len(types) == 0 {
+		// Nothing left to tell values apart: one row is enough
+		return nil, len(rows) == 0
+	}
+	first, rest := types[0], types[1:]
+
+	// Values are only told apart in this column if some row looks inside
+	// them. When every row takes whatever is there, the column says
+	// nothing, and going through the forms its values can take would never
+	// end for a type that holds itself (an Expr inside an Expr).
+	distinguishes := false
+	for _, row := range rows {
+		if !isWildcard(row[0]) {
+			distinguishes = true
+		}
+	}
+
+	// An enum: each of its variants, with what the variant holds
+	if decl, st := c.enumOfType(withoutNullOrNil(first)); distinguishes && decl != nil && !isOptional(first) {
+		for _, variant := range decl.Variants {
+			fields := c.variantFields(decl, variant, st.TypeArgs)
+			inner, open := c.uncovered(c.specialize(rows, decl, variant), append(append([]Type{}, fields...), rest...))
+			if open {
+				return append([]string{describeWitness(decl, variant, inner[:len(fields)])}, inner[len(fields):]...), true
+			}
+		}
+		return nil, false
+	}
+
+	// A Bool: true and false
+	if distinguishes && first != nil && first.Equals(Bool) {
+		for _, value := range []string{"true", "false"} {
+			var kept [][]ast.Node
+			for _, row := range rows {
+				if lit, ok := row[0].(*ast.Literal); ok {
+					if lit.Kind != "bool" || lit.Value != value {
+						continue
+					}
+				} else if !isWildcard(row[0]) {
+					continue
+				}
+				kept = append(kept, row[1:])
+			}
+			if inner, open := c.uncovered(kept, rest); open {
+				return append([]string{value}, inner...), true
+			}
+		}
+		return nil, false
+	}
+
+	// Anything else has too many values to list: only a row that takes
+	// them all counts
+	var kept [][]ast.Node
+	for _, row := range rows {
+		if isWildcard(row[0]) {
+			kept = append(kept, row[1:])
+		}
+	}
+	if inner, open := c.uncovered(kept, rest); open {
+		return append([]string{"_"}, inner...), true
+	}
+	return nil, false
+}
+
+// specialize keeps the rows whose first pattern accepts a given variant,
+// and replaces that pattern by the patterns for the variant's values.
+func (c *Checker) specialize(rows [][]ast.Node, decl *ast.EnumDecl, variant *ast.EnumVariant) [][]ast.Node {
+	var kept [][]ast.Node
+	for _, row := range rows {
+		inner := make([]ast.Node, len(variant.Values))
+		if pattern, ok := row[0].(*ast.VariantPattern); ok {
+			patternDecl, name := c.patternEnum(pattern)
+			if patternDecl != decl || name != variant.Name {
+				continue
+			}
+			// Without parentheses, or with the wrong number of patterns
+			// (reported elsewhere), it takes the variant whole
+			if pattern.HasArgs && len(pattern.Args) == len(variant.Values) {
+				copy(inner, pattern.Args)
+			}
+		} else if !isWildcard(row[0]) {
+			continue
+		}
+		kept = append(kept, append(inner, row[1:]...))
+	}
+	return kept
+}
+
+// patternEnum returns the enum and the variant a pattern names.
+func (c *Checker) patternEnum(p *ast.VariantPattern) (*ast.EnumDecl, string) {
+	member, ok := p.Target.(*ast.MemberExpr)
+	if !ok {
+		return nil, ""
+	}
+	decl, _ := c.enumOf(member.Expr)
+	return decl, member.Name
+}
+
+// isWildcard reports whether a pattern matches every value: no pattern at
+// all, a name, or `_`.
+func isWildcard(p ast.Node) bool {
+	if p == nil {
+		return true
+	}
+	_, isBinding := p.(*ast.BindingPattern)
+	return isBinding
+}
+
+func isOptional(t Type) bool {
+	u, ok := t.(*UnionType)
+	return ok && hasNull(u)
+}
+
+// describeWitness writes a value that a match leaves out, as a pattern:
+// Shape.Rect when nothing of the variant is handled, Report.Line(_,
+// Event.Closed) when only some of it is.
+func describeWitness(decl *ast.EnumDecl, variant *ast.EnumVariant, inner []string) string {
+	name := decl.Name + "." + variant.Name
+	whole := true
+	for _, part := range inner {
+		if part != "_" {
+			whole = false
+		}
+	}
+	if whole {
+		return name
+	}
+	return name + "(" + strings.Join(inner, ", ") + ")"
+}
+
+// patternVariant returns the name of the variant a pattern is about.
+func (c *Checker) patternVariant(p *ast.VariantPattern) string {
+	if member, ok := p.Target.(*ast.MemberExpr); ok {
+		return member.Name
+	}
+	return ""
+}
+
+// --- Enum values after desugaring ---
+
+func (c *Checker) checkVariantExpr(e *ast.VariantExpr) Type {
+	c.typesOf(e.Args)
+	decl := c.enums[e.Enum]
+	if decl == nil {
+		return Unknown
+	}
+	var typeArgs []Type
+	for _, arg := range e.TypeArgs {
+		typeArgs = append(typeArgs, c.resolveType(arg))
+	}
+	return enumType(decl, typeArgs)
+}
+
+func (c *Checker) checkVariantFieldExpr(e *ast.VariantFieldExpr) Type {
+	subject := c.checkExpr(e.Expr)
+	decl := c.enums[e.Enum]
+	if decl == nil {
+		return Unknown
+	}
+	variant := findVariant(decl, e.Variant)
+	if variant == nil || e.Index >= len(variant.Values) {
+		return Unknown
+	}
+
+	var typeArgs []Type
+	if subjectDecl, st := c.enumOfType(withoutNullOrNil(subject)); subjectDecl == decl {
+		typeArgs = st.TypeArgs
+	}
+	return c.variantFields(decl, variant, typeArgs)[e.Index]
+}
+
+// describeEnumCast is the runtime description of an enum type: the names
+// its values can carry, one per variant.
+func describeEnumCast(decl *ast.EnumDecl) []string {
+	names := make([]string, len(decl.Variants))
+	for i, v := range decl.Variants {
+		names[i] = decl.Name + "." + v.Name
+	}
+	return names
+}
+
+// --- Constants ---
+
+// constType returns the type of a top-level constant, checking its value
+// the first time it is asked for. Constants may refer to each other in any
+// order, so one is checked when it is first used, not when it is met.
+func (c *Checker) constType(d *ast.ConstDecl) Type {
+	if t, done := c.constTypes[d]; done {
+		return t
+	}
+	if c.constBusy[d] {
+		c.errorfWithSuggestion(d.Token(), ErrConstantCycle,
+			"A constant can use other constants, but not, through them, itself",
+			"constant '%s' is defined in terms of itself", d.Name)
+		c.constTypes[d] = Unknown
+		return Unknown
+	}
+	c.constBusy[d] = true
+
+	c.checkConstantExpr(d.Value)
+	var declared Type
+	if d.Type != nil {
+		declared = c.resolveType(d.Type)
+	}
+	value := c.checkExprAs(d.Value, declared)
+
+	result := value
+	if declared != nil {
+		if value != nil && !c.assignable(declared, value) {
+			c.errorf(d.Value.Token(), ErrTypeMismatch, "cannot use a value of type %s for constant '%s' of type %s", value, d.Name, declared)
+		}
+		result = declared
+	}
+	if result == nil {
+		result = Unknown
+	}
+
+	delete(c.constBusy, d)
+	// A cycle found on the way has already settled the type
+	if _, done := c.constTypes[d]; !done {
+		c.constTypes[d] = result
+	}
+	return c.constTypes[d]
+}
+
+// checkConstantExpr reports the part of a constant's value that cannot be
+// worked out when the program is compiled.
+func (c *Checker) checkConstantExpr(expr ast.Expr) {
+	switch e := expr.(type) {
+	case *ast.Literal:
+		return
+	case *ast.UnaryExpr:
+		c.checkConstantExpr(e.Expr)
+		return
+	case *ast.BinaryExpr:
+		if !ast.IsAssignment(e.Op) {
+			c.checkConstantExpr(e.Left)
+			c.checkConstantExpr(e.Right)
+			return
+		}
+	case *ast.Ident:
+		if sym := c.table.Defs[e]; sym != nil {
+			if _, isConst := sym.Decl.(*ast.ConstDecl); isConst {
+				return
+			}
+		} else {
+			return // Undefined: reported by name resolution
+		}
+	}
+	c.errorfWithSuggestion(expr.Token(), ErrNotConstant,
+		"Use literals, operators and other constants; for anything else, write a function that returns the value",
+		"the value of a constant has to be known when the program is compiled")
+}
+
+// values counts the values of a variant in words: "no values", "1 value".
+func values(n int) string {
+	switch n {
+	case 0:
+		return "no values"
+	case 1:
+		return "1 value"
+	}
+	return fmt.Sprintf("%d values", n)
+}
+
+// variantCallee returns `Enum.Variant` from an expression that is one, or
+// a call of one.
+func variantCallee(expr ast.Expr) ast.Expr {
+	if call, ok := expr.(*ast.CallExpr); ok {
+		return call.Func
+	}
+	return expr
+}
+
+func firstVariant(decl *ast.EnumDecl) string {
+	if len(decl.Variants) == 0 {
+		return "Variant"
+	}
+	return decl.Variants[0].Name
+}

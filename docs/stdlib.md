@@ -89,7 +89,7 @@ The four fail if the number does not fit in an `Int`.
 
 | Function | Result |
 |----------|--------|
-| `pi()`, `e()` | The constants. They are functions: the language has no global constants yet |
+| `pi`, `e` | The constants |
 | `fabs(x)`, `fmin(a, b)`, `fmax(a, b)` | As `abs`, `min`, `max`, for `Float` |
 | `sqrt(x)` | Square root. Fails for a negative number |
 | `powf(base, exponent)` | `base` raised to `exponent`, which need not be whole: `powf(2.0, 0.5)` |

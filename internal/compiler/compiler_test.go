@@ -1253,7 +1253,6 @@ func TestCompileErrors(t *testing.T) {
 		{"main with parameters", "fn main(a: Int) -> Int { return a; }", "E6006", "must not take parameters"},
 		{"missing module", "import nowhere; fn main() -> Int { return 0; }", "E8001", "module 'nowhere' not found"},
 		{"uninferred generic", "fn none<T>() -> [T] { return []; }\nfn main() -> Int { return none().length; }", "E3001", "Cannot infer type arguments"},
-		{"enums", "enum Color { Red, Green }\nfn main() -> Int { return 0; }", "E7001", "enums are not supported yet"},
 		{"type pattern that can never match", "fn main() -> Int { match 1 { case String: { return 1; } default: { return 0; } } }", "E2021", "int can never be string"},
 		{"unsupported pattern", "fn main() -> Int { let limit = 1; match 1 { case limit: { return 1; } default: { return 0; } } }", "E7001", "this kind of match pattern is not supported yet"},
 	}

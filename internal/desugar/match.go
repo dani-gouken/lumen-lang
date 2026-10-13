@@ -102,7 +102,11 @@ func (d *Desugarer) desugarMatchStmt(match *ast.MatchStmt) ast.Stmt {
 	var ifChain ast.Stmt
 	for i := len(match.Cases) - 1; i >= 0; i-- {
 		caseStmt := match.Cases[i]
-		ifChain = d.buildMatchCase(tmpVarExpr, caseStmt, ifChain, pos)
+		// When the cases cover every variant of an enum, the last one needs
+		// no test: nothing else is left. Written as the final `else`, it
+		// also shows the stages below that one of the cases always runs.
+		last := i == len(match.Cases)-1 && match.Exhaustive
+		ifChain = d.buildMatchCase(tmpVarExpr, caseStmt, ifChain, pos, last)
 	}
 
 	if needsTemp {
@@ -117,7 +121,7 @@ func (d *Desugarer) desugarMatchStmt(match *ast.MatchStmt) ast.Stmt {
 }
 
 // buildMatchCase builds a single case in the if-else chain
-func (d *Desugarer) buildMatchCase(matchedExpr ast.Expr, caseStmt *ast.MatchCase, elseStmt ast.Stmt, pos token.Position) ast.Stmt {
+func (d *Desugarer) buildMatchCase(matchedExpr ast.Expr, caseStmt *ast.MatchCase, elseStmt ast.Stmt, pos token.Position, unconditional bool) ast.Stmt {
 	// Desugar the case body
 	var caseBody *ast.BlockStmt
 	switch body := caseStmt.Body.(type) {
@@ -140,6 +144,16 @@ func (d *Desugarer) buildMatchCase(matchedExpr ast.Expr, caseStmt *ast.MatchCase
 	var condition ast.Expr
 
 	switch pattern := caseStmt.Pattern.(type) {
+	case *ast.VariantPattern:
+		// A variant of an enum: test for it, then name its values at the
+		// start of the case
+		tests, names := d.lowerPattern(matchedExpr, pattern, pos)
+		condition = d.allOf(tests, pos)
+		caseBody = d.wrapInBlock(append(names, caseBody.Stmts...), caseBody.Position())
+		if unconditional {
+			return caseBody
+		}
+
 	case *ast.Type:
 		// Type matching: __is_type(matched_expr, Type)
 		condition = d.createTypeCheckCall(matchedExpr, pattern, pos)

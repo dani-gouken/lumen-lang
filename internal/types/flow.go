@@ -516,7 +516,9 @@ func alwaysReturns(stmt ast.Stmt) bool {
 				return false
 			}
 		}
-		return hasDefault
+		// A match on an enum that handles every variant runs one of its
+		// cases as surely as one with a default
+		return hasDefault || s.Exhaustive
 	}
 	return false
 }

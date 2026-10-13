@@ -97,9 +97,9 @@ pub fn isOdd(n: Int) -> Bool { return n % 2 != 0; }
 
 // --- Numbers with a fraction ---
 
-pub fn pi() -> Float { return 3.141592653589793; }
+pub const pi = 3.141592653589793;
 
-pub fn e() -> Float { return 2.718281828459045; }
+pub const e = 2.718281828459045;
 
 pub fn fabs(x: Float) -> Float {
     if x < 0.0 { return -x; }
@@ -128,14 +128,14 @@ pub extern fn exp(x: Float) -> Float;
 // The natural logarithm. Fails for zero and negative numbers.
 pub extern fn log(x: Float) -> Float;
 
-// Angles are in radians: a full turn is 2 * pi().
+// Angles are in radians: a full turn is 2.0 * pi.
 pub extern fn sin(x: Float) -> Float;
 pub extern fn cos(x: Float) -> Float;
 pub extern fn tan(x: Float) -> Float;
 
-// The angle of the point (x, y), from -pi() to pi().
+// The angle of the point (x, y), from -pi to pi.
 pub extern fn atan2(y: Float, x: Float) -> Float;
 
-pub fn radians(degrees: Float) -> Float { return degrees * pi() / 180.0; }
+pub fn radians(degrees: Float) -> Float { return degrees * pi / 180.0; }
 
-pub fn degrees(radians: Float) -> Float { return radians * 180.0 / pi(); }
+pub fn degrees(radians: Float) -> Float { return radians * 180.0 / pi; }

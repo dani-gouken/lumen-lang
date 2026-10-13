@@ -33,6 +33,12 @@ func (r *rewriter) rewrite() {
 			d.Module = r.m.name
 			r.fn(d)
 
+		case *ast.ConstDecl:
+			d.Name = r.m.qualify(d.Name)
+			d.Module = r.m.name
+			r.typ(d.Type)
+			d.Value = r.expr(d.Value)
+
 		case *ast.StructDecl:
 			d.Name = r.m.qualify(d.Name)
 			r.withTypeParams(d.TypeParams, func() {
@@ -305,13 +311,16 @@ func (r *rewriter) stmt(stmt ast.Stmt) {
 	case *ast.MatchStmt:
 		s.Cond = r.expr(s.Cond)
 		for _, c := range s.Cases {
-			c.Pattern = r.pattern(c.Pattern)
-			switch body := c.Body.(type) {
-			case *ast.BlockStmt:
-				r.block(body)
-			case ast.Expr:
-				c.Body = r.expr(body)
-			}
+			// The names a pattern binds are variables of its case
+			r.scoped(func() {
+				c.Pattern = r.pattern(c.Pattern)
+				switch body := c.Body.(type) {
+				case *ast.BlockStmt:
+					r.block(body)
+				case ast.Expr:
+					c.Body = r.expr(body)
+				}
+			})
 		}
 	case *ast.ExprStmt:
 		s.Expr = r.expr(s.Expr)
@@ -338,18 +347,34 @@ func (r *rewriter) pattern(pattern ast.Node) ast.Node {
 		}
 		return r.expr(p)
 
-	case *ast.MemberExpr:
-		if target, ok := r.moduleOf(p.Expr); ok {
-			tok := memberToken(p)
-			if it, _ := target.lookup(p.Name, make(map[*module]bool)); it != nil && it.isType {
-				if it = r.find(r.m, target, p.Name, tok); it == nil {
-					return p
+	case *ast.VariantPattern:
+		// `module.Type` reads like `Enum.Variant`; only here is it known
+		// which of the two it is
+		if member, ok := p.Target.(*ast.MemberExpr); ok && !p.HasArgs {
+			if target, ok := r.moduleOf(member.Expr); ok {
+				tok := memberToken(member)
+				if it, _ := target.lookup(member.Name, make(map[*module]bool)); it != nil && it.isType {
+					if it = r.find(r.m, target, member.Name, tok); it == nil {
+						return p
+					}
+					return &ast.Type{BaseNode: ast.BaseNode{Pos: tok.Pos, Tok: tok}, Kind: ast.TypeBasic, Name: it.qualified}
 				}
-				r.types(p.TypeArgs)
-				return &ast.Type{BaseNode: ast.BaseNode{Pos: tok.Pos, Tok: tok}, Kind: ast.TypeBasic, Name: it.qualified, Generics: p.TypeArgs}
 			}
 		}
-		return r.expr(p)
+		p.Target = r.expr(p.Target)
+		for i, arg := range p.Args {
+			p.Args[i] = r.pattern(arg)
+		}
+		return p
+
+	case *ast.BindingPattern:
+		if !p.Ignored() {
+			r.declare(p.Name)
+		}
+		return p
+
+	case *ast.Literal, *ast.UnaryExpr:
+		return p
 
 	case ast.Expr:
 		return r.expr(p)
@@ -382,6 +407,11 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 			return e
 		}
 		if it := r.value(e.Name); it != nil {
+			e.Name = it.qualified
+			return e
+		}
+		// An enum is named in expressions to reach its variants: Shape.Circle
+		if it := r.typeItem(e.Name); it != nil && it.kind == "enum" {
 			e.Name = it.qualified
 			return e
 		}
@@ -450,7 +480,7 @@ func (r *rewriter) moduleMember(e *ast.MemberExpr, target *module) ast.Expr {
 	if it == nil {
 		return e
 	}
-	if it.isType {
+	if it.isType && it.kind != "enum" {
 		r.report(tok, ErrNotAValue, "A struct is created with "+tok.Literal+" { field: value }",
 			"'%s' is a %s and cannot be used as a value", tok.Literal, it.kind)
 		return e

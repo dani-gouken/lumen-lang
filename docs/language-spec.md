@@ -41,6 +41,23 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
   - The loop's variables cannot be assigned (`E2026`). Assigning to the index would not move the loop, and assigning to the element would not change the collection; both look like they would. To change the collection write `items[i] = ...`; to control the position use `while`. Changing a value *through* the element is fine: `for p in points { p.x = 0; }`.
   - `break`/`continue` only in loops.
 
+### Enums
+Full description: [enums.md](enums.md).
+
+- `enum Shape { Circle(Float), Rect(Float, Float), Empty }`: a type whose values are one of the variants, each with the values it holds. Variants may hold any types, the enum itself included. `enum Option<T> { Some(T), None }` is generic.
+- A value is written `Shape.Circle(2.0)`, `Shape.Empty`. A variant with values, not called, is the function that makes one.
+- Type arguments of a generic enum come from what is written (`Option<Int>.None`), from the values (`Option.Some(1)`), then from the type expected where the value goes. If none determines one, it is an error (`E2030`).
+- A value has no fields; it is taken apart by `match`.
+- Two values are equal (`==`) when they are the same variant holding equal values.
+- Enums have methods and implement traits like structs: `impl Shape { ... }`, `impl Named for Shape { ... }`.
+
+### Constants
+- `const LIMIT = 100;` at the top level of a file, optionally with a type (`const RATIO: Float = 1.5;`) and `pub`.
+- The value is made of literals, operators and other constants; nothing else (`E2032`). It is worked out when the program is compiled.
+- Constants may be declared in any order and refer to each other, but not, through each other, to themselves (`E2031`).
+- A constant cannot be assigned (`E2022`). A local variable or a parameter of the same name hides it.
+- Only numbers, texts, booleans and `null` can be constants: there are no constant arrays or structs, and no variables outside functions.
+
 ### Behaviors (Traits)
 - Definition:
   ```
@@ -121,11 +138,12 @@ Full description: [modules.md](modules.md).
 - `for in` requires array or string.
 - No implicit `Int`↔`Float` coercion.
 - **Optionals.** `T?` is "a `T` or `null`". `null` only fits `T?` or `Any`. A `T` can be used where a `T?` is expected, not the other way round. An optional cannot be operated on, indexed, or have fields read or methods called directly (`E2017`); `value ?? fallback` yields a `T`. A test against `null` narrows a local variable, a parameter or a field path (`node.next`) to `T` where the test guarantees it: in the body of `if x != null`, after `if x == null { return; }` (or `break`/`continue`), in a `while x != null` body, and on the right of `x != null && ...` / `x == null || ...`. Narrowing ends at an assignment to the variable, and does not apply inside lambdas or to a variable that a lambda assigns (it could be set to `null` whenever the lambda runs). What is known about a field also ends at the next assignment to any field and at the next call of something that may assign one, since those could change it through another reference. Calls that cannot assign a field (builtins, functions that only read) do not affect it; a call of a function value or of a function stored in a field always does.
-- **Type tests.** `value is Type` is a `Bool` computed when the program runs; where it is true, the tested variable or field has that type: `if shape is Square { shape.side }`. A test that can never be true (`1 is String`) is a compile error (`E2021`). `match` accepts types as patterns (`case Int:`, `case [String]:`, `case Point:`, `case fn(Int) -> Int:`), with the same narrowing inside each case. Assigning a non-null value to an optional variable narrows it too.
+- **Type tests.** `value is Type` is a `Bool` computed when the program runs; where it is true, the tested variable or field has that type: `if shape is Square { shape.side }`. A test that can never be true (`1 is String`) is a compile error (`E2021`). `match` accepts types as patterns (`case Int:`, `case [String]:`, `case Point:`, `case fn(Int) -> Int:`), with the same narrowing inside each case.
+- **Patterns on enums.** `case Shape.Rect(w, h):` matches a variant and names the values it holds; the names are variables of that case. A position may also hold `_` (any value, unnamed), a literal (only that value) or the pattern of another variant, to any depth. Without parentheses (`case Shape.Rect:`) the variant is matched whatever it holds. A `match` on an enum value without a `default` must handle every value the enum can have, looking inside nested patterns (`E2028`); a case that can never run is a warning (`E2023`). Assigning a non-null value to an optional variable narrows it too.
 - **`Any`** accepts every value, and that is all it does: a value of type `Any` can be passed along, printed, converted with `toString` and compared with `==`. It cannot be used as a number, indexed, called, iterated or assigned to a more specific type without a cast.
 - **Casts.** `value as Type` treats a value as a more specific type: out of `Any`, out of an optional or union, or from a trait to a struct implementing it. The cast is verified when it runs and stops the program if the value is something else. A cast that can never succeed (`1 as String`) is a compile error (`E2021`); one to a wider type is free. `as` binds tighter than the binary operators: `v as Int + 1` is `(v as Int) + 1`. The check goes into the value: every element of an array, and the fields of a generic struct that depend on its type arguments. A function type is compared with the signature of the function: it must accept at least what the type passes and return what it promises.
 - **Constants.** A name declared with `const` cannot be assigned (`E2022`). The value it refers to can still be changed: `const xs = [1]; xs[0] = 2;` is fine.
-- **Returns.** A function with a return type other than `Void` must return a value on every path (`E2004`). `while true` without a `break` and a `match` with a `default` whose cases all return count as returning. Statements that can never run, after a `return`, `break` or `continue`, produce a warning (`E2023`).
+- **Returns.** A function with a return type other than `Void` must return a value on every path (`E2004`). `while true` without a `break`, and a `match` whose cases all return and which has a `default` or handles every variant of an enum, count as returning. Statements that can never run, after a `return`, `break` or `continue`, produce a warning (`E2023`).
 - **Arrays.** All elements share one type. A literal takes its element type from its first element, or from the place it is used when that place has a type: `let shapes: [Shape] = [rect, square];`. An empty literal needs such a place: `let xs: [Int] = [];` (a bare `let xs = [];` is `E2020`). `push(xs, v)` requires `v` to fit the element type.
 - **Structs.** A literal gives every field a value (`E2018`), and only declared fields can be read or written (`E2014`).
 - **Functions as values.** A function fits a function type if it accepts at least what that type passes and returns what it promises, so `toString` (`fn(Any) -> String`) can be used as a `fn(Int) -> String`.
@@ -158,7 +176,7 @@ Full description: [modules.md](modules.md).
 - `fn toString(v: Any) -> String;` the text `print` would write.
 - `fn push(array: Any, value: Any) -> Void;` appends to an array. Assigning to `items[i]` replaces an existing element; `push` is how an array grows.
 
-Values print as `42`, `2.5`, `true`, `null`, the text of a string, `[1, 2]` for arrays and `{x: 1, y: 2}` for structs.
+Values print as `42`, `2.5`, `true`, `null`, the text of a string, `[1, 2]` for arrays, `{x: 1, y: 2}` for structs and `Rect(2, 3)` or `Empty` for values of an enum.
 
 ## 11. Program Entry and Exit
 - Execution starts at `fn main()`, which takes no parameters (`E6006` otherwise).
@@ -171,7 +189,10 @@ Values print as `42`, `2.5`, `true`, `null`, the text of a string, `[1, 2]` for 
 Program      = { Import | [ "pub" ] Decl } EOF ;
 Import       = [ "pub" ] "import" ModulePath [ "." "{" Ident { "," Ident } "}" | "as" Ident ] ";" ;
 ModulePath   = Ident { "." Ident } ;
-Decl         = FnDecl | ExternDecl | StructDecl | TraitDecl | ImplDecl ;   (* "pub" not allowed before ImplDecl *)
+Decl         = FnDecl | ExternDecl | ConstDecl | StructDecl | EnumDecl | TraitDecl | ImplDecl ;   (* "pub" not allowed before ImplDecl *)
+ConstDecl    = "const" Ident [ ":" Type ] "=" Expr ";" ;      (* Expr of literals, operators and constants *)
+EnumDecl     = "enum" Ident [TypeParams] "{" [ Variant { "," Variant } [ "," ] ] "}" ;
+Variant      = Ident [ "(" Type { "," Type } ")" ] ;
 ExternDecl   = "extern" "fn" Ident "(" [ParamList] ")" [ "->" Type ] ";" ;
 TypeName     = Ident [ "." Ident ] ;                          (* a type of an imported module *)
 
@@ -205,7 +226,9 @@ ForStmt      = "for" [ Ident "," ] Ident "in" Expr Block ;
 ReturnStmt   = "return" [ Expr ] ";" ;
 MatchStmt    = "match" Expr "{" { MatchCase } "}" ;
 MatchCase    = ( "case" Pattern | "default" ) ":" ( Block | Expr ";" ) ;
-Pattern      = Literal | [ "-" ] Literal | Type ;
+Pattern      = Literal | [ "-" ] Literal | Type | VariantPat ;
+VariantPat   = Ident [TypeArgs] { "." Ident } [ "(" [ SubPattern { "," SubPattern } ] ")" ] ;
+SubPattern   = Ident | "_" | Literal | [ "-" ] Literal | VariantPat ;
 ExprStmt     = Expr ";" ;
 
 Expr         = OrExpr ;
@@ -268,7 +291,9 @@ known defects are inventoried in [missing.md](missing.md).
 | Variadic functions | Supported | Packed at direct calls |
 | `match` on literals, `default` | Supported | |
 | `match` on types (`case Int:`), `value is Type` | Supported | Narrows the tested variable or field |
-| Enums | Not yet | Parsed, rejected with `E7001` |
+| Enums: variants with values, generic enums, methods and traits on them | Supported | See [enums.md](enums.md) |
+| `match` on enum variants, with names, literals and nested patterns | Supported | Checked for completeness |
+| Constants at the top level | Supported | Numbers, texts and booleans, known when the program is compiled |
 | Modules: `import`, `pub`, several files | Supported | Packages are folders named in `lumen.json`; no installer |
 | Standard library (`std.math`, `std.strings`, `std.arrays`, `std.list`, `std.map`, `std.option`, `std.io`, `std.time`, `std.random`) | Supported | Built into the compiler; see [stdlib.md](stdlib.md) |
 | `extern fn` | Supported | Only for functions built into the runtime; no loading of shared libraries |

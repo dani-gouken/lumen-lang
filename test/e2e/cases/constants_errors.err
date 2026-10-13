@@ -1,0 +1,12 @@
+[ERROR] E2031: constant 'FIRST' is defined in terms of itself
+constants_errors.lum:3:7
+[ERROR] E2032: the value of a constant has to be known when the program is compiled
+constants_errors.lum:7:15
+constants_errors.lum:8:13
+Use literals, operators and other constants; for anything else, write a function that returns the value
+[ERROR] E2001: cannot use a value of type string for constant 'COUNT' of type int
+[ERROR] E2022: cannot assign to constant 'LIMIT'
+constants_errors.lum:15:5
+constants_errors.lum:16:5
+A constant keeps the value it is declared with; use a variable for something that changes
+[ERROR] E2001: cannot assign type int to string

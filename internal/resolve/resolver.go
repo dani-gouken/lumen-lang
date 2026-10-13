@@ -60,6 +60,9 @@ func (r *Resolver) resolveTopLevel(prog *ast.Program) {
 		switch d := decl.(type) {
 		case *ast.FnDecl:
 			r.declare(d.Name, SymbolFunc, d)
+		case *ast.ConstDecl:
+			// A constant is used like a variable that is never assigned
+			r.declare(d.Name, SymbolVar, d)
 		case *ast.StructDecl:
 			r.declare(d.Name, SymbolStruct, d)
 		case *ast.EnumDecl:
@@ -94,6 +97,11 @@ func (r *Resolver) visitDecl(decl ast.Decl) {
 	switch d := decl.(type) {
 	case *ast.FnDecl:
 		r.visitFnDecl(d)
+	case *ast.ConstDecl:
+		if d.Type != nil {
+			r.visitType(d.Type)
+		}
+		r.visitExpr(d.Value)
 	case *ast.StructDecl:
 		r.visitStructDecl(d)
 	case *ast.EnumDecl:
@@ -151,6 +159,13 @@ func (r *Resolver) visitStructDecl(d *ast.StructDecl) {
 }
 
 func (r *Resolver) visitEnumDecl(d *ast.EnumDecl) {
+	// Type parameters are visible in the types of the variants' values
+	r.pushScope(d)
+	defer r.popScope()
+	for _, tp := range d.TypeParams {
+		r.current.Insert(tp, &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: d})
+	}
+
 	for _, v := range d.Variants {
 		for _, t := range v.Values {
 			r.visitType(t)
@@ -313,6 +328,18 @@ func (r *Resolver) visitMatchCase(c *ast.MatchCase) {
 // - Struct patterns (e.g., Point { x, y } - not fully implemented)
 func (r *Resolver) visitPattern(pattern ast.Node) {
 	switch p := pattern.(type) {
+	case *ast.VariantPattern:
+		// `Shape.Rect(w, h)`: Shape is looked up, w and h are new variables
+		r.visitExpr(p.Target)
+		for _, arg := range p.Args {
+			r.visitPattern(arg)
+		}
+
+	case *ast.BindingPattern:
+		if !p.Ignored() {
+			r.declare(p.Name, SymbolVar, p)
+		}
+
 	case *ast.Ident:
 		// Special case: underscore is a wildcard, not a binding
 		if p.Name == "_" {
@@ -391,6 +418,17 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 	case *ast.TypeTestExpr:
 		r.visitExpr(e.Expr)
 		r.visitType(e.Type)
+	case *ast.VariantExpr:
+		for _, t := range e.TypeArgs {
+			r.visitType(t)
+		}
+		for _, arg := range e.Args {
+			r.visitExpr(arg)
+		}
+	case *ast.VariantTestExpr:
+		r.visitExpr(e.Expr)
+	case *ast.VariantFieldExpr:
+		r.visitExpr(e.Expr)
 	case *ast.Ident:
 		r.resolveIdent(e)
 	case *ast.Literal:

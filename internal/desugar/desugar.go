@@ -64,6 +64,11 @@ func (d *Desugarer) Desugar() (*ast.Program, *DesugarInfo) {
 	newDecls := make([]ast.Decl, 0, len(d.prog.Decls))
 
 	for _, decl := range d.prog.Decls {
+		// A constant is replaced by its value wherever it is used; nothing
+		// of it is left to compile
+		if _, isConst := decl.(*ast.ConstDecl); isConst {
+			continue
+		}
 		newDecl := d.desugarDecl(decl)
 		newDecls = append(newDecls, newDecl)
 	}
@@ -263,8 +268,14 @@ func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
 	case *ast.UnaryExpr:
 		return d.desugarUnaryExpr(expr)
 	case *ast.CallExpr:
+		if decl, variant := d.variantOf(expr.Func); decl != nil {
+			return d.lowerVariantCall(expr, decl, variant)
+		}
 		return d.desugarCallExpr(expr)
 	case *ast.MemberExpr:
+		if decl, variant := d.variantOf(expr); decl != nil {
+			return d.lowerVariantRef(expr, decl, variant)
+		}
 		return d.desugarMemberExpr(expr)
 	case *ast.IndexExpr:
 		return d.desugarIndexExpr(expr)
@@ -278,7 +289,23 @@ func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
 		return &ast.CastExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Type: expr.Type}
 	case *ast.TypeTestExpr:
 		return &ast.TypeTestExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Type: expr.Type}
-	case *ast.Literal, *ast.Ident:
+	case *ast.Ident:
+		if decl := d.constOf(expr); decl != nil {
+			return d.inlineConstant(decl.Value, expr.BaseNode, 0)
+		}
+		return expr
+	case *ast.VariantExpr:
+		// Already lowered; its arguments may still need it
+		args := make([]ast.Expr, len(expr.Args))
+		for i, arg := range expr.Args {
+			args[i] = d.desugarExpr(arg)
+		}
+		return &ast.VariantExpr{BaseNode: expr.BaseNode, Enum: expr.Enum, Variant: expr.Variant, TypeArgs: expr.TypeArgs, Args: args}
+	case *ast.VariantTestExpr:
+		return &ast.VariantTestExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Enum: expr.Enum, Variant: expr.Variant}
+	case *ast.VariantFieldExpr:
+		return &ast.VariantFieldExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Enum: expr.Enum, Variant: expr.Variant, Index: expr.Index}
+	case *ast.Literal:
 		return expr // No desugaring needed
 	default:
 		return expr

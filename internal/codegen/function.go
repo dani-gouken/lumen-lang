@@ -443,6 +443,13 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 			f.emit(vm.OpNEWOBJ, f.dest(instr), f.g.stringConstant(name, f.pos), 1)
 		}
 
+	case ir.OpNewVariant:
+		// A value of an enum: the object carries the variant's name, and a
+		// mark that it is compared and printed by what it holds
+		if name, ok := f.nameOperand(instr, 0); ok {
+			f.emit(vm.OpNEWOBJ, f.dest(instr), f.g.stringConstant(name, f.pos), vm.ObjectIsVariant)
+		}
+
 	case ir.OpGetField:
 		if name, ok := f.nameOperand(instr, 1); ok {
 			f.emit(vm.OpGETFIELD, f.dest(instr), f.reg(instr.Operands[0]), f.g.stringConstant(name, f.pos))

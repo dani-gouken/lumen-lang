@@ -245,6 +245,44 @@ and becomes the final `else`. A name that is not a type (`case limit:`) and
 destructuring patterns are rejected by the compiler driver with `E7001`
 (see [pipeline.md](pipeline.md)).
 
+#### Patterns on enum variants
+
+A case on a variant of an enum ([enums.md](../enums.md)) becomes a test and, at the start of the case, a `let` for each name the pattern binds:
+
+```lumen
+match shape {
+    case Shape.Rect(w, 0.0): { flat(w); }
+    case Shape.Circle(r): { round(r); }
+    case Shape.Empty: { }
+}
+```
+```lumen
+if (shape is Shape.Rect) && (shape.Rect#1 == 0.0) {
+    let w = shape.Rect#0;
+    flat(w);
+} else if (shape is Shape.Circle) {
+    let r = shape.Circle#0;
+    round(r);
+} else {
+}
+```
+
+`shape is Shape.Rect` and `shape.Rect#1` are the AST nodes `VariantTestExpr` and `VariantFieldExpr` (they have no syntax of their own; this is how they print). The rules:
+
+*   A value of a variant is only read after the test that the value is that variant. The tests are joined with `&&`, in the order of the pattern, which IR generation evaluates left to right and stops at the first that fails.
+*   A pattern inside a pattern is lowered the same way, with the outer value's field as what it tests: `Expr.Neg(Expr.Num(n))` gives `e is Expr.Neg`, `e.Neg#0 is Expr.Num`, then `let n = e.Neg#0.Num#0;`.
+*   `_` produces nothing.
+*   When the type checker marked the match as handling every value (`MatchStmt.Exhaustive`), the last case needs no test and becomes the final `else`. That is one test fewer, and it makes plain to the stages below that one of the cases always runs.
+*   As for the other kinds of pattern, a matched value that is not a plain variable is put in a temporary first, so it is worked out once.
+
+#### Values of an enum
+
+`Shape.Circle(2.0)` is an ordinary call to the parser, which cannot know that `Shape` is an enum. Here it becomes a `VariantExpr` holding the enum, the variant, the values and, for a generic enum, the type arguments the checker worked out, written down so that the type information computed again after this stage does not have to infer them a second time. `Shape.Circle` that is not called becomes a lambda that makes the value.
+
+#### Constants
+
+A use of a top-level constant is replaced by its value: the expression it is declared with, in which the constants it uses are replaced in turn, so that only literals and operators remain. The declarations are dropped. The new nodes are positioned at the use, so a failure while working the value out (a division by zero) is reported where the constant is used. There is no folding: `WIDTH * 3` stays a multiplication, done when the program runs.
+
 ### 3. Optional Chaining (Future)
 
 **Goal**: Transform optional chaining into explicit null checks.

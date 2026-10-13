@@ -61,8 +61,15 @@ type Checker struct {
 	// What `Self` stands for: the struct inside an impl, nil elsewhere
 	selfType Type
 
+	// Types of the names bound by match patterns, and of the top-level
+	// constants checked so far (see enums.go)
+	bindings   map[*ast.BindingPattern]Type
+	constTypes map[*ast.ConstDecl]Type
+	constBusy  map[*ast.ConstDecl]bool
+
 	// Declarations indexed by name, and which structs implement which traits
 	structs  map[string]*ast.StructDecl
+	enums    map[string]*ast.EnumDecl
 	traits   map[string]*ast.TraitDecl
 	methods  map[string]map[string]*ast.FnDecl // struct -> method -> declaration
 	impls    map[*ast.FnDecl]*ast.ImplDecl     // method -> the impl block it is in
@@ -95,6 +102,10 @@ func NewChecker(prog *ast.Program, table *resolve.Table, errs *errors.Handler) *
 		sourceLines:   make(map[int]string),
 		typeParams:    make(map[string]Type),
 		structs:       make(map[string]*ast.StructDecl),
+		enums:         make(map[string]*ast.EnumDecl),
+		bindings:      make(map[*ast.BindingPattern]Type),
+		constTypes:    make(map[*ast.ConstDecl]Type),
+		constBusy:     make(map[*ast.ConstDecl]bool),
 		traits:        make(map[string]*ast.TraitDecl),
 		methods:       make(map[string]map[string]*ast.FnDecl),
 		impls:         make(map[*ast.FnDecl]*ast.ImplDecl),
@@ -143,6 +154,8 @@ func (c *Checker) checkDecl(decl ast.Decl) {
 		c.checkStructDecl(d)
 	case *ast.EnumDecl:
 		c.checkEnumDecl(d)
+	case *ast.ConstDecl:
+		c.constType(d)
 	case *ast.TraitDecl:
 		c.checkTraitDecl(d)
 	case *ast.ImplDecl:
@@ -195,18 +208,6 @@ func (c *Checker) checkStructDecl(d *ast.StructDecl) {
 	}
 }
 
-func (c *Checker) checkEnumDecl(d *ast.EnumDecl) {
-	// Check that all variant types are valid
-	for _, variant := range d.Variants {
-		for _, valType := range variant.Values {
-			if valType != nil {
-				c.resolveType(valType)
-				// The resolveType will report errors if the type is undefined
-			}
-		}
-	}
-}
-
 func (c *Checker) checkTraitDecl(d *ast.TraitDecl) {
 	// Check all trait methods
 	for _, method := range d.Methods {
@@ -255,7 +256,7 @@ func (c *Checker) implSelfType(d *ast.ImplDecl) Type {
 	for _, name := range d.TypeParams {
 		self.TypeArgs = append(self.TypeArgs, c.resolveType(&ast.Type{Kind: ast.TypeBasic, Name: name}))
 	}
-	if _, isStruct := c.structs[d.StructName]; !isStruct {
+	if _, isStruct := c.structs[d.StructName]; !isStruct && c.enums[d.StructName] == nil {
 		// impl for a builtin type
 		return c.resolveType(&ast.Type{Kind: ast.TypeBasic, Name: d.StructName})
 	}
@@ -325,6 +326,11 @@ func (c *Checker) checkNotConst(ident *ast.Ident, sym *resolve.Symbol) {
 	}
 
 	switch decl := sym.Decl.(type) {
+	case *ast.ConstDecl:
+		c.errorfWithSuggestion(ident.Token(), ErrAssignToConst,
+			"A constant keeps the value it is declared with; use a variable for something that changes",
+			"cannot assign to constant '%s'", ident.Name)
+
 	case *ast.LetStmt:
 		if decl.IsConst {
 			c.errorfWithSuggestion(ident.Token(), ErrAssignToConst,
@@ -693,11 +699,17 @@ func (c *Checker) checkMatchStmt(s *ast.MatchStmt) {
 	// after: only one case runs, so each body starts from what was known
 	// before the match, whatever the cases above it assign.
 	caseFacts := make([]facts, len(s.Cases))
+	covered := make([]string, len(s.Cases))
 	for i, matchCase := range s.Cases {
 		known := newFacts()
 		caseFacts[i] = known
 
 		switch pattern := matchCase.Pattern.(type) {
+		case *ast.VariantPattern:
+			// `case Shape.Rect(w, h):` names the values of the variant
+			if name, covers := c.checkVariantPattern(pattern, condType); covers {
+				covered[i] = name
+			}
 		case *ast.Type:
 			// `case Int:` asks what the value is; inside the case it is one
 			target := c.resolveType(pattern)
@@ -717,6 +729,8 @@ func (c *Checker) checkMatchStmt(s *ast.MatchStmt) {
 		}
 
 	}
+
+	c.checkExhaustive(s, withoutNullOrNil(condType), covered)
 
 	c.withBranches(len(s.Cases), func(i int) facts { return caseFacts[i] }, func(i int) {
 		// The body can be either a block or an expression
@@ -760,6 +774,13 @@ func (c *Checker) checkExpr(expr ast.Expr) Type {
 		t = c.checkCastExpr(e)
 	case *ast.TypeTestExpr:
 		t = c.checkTypeTest(e)
+	case *ast.VariantExpr:
+		t = c.checkVariantExpr(e)
+	case *ast.VariantTestExpr:
+		c.checkExpr(e.Expr)
+		t = Bool
+	case *ast.VariantFieldExpr:
+		t = c.checkVariantFieldExpr(e)
 	default:
 		t = Unknown
 	}
@@ -819,6 +840,12 @@ func (c *Checker) declaredIdentType(id *ast.Ident) Type {
 			}
 		case *ast.Param:
 			return c.resolveType(decl.Type)
+		case *ast.ConstDecl:
+			return c.constType(decl)
+		case *ast.BindingPattern:
+			if t, ok := c.bindings[decl]; ok && t != nil {
+				return t
+			}
 		case *ast.ForStmt:
 			// Loop variable: element type of the iterable
 			switch iter := c.info.Types[decl.Iterable].(type) {
@@ -840,6 +867,10 @@ func (c *Checker) declaredIdentType(id *ast.Ident) Type {
 		if fn, ok := sym.Decl.(*ast.FnDecl); ok {
 			return c.functionType(fn, id)
 		}
+	case resolve.SymbolEnum:
+		c.errorfWithSuggestion(id.Token(), ErrInvalidEnumUse,
+			fmt.Sprintf("Name one of its variants: %s.Variant", id.Name),
+			"'%s' is an enum, not a value", id.Name)
 	}
 	return Unknown
 }
@@ -874,7 +905,19 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 		return c.checkCompoundAssignment(e, base)
 	}
 
-	left := c.checkExpr(e.Left)
+	// In a comparison each side says what the other is expected to be, so
+	// that `option == Option.None` needs no type written on the variant
+	var left Type
+	equality := e.Op == "==" || e.Op == "!="
+	if equality && c.isVariantRef(variantCallee(e.Left)) && !c.isVariantRef(variantCallee(e.Right)) {
+		right := c.checkExpr(e.Right)
+		left = c.checkExprAs(e.Left, right)
+		if !c.comparable(left, right) {
+			c.errorf(e.Token(), ErrInvalidOperation, "operator %s not defined for types %s and %s", e.Op, left, right)
+		}
+		return Bool
+	}
+	left = c.checkExpr(e.Left)
 	var right Type
 	switch e.Op {
 	case "&&":
@@ -883,7 +926,11 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 	case "||":
 		c.withNarrowing(c.factsFrom(e.Left, false), func() { right = c.checkExpr(e.Right) })
 	default:
-		right = c.checkExpr(e.Right)
+		if equality {
+			right = c.checkExprAs(e.Right, left)
+		} else {
+			right = c.checkExpr(e.Right)
+		}
 	}
 
 	if left == nil || right == nil {
@@ -1027,7 +1074,10 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 	c.expected = nil
 
 	var result Type
-	if member, ok := e.Func.(*ast.MemberExpr); ok {
+	if member, ok := e.Func.(*ast.MemberExpr); ok && c.isVariantRef(member) {
+		// Shape.Circle(2.0): a value of an enum, not a method call
+		return c.checkVariant(member, e.Args, true, expected)
+	} else if ok {
 		result = c.checkMethodCall(e, member, expected)
 	} else {
 		c.inferFunctionTypeArgs(e, expected)
@@ -1045,6 +1095,15 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 }
 
 func (c *Checker) checkStructInitExpr(e *ast.StructInitExpr) Type {
+	if decl := c.enums[e.Name]; decl != nil {
+		c.errorfWithSuggestion(e.Token(), ErrInvalidEnumUse,
+			fmt.Sprintf("A value of an enum is made by naming a variant: %s.%s", decl.Name, firstVariant(decl)),
+			"'%s' is an enum, not a struct", e.Name)
+		for _, value := range e.Fields {
+			c.checkExpr(value)
+		}
+		return Unknown
+	}
 	var typeArgs []Type
 	for _, arg := range e.TypeArgs {
 		typeArgs = append(typeArgs, c.resolveType(arg))
@@ -1101,6 +1160,11 @@ func (c *Checker) checkStructInitExpr(e *ast.StructInitExpr) Type {
 // checkMemberExpr types `expr.name` where it is not being called: the
 // length of an array or string, or a struct field.
 func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
+	if c.isVariantRef(e) {
+		expected := c.expected
+		c.expected = nil
+		return c.checkVariant(e, nil, false, expected)
+	}
 	recv := c.checkExpr(e.Expr)
 
 	// A field tested against null is known to hold a value
@@ -1128,6 +1192,12 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 		}
 
 	case *StructType:
+		if decl := c.enums[t.Name]; decl != nil {
+			c.errorfWithSuggestion(e.Token(), ErrUnknownField,
+				fmt.Sprintf("Take the value apart with a match: match value { case %s.%s(...): { ... } }", decl.Name, firstVariant(decl)),
+				"a value of enum %s has no fields", t)
+			return Unknown
+		}
 		if c.structs[t.Name] == nil {
 			return Unknown
 		}

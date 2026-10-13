@@ -16,6 +16,8 @@ func (c *Checker) collectDecls() {
 		switch d := decl.(type) {
 		case *ast.StructDecl:
 			c.structs[d.Name] = d
+		case *ast.EnumDecl:
+			c.enums[d.Name] = d
 		case *ast.TraitDecl:
 			c.traits[d.Name] = d
 		}
@@ -380,7 +382,7 @@ func (c *Checker) checkArgs(e *ast.CallExpr, ft *FunctionType) Type {
 // `let names: [String] = [];` have the declared type. A call of a generic
 // function takes from it the type arguments it could not infer otherwise.
 func (c *Checker) checkExprAs(expr ast.Expr, expected Type) Type {
-	if _, isCall := expr.(*ast.CallExpr); isCall {
+	if _, isCall := expr.(*ast.CallExpr); isCall || c.isVariantRef(expr) {
 		// A generic call may take the type arguments its own arguments
 		// leave open from here: let xs: [Int] = none();
 		c.expected = expected
@@ -630,10 +632,19 @@ func (c *Checker) describeCast(target Type, visiting map[string]bool) (string, b
 		return c.describeFunctionCast(t, visiting)
 
 	case *StructType:
+		if decl := c.enums[t.Name]; decl != nil {
+			return "{" + strings.Join(describeEnumCast(decl), "|") + "}", true
+		}
 		return c.describeStructCast(t, visiting)
 
 	case *BehaviorType:
 		var names []string
+		for name, decl := range c.enums {
+			// A value of an enum carries the name of its variant
+			if c.registry.Implements(name, t.Name) {
+				names = append(names, describeEnumCast(decl)...)
+			}
+		}
 		for name := range c.structs {
 			if c.registry.Implements(name, t.Name) {
 				names = append(names, name)

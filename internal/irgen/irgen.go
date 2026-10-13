@@ -129,6 +129,9 @@ func (g *IRGenerator) collectDecls() {
 			g.funcs[d.Name] = d
 		case *ast.StructDecl:
 			g.structNames[d.Name] = true
+		case *ast.EnumDecl:
+			// An enum has methods like a struct; its values name it too
+			g.structNames[d.Name] = true
 		case *ast.ImplDecl:
 			for _, m := range d.Methods {
 				if m.Body == nil {

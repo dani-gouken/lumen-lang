@@ -10,11 +10,11 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | ranges, null operators |
+| Everyday syntax | ranges, null operators, short lambdas, string interpolation |
 | Correctness | unused variables |
-| Types | inference from the expected type, richer `match` patterns, array literals of mixed structs |
+| Types | conditions and alternatives in `match`, array literals of mixed structs |
 | Runtime | register allocation per call, method dispatch cost |
-| Program structure | native code from outside (shared libraries), a way to install packages, enums, global constants |
+| Program structure | native code from outside (shared libraries), a way to install packages, variables outside functions |
 
 ---
 
@@ -54,23 +54,35 @@ Adding a function written in Lumen means editing a file in `internal/stdlib/lib/
 | Dead code removal | Every imported module ends up in the bytecode whole, used or not |
 | Separate compilation | All modules are parsed and compiled on every run |
 
-### Enums — L
+### More from `match` — S to M each
 
-**Today**: `enum` parses and is rejected with `E7001`.
+Patterns on literals, on types and on the variants of an enum (with names, literals and nested patterns) work, and a match on an enum is checked for completeness ([enums.md](enums.md)). Not there:
 
-**Notes**: Needs a runtime representation for variants, construction syntax, and pattern matching with destructuring (`case Some(x):`).
+| Missing | Today |
+|---------|-------|
+| A condition on a case: `case Shape.Circle(r) if r > 10.0:` | Use an `if` inside the case |
+| Several patterns for one case: `case Light.Red \| Light.Amber:` | Repeat the case |
+| Ranges: `case 1..9:` | Use `if` |
+| Patterns on structs, arrays and optionals | Bind the value to a name and test it |
+| `match` as an expression: `let x = match ... ;` | Assign in each case |
+| A bare name as a pattern at the top level (`case other:`) | `default` |
+| Completeness for anything but enums and `Bool` inside them | A `match` on an `Int` or on types needs a `default` to count as returning |
 
-### `match` beyond literals and types — M
+### More from enums — S to M each
 
-**Today**: literal patterns, type patterns (`case Int:`, `case Point:`, `case [String]:`) and `default` work. There are no ranges, no guards, no bindings (`case x:`), no destructuring, and `match` is a statement, not an expression. A name that is not a type is rejected with `E7001`.
+| Missing | Today |
+|---------|-------|
+| Named values in a variant: `Rect { width: Float, height: Float }` | By position only |
+| `value is Shape.Circle` | Use a `match` |
+| Variants as bare names (`Circle(2.0)`), or imported one by one | Always `Shape.Circle(2.0)` |
+| Equality by content for arrays and structs inside a value | They are only equal to themselves |
+| A check of what a generic enum holds when casting: `any as Option<Int>` | Only the variant is checked; a wrong payload type shows later |
 
-### Global constants and variables — M
+### Variables outside functions, and richer constants — M
 
-```lumen
-const LIMIT = 100;      // at the top level
-```
+**Today**: `const LIMIT = 100;` at the top level works, for numbers, texts and booleans made of literals, operators and other constants. There are no global variables, and no constant arrays, structs or enum values: a constant is replaced by its value at each use, and for those that would make a new object every time.
 
-**Today**: syntax error; only `fn`, `struct`, `enum`, `trait`, `impl` are allowed at the top level.
+**Notes**: Needs storage that lives for the whole run (global slots in the VM) and an order in which initializers run across modules.
 
 ### Nested and recursive local functions — S / M
 
@@ -201,9 +213,9 @@ Function objects are reused, so calling a function by name allocates nothing for
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
 1.  **Null operators**: `x!`, `a?.b`, and rejecting a value known to be null.
-2.  **Everyday syntax**: ranges, global constants (`math.pi` instead of `math.pi()`).
+2.  **Everyday syntax**: short lambdas (`n => n * 2`), string interpolation, ranges.
 3.  **`for` over a struct**: an iteration trait, so that a `List` or a `Map` can be looped over directly.
 4.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
-5.  **Types**: `match` as an expression with bindings and guards, then enums with pattern matching.
+5.  **`match`**: conditions on cases, several patterns per case, `match` as an expression.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

@@ -15,8 +15,6 @@ func checkSupported(prog *ast.Program, errs *errors.Handler, lines map[int]strin
 
 	for _, decl := range prog.Decls {
 		switch d := decl.(type) {
-		case *ast.EnumDecl:
-			unsupported(d, "enums are", "Use Int constants or a struct instead")
 		case *ast.FnDecl:
 			checkBlockSupported(d.Body, unsupported)
 		case *ast.ImplDecl:
@@ -52,10 +50,10 @@ func checkStmtSupported(stmt ast.Stmt, unsupported func(ast.Node, string, string
 	case *ast.MatchStmt:
 		for _, c := range s.Cases {
 			switch c.Pattern.(type) {
-			case nil, *ast.Literal, *ast.UnaryExpr, *ast.Type:
-				// Value patterns, type patterns and `default`
+			case nil, *ast.Literal, *ast.UnaryExpr, *ast.Type, *ast.VariantPattern:
+				// Value patterns, type patterns, enum variants and `default`
 			default:
-				unsupported(c, "this kind of match pattern is", "Match on literal values or on types")
+				unsupported(c, "this kind of match pattern is", "Match on literal values, on types or on the variants of an enum")
 			}
 			if body, ok := c.Body.(*ast.BlockStmt); ok {
 				checkBlockSupported(body, unsupported)

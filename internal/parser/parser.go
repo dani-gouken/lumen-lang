@@ -229,6 +229,8 @@ func (p *Parser) markPub(decl ast.Decl, pubTok token.Token) {
 		d.Pub = true
 	case *ast.TraitDecl:
 		d.Pub = true
+	case *ast.ConstDecl:
+		d.Pub = true
 	case *ast.ImplDecl:
 		p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
 			"'pub' cannot be applied to an impl block",
@@ -241,6 +243,12 @@ func (p *Parser) synchronize() {
 		switch p.cur().Type {
 		case token.EOF, token.STRUCT, token.ENUM, token.TRAIT, token.IMPL, token.IMPORT, token.PUB, token.EXTERN:
 			return
+		case token.CONST:
+			// A constant of a function body is indented; one that starts a
+			// line is a declaration
+			if p.cur().Pos.Col == 1 {
+				return
+			}
 		case token.FN:
 			// `fn name` starts a declaration; `fn(` is a function type or
 			// a lambda inside the broken declaration
@@ -301,6 +309,8 @@ func (p *Parser) parseImport() *ast.ImportDecl {
 
 func (p *Parser) parseDecl() ast.Decl {
 	switch p.cur().Type {
+	case token.CONST:
+		return p.parseConstDecl()
 	case token.EXTERN:
 		return p.parseExternDecl()
 	case token.FN:
@@ -314,8 +324,31 @@ func (p *Parser) parseDecl() ast.Decl {
 	case token.IMPL:
 		return p.parseImplDecl()
 	}
-	p.fail("expected declaration (fn, struct, enum, trait, impl, import), found %s", describe(p.cur()))
+	if p.at(token.LET) {
+		p.failWith(ErrUnexpectedToken, "Outside a function only constants can be declared: const name = value;",
+			"expected declaration, found 'let'")
+	}
+	p.fail("expected declaration (fn, struct, enum, trait, impl, const, import), found %s", describe(p.cur()))
 	return nil
+}
+
+// parseConstDecl parses a constant at the top level: `const NAME = value;`
+// with an optional type after the name.
+func (p *Parser) parseConstDecl() *ast.ConstDecl {
+	p.expect(token.CONST, "'const'")
+	nameTok := p.expect(token.IDENT, "constant name")
+	decl := &ast.ConstDecl{BaseNode: base(nameTok), Name: nameTok.Literal}
+	if p.accept(token.COLON) {
+		decl.Type = p.parseType()
+	}
+	if !p.at(token.ASSIGN) {
+		p.failWith(ErrUnexpectedToken, "A constant needs a value: const "+decl.Name+" = 1;",
+			"expected '=', found %s", describe(p.cur()))
+	}
+	p.next()
+	decl.Value = p.parseExpr()
+	p.expectSemicolon()
+	return decl
 }
 
 // parseExternDecl parses `extern fn name(params) -> Type;`: a function the
@@ -427,7 +460,7 @@ func (p *Parser) parseEnumDecl() *ast.EnumDecl {
 
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
-		nameTok := p.expect(token.IDENT, "variant name")
+		nameTok := p.expectMemberName("variant name")
 		variant := &ast.EnumVariant{BaseNode: base(nameTok), Name: nameTok.Literal}
 		if p.accept(token.LPAREN) {
 			for !p.at(token.RPAREN) {
@@ -514,6 +547,17 @@ func (p *Parser) expectImplTypeArgs(decl *ast.ImplDecl) {
 			fmt.Sprintf("type arguments of '%s' must repeat the parameters declared after 'impl'", decl.StructName),
 			correct, start, p.sourceLines)
 	}
+}
+
+// expectMemberName reads a name that follows a dot, or names a variant of
+// an enum. The names of the builtin types are allowed there, where they
+// cannot be taken for a type: a variant may be called Bool or String, as
+// in `Json.Bool(true)`.
+func (p *Parser) expectMemberName(what string) token.Token {
+	if isBuiltinTypeToken(p.cur().Type) {
+		return p.next()
+	}
+	return p.expect(token.IDENT, what)
 }
 
 func (p *Parser) expectTypeName(what string) string {
@@ -799,7 +843,7 @@ func (p *Parser) parseMatchStmt() *ast.MatchStmt {
 			if typ := p.tryTypePattern(); typ != nil {
 				matchCase.Pattern = typ
 			} else {
-				matchCase.Pattern = p.parseHeaderExpr()
+				matchCase.Pattern = p.variantPattern(p.parseHeaderExpr(), true)
 			}
 		}
 		p.expect(token.COLON, "':'")
@@ -975,7 +1019,7 @@ func (p *Parser) parsePostfix() ast.Expr {
 			expr = &ast.IndexExpr{BaseNode: base(tok), Expr: expr, Index: index}
 		case token.DOT:
 			p.next()
-			nameTok := p.expect(token.IDENT, "member name")
+			nameTok := p.expectMemberName("member name")
 			name := nameTok.Literal
 			// Like a generic function name, a method name may carry type
 			// arguments when a call follows: stack.map<String>(f)
@@ -1095,7 +1139,9 @@ func (p *Parser) tryTypeArgs() (args []*ast.Type) {
 	p.next()
 	list := p.parseTypeList(token.GT)
 	p.expect(token.GT, "'>'")
-	if len(list) == 0 || (!p.at(token.LPAREN) && !p.at(token.LBRACE)) {
+	// `(` and `{` follow a generic call and a generic struct literal, `.`
+	// the name of a generic enum: Option<Int>.None
+	if len(list) == 0 || (!p.at(token.LPAREN) && !p.at(token.LBRACE) && !p.at(token.DOT)) {
 		p.fail("not type arguments")
 	}
 	return list

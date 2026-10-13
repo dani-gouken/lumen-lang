@@ -507,6 +507,16 @@ func TestParseErrors(t *testing.T) {
 		{"alias after a list", "import a.b.{c} as d;", ErrUnexpectedToken, "'as' cannot follow a list", 1},
 		{"import without semicolon", "import a.b\nfn main() -> Int { return 0; }", ErrMissingSemicolon, "expected ';'", 1},
 		{"pub on an impl", "pub impl Point {\n}", ErrUnexpectedToken, "'pub' cannot be applied to an impl block", 1},
+		{"constant without a value", "const LIMIT;", ErrUnexpectedToken, "expected '=', found ';'", 1},
+		{"constant without a name", "const = 3;", ErrUnexpectedToken, "expected constant name", 1},
+		{"constant without semicolon", "const A = 1\nconst B = 2;", ErrMissingSemicolon, "expected ';'", 1},
+		{"variable at the top level", "let total = 0;", ErrUnexpectedToken, "expected declaration, found 'let'", 1},
+		{"pattern that is an operation", "fn f(s: S) -> Int {\n  match s {\n    case S.A(x + 1): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
+		{"pattern that is an array", "fn f(s: S) -> Int {\n  match s {\n    case S.A([1]): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
+		{"pattern that is a generic call", "fn f(s: S) -> Int {\n  match s {\n    case S.A(g<Int>()): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
+		{"enum without a name", "enum { A }", ErrUnexpectedToken, "expected enum name", 1},
+		{"variant that is a number", "enum E { 1 }", ErrUnexpectedToken, "expected variant name", 1},
+		{"unclosed variant", "enum E { A(Int }", ErrUnexpectedToken, "expected ')'", 1},
 		{"extern with a body", "extern fn f() -> Int { return 1; }", ErrUnexpectedToken, "an extern function has no body", 1},
 		{"extern with type parameters", "extern fn f<T>(v: T) -> T;", ErrUnexpectedToken, "an extern function cannot have type parameters", 1},
 		{"extern without fn", "extern struct P { x: Int; }", ErrUnexpectedToken, "expected 'fn' after 'extern'", 1},
@@ -822,5 +832,226 @@ func TestParseExtern(t *testing.T) {
 	}
 	if ordinary := prog.Decls[5].(*ast.FnDecl); ordinary.Extern || ordinary.Body == nil {
 		t.Error("expected an ordinary function after the extern ones")
+	}
+}
+
+func TestParseConstants(t *testing.T) {
+	prog := parseOK(t, `
+		const LIMIT = 100;
+		pub const NAME: String = "lumen";
+		const RATIO: Float = 1.5 * (2.0 + LIMIT);
+		const NEGATIVE = -LIMIT;
+
+		fn main() -> Int {
+			const local = 1;
+			return LIMIT + local;
+		}
+	`)
+
+	type want struct {
+		name, typ, value string
+		pub              bool
+	}
+	wants := []want{
+		{"LIMIT", "", "100", false},
+		{"NAME", "String", `"lumen"`, true},
+		{"RATIO", "Float", "(1.5 * (2.0 + LIMIT))", false},
+		{"NEGATIVE", "", "(-LIMIT)", false},
+	}
+	for i, w := range wants {
+		decl, ok := prog.Decls[i].(*ast.ConstDecl)
+		if !ok {
+			t.Fatalf("declaration %d: expected a constant, got %T", i, prog.Decls[i])
+		}
+		typ := ""
+		if decl.Type != nil {
+			typ = decl.Type.String()
+		}
+		if decl.Name != w.name || typ != w.typ || decl.Value.String() != w.value || decl.Pub != w.pub {
+			t.Errorf("constant %d: expected %+v, got %s (pub %v)", i, w, decl, decl.Pub)
+		}
+	}
+	// Positioned at its name, printed back as written
+	if limit := prog.Decls[0].(*ast.ConstDecl); limit.Token().Literal != "LIMIT" || limit.String() != "const LIMIT = 100;" {
+		t.Errorf("unexpected constant: %s at %v", limit, limit.Token())
+	}
+	// A constant inside a function is still a statement
+	main := prog.Decls[4].(*ast.FnDecl)
+	if local, ok := main.Body.Stmts[0].(*ast.LetStmt); !ok || !local.IsConst {
+		t.Errorf("expected a local constant, got %T", main.Body.Stmts[0])
+	}
+}
+
+func TestParseEnums(t *testing.T) {
+	prog := parseOK(t, `
+		enum Shape { Circle(Float), Rect(Float, Float), Empty }
+		pub enum Option<T> { Some(T), None, }
+		enum Json { Null, Bool(Bool), String(String), Int(Int), Arr([Json]), Fn(fn(Int) -> Json?) }
+		enum Empty {}
+	`)
+
+	shape := prog.Decls[0].(*ast.EnumDecl)
+	if shape.Name != "Shape" || len(shape.Variants) != 3 || shape.Pub {
+		t.Fatalf("unexpected enum: %s", shape)
+	}
+	variants := []string{"Circle(Float)", "Rect(Float, Float)", "Empty"}
+	for i, want := range variants {
+		if got := shape.Variants[i].String(); got != want {
+			t.Errorf("variant %d: expected %s, got %s", i, want, got)
+		}
+	}
+	if pos := shape.Variants[1].Position(); pos.Line != 2 {
+		t.Errorf("expected the variant to carry its position, got %v", pos)
+	}
+
+	option := prog.Decls[1].(*ast.EnumDecl)
+	if !option.Pub || len(option.TypeParams) != 1 || option.TypeParams[0] != "T" || len(option.Variants) != 2 {
+		t.Errorf("unexpected generic enum: %s", option)
+	}
+
+	// A variant may have the name of a builtin type; its values may be of any type
+	json := prog.Decls[2].(*ast.EnumDecl)
+	names := []string{"Null", "Bool", "String", "Int", "Arr", "Fn"}
+	for i, want := range names {
+		if json.Variants[i].Name != want {
+			t.Errorf("variant %d: expected %s, got %s", i, want, json.Variants[i].Name)
+		}
+	}
+	if got := json.Variants[5].Values[0].String(); got != "fn(Int) -> Json?" {
+		t.Errorf("unexpected type of a value: %s", got)
+	}
+	if empty := prog.Decls[3].(*ast.EnumDecl); len(empty.Variants) != 0 {
+		t.Errorf("expected an enum without variants, got %s", empty)
+	}
+}
+
+func TestParseVariantExpressions(t *testing.T) {
+	stmts := parseBody(t, `
+		let a = Shape.Circle(2.0);
+		let b = Shape.Empty;
+		let c = Option<Int>.None;
+		let d = Option<[String]>.Some([]);
+		let e = Json.Bool(true);
+		let f = geo.Shape.Rect(1.0, 2.0);
+		let g = a < b;
+		let h = Pair<Int, String>.Of(1, "x");
+	`)
+	value := func(i int) ast.Expr { return stmts[i].(*ast.LetStmt).Value }
+
+	// Until the compiler knows what Shape is, these are calls and member accesses
+	if call, ok := value(0).(*ast.CallExpr); !ok || call.Func.String() != "Shape.Circle" {
+		t.Errorf("expected a call of Shape.Circle, got %s", value(0))
+	}
+	if member, ok := value(1).(*ast.MemberExpr); !ok || member.Name != "Empty" {
+		t.Errorf("expected a member access, got %s", value(1))
+	}
+	// Type arguments before a dot belong to the name
+	none, ok := value(2).(*ast.MemberExpr)
+	if !ok || none.Name != "None" {
+		t.Fatalf("expected a member access, got %s", value(2))
+	}
+	if enum, ok := none.Expr.(*ast.Ident); !ok || enum.Name != "Option" || len(enum.TypeArgs) != 1 || enum.TypeArgs[0].String() != "Int" {
+		t.Errorf("expected Option<Int>, got %s", none.Expr)
+	}
+	if got := value(3).String(); got != "Option<[String]>.Some([])" {
+		t.Errorf("unexpected rendering: %s", got)
+	}
+	if got := value(4).String(); got != "Json.Bool(true)" {
+		t.Errorf("expected a variant named like a type to parse, got %s", got)
+	}
+	if got := value(5).String(); got != "geo.Shape.Rect(1.0, 2.0)" {
+		t.Errorf("unexpected rendering: %s", got)
+	}
+	// A comparison is still a comparison
+	if cmp, ok := value(6).(*ast.BinaryExpr); !ok || cmp.Op != "<" {
+		t.Errorf("expected a comparison, got %s", value(6))
+	}
+	if got := value(7).String(); got != `Pair<Int, String>.Of(1, "x")` {
+		t.Errorf("unexpected rendering: %s", got)
+	}
+}
+
+func TestParseVariantPatterns(t *testing.T) {
+	stmts := parseBody(t, `
+		match value {
+			case Shape.Empty: { }
+			case Shape.Circle(r): { }
+			case Shape.Rect(w, _): { }
+			case geo.Shape.Rect(1.5, -2): { }
+			case Expr.Add(Expr.Num(0), Expr.Neg(inner)): { }
+			case Json.Str("x"): { }
+			case Json.Bool(true): { }
+			case Option<Int>.Some(n): { }
+			case Shape.Circle(): { }
+			case 3: { }
+			case Point: { }
+			default: { }
+		}
+	`)
+	cases := stmts[0].(*ast.MatchStmt).Cases
+
+	rendered := []string{
+		"Shape.Empty", "Shape.Circle(r)", "Shape.Rect(w, _)", "geo.Shape.Rect(1.5, (-2))",
+		"Expr.Add(Expr.Num(0), Expr.Neg(inner))", `Json.Str("x")`, "Json.Bool(true)", "Option<Int>.Some(n)", "Shape.Circle()",
+	}
+	for i, want := range rendered {
+		pattern, ok := cases[i].Pattern.(*ast.VariantPattern)
+		if !ok {
+			t.Errorf("case %d: expected a variant pattern, got %T", i, cases[i].Pattern)
+			continue
+		}
+		if pattern.String() != want {
+			t.Errorf("case %d: expected %s, got %s", i, want, pattern)
+		}
+	}
+
+	// With and without parentheses are told apart
+	if empty := cases[0].Pattern.(*ast.VariantPattern); empty.HasArgs || len(empty.Args) != 0 {
+		t.Error("expected Shape.Empty to have no parentheses")
+	}
+	if circle := cases[8].Pattern.(*ast.VariantPattern); !circle.HasArgs || len(circle.Args) != 0 {
+		t.Error("expected Shape.Circle() to have empty parentheses")
+	}
+
+	// What each argument is
+	rect := cases[2].Pattern.(*ast.VariantPattern)
+	w, isBinding := rect.Args[0].(*ast.BindingPattern)
+	ignored, isIgnored := rect.Args[1].(*ast.BindingPattern)
+	if !isBinding || w.Name != "w" || w.Ignored() || !isIgnored || !ignored.Ignored() {
+		t.Errorf("expected a name and an ignored value, got %v", rect.Args)
+	}
+	literals := cases[3].Pattern.(*ast.VariantPattern)
+	if _, ok := literals.Args[0].(*ast.Literal); !ok {
+		t.Errorf("expected a literal, got %T", literals.Args[0])
+	}
+	if _, ok := literals.Args[1].(*ast.UnaryExpr); !ok {
+		t.Errorf("expected a negative literal, got %T", literals.Args[1])
+	}
+	nested := cases[4].Pattern.(*ast.VariantPattern)
+	inner, ok := nested.Args[1].(*ast.VariantPattern)
+	if !ok || len(inner.Args) != 1 {
+		t.Fatalf("expected a pattern inside the pattern, got %T", nested.Args[1])
+	}
+	if name, ok := inner.Args[0].(*ast.BindingPattern); !ok || name.Name != "inner" {
+		t.Errorf("expected a name in the inner pattern, got %v", inner.Args[0])
+	}
+
+	// A pattern spans its whole path, for diagnostics
+	if tok := cases[3].Pattern.(*ast.VariantPattern).Token(); tok.Literal != "geo.Shape.Rect" || tok.EndPos.Col-tok.Pos.Col != len("geo.Shape.Rect") {
+		t.Errorf("unexpected token of a pattern: %+v", tok)
+	}
+	if name := rect.Args[0].(*ast.BindingPattern); name.Position().Line != rect.Position().Line || name.Position().Col <= rect.Position().Col || name.Token().Literal != "w" {
+		t.Errorf("expected the name to carry its position, got %v", name.Token())
+	}
+
+	// The other kinds of pattern are untouched
+	if _, ok := cases[9].Pattern.(*ast.Literal); !ok {
+		t.Errorf("expected a literal pattern, got %T", cases[9].Pattern)
+	}
+	if _, ok := cases[10].Pattern.(*ast.Ident); !ok {
+		t.Errorf("expected a bare name to stay a name, got %T", cases[10].Pattern)
+	}
+	if cases[11].Pattern != nil {
+		t.Errorf("expected default to have no pattern")
 	}
 }

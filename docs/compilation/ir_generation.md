@@ -45,6 +45,7 @@ b2:
 | Logic and comparison | `NOT` `EQ` `NEQ` `LT` `LTE` `GT` `GTE` |
 | Control flow | `JMP block`, `BR cond, then, else`, `RET [value]`, `CALL fn, args...` |
 | Structs | `NEW_STRUCT name`, `GET_FIELD obj, name`, `SET_FIELD obj, name, value` |
+| Enums | `NEW_VARIANT "Enum.Variant"`, its values set with `SET_FIELD obj, "0", value`, ... |
 | Casts and type tests | no operation of their own: a call of the `__cast` / `__is` host function |
 | Arrays | `NEW_ARRAY capacity`, `GET_INDEX arr, i`, `SET_INDEX arr, i, value`, `LEN value`, `PUSH arr, value` |
 | Closures | `MAKE_CLOSURE fn, captures...`, `LOAD_UPVALUE i`, `STORE_UPVALUE i, value`, `CLOSE_UPVALUES regs...` |

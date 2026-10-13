@@ -190,7 +190,7 @@ func (l *loader) parse(name, file, src string) *module {
 			name:      declName,
 			qualified: m.qualify(declName),
 			kind:      kind,
-			isType:    kind != "function",
+			isType:    kind != "function" && kind != "constant",
 			pub:       pub,
 			module:    m,
 		}
@@ -199,6 +199,8 @@ func (l *loader) parse(name, file, src string) *module {
 		switch d := decl.(type) {
 		case *ast.FnDecl:
 			declare(m.values, d.Name, "function", d.Pub)
+		case *ast.ConstDecl:
+			declare(m.values, d.Name, "constant", d.Pub)
 		case *ast.StructDecl:
 			declare(m.types, d.Name, "struct", d.Pub)
 		case *ast.TraitDecl:
@@ -301,7 +303,15 @@ func declares(src, name string) bool {
 			if d.Name == name {
 				return true
 			}
+		case *ast.ConstDecl:
+			if d.Name == name {
+				return true
+			}
 		case *ast.StructDecl:
+			if d.Name == name {
+				return true
+			}
+		case *ast.EnumDecl:
 			if d.Name == name {
 				return true
 			}

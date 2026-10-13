@@ -183,6 +183,78 @@ Structs are references: `let q = p;` makes `q` and `p` the same value.
 
 Inside the header of `if`, `while`, `for` and `match`, wrap a struct literal in parentheses: `if (Point { x: 1, y: 2 }).area() > 0 { ... }`.
 
+### Enums
+
+An enum is a type whose values are one of several variants, each with the values it holds:
+
+```lumen
+enum Shape {
+    Circle(Float),
+    Rect(Float, Float),
+    Empty,
+}
+
+fn area(shape: Shape) -> Float {
+    match shape {
+        case Shape.Circle(r): { return 3.14 * r * r; }
+        case Shape.Rect(w, h): { return w * h; }
+        case Shape.Empty: { return 0.0; }
+    }
+}
+
+let shapes = [Shape.Circle(1.0), Shape.Rect(2.0, 3.0), Shape.Empty];
+for s in shapes { println(s, area(s)); }      // Circle(1) 3.14 ...
+```
+
+A `match` names what a variant holds (`r`, `w`, `h`) for the length of its case. It has to handle every variant, or have a `default`: leave `Shape.Empty` out and the program does not compile. That is what makes an enum safer than a number or a text standing for a kind: add a variant, and the compiler finds every place that has to deal with it.
+
+Patterns can look inside values that are enums themselves, and match literals:
+
+```lumen
+enum Expr { Num(Int), Add(Expr, Expr), Neg(Expr) }
+
+fn simplify(e: Expr) -> Expr {
+    match e {
+        case Expr.Add(Expr.Num(0), right): { return right; }    // 0 + x
+        case Expr.Neg(Expr.Neg(inner)): { return inner; }       // --x
+        default: { return e; }
+    }
+}
+```
+
+Enums can be generic, and have methods and traits like structs:
+
+```lumen
+enum Result<T, E> { Ok(T), Err(E) }
+
+fn divide(a: Int, b: Int) -> Result<Int, String> {
+    if b == 0 { return Result.Err("division by zero"); }
+    return Result.Ok(a / b);
+}
+
+match divide(10, 0) {
+    case Result.Ok(n): { println(n); }
+    case Result.Err(message): { println("failed:", message); }
+}
+```
+
+Values of an enum are equal when they are the same variant holding equal values. More in [enums.md](enums.md).
+
+### Constants
+
+A value with a name, declared outside any function:
+
+```lumen
+const WIDTH = 80;
+const HEIGHT = WIDTH / 4;
+const TITLE = "report";
+const RATIO: Float = 1.5;
+```
+
+The value is made of literals, operators and other constants, and is worked out when the program is compiled. It cannot be assigned. Order does not matter: a constant can use one declared further down.
+
+Constants hold numbers, texts and booleans. For anything else, an array or a struct, write a function that returns it.
+
 ### Generic structs
 
 ```lumen
@@ -424,8 +496,7 @@ The program stops and exits with code 1.
 
 These are rejected with a clear error rather than miscompiled:
 
-*   `enum`
-*   `match` on types (`case Int:`)
+*   variables outside functions (constants are allowed), `match` used as an expression
 
 Things to be aware of:
 

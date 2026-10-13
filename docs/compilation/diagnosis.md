@@ -111,6 +111,12 @@ that detects the problem.
 | `E2024` | Type arguments of a method call that cannot be inferred, are superfluous or of the wrong number |
 | `E2025` | Integer literal outside the 48-bit range of an `Int` |
 | `E2026` | Assignment to the index or the element variable of a `for` loop. The suggestion names what works instead |
+| `E2027` | Method that is not `pub`, called from another module |
+| `E2028` | `match` on an enum that leaves values out; the message names one as a pattern |
+| `E2029` | Pattern that cannot match: unknown variant, wrong number of values, variant of another enum, literal of the wrong type |
+| `E2030` | Enum used wrongly: unknown variant, wrong number of values, type argument nothing determines, the enum as a value |
+| `E2031` | Constant defined in terms of itself |
+| `E2032` | Value of a constant that is not made of literals, operators and constants |
 
 ### E3xxx — Monomorphization (`internal/monomorph`)
 
@@ -161,7 +167,7 @@ within them.
 
 | Code | Meaning |
 |------|---------|
-| `E7001` | Language feature that parses but cannot be compiled yet (enums, match patterns other than literals and types) |
+| `E7001` | Language feature that parses but cannot be compiled yet (match patterns other than literals, types and enum variants) |
 
 | `E7002` | `extern fn` naming a function the runtime does not provide |
 

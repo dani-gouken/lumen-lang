@@ -680,3 +680,216 @@ func TestExternFunctionsAreSetApart(t *testing.T) {
 		t.Errorf("expected the extern to be private, got %v", errs.Diagnostics)
 	}
 }
+
+func TestConstantsAcrossModules(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import config;
+			import config.{LIMIT, NAME};
+			import config as c;
+
+			const DOUBLE = LIMIT * 2 + config.STEP;
+
+			fn main() -> Int {
+				let a = LIMIT + config.LIMIT + c.LIMIT + DOUBLE;
+				let LIMIT = 5;
+				return a + LIMIT + NAME.length;
+			}
+			fn shadow(STEP: Int) -> Int { return STEP + config.STEP; }
+		`,
+		"config.lum": `
+			pub const LIMIT = 100;
+			pub const STEP = BASE + 1;
+			pub const NAME: String = "app";
+			const BASE = 1;
+			pub fn scaled(n: Int) -> Int { return n * STEP + BASE; }
+		`,
+	})
+
+	consts := make(map[string]*ast.ConstDecl)
+	for _, d := range prog.Decls {
+		if c, ok := d.(*ast.ConstDecl); ok {
+			consts[c.Name] = c
+		}
+	}
+	// A constant of a module carries the module's path; one of the entry
+	// file keeps its name
+	for _, name := range []string{"DOUBLE", "config.LIMIT", "config.STEP", "config.NAME", "config.BASE"} {
+		if consts[name] == nil {
+			t.Errorf("expected a constant named %s, got %v", name, consts)
+		}
+	}
+	if c := consts["config.STEP"]; c.Module != "config" || !c.Pub || c.Value.String() != "(config.BASE + 1)" {
+		t.Errorf("unexpected constant: %s (module %q, pub %v)", c, c.Module, c.Pub)
+	}
+	if got := consts["DOUBLE"].Value.String(); got != "((config.LIMIT * 2) + config.STEP)" {
+		t.Errorf("unexpected value of DOUBLE: %s", got)
+	}
+
+	// Every way of naming it leads to the same constant; a local hides it
+	// from its declaration on
+	want := "{ let a = (((config.LIMIT + config.LIMIT) + config.LIMIT) + DOUBLE); let LIMIT = 5; return ((a + LIMIT) + config.NAME.length); }"
+	if got := body(t, prog, "main"); got != want {
+		t.Errorf("unexpected body of main:\n  want %s\n   got %s", want, got)
+	}
+	if got := body(t, prog, "shadow"); got != "{ return (STEP + config.STEP); }" {
+		t.Errorf("expected the parameter to hide nothing but the bare name, got %s", got)
+	}
+	if got := body(t, prog, "config.scaled"); got != "{ return ((n * config.STEP) + config.BASE); }" {
+		t.Errorf("unexpected body of scaled: %s", got)
+	}
+
+	// Private unless pub, like everything else
+	for _, src := range []string{
+		"import config;\nfn main() -> Int { return config.BASE; }",
+		"import config.{BASE};\nfn main() -> Int { return BASE; }",
+	} {
+		_, errs, _ := load(files{"main.lum": src, "config.lum": "const BASE = 1;"})
+		if len(errs.Diagnostics) != 1 || errs.Diagnostics[0].Code != ErrPrivate || !strings.Contains(errs.Diagnostics[0].Message, "constant 'BASE' of module 'config' is private") {
+			t.Errorf("expected the constant to be private, got %v", errs.Diagnostics)
+		}
+	}
+}
+
+func TestEnumsAcrossModules(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import geo.shapes;
+			import geo.shapes.{Shape, Result};
+			import geo.shapes as g;
+
+			enum Local { One, Two(Shape) }
+
+			fn make() -> [Shape] {
+				return [Shape.Circle(1.0), shapes.Shape.Empty, g.Shape.Rect(1.0, 2.0)];
+			}
+			fn ok() -> Result<Shape, String> { return Result<Shape, String>.Ok(Shape.Empty); }
+			fn local() -> Local { return Local.Two(shapes.Shape.Empty); }
+			fn asFunction() -> fn(Float) -> Shape { return shapes.Shape.Circle; }
+
+			fn describe(value: Any, Shape: Int) -> Int {
+				match value {
+					case shapes.Shape.Circle(r): { return 1; }
+					case g.Shape.Rect(w, _): { return 2; }
+					case Local.Two(shapes.Shape.Empty): { return 3; }
+					case shapes.Shape: { return 4; }
+					case shapes.Point: { return 5; }
+					default: { return Shape; }
+				}
+			}
+			fn scoped(s: shapes.Shape, shapes: Int, r: Int) -> Int {
+				match s {
+					case Shape.Circle(r): { return 1; }
+					case Shape.Rect(shapes, g): { return 2; }
+					default: { return shapes + r; }
+				}
+			}
+		`,
+		"geo/shapes.lum": `
+			pub enum Shape { Circle(Float), Rect(Float, Float), Empty }
+			pub enum Result<T, E> { Ok(T), Err(E) }
+			pub struct Point { x: Int; }
+			enum Hidden { A }
+			pub fn empty() -> Shape { return Shape.Empty; }
+			pub fn isEmpty(s: Shape) -> Bool {
+				match s { case Shape.Empty: { return true; } default: { return false; } }
+			}
+		`,
+	})
+
+	for _, name := range []string{"Local"} {
+		found := false
+		for _, d := range prog.Decls {
+			if e, ok := d.(*ast.EnumDecl); ok && e.Name == name {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected an enum named %s", name)
+		}
+	}
+	var enums []string
+	for _, d := range prog.Decls {
+		if e, ok := d.(*ast.EnumDecl); ok {
+			enums = append(enums, e.Name)
+		}
+	}
+	if got := strings.Join(enums, " "); got != "Local geo.shapes.Shape geo.shapes.Result geo.shapes.Hidden" {
+		t.Errorf("unexpected enums: %s", got)
+	}
+
+	// The enum is named in full wherever it is used to reach a variant
+	tests := []struct{ fn, want string }{
+		{"make", "{ return [geo.shapes.Shape.Circle(1.0), geo.shapes.Shape.Empty, geo.shapes.Shape.Rect(1.0, 2.0)]; }"},
+		{"ok", "{ return geo.shapes.Result<geo.shapes.Shape, String>.Ok(geo.shapes.Shape.Empty); }"},
+		{"local", "{ return Local.Two(geo.shapes.Shape.Empty); }"},
+		{"asFunction", "{ return geo.shapes.Shape.Circle; }"},
+		{"geo.shapes.empty", "{ return geo.shapes.Shape.Empty; }"},
+	}
+	for _, tt := range tests {
+		if got := body(t, prog, tt.fn); got != tt.want {
+			t.Errorf("%s:\n  want %s\n   got %s", tt.fn, tt.want, got)
+		}
+	}
+	if got := decl(t, prog, "ok").(*ast.FnDecl).ReturnType.String(); got != "geo.shapes.Result<geo.shapes.Shape, String>" {
+		t.Errorf("unexpected return type: %s", got)
+	}
+
+	// Patterns: a variant through a module or an alias, a variant inside a
+	// variant, and `module.Type`, which only looks like one
+	match := decl(t, prog, "describe").(*ast.FnDecl).Body.Stmts[0].(*ast.MatchStmt)
+	patterns := []string{
+		"geo.shapes.Shape.Circle(r)", "geo.shapes.Shape.Rect(w, _)", "Local.Two(geo.shapes.Shape.Empty)",
+		"geo.shapes.Shape", "geo.shapes.Point",
+	}
+	for i, want := range patterns {
+		if got := match.Cases[i].Pattern.String(); got != want {
+			t.Errorf("pattern %d: expected %s, got %s", i, want, got)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		if _, ok := match.Cases[i].Pattern.(*ast.VariantPattern); !ok {
+			t.Errorf("pattern %d: expected a variant pattern, got %T", i, match.Cases[i].Pattern)
+		}
+	}
+	for i := 3; i < 5; i++ {
+		if _, ok := match.Cases[i].Pattern.(*ast.Type); !ok {
+			t.Errorf("pattern %d: expected a type pattern, got %T", i, match.Cases[i].Pattern)
+		}
+	}
+	// A parameter called Shape hides the enum as a value...
+	if got := match.Cases[5].Body.(*ast.BlockStmt).String(); got != "{ return Shape; }" {
+		t.Errorf("expected the parameter, got %s", got)
+	}
+
+	// ...and the names a pattern binds hide modules and parameters, in
+	// their own case only
+	scoped := decl(t, prog, "scoped").(*ast.FnDecl).Body.Stmts[0].(*ast.MatchStmt)
+	if got := scoped.Cases[1].Pattern.String(); got != "geo.shapes.Shape.Rect(shapes, g)" {
+		t.Errorf("unexpected pattern: %s", got)
+	}
+	if got := scoped.Cases[2].Body.(*ast.BlockStmt).String(); got != "{ return (shapes + r); }" {
+		t.Errorf("unexpected default body: %s", got)
+	}
+
+	// An enum is private unless pub; its variants come with it
+	for _, src := range []string{
+		"import geo.shapes;\nfn main() -> Int { let h = shapes.Hidden.A; return 0; }",
+		"import geo.shapes.{Hidden};\nfn main() -> Int { return 0; }",
+		"import geo.shapes;\nfn f(h: shapes.Hidden) -> Int { return 0; }\nfn main() -> Int { return 0; }",
+		"import geo.shapes;\nfn f(v: Any) -> Int { match v { case shapes.Hidden.A: { return 1; } default: { return 0; } } }\nfn main() -> Int { return 0; }",
+	} {
+		_, errs, _ := load(files{"main.lum": src, "geo/shapes.lum": "enum Hidden { A }"})
+		if len(errs.Diagnostics) == 0 || errs.Diagnostics[0].Code != ErrPrivate || !strings.Contains(errs.Diagnostics[0].Message, "enum 'Hidden' of module 'geo.shapes' is private") {
+			t.Errorf("expected the enum to be private, got %v\n%s", errs.Diagnostics, src)
+		}
+	}
+	// A variant is not a name of the module
+	_, errs, _ := load(files{
+		"main.lum":       "import geo.shapes;\nfn main() -> Int { let c = shapes.Circle(1.0); return 0; }",
+		"geo/shapes.lum": "pub enum Shape { Circle(Float) }",
+	})
+	if len(errs.Diagnostics) != 1 || errs.Diagnostics[0].Code != ErrUnknownName {
+		t.Errorf("expected the variant not to be found in the module, got %v", errs.Diagnostics)
+	}
+}

@@ -116,9 +116,8 @@ internals the user never wrote:
 
 | Construct | Message |
 |-----------|---------|
-| `enum ...` | enums are not supported yet |
 | `extern fn` the runtime has no function for | the runtime has no function '...' (`E7002`, from `checkExterns`) |
-| match patterns other than literals, types and `default` | this kind of match pattern is not supported yet |
+| match patterns other than literals, types, enum variants and `default` | this kind of match pattern is not supported yet |
 
 When one of these gets implemented, remove its entry here.
 

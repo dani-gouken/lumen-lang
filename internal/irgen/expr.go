@@ -42,6 +42,16 @@ func (fc *FunctionCompiler) compileExpr(expr ast.Expr) *ir.Register {
 		return fc.compileCastExpr(e)
 	case *ast.TypeTestExpr:
 		return fc.compileTypeTest(e)
+	case *ast.VariantExpr:
+		return fc.compileVariant(e)
+	case *ast.VariantTestExpr:
+		return fc.compileVariantTest(e)
+	case *ast.VariantFieldExpr:
+		value := fc.compileExpr(e.Expr)
+		fc.setPos(e)
+		dest := fc.builder.NewRegister()
+		fc.builder.Emit(ir.OpGetField, dest, value, ir.Constant{Val: variantField(e.Index), Type: "String"})
+		return dest
 	default:
 		// Unsupported expression type
 		fc.gen.errorAt(expr, ErrUnsupportedConstruct, "Unsupported expression type in IR generation", "")
@@ -517,4 +527,48 @@ func (fc *FunctionCompiler) compileStructInit(expr *ast.StructInitExpr) *ir.Regi
 	}
 
 	return dest
+}
+
+// variantField is the name of the field holding the i-th value of an enum
+// value.
+func variantField(i int) string {
+	return strconv.Itoa(i)
+}
+
+// compileVariant creates a value of an enum: an object carrying the name
+// of the variant, with the values as fields "0", "1", ...
+func (fc *FunctionCompiler) compileVariant(expr *ast.VariantExpr) *ir.Register {
+	values := make([]ir.Value, len(expr.Args))
+	for i, arg := range expr.Args {
+		values[i] = fc.compileExpr(arg)
+	}
+	fc.setPos(expr)
+
+	dest := fc.builder.NewRegister()
+	fc.builder.Emit(ir.OpNewVariant, dest, ir.Constant{Val: expr.Enum + "." + expr.Variant, Type: "String"})
+	for i, value := range values {
+		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: variantField(i), Type: "String"}, value)
+	}
+
+	// Methods that are looked up on the value, as for a struct
+	for _, m := range fc.gen.structMethods[expr.Enum] {
+		if !fc.gen.storedOnValue(m) {
+			continue
+		}
+		fn := fc.builder.CreateMov(ir.Constant{Val: m.irName, Type: "FuncRef"})
+		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: m.name, Type: "String"}, fn)
+	}
+	return dest
+}
+
+// compileVariantTest asks whether a value is a given variant, with the
+// same intrinsic as `value is Type`: the variant's name is what the value
+// carries.
+func (fc *FunctionCompiler) compileVariantTest(expr *ast.VariantTestExpr) *ir.Register {
+	value := fc.compileExpr(expr.Expr)
+	fc.setPos(expr)
+
+	fn := fc.builder.CreateMov(ir.Constant{Val: TypeTestIntrinsic, Type: "FuncRef"})
+	desc := fc.builder.CreateMov(ir.Constant{Val: "{" + expr.Enum + "." + expr.Variant + "}", Type: "String"})
+	return fc.builder.CreateCall(fn, value, desc)
 }

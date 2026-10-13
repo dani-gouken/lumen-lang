@@ -7,6 +7,7 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"strconv"
 	"strings"
 	"unsafe"
 )
@@ -344,7 +345,39 @@ func valuesEqual(a, b Value) bool {
 			return sa == sb
 		}
 	}
+	// Values of an enum are equal when they are the same variant holding
+	// equal values. Structs and arrays are only equal to themselves.
+	if va, ok := variantObject(a); ok {
+		if vb, ok := variantObject(b); ok {
+			return variantsEqual(va, vb)
+		}
+	}
 	return false
+}
+
+// variantObject returns the object behind a value of an enum.
+func variantObject(v Value) (*ObjectObj, bool) {
+	if t, ok := heapType(v); !ok || t != ObjTypeObject {
+		return nil, false
+	}
+	obj := (*ObjectObj)(unsafe.Pointer(v.AsHeapPtr()))
+	return obj, obj.variant
+}
+
+func variantsEqual(a, b *ObjectObj) bool {
+	if a.typeName != b.typeName {
+		return false
+	}
+	for i := 0; ; i++ {
+		va, okA := a.fields[strconv.Itoa(i)]
+		vb, okB := b.fields[strconv.Itoa(i)]
+		if !okA || !okB {
+			return okA == okB
+		}
+		if !valuesEqual(va, vb) {
+			return false
+		}
+	}
 }
 
 // GetHeap returns the VM's heap.
@@ -1160,12 +1193,13 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("object allocation failed: %v", err))
 			}
-			if instr.C == 1 {
+			if instr.C == ObjectIsNamed || instr.C == ObjectIsVariant {
 				name, err := vm.fieldName("NEWOBJ", instr.B)
 				if err != nil {
 					return NewNull(), err
 				}
 				obj.typeName = name
+				obj.variant = instr.C == ObjectIsVariant
 			}
 			vm.regs[instr.A] = NewHeapPtr(uintptr(unsafe.Pointer(obj)))
 			if shouldGC {

@@ -34,9 +34,10 @@ const (
 	OpMov // Dest = Src1
 
 	// Structures
-	OpNewStruct // Dest = NewStruct TypeName, Fields...
-	OpGetField  // Dest = Src1.Field
-	OpSetField  // Src1.Field = Src2
+	OpNewStruct  // Dest = NewStruct TypeName, Fields...
+	OpNewVariant // Dest = NewVariant "Enum.Variant": a value of an enum; its values are set as fields "0", "1", ...
+	OpGetField   // Dest = Src1.Field
+	OpSetField   // Src1.Field = Src2
 
 	// Arrays
 	OpNewArray // Dest = NewArray Type, Size
@@ -102,6 +103,8 @@ func (op OpType) String() string {
 		return "MOV"
 	case OpNewStruct:
 		return "NEW_STRUCT"
+	case OpNewVariant:
+		return "NEW_VARIANT"
 	case OpGetField:
 		return "GET_FIELD"
 	case OpSetField:

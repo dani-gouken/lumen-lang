@@ -76,6 +76,9 @@ The `rewriter` walks every declaration of every module and replaces names:
 | type `T` | a type of this module, or imported by name | its program-wide name |
 | type `m.T`, struct literal `m.T { ... }` | `m` is an imported module | the same, with the program-wide name |
 | match pattern `T` or `m.T` | it names a type | a type pattern |
+| identifier `C`, `m.C` | a constant | its program-wide name |
+| identifier `E` in `E.Variant`, `m.E` | an enum | the enum's program-wide name; the variant is left as written |
+| a name in a variant pattern (`w` in `Shape.Rect(w, h)`) | always | a variable of the case, which hides functions, constants and modules of that name |
 | `impl T for S` | | both names resolved as types |
 
 To tell these names from local ones the rewriter tracks two kinds of scope as it walks: **variables** (parameters, `let`, loop variables, lambda parameters), which hide functions and modules of the same name, and **type parameters**, which hide types. A `let` is in scope after its initializer, as in the resolver.

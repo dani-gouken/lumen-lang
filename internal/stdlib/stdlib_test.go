@@ -155,10 +155,10 @@ func TestMath(t *testing.T) {
 		println(math.isEven(4), math.isEven(-3), math.isOdd(-3), math.isOdd(0));
 
 		println(math.toFloat(3) / 2.0, math.floor(2.7), math.ceil(2.1), math.round(2.5), math.trunc(-2.7));
-		println(math.sqrt(16.0), math.powf(2.0, 0.5), math.exp(0.0), math.log(math.e()));
+		println(math.sqrt(16.0), math.powf(2.0, 0.5), math.exp(0.0), math.log(math.e));
 		println(math.fabs(-1.5), math.fmin(1.5, 2.5), math.fmax(1.5, 2.5));
-		println(math.round(math.sin(math.pi() / 2.0) * 1000.0), math.round(math.cos(math.pi()) * 1000.0));
-		println(math.degrees(math.pi()), math.round(math.radians(180.0) * 1000.0), math.round(math.atan2(1.0, 1.0) * 4000.0));
+		println(math.round(math.sin(math.pi / 2.0) * 1000.0), math.round(math.cos(math.pi) * 1000.0));
+		println(math.degrees(math.pi), math.round(math.radians(180.0) * 1000.0), math.round(math.atan2(1.0, 1.0) * 4000.0));
 
 		// The hypotenuse of a 3-4-5 triangle, through Int and back
 		let a = 3;

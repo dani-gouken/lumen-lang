@@ -192,6 +192,26 @@ function. The VM registers these by default:
 | `__is`     | value, descriptor | Bool | Implements `value is Type`: whether the value matches the descriptor |
 | `__cast`   | value, descriptor | the value | Implements `value as Type`: fails unless the value matches the descriptor (`int`, `[int]`, `?string`, `{Circle|Square}`, `{Box:value=int}`, ...; the grammar is at the top of `internal/vm/cast.go`). Arrays are checked element by element. Emitted by the compiler; not callable from Lumen source |
 
+### Values of an enum
+
+A value of an enum is an object, like a value of a struct, created by `NEWOBJ`
+with a third operand of 2 (`vm.ObjectIsVariant`; 1 is a struct). The object
+carries the name `Enum.Variant` and holds the values of the variant as the
+fields `"0"`, `"1"`, ...
+
+The mark changes two things:
+
+- **Equality.** `EQ` and `NE` compare two such objects by content: the same
+  name, and each value equal in turn, recursively through values that are
+  enums themselves. Structs and arrays are compared by identity, also when
+  they are inside a value of an enum.
+- **Printing.** `FormatValue` writes them as they are made, without the
+  enum's name: `Rect(2, 3)`, `Empty`.
+
+Testing for a variant is `__is` with the descriptor `{Enum.Variant}`, the
+same check of the object's name as for a struct. A test or cast to the enum
+type lists all its variants: `{Shape.Circle|Shape.Rect|Shape.Empty}`.
+
 ### Native functions of the standard library
 
 The part of the [standard library](stdlib.md) that is not written in Lumen is

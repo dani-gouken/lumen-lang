@@ -31,6 +31,39 @@ func checkSource(t *testing.T, src string) ([]string, *Info, *ast.Program) {
 	return msgs, info, prog
 }
 
+// checkSourceLoose is checkSource for programs that name resolution may
+// reject too: it returns the messages of both stages, and false if the
+// source does not even parse.
+func checkSourceLoose(src string) ([]string, bool) {
+	errs := errors.NewHandler()
+	prog := parser.Parse(src, "test.lum", errs)
+	if errs.HasErrors() {
+		return nil, false
+	}
+	table := resolve.NewResolver(errs).Resolve(prog)
+	NewChecker(prog, table, errs).Check()
+
+	var msgs []string
+	for _, d := range errs.Diagnostics {
+		msgs = append(msgs, d.Message)
+	}
+	return msgs, true
+}
+
+// checkSourceDiagnostics type checks source text and returns the
+// diagnostics themselves, for tests about codes, positions and suggestions.
+func checkSourceDiagnostics(t *testing.T, src string) []errors.Diagnostic {
+	t.Helper()
+	errs := errors.NewHandler()
+	prog := parser.Parse(src, "test.lum", errs)
+	if errs.HasErrors() {
+		t.Fatalf("test source does not parse: %s", errs.Diagnostics[0].Message)
+	}
+	table := resolve.NewResolver(errs).Resolve(prog)
+	NewChecker(prog, table, errs).Check()
+	return errs.Diagnostics
+}
+
 // letType returns the type inferred for the initializer of `let name` in main.
 func letType(t *testing.T, info *Info, prog *ast.Program, name string) string {
 	t.Helper()

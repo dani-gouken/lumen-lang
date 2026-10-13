@@ -89,7 +89,8 @@ fn atLeastOne(n: Int) -> Int { ... }        // only in this file
 
 | Declaration | Rule |
 |-------------|------|
-| `fn`, `struct`, `trait` | Private unless `pub` |
+| `fn`, `struct`, `trait`, `enum`, `const` | Private unless `pub` |
+| Variants of an enum | As visible as the enum; reached through it: `geo.Shape.Circle(1.0)` |
 | Fields of a struct | As visible as the struct. There is no per-field privacy |
 | Methods in `impl Struct { ... }` | Private unless `pub fn`: callable only in the module that declares them |
 | Methods in `impl Trait for Struct { ... }` | Always visible: they are what the trait promises |
@@ -210,7 +211,7 @@ A diagnostic shows the file it is about and quotes that file's line, wherever in
 
 *   **Getting packages.** [`lumen.json`](project.md) can say where a package is; nothing downloads, installs or versions one. The one package that needs no telling is the [standard library](stdlib.md), `std`, which is inside `lumen`.
 *   **Native code of your own.** `extern fn` only reaches the functions built into `lumen`; a package cannot bring a shared library.
-*   **Global constants and variables.** A module can only export functions, structs and traits.
+*   **Variables shared between modules.** A module exports functions, constants and types; there are no variables outside functions.
 *   **Per-field privacy.** A `pub struct` exposes all its fields.
 *   **A check that a `pub` signature only uses `pub` types.** `pub fn f() -> Secret` compiles; callers get a value they cannot name the type of.
 *   **Warnings for unused imports.**

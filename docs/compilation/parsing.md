@@ -50,6 +50,14 @@ A hand-written recursive descent parser over the full token list. Having all tok
 
 `Program = { Import | Decl }`. A declaration is selected by its first token: `fn`, `struct`, `enum`, `trait`, `impl`. `pub` may come first; it sets `Pub` on the declaration (on a method inside an `impl`, too) and is an error before `impl`.
 
+`const NAME = value;` at the top level is an `ast.ConstDecl`, with an optional type after the name. Inside a function `const` stays a statement.
+
+An `enum` declaration lists variants, each with the types of the values it holds. After a dot, and as the name of a variant, the names of the builtin types are accepted as names (`Json.Bool`).
+
+Type arguments are also recognized before a dot, for the name of a generic enum: `Option<Int>.None`.
+
+**Patterns.** The pattern of a `case` is parsed as a type when it can only be one, and as an expression otherwise. An expression that has the shape of a variant is then turned into an `ast.VariantPattern`: names joined by dots (`Shape.Empty`), optionally called (`Shape.Rect(w, h)`). Each argument becomes a sub-pattern: a bare name is an `ast.BindingPattern` (`_` included), a literal stays a literal, and an argument with the shape of a variant is a pattern in turn. Anything else as an argument is a syntax error. Whether the names really are an enum and a variant is decided later; `module.Type` has the same shape and is sorted out by [module loading](module_loading.md).
+
 `extern fn name(params) -> Type;` is a function without a body: an `ast.FnDecl` with `Extern` set and a nil `Body`. Type parameters and a body are syntax errors with their own messages.
 
 An import is `import a.b.c;`, optionally followed by `as name` or by `.{X, y}`, and optionally preceded by `pub`. The `ImportDecl` carries the dotted path, and is positioned at the path so that diagnostics underline it.

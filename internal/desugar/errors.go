@@ -194,7 +194,7 @@ func (d *Desugarer) validateMatchPattern(pattern ast.Node) bool {
 	case *ast.Literal, *ast.UnaryExpr:
 		// Literals (including negative numbers) are always valid
 		return true
-	case *ast.Ident:
+	case *ast.Ident, *ast.VariantPattern:
 		// Identifiers are valid (variable binding or enum variant)
 		return true
 	case *ast.Type:

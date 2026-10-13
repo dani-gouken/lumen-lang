@@ -53,6 +53,22 @@ func formatValue(v Value, depth int) string {
 			return "{...}"
 		}
 		obj := (*ObjectObj)(ptr)
+		if obj.variant {
+			// Written as it is made, without the enum's name: Rect(3, 4)
+			name := obj.typeName[strings.LastIndex(obj.typeName, ".")+1:]
+			var values []string
+			for i := 0; ; i++ {
+				value, ok := obj.fields[strconv.Itoa(i)]
+				if !ok {
+					break
+				}
+				values = append(values, formatNested(value, depth+1))
+			}
+			if len(values) == 0 {
+				return name
+			}
+			return name + "(" + strings.Join(values, ", ") + ")"
+		}
 		keys := obj.Keys()
 		sort.Strings(keys)
 		parts := make([]string, 0, len(keys))

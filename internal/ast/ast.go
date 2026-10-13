@@ -480,6 +480,11 @@ type MatchStmt struct {
 	BaseNode
 	Cond  Expr
 	Cases []*MatchCase
+
+	// Exhaustive is set by the type checker when the cases cover every
+	// variant of the enum being matched, so that one of them always runs
+	// although there is no `default`.
+	Exhaustive bool
 }
 
 func (s *MatchStmt) stmtNode() {}
@@ -728,4 +733,132 @@ func (e *FnExpr) String() string {
 		sb.WriteString(" " + e.Body.String())
 	}
 	return sb.String()
+}
+
+// --- Constants ---
+
+// ConstDecl is a constant declared at the top level of a file:
+// `const LIMIT = 100;`. Its value is made of literals and other constants,
+// and is worked out when the program is compiled.
+type ConstDecl struct {
+	BaseNode
+	Name   string
+	Type   *Type // Declared type, or nil
+	Value  Expr
+	Pub    bool
+	Module string
+}
+
+func (d *ConstDecl) declNode() {}
+func (d *ConstDecl) String() string {
+	t := ""
+	if d.Type != nil {
+		t = ": " + d.Type.String()
+	}
+	return fmt.Sprintf("const %s%s = %s;", d.Name, t, d.Value.String())
+}
+
+// --- Patterns of a match on an enum ---
+
+// VariantPattern matches one variant of an enum and takes its values
+// apart: `case Shape.Rect(w, h):`. Target names the variant, as the
+// expression `Shape.Rect`. Each argument is a pattern for one value of the
+// variant: a *BindingPattern, a literal, or another *VariantPattern.
+//
+// Without arguments (`case Shape.Empty:`) it matches the variant whatever
+// values it holds.
+type VariantPattern struct {
+	BaseNode
+	Target  Expr
+	Args    []Node
+	HasArgs bool // Written with parentheses
+}
+
+func (p *VariantPattern) String() string {
+	s := p.Target.String()
+	if !p.HasArgs {
+		return s
+	}
+	var args []string
+	for _, arg := range p.Args {
+		args = append(args, arg.String())
+	}
+	return s + "(" + strings.Join(args, ", ") + ")"
+}
+
+// BindingPattern names a value of a variant, making it a variable of the
+// case: the `w` of `case Shape.Rect(w, h):`. The name `_` matches the
+// value without naming it.
+type BindingPattern struct {
+	BaseNode
+	Name string
+}
+
+func (p *BindingPattern) String() string { return p.Name }
+
+// Ignored reports whether the pattern is `_`.
+func (p *BindingPattern) Ignored() bool { return p.Name == "_" }
+
+// --- Enum values after desugaring ---
+//
+// The parser cannot tell `Shape.Circle(2.0)` from a method call, so it is
+// an ordinary call until desugaring, which knows what `Shape` is and
+// replaces it by the nodes below.
+
+// VariantExpr creates a value of an enum: the variant and its values.
+type VariantExpr struct {
+	BaseNode
+	Enum     string
+	Variant  string
+	TypeArgs []*Type // Of a generic enum, when known
+	Args     []Expr
+}
+
+func (e *VariantExpr) exprNode() {}
+func (e *VariantExpr) String() string {
+	s := e.Enum
+	if len(e.TypeArgs) > 0 {
+		var args []string
+		for _, t := range e.TypeArgs {
+			args = append(args, t.String())
+		}
+		s += "<" + strings.Join(args, ", ") + ">"
+	}
+	s += "." + e.Variant
+	if len(e.Args) == 0 {
+		return s
+	}
+	var args []string
+	for _, a := range e.Args {
+		args = append(args, a.String())
+	}
+	return s + "(" + strings.Join(args, ", ") + ")"
+}
+
+// VariantTestExpr asks whether an enum value is a given variant.
+type VariantTestExpr struct {
+	BaseNode
+	Expr    Expr
+	Enum    string
+	Variant string
+}
+
+func (e *VariantTestExpr) exprNode() {}
+func (e *VariantTestExpr) String() string {
+	return fmt.Sprintf("(%s is %s.%s)", e.Expr.String(), e.Enum, e.Variant)
+}
+
+// VariantFieldExpr reads one of the values of an enum value known to be a
+// given variant.
+type VariantFieldExpr struct {
+	BaseNode
+	Expr    Expr
+	Enum    string
+	Variant string
+	Index   int
+}
+
+func (e *VariantFieldExpr) exprNode() {}
+func (e *VariantFieldExpr) String() string {
+	return fmt.Sprintf("%s.%s#%d", e.Expr.String(), e.Variant, e.Index)
 }

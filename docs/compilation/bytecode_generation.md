@@ -136,6 +136,7 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 | `ADD` `SUB` `MUL` `DIV` `MOD` `NEG` `NOT` | the instruction of the same name |
 | `EQ` `NEQ` `LT` `LTE` `GT` `GTE` | `EQ` `NE` `LT` `LE` `GT` `GE` |
 | `NEW_STRUCT` | `NEWOBJ` with the struct's name as a string constant, which casts check |
+| `NEW_VARIANT` | `NEWOBJ` with the name `Enum.Variant` and a third operand of 2, which marks a value of an enum |
 | `GET_FIELD` / `SET_FIELD` | `GETFIELD` / `SETFIELD` with the field name as a string constant |
 | `NEW_ARRAY` | `NEWARRAY` (capacity capped at 65535; it is only a hint) |
 | `GET_INDEX` / `LEN` / `PUSH` | `GETINDEX` / `ARRLEN` / `ARRPUSH` |
