@@ -8,6 +8,9 @@ import (
 	"strings"
 	"unsafe"
 
+	"os/signal"
+	"time"
+
 	"github.com/dani-gouken/lumen/internal/asm"
 	"github.com/dani-gouken/lumen/internal/compiler"
 	"github.com/dani-gouken/lumen/internal/debugger"
@@ -16,9 +19,8 @@ import (
 	"github.com/dani-gouken/lumen/internal/lsp"
 	"github.com/dani-gouken/lumen/internal/memguard"
 	"github.com/dani-gouken/lumen/internal/project"
+	"github.com/dani-gouken/lumen/internal/repl"
 	"github.com/dani-gouken/lumen/internal/vm"
-	"os/signal"
-	"time"
 )
 
 // Limits of the virtual machine, settable from the command line and from
@@ -188,7 +190,7 @@ func main() {
 		cmdIR(sourceFile(argument(2), "Usage: lumen ir [file.lum | project folder]"))
 
 	case "repl":
-		fmt.Println("[stub] Starting REPL...")
+		cmdRepl()
 
 	case "lsp":
 		cmdLsp()
@@ -238,7 +240,7 @@ func printHelp() {
 	fmt.Println("  lumen run <file.lum>       Compile and run a Lumen source file")
 	fmt.Println("  lumen build <in> <out>     Compile .lum to .lc bytecode (or .lasm text)")
 	fmt.Println("  lumen ir <file.lum>        Print the intermediate representation")
-	fmt.Println("  lumen repl                 Start interactive REPL (not implemented)")
+	fmt.Println("  lumen repl                 Type Lumen in a line at a time")
 	fmt.Println("  lumen lsp                  Start the language server, for an editor to talk to")
 	fmt.Println("  lumen asm <in> <out>       Assemble .lasm to .lc bytecode")
 	fmt.Println("  lumen disasm <in> <out>    Disassemble .lc to .lasm text")
@@ -349,6 +351,34 @@ func cmdRun(inputFile string) {
 	if result.IsInt() {
 		os.Exit(int(result.AsInt() & 0xFF))
 	}
+}
+
+// cmdRepl runs the REPL. Started inside a project it imports what the
+// project's programs can: paths start at the project's root, and its
+// packages are there. The limits of the project and of the command line
+// apply to what is typed as they do to a program.
+func cmdRepl() {
+	opts := repl.Options{}
+	cfg, err := project.Find(".")
+	if err != nil {
+		fatal(err)
+	}
+	if cfg != nil {
+		opts.Dir, opts.Packages = cfg.RootDir(), cfg.PackageDirs()
+		if heapMB == 0 {
+			heapMB = cfg.HeapMB
+		}
+		if maxDepth == 0 {
+			maxDepth = cfg.MaxDepth
+		}
+	}
+	machine := repl.NewMachine(heapMB, maxDepth)
+	opts.Machine = func() *vm.VM {
+		m := machine()
+		guardMemory(m)
+		return m
+	}
+	os.Exit(repl.Run(opts))
 }
 
 // cmdLsp runs the language server: a Lumen program kept in the binary,

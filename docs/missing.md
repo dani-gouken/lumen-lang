@@ -268,7 +268,6 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 
 | Missing | Today |
 |---------|-------|
-| REPL | `lumen repl` is a stub |
 | Round-trip of compiled listings | `lumen build x.lum x.lasm` produces a listing that `lumen asm` cannot read, because long jumps are printed in an annotated form |
 | Errors from several stages in one run | The pipeline stops at the first stage with errors, so type errors appear only after syntax errors are fixed |
 | Machine-readable diagnostics | No `--format=json` on the command line; a program gets them as values from [`std.compiler`](stdlib.md#stdcompiler) |

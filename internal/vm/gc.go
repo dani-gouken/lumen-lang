@@ -38,6 +38,9 @@ func (vm *VM) markRoots() {
 	// What the tasks whose turn it is not are in the middle of
 	vm.markTasks()
 
+	// The variables a REPL keeps between two programs
+	vm.markSession()
+
 	// What a protected call returned, until the program takes it
 	vm.markValue(vm.outcome)
 

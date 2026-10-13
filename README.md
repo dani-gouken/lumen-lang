@@ -116,7 +116,17 @@ The same form when compiling and when running: what went wrong, where, what usua
 
 ### The whole toolchain, in one binary
 
-`lumen run`, `build` to bytecode, a bytecode assembler and disassembler, a debugger that shows source lines, a look at the intermediate representation, limits on memory and call depth, and `lumen lsp`.
+`lumen run`, `build` to bytecode, a REPL, a bytecode assembler and disassembler, a debugger that shows source lines, a look at the intermediate representation, limits on memory and call depth, and `lumen lsp`.
+
+```text
+$ lumen repl
+[1]> import std.arrays;
+[2]> let prices = [12.5, 3.0, 8.25]
+[3]> arrays.fold(prices, 0.0, (sum, p) -> sum + p)
+23.75
+```
+
+Variables, functions and types stay from one line to the next, a declaration typed again replaces the one before, and Tab completes: [docs/repl.md](docs/repl.md).
 
 ## Where to read more
 
@@ -124,6 +134,7 @@ The same form when compiling and when running: what went wrong, where, what usua
 - **The standard library**: [docs/stdlib.md](docs/stdlib.md)
 - **Tasks and channels**: [docs/tasks.md](docs/tasks.md)
 - **Editor support**: [docs/editor.md](docs/editor.md)
+- **The REPL**: [docs/repl.md](docs/repl.md)
 - **Syntax and semantics**: [docs/language-spec.md](docs/language-spec.md) (draft, with an implementation status table)
 - **How the compiler works**: [docs/compilation/pipeline.md](docs/compilation/pipeline.md)
 - **What is not there yet**: [docs/missing.md](docs/missing.md)
@@ -155,14 +166,14 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Interactive debugger, showing Lumen source lines
 - ✅ Tasks scheduled by the virtual machine, one goroutine each, taking turns
 - ✅ Language server (`lumen lsp`) and VS Code extension
-- ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
+- ✅ REPL (`lumen repl`): variables, declarations and closures kept from one input to the next
+- ✅ CLI: `run`, `build`, `ir`, `repl`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
 
 Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics with requirements (`<T: Ordered>`), traits with type parameters and default methods, operators on structs, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values, ranges and types, as a statement or for its value, with conditions and several patterns per case), loops over ranges (`for i in 0..10`), `defer`, short-circuit operators, `?.` and `?` for values that may be missing, tuples, string interpolation (`"total: ${n}"`) and texts over several lines, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library ([docs/stdlib.md](docs/stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, files and folders, dates, program arguments, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, tests, tasks with channels for doing several things at once ([docs/tasks.md](docs/tasks.md)), and reflection. An editor gets mistakes as you type, hover, go to definition, an outline and suggestions from `lumen lsp`, a language server written in Lumen ([docs/editor.md](docs/editor.md)).
 
 Not there yet:
 
 - ⚠️ A way to install packages (`lumen.json` can point at folders of modules, nothing fetches them); native code from shared libraries
-- ⚠️ REPL (stub only)
 - ⚠️ Several processors at once: tasks take turns on one
 - ⚠️ A formatter; renaming and finding uses in the editor
 
@@ -196,6 +207,7 @@ lumen/
     stdlib/        - The standard library, in Lumen (lib/*.lum)
     inspect/       - Questions about a program's source: std.compiler
     lsp/           - The language server, a Lumen program
+    repl/          - The REPL: sessions, the line editor
     vm/            - Virtual machine, tasks, native functions
     asm/           - Assembler and disassembler
     debugger/      - Debugger support

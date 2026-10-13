@@ -44,7 +44,7 @@ func Analyze(src, file string, opts Options, errs *errors.Handler) *Analysis {
 	declareTuples(prog)
 	giveDefaultMethods(prog)
 	checkSupported(prog, errs, lines)
-	checkExterns(prog, errs, lines)
+	checkExterns(prog, opts.Hosted, errs, lines)
 	if errs.HasErrors() {
 		return analysis
 	}

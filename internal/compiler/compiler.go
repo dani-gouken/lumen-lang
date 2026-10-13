@@ -86,6 +86,10 @@ type Options struct {
 	// Packages maps the first part of a module path to the folder holding
 	// that package's modules.
 	Packages map[string]string
+
+	// Hosted says which functions the host provides besides the runtime's
+	// own, for a program to declare with `extern fn`. Default: none.
+	Hosted func(name string) bool
 }
 
 func readSourceFile(path string) (string, error) {
@@ -121,7 +125,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	declareTuples(prog)
 	giveDefaultMethods(prog)
 	checkSupported(prog, errs, lines)
-	checkExterns(prog, errs, lines)
+	checkExterns(prog, opts.Hosted, errs, lines)
 	if failed() {
 		return result
 	}
@@ -278,9 +282,9 @@ func withStandardLibrary(opts Options) Options {
 // for. An extern function is found by its program-wide name, so one
 // declared outside the standard library can only work in a build of lumen
 // that was given a native function of that name.
-func checkExterns(prog *ast.Program, errs *errors.Handler, lines map[int]string) {
+func checkExterns(prog *ast.Program, hosted func(string) bool, errs *errors.Handler, lines map[int]string) {
 	for _, fn := range prog.Externs {
-		if vm.IsNative(fn.Name) {
+		if vm.IsNative(fn.Name) || (hosted != nil && hosted(fn.Name)) {
 			continue
 		}
 		errs.ReportErrorWithSuggestion(ErrUnknownExtern,

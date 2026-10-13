@@ -100,6 +100,10 @@ type VM struct {
 
 	// The tasks of the program and whose turn it is (see task.go)
 	sched *scheduler
+
+	// Variables kept from one program to the next (see repl.go); nil
+	// unless the VM is that of a REPL
+	session *keptVariables
 }
 
 // NewVM creates a new VM instance.
