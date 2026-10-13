@@ -79,6 +79,11 @@ type VM struct {
 	interruptMu sync.Mutex
 	interrupt   chan struct{} // Closed when it is
 
+	// What the host lets a program do (see limits.go)
+	stepLimit uint64                 // How long it may run, in steps; 0 for as long as it takes
+	steps     uint64                 // How many it has taken
+	permitted func(name string) bool // Which native functions it may use; nil for all
+
 	// State of the native functions (see native.go)
 	outcome     Value                 // What the last protected call returned (see protect.go)
 	failure     *RuntimeError         // ...or how it failed

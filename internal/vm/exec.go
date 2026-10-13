@@ -70,6 +70,7 @@ func (vm *VM) Exec(chunk *Chunk) (result Value, err error) {
 	vm.pinned = vm.pinned[:0]
 	vm.outcome, vm.failure = NewNull(), nil
 	vm.handlers, vm.pending = nil, nil
+	vm.steps = 0
 	vm.fieldCaches = map[*Chunk][]fieldCache{}
 
 	// Cached function objects belong to the chunk being run
@@ -561,8 +562,8 @@ func (vm *VM) execute(base int) (Value, error) {
 				ip += 3
 				continue
 			}
-			if target <= ip && vm.interrupted.Load() {
-				return NewNull(), vm.interruption()
+			if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+				return NewNull(), vm.stopped()
 			}
 			ip = target
 			continue
@@ -570,8 +571,8 @@ func (vm *VM) execute(base int) (Value, error) {
 		case OpJMP:
 			// JMP: A = target instruction address
 			target := int(instr.A)
-			if target <= ip && vm.interrupted.Load() {
-				return NewNull(), vm.interruption()
+			if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+				return NewNull(), vm.stopped()
 			}
 			ip = target
 			continue
@@ -584,8 +585,8 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 			if regs[instr.A] == wanted {
 				target := int(instr.B)
-				if target <= ip && vm.interrupted.Load() {
-					return NewNull(), vm.interruption()
+				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+					return NewNull(), vm.stopped()
 				}
 				ip = target
 				continue
@@ -613,8 +614,8 @@ func (vm *VM) execute(base int) (Value, error) {
 				if nargs != proto.ArgCount {
 					return NewNull(), vm.runtimeError(fmt.Sprintf("function %s expects %d arguments, got %d", proto.Name, proto.ArgCount, nargs))
 				}
-				if vm.interrupted.Load() {
-					return NewNull(), vm.interruption()
+				if vm.interrupted.Load() || vm.outOfSteps() {
+					return NewNull(), vm.stopped()
 				}
 				if err := vm.enter(funcObj, args); err != nil {
 					return NewNull(), err
@@ -758,6 +759,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			externFunc, ok := vm.externFuncs[externName]
 			if !ok {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("unknown extern function: %s", externName))
+			}
+			if vm.permitted != nil && !vm.permitted(externName) {
+				return NewNull(), vm.runtimeErrorOf(KindLibrary, externName+": this program is not permitted to use it")
 			}
 
 			// argCount is -1: the function checks its arguments itself

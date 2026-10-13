@@ -256,6 +256,20 @@ make test-race   # the packages that run programs, with Go's race detector
 make bench       # the virtual machine: calls, fields
 ```
 
+### Inputs made by a machine (`test/fuzz`)
+
+Three tests look for what nobody thought to write a test for:
+
+*   `FuzzSource` gives the compiler any text, and runs what compiles;
+*   `FuzzBytecode` gives the bytecode loader any bytes, and runs what loads;
+*   `TestRandomProgramsMeanWhatTheySay` makes programs at random (arithmetic, loops, arrays, a struct, functions, closures) and compares what each prints with what a few lines of Go say it means. This is the one that can catch a program compiled into something that runs and prints the wrong number.
+
+Everything runs in `internal/sandbox`: bounded steps, memory, depth and output, and no native function that reaches outside the program. As ordinary tests the two fuzzers run on the programs of the repository; `make fuzz` lets them search for new inputs, a minute each (`FUZZ_TIME=10m make fuzz` for longer). An input that fails is saved under `test/fuzz/testdata` and runs with the tests from then on: commit it with the fix.
+
+### Whole programs, measured (`test/bench`)
+
+`test/bench/programs` holds one program per part of the language (calls, arrays, structs, traits, closures, texts, enums), each with the output it must print. `make bench` times them, and the compiler on them. Before a change meant to make Lumen faster or smaller, save its output; after, compare (`benchstat`). `TestBytecodeSize` logs how large each compiles to.
+
 ### Limits on the tests themselves
 
 Every `make` target runs the tests with a time limit, and the packages that run programs (`internal/vm`, `internal/stdlib`, `internal/compiler`, `internal/inspect`) end themselves if the test binary comes to hold more than 4 GB (`internal/memguard`, from a `TestMain` in each). A test that goes wrong, by a loop that never ends or a value that grows without end, fails; it does not take the machine down. When running `go test` by hand, pass `-timeout`.

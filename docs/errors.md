@@ -195,6 +195,7 @@ The exit code is 1.
 | `R0008` | Other | Anything else; in practice, bytecode written by hand |
 | `R0009` | Deadlock | Every [task](tasks.md#how-a-program-ends) waits for another. Nothing catches it |
 | `R0010` | Internal | A mistake of Lumen itself, in the virtual machine or a native function, not of the program. Nothing catches it; please report it |
+| `R0012` | Budget | The program ran for more steps than its host lets it (`VM.SetStepLimit`). Nothing catches it. `lumen` itself sets no such limit |
 | `R0011` | Interrupted | The program was stopped from outside: Ctrl-C, or `VM.Interrupt`. The message says where it was. Nothing catches it, and `lumen` exits with status 130 |
 
 A function calling itself gives the same line many times: it is shown once, with how often. Beyond twelve different calls the rest is counted, and the outermost, where it all started, is named.

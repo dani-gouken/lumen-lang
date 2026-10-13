@@ -1,0 +1,44 @@
+// Texts and dictionaries: a text is built, cut into words and counted.
+import std.arrays;
+import std.dict;
+import std.strings;
+
+fn text(sentences: Int) -> String {
+    let nouns = ["river", "stone", "lantern", "garden", "étoile", "bridge", "window", "harbour"];
+    let verbs = ["holds", "follows", "crosses", "remembers", "lights", "opens"];
+    let parts: [String] = [];
+    for i in 0..sentences {
+        let subject = nouns[(i * 7) % arrays.len(nouns)];
+        let verb = verbs[(i * 5) % arrays.len(verbs)];
+        let object = nouns[(i * 11 + 3) % arrays.len(nouns)];
+        push(parts, "The " + subject + " " + verb + " the " + object + ".");
+    }
+    return strings.join(parts, " ");
+}
+
+fn letters(word: String) -> String {
+    let out = "";
+    for i in 0..strings.len(word) {
+        let c = word[i];
+        if c != "." && c != "," { out = out + c; }
+    }
+    return strings.lower(out);
+}
+
+fn main() -> Int {
+    let source = text(6000);
+    let counts = dict.empty<Int>();
+    let longest = "";
+    for raw in strings.split(source, " ") {
+        let word = letters(raw);
+        counts.update(word, 0, n -> n + 1);
+        if strings.len(word) > strings.len(longest) { longest = word; }
+    }
+    let line = "";
+    for key in counts.sortedKeys() {
+        line = line + key + "=" + toString(counts.getOr(key, 0)) + " ";
+    }
+    println(strings.len(source), counts.size(), longest);
+    println(strings.trim(line));
+    return 0;
+}

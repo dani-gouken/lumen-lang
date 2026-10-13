@@ -436,6 +436,23 @@ jump backwards if it is computing, at once if it sleeps. `attempt` does not
 catch it and no `defer` runs. The `lumen` command does this on Ctrl-C, and
 exits with status 130.
 
+### Programs that are not trusted
+
+A program written by someone else, or made by a machine, gets more limits
+than the two on memory and depth, set by its host before `Exec`:
+
+- `SetStepLimit(n)`: the program ends with an error of kind `budget`
+  (`R0012`) after `n` steps, a step being a call or a jump backwards. Steps
+  are counted, not time, so the same program ends at the same place on any
+  machine;
+- `PermitNatives(allow)`: which native functions it may use, by name. Reaching
+  for another is a failure of kind `library`;
+- `ExecContext(ctx, chunk)`: `Exec`, stopped when the context is done.
+
+`internal/sandbox` puts these together: a small heap, a bound on steps, depth,
+output and time, and only the natives that compute (no files, network, other
+programs, clock or exit). It is what the fuzzers run programs in.
+
 ### Threads
 
 A VM runs one program at a time, and a program one [task](tasks.md) at a

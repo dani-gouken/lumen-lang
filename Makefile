@@ -1,4 +1,4 @@
-.PHONY: help build clean test test-unit test-e2e test-integration test-race bench run
+.PHONY: help build clean test test-unit test-e2e test-integration test-race bench fuzz run
 
 # Go binary location
 GO := /usr/local/go/bin/go
@@ -13,7 +13,8 @@ help:
 	@echo "  make test-e2e           Run end-to-end tests (lumen run on .lum files)"
 	@echo "  make test-integration   Run integration tests (toolchain)"
 	@echo "  make test-race          Run the tests that run programs under the race detector"
-	@echo "  make bench              Measure the virtual machine"
+	@echo "  make bench              Measure the virtual machine, and whole programs"
+	@echo "  make fuzz               Search for inputs that break Lumen (FUZZ_TIME=60s each)"
 	@echo "  make clean              Clean build artifacts and test output"
 	@echo "  make run                Run lumen CLI (shows help)"
 
@@ -34,7 +35,7 @@ test-unit:
 
 test-e2e:
 	@echo "Running end-to-end tests..."
-	@$(GO) test -timeout $(TEST_TIMEOUT) ./test/e2e
+	@$(GO) test -timeout $(TEST_TIMEOUT) ./test/e2e ./test/fuzz ./test/bench
 
 # The race detector also checks every conversion of a number into a
 # pointer, which is how the VM keeps its objects in its values (see
@@ -43,8 +44,18 @@ test-race:
 	@echo "Running tests under the race detector..."
 	@$(GO) test -race -gcflags=all=-d=checkptr=0 -timeout 900s ./internal/vm ./internal/stdlib ./internal/memguard ./test/e2e
 
+# The virtual machine on its own, then whole programs (test/bench)
 bench:
-	@$(GO) test ./internal/vm -run '^$$' -bench . -benchmem
+	@$(GO) test ./internal/vm ./test/bench -run '^$$' -bench . -benchmem -timeout 600s
+
+# Lets the machine look for inputs that break the compiler or the virtual
+# machine, a minute each. What it finds is kept under test/fuzz/testdata
+# and run with the tests from then on.
+FUZZ_TIME := 60s
+
+fuzz:
+	@$(GO) test ./test/fuzz -run '^$$' -fuzz FuzzSource -fuzztime $(FUZZ_TIME) -parallel 4 -timeout 900s
+	@$(GO) test ./test/fuzz -run '^$$' -fuzz FuzzBytecode -fuzztime $(FUZZ_TIME) -parallel 4 -timeout 900s
 
 
 test-integration:

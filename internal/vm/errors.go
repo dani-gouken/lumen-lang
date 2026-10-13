@@ -28,6 +28,7 @@ const (
 	// not recover from them.
 	KindInternal    ErrorKind = "internal"    // A mistake of the VM or of a native function, not of the program
 	KindInterrupted ErrorKind = "interrupted" // The program was told to stop from outside (VM.Interrupt)
+	KindBudget      ErrorKind = "budget"      // The program ran for longer than its host lets it (VM.SetStepLimit)
 )
 
 // StackFrame is one place in the program: an instruction, with the source
@@ -73,6 +74,7 @@ var runtimeCodes = map[ErrorKind]string{
 
 	KindInternal:    "R0010",
 	KindInterrupted: "R0011",
+	KindBudget:      "R0012",
 }
 
 // Code is the code of the error: R0002 for an index out of bounds.
