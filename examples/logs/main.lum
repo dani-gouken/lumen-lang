@@ -27,10 +27,10 @@ import std.math;
 // One request, as the server noted it.
 struct Hit {
     client: String;
-    user: String?;          // null for a visitor who is not signed in
+    user: String?;  // null for a visitor who is not signed in
     at: Date;
     method: String;
-    path: String;           // without what follows the ?
+    path: String;   // without what follows the ?
     status: Int;
     bytes: Int;
     seconds: Float;
@@ -52,9 +52,18 @@ impl Outcome {
 
 impl Hit {
     fn outcome() -> Outcome {
-        if self.status >= 500 { return Outcome.ServerError; }
-        if self.status >= 400 { return Outcome.ClientError; }
-        if self.status >= 300 { return Outcome.Redirect; }
+        if self.status >= 500 {
+            return Outcome.ServerError;
+        }
+
+        if self.status >= 400 {
+            return Outcome.ClientError;
+        }
+
+        if self.status >= 300 {
+            return Outcome.Redirect;
+        }
+
         return Outcome.Ok;
     }
 
@@ -67,8 +76,8 @@ impl Hit {
 
 // Why a line is not a request.
 enum Problem {
-    Shape,              // not what the server writes
-    Date(String),       // a date that is not one
+    Shape,         // not what the server writes
+    Date(String),  // a date that is not one
 }
 
 struct BadLine {
@@ -100,16 +109,28 @@ fn reader() -> Reader {
 impl Reader {
     fn read(number: Int, text: String) -> Result<Hit, BadLine> {
         let found = self.line.find(text);
+
         if found == null {
             return Result.Err(BadLine { number: number, problem: Problem.Shape, text: text });
         }
+
         let parts = found.groups;
         let at = time.parse(parts[2]);
+
         if at == null {
-            return Result.Err(BadLine { number: number, problem: Problem.Date(parts[2]), text: text });
+            return Result.Err(BadLine {
+                number: number,
+                problem: Problem.Date(parts[2]),
+                text: text,
+            });
         }
+
         let user: String? = null;
-        if parts[1] != "-" { user = parts[1]; }
+
+        if parts[1] != "-" {
+            user = parts[1];
+        }
+
         return Result.Ok(Hit {
             client: parts[0],
             user: user,
@@ -132,13 +153,23 @@ struct Log {
 fn load(text: String) -> Log {
     let lines = reader();
     let log = Log { hits: [], bad: [] };
+
     for i, line in strings.lines(text) {
-        if strings.isBlank(line) { continue; }
+        if strings.isBlank(line) {
+            continue;
+        }
+
         match lines.read(i + 1, line) {
-            case Result.Ok(hit): { push(log.hits, hit); }
-            case Result.Err(bad): { push(log.bad, bad); }
+            case Result.Ok(hit): {
+                push(log.hits, hit);
+            }
+
+            case Result.Err(bad): {
+                push(log.bad, bad);
+            }
         }
     }
+
     return log;
 }
 
@@ -151,10 +182,12 @@ fn heading(title: String) {
 fn report(log: Log) {
     let hits = log.hits;
     let count = arrays.len(hits);
+
     if count == 0 {
         println("no requests");
         return;
     }
+
     let first = hits[0].at;
     let last = hits[count - 1].at;
     let clients = hits |> arrays.map(hit -> hit.client) |> set.of();
@@ -165,14 +198,21 @@ fn report(log: Log) {
     println("${format.bytes(bytes)} sent, ${format.bytes(bytes / count)} on average");
 
     heading("By outcome");
+
     for outcome in [Outcome.Ok, Outcome.Redirect, Outcome.ClientError, Outcome.ServerError] {
         let n = arrays.count(hits, hit -> hit.outcome() == outcome);
-        println(format.pad(outcome.label(), 26, Align.Left), format.pad(toString(n), 3, Align.Right), " " + format.bar(n, count, 30));
+
+        println(
+            format.pad(outcome.label(), 26, Align.Left),
+            format.pad(toString(n), 3, Align.Right),
+            " " + format.bar(n, count, 30),
+        );
     }
 
     heading("By hour");
     let hours = arrays.countBy(hits, hit -> hit.at.format("HH:00"));
     let busiest = arrays.largest(hours.values()) ?? 1;
+
     for hour in hours.sortedKeys() {
         let n = hours.getOr(hour, 0);
         println(hour, format.pad(toString(n), 3, Align.Right), " " + format.bar(n, busiest, 30));
@@ -182,59 +222,85 @@ fn report(log: Log) {
     let numbers = regex.must("/\\d+");
     let routes = arrays.groupBy(hits, hit -> hit.route(numbers));
     let rows: [[String]] = [];
+
     let mostVisited = routes.keys()
         |> arrays.sortedBy(route -> -arrays.len(routes.get(route) ?? []))
         |> arrays.take(5);
+
     for route in mostVisited {
         let there = routes.get(route) ?? [];
         let slowest = arrays.fold(there, 0.0, (worst, hit) -> math.fmax(worst, hit.seconds));
         let failed = arrays.count(there, hit -> hit.outcome() == Outcome.ServerError);
-        push(rows, [route, toString(arrays.len(there)), format.duration(math.round(slowest * 1000.0)), toString(failed)]);
+
+        push(rows, [
+            route,
+            toString(arrays.len(there)),
+            format.duration(math.round(slowest * 1000.0)),
+            toString(failed),
+        ]);
     }
+
     print(format.table(["route", "hits", "slowest", "failed"], rows));
 
     heading("Signed in");
     let users = dict.empty<[Hit]>();
+
     for hit in hits {
         let user = hit.user;
+
         if user != null {
             let theirs = users.get(user);
-            if theirs == null { users.set(user, [hit]); } else { push(theirs, hit); }
+
+            if theirs == null {
+                users.set(user, [hit]);
+            } else {
+                push(theirs, hit);
+            }
         }
     }
+
     users.each(fn(user: String, theirs: [Hit]) {
         let writes = arrays.count(theirs, hit -> hit.method != "GET");
         println("${user}: ${format.plural(arrays.len(theirs), "request", "requests")}, ${writes} of them changing something");
     });
 
     heading("Worth a look");
+
     let suspects = arrays.groupBy(
         arrays.filter(hits, hit -> hit.outcome() == Outcome.ClientError),
-        hit -> hit.client);
+        hit -> hit.client,
+    );
+
     suspects.each(fn(client: String, refused: [Hit]) {
         if arrays.len(refused) >= 3 {
             let paths = refused |> arrays.map(hit -> hit.path) |> strings.join(", ");
             println("${client} was refused ${arrays.len(refused)} times in a row: ${paths}");
         }
     });
+
     for hit in arrays.filter(hits, hit -> hit.seconds >= 1.0) {
         println("${hit.method} ${hit.path} took ${format.fixed(hit.seconds, 1)}s at ${hit.at.format("HH:mm:ss")} (status ${hit.status})");
     }
 
     if arrays.len(log.bad) > 0 {
         heading("Lines left out");
-        for bad in log.bad { println(bad.describe()); }
+
+        for bad in log.bad {
+            println(bad.describe());
+        }
     }
 }
 
 fn main() -> Int {
     // Without an argument: the log that comes with the program
     let file = arrays.first(os.args()) ?? path.inside(path.dir(os.program()), "access.log");
+
     match io.readFile(file) {
         case Result.Ok(text): {
             report(load(text));
             return 0;
         }
+
         case Result.Err(error): {
             io.printError(error.describe() + "\n");
             return 1;

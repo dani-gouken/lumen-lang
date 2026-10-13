@@ -10,23 +10,47 @@ trait Transaction {
     fn label() -> String;
 }
 
-struct Deposit { amount: Int; }
-struct Withdrawal { amount: Int; fee: Int; }
-struct Interest { percent: Int; }
+struct Deposit {
+    amount: Int;
+}
+
+struct Withdrawal {
+    amount: Int;
+    fee: Int;
+}
+
+struct Interest {
+    percent: Int;
+}
 
 impl Transaction for Deposit {
-    fn apply(balance: Int) -> Int { return balance + self.amount; }
-    fn label() -> String { return "deposit " + toString(self.amount); }
+    fn apply(balance: Int) -> Int {
+        return balance + self.amount;
+    }
+
+    fn label() -> String {
+        return "deposit " + toString(self.amount);
+    }
 }
 
 impl Transaction for Withdrawal {
-    fn apply(balance: Int) -> Int { return balance - self.amount - self.fee; }
-    fn label() -> String { return "withdraw " + toString(self.amount) + " (fee " + toString(self.fee) + ")"; }
+    fn apply(balance: Int) -> Int {
+        return balance - self.amount - self.fee;
+    }
+
+    fn label() -> String {
+        return "withdraw " + toString(self.amount) + " (fee " + toString(self.fee) + ")";
+    }
 }
 
 impl Transaction for Interest {
-    fn apply(balance: Int) -> Int { return balance + balance * self.percent / 100; }
-    fn label() -> String { return "interest " + toString(self.percent) + "%"; }
+    fn apply(balance: Int) -> Int {
+        return balance + balance * self.percent / 100;
+    }
+
+    fn label() -> String {
+        return "interest " + toString(self.percent) + "%";
+    }
 }
 
 struct Account {
@@ -41,9 +65,11 @@ impl Account {
     fn submit(tx: Transaction) -> Bool {
         let after = tx.apply(self.balance);
         let limit = self.overdraftLimit ?? 0;
+
         if after < 0 - limit {
             return false;
         }
+
         self.balance = after;
         push(self.history, tx);
         return true;
@@ -51,6 +77,7 @@ impl Account {
 
     fn largestDeposit() -> Int? {
         let best: Int? = null;
+
         for tx in self.history {
             if tx is Deposit {
                 if best == null || tx.amount > best {
@@ -58,6 +85,7 @@ impl Account {
                 }
             }
         }
+
         return best;
     }
 }
@@ -80,61 +108,82 @@ impl Bank {
                 return account;
             }
         }
+
         return null;
     }
 
     fn transfer(from: String, to: String, amount: Int) -> String {
         let source = self.find(from);
         let target = self.find(to);
+
         if source == null || target == null {
             self.rejected++;
             return "unknown account";
         }
+
         if !source.submit(Withdrawal { amount: amount, fee: 1 }) {
             self.rejected++;
             return "insufficient funds";
         }
+
         target.submit(Deposit { amount: amount });
         return "ok";
     }
 
     fn total() -> Int {
-        return fold(self.accounts, 0, fn(sum: Int, account: Account) -> Int { return sum + account.balance; });
+        return fold(self.accounts, 0, fn(sum: Int, account: Account) -> Int {
+            return sum + account.balance;
+        });
     }
 }
 
 fn fold<T, A>(items: [T], start: A, step: fn(A, T) -> A) -> A {
     let acc = start;
+
     for item in items {
         acc = step(acc, item);
     }
+
     return acc;
 }
 
 fn filter<T>(items: [T], keep: fn(T) -> Bool) -> [T] {
     let out: [T] = [];
+
     for item in items {
         if keep(item) {
             push(out, item);
         }
     }
+
     return out;
 }
 
 fn describe(tx: Transaction) -> String {
     match tx {
-        case Deposit: { return "+" + toString(tx.amount); }
-        case Withdrawal: { return "-" + toString(tx.amount + tx.fee); }
-        default: { return "~" + tx.label(); }
+        case Deposit: {
+            return "+" + toString(tx.amount);
+        }
+
+        case Withdrawal: {
+            return "-" + toString(tx.amount + tx.fee);
+        }
+
+        default: {
+            return "~" + tx.label();
+        }
     }
 }
 
 fn statement(account: Account) -> Void {
     println(account.owner + ":", account.balance);
+
     for i, tx in account.history {
         println("  " + toString(i + 1) + ".", tx.label(), "=>", describe(tx));
     }
+
     let largest = account.largestDeposit();
+
     if largest != null {
         println("  largest deposit:", largest);
     } else {
@@ -161,17 +210,36 @@ fn main() -> Int {
     statement(bob);
     statement(bank.open("eve", null));
 
-    let rich = filter(bank.accounts, fn(a: Account) -> Bool { return a.balance > 100; });
-    println("accounts:", arrays.len(bank.accounts), "rich:", arrays.len(rich), "total:", bank.total(), "rejected:", bank.rejected);
+    let rich = filter(bank.accounts, fn(a: Account) -> Bool {
+        return a.balance > 100;
+    });
+
+    println(
+        "accounts:",
+        arrays.len(bank.accounts),
+        "rich:",
+        arrays.len(rich),
+        "total:",
+        bank.total(),
+        "rejected:",
+        bank.rejected,
+    );
 
     // A counter shared between a closure and the loop that calls it
     let fees = 0;
+
     let collect = fn(tx: Transaction) -> Void {
-        if tx is Withdrawal { fees += tx.fee; }
+        if tx is Withdrawal {
+            fees += tx.fee;
+        }
     };
+
     for account in bank.accounts {
-        for tx in account.history { collect(tx); }
+        for tx in account.history {
+            collect(tx);
+        }
     }
+
     println("fees collected:", fees);
     return bank.rejected;
 }

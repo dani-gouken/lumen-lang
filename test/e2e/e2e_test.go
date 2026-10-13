@@ -480,7 +480,7 @@ func TestDebuggerSession(t *testing.T) {
 	}
 	for _, want := range []string{
 		"NEWSTR r7 6  [main]",      // The instruction, and the function it is in
-		"closures_in_loops.lum:17", // Source position of the instruction
+		"closures_in_loops.lum:26", // Source position of the instruction
 		`r7 = String("build")`,     // Registers after three steps
 		"Function: main",
 		"Execution complete: Int(0)",

@@ -6,9 +6,9 @@
 //
 // A module shares what it declares with 'pub'; the rest stays private.
 
-import zoo.animals;                 // use as animals.name
-import zoo.keeper.{Keeper, hire};   // use the names directly
-import zoo.feed as food;            // use under another name
+import zoo.animals;                // use as animals.name
+import zoo.keeper.{Keeper, hire};  // use the names directly
+import zoo.feed as food;           // use under another name
 
 fn main() -> Int {
     let cat = animals.new("cat", 4);
@@ -16,9 +16,19 @@ fn main() -> Int {
     let inhabitants: [animals.Animal] = [cat, owl];
 
     let sam: Keeper = hire("Sam");
+
     for animal in inhabitants {
         println(sam.feed(animal, food.portion(animal)));
     }
-    println(sam.name, "fed", sam.fed, "animals;", animals.heaviest(inhabitants).name, "is the heaviest");
+
+    println(
+        sam.name,
+        "fed",
+        sam.fed,
+        "animals;",
+        animals.heaviest(inhabitants).name,
+        "is the heaviest",
+    );
+
     return 0;
 }

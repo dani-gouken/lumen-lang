@@ -5,9 +5,11 @@ struct Box<T> {
 
 fn sum(values: Any) -> Int {
     let total = 0;
+
     for n in values as [Int] {
         total = total + n;
     }
+
     return total;
 }
 

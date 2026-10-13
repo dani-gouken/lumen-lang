@@ -32,8 +32,8 @@ pub enum Kind {
     String,
     Array,
     Tuple,
-    Struct,         // a value of a struct
-    Variant,        // a value of an enum
+    Struct,   // a value of a struct
+    Variant,  // a value of an enum
     Function,
     Other,
 }
@@ -65,7 +65,11 @@ pub extern fn typeName(value: Any) -> String;
 // anything else.
 pub fn variant(value: Any) -> String? {
     let name = variantName(value);
-    if name == "" { return null; }
+
+    if name == "" {
+        return null;
+    }
+
     return name;
 }
 
@@ -73,7 +77,10 @@ pub fn variant(value: Any) -> String? {
 // Fields that hold a function are left out, as are methods. Empty for
 // anything that is not a struct.
 pub fn fields(value: Any) -> [String] {
-    if kindName(value) != "struct" { return []; }
+    if kindName(value) != "struct" {
+        return [];
+    }
+
     return fieldNames(value);
 }
 
@@ -86,7 +93,10 @@ pub extern fn hasField(value: Any, name: String) -> Bool;
 //     let age = reflect.get(user, "age");
 //     if age is Int { println(age + 1); }
 pub fn get(value: Any, name: String) -> Any {
-    if !hasField(value, name) { return null; }
+    if !hasField(value, name) {
+        return null;
+    }
+
     return field(value, name);
 }
 
@@ -104,8 +114,15 @@ pub fn set(value: Any, name: String, to: Any) {
 pub fn values(value: Any) -> [Any] {
     let out: [Any] = [];
     let sort = kindName(value);
-    if sort != "variant" && sort != "tuple" { return out; }
-    for position in fieldNames(value) { push(out, field(value, position)); }
+
+    if sort != "variant" && sort != "tuple" {
+        return out;
+    }
+
+    for position in fieldNames(value) {
+        push(out, field(value, position));
+    }
+
     return out;
 }
 
@@ -116,7 +133,11 @@ pub extern fn items(value: Any) -> [Any];
 // The fields of a struct value by name.
 pub fn toDict(value: Any) -> Dict<Any> {
     let out = dict.empty<Any>();
-    for name in fields(value) { out.set(name, field(value, name)); }
+
+    for name in fields(value) {
+        out.set(name, field(value, name));
+    }
+
     return out;
 }
 
@@ -133,31 +154,65 @@ pub fn dump(value: Any) -> String {
 fn dumpAt(value: Any, depth: Int) -> String {
     let inner = strings.repeat("  ", depth + 1);
     let outer = strings.repeat("  ", depth);
+
     match kindName(value) {
-        case "string": { return "\"" + toString(value) + "\""; }
+        case "string": {
+            return "\"" + toString(value) + "\"";
+        }
+
         case "struct": {
             let names = fieldNames(value);
-            if arrays.len(names) == 0 { return typeName(value) + " { }"; }
-            let lines = arrays.map(names, name -> "${inner}${name}: ${dumpAt(field(value, name), depth + 1)}");
+
+            if arrays.len(names) == 0 {
+                return typeName(value) + " { }";
+            }
+
+            let lines = arrays.map(
+                names,
+                name -> "${inner}${name}: ${dumpAt(field(value, name), depth + 1)}",
+            );
+
             return "${typeName(value)} {\n${strings.join(lines, "\n")}\n${outer}}";
         }
+
         case "variant": {
-            let held = arrays.map(fieldNames(value), position -> dumpAt(field(value, position), depth + 1));
+            let held = arrays.map(
+                fieldNames(value),
+                position -> dumpAt(field(value, position), depth + 1),
+            );
+
             let name = "${typeName(value)}.${variantName(value)}";
-            if arrays.len(held) == 0 { return name; }
+
+            if arrays.len(held) == 0 {
+                return name;
+            }
+
             return "${name}(${strings.join(held, ", ")})";
         }
+
         case "tuple": {
-            let held = arrays.map(fieldNames(value), position -> dumpAt(field(value, position), depth + 1));
+            let held = arrays.map(
+                fieldNames(value),
+                position -> dumpAt(field(value, position), depth + 1),
+            );
+
             return "(${strings.join(held, ", ")})";
         }
+
         case "array": {
             let all = items(value);
-            if arrays.len(all) == 0 { return "[]"; }
+
+            if arrays.len(all) == 0 {
+                return "[]";
+            }
+
             let lines = arrays.map(all, item -> inner + dumpAt(item, depth + 1));
             return "[\n${strings.join(lines, ",\n")}\n${outer}]";
         }
-        default: { return toString(value); }
+
+        default: {
+            return toString(value);
+        }
     }
 }
 

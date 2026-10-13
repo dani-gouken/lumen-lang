@@ -17,6 +17,7 @@
 // Numbers, texts and booleans implement Equal, and all but booleans
 // Ordered, so such a function takes them as well.
 import std.arrays;
+
 // Saying when two values are equal. Without it, two structs are only
 // equal when they are the very same one.
 pub trait Equal {
@@ -29,8 +30,13 @@ pub trait Ordered {
     // neither comes first, above zero when it comes after.
     fn compare(other: Self) -> Int;
 
-    fn isBefore(other: Self) -> Bool { return self.compare(other) < 0; }
-    fn isAfter(other: Self) -> Bool { return self.compare(other) > 0; }
+    fn isBefore(other: Self) -> Bool {
+        return self.compare(other) < 0;
+    }
+
+    fn isAfter(other: Self) -> Bool {
+        return self.compare(other) > 0;
+    }
 }
 
 pub trait Add {
@@ -72,92 +78,146 @@ pub trait Show {
 // --- The builtin types ---
 
 impl Equal for Int {
-    fn equals(other: Int) -> Bool { return self == other; }
+    fn equals(other: Int) -> Bool {
+        return self == other;
+    }
 }
 
 impl Equal for Float {
-    fn equals(other: Float) -> Bool { return self == other; }
+    fn equals(other: Float) -> Bool {
+        return self == other;
+    }
 }
 
 impl Equal for String {
-    fn equals(other: String) -> Bool { return self == other; }
+    fn equals(other: String) -> Bool {
+        return self == other;
+    }
 }
 
 impl Equal for Bool {
-    fn equals(other: Bool) -> Bool { return self == other; }
+    fn equals(other: Bool) -> Bool {
+        return self == other;
+    }
 }
 
 impl Ordered for Int {
     fn compare(other: Int) -> Int {
-        if self < other { return -1; }
-        if self > other { return 1; }
+        if self < other {
+            return -1;
+        }
+
+        if self > other {
+            return 1;
+        }
+
         return 0;
     }
 }
 
 impl Ordered for Float {
     fn compare(other: Float) -> Int {
-        if self < other { return -1; }
-        if self > other { return 1; }
+        if self < other {
+            return -1;
+        }
+
+        if self > other {
+            return 1;
+        }
+
         return 0;
     }
 }
 
 impl Ordered for String {
     fn compare(other: String) -> Int {
-        if self < other { return -1; }
-        if self > other { return 1; }
+        if self < other {
+            return -1;
+        }
+
+        if self > other {
+            return 1;
+        }
+
         return 0;
     }
 }
 
 impl Show for Int {
-    fn show() -> String { return toString(self); }
+    fn show() -> String {
+        return toString(self);
+    }
 }
 
 impl Show for Float {
-    fn show() -> String { return toString(self); }
+    fn show() -> String {
+        return toString(self);
+    }
 }
 
 impl Show for String {
-    fn show() -> String { return self; }
+    fn show() -> String {
+        return self;
+    }
 }
 
 impl Show for Bool {
-    fn show() -> String { return toString(self); }
+    fn show() -> String {
+        return toString(self);
+    }
 }
 
 // --- For anything that implements them ---
 
 // The larger of two values; the first when neither is.
 pub fn max<T: Ordered>(a: T, b: T) -> T {
-    if b.compare(a) > 0 { return b; }
+    if b.compare(a) > 0 {
+        return b;
+    }
+
     return a;
 }
 
 // The smaller of two values; the first when neither is.
 pub fn min<T: Ordered>(a: T, b: T) -> T {
-    if b.compare(a) < 0 { return b; }
+    if b.compare(a) < 0 {
+        return b;
+    }
+
     return a;
 }
 
 // The largest item, or null for an empty array.
 pub fn largest<T: Ordered>(items: [T]) -> T? {
-    if arrays.len(items) == 0 { return null; }
-    let best = items[0];
-    for item in items {
-        if item.compare(best) > 0 { best = item; }
+    if arrays.len(items) == 0 {
+        return null;
     }
+
+    let best = items[0];
+
+    for item in items {
+        if item.compare(best) > 0 {
+            best = item;
+        }
+    }
+
     return best;
 }
 
 // The smallest item, or null for an empty array.
 pub fn smallest<T: Ordered>(items: [T]) -> T? {
-    if arrays.len(items) == 0 { return null; }
-    let best = items[0];
-    for item in items {
-        if item.compare(best) < 0 { best = item; }
+    if arrays.len(items) == 0 {
+        return null;
     }
+
+    let best = items[0];
+
+    for item in items {
+        if item.compare(best) < 0 {
+            best = item;
+        }
+    }
+
     return best;
 }
 
@@ -166,21 +226,33 @@ pub fn smallest<T: Ordered>(items: [T]) -> T? {
 pub fn sorted<T: Ordered>(items: [T]) -> [T] {
     if arrays.len(items) < 2 {
         let same: [T] = [];
-        for item in items { push(same, item); }
+
+        for item in items {
+            push(same, item);
+        }
+
         return same;
     }
+
     let middle = arrays.len(items) / 2;
     let left: [T] = [];
     let right: [T] = [];
+
     for i, item in items {
-        if i < middle { push(left, item); } else { push(right, item); }
+        if i < middle {
+            push(left, item);
+        } else {
+            push(right, item);
+        }
     }
+
     left = sorted(left);
     right = sorted(right);
 
     let out: [T] = [];
     let l = 0;
     let r = 0;
+
     while l < arrays.len(left) && r < arrays.len(right) {
         if right[r].compare(left[l]) < 0 {
             push(out, right[r]);
@@ -190,43 +262,69 @@ pub fn sorted<T: Ordered>(items: [T]) -> [T] {
             l++;
         }
     }
-    while l < arrays.len(left) { push(out, left[l]); l++; }
-    while r < arrays.len(right) { push(out, right[r]); r++; }
+
+    while l < arrays.len(left) {
+        push(out, left[l]);
+        l++;
+    }
+
+    while r < arrays.len(right) {
+        push(out, right[r]);
+        r++;
+    }
+
     return out;
 }
 
 // Whether an array holds an item equal to a value.
 pub fn contains<T: Equal>(items: [T], wanted: T) -> Bool {
     for item in items {
-        if item.equals(wanted) { return true; }
+        if item.equals(wanted) {
+            return true;
+        }
     }
+
     return false;
 }
 
 // Where an item equal to a value first is, or null.
 pub fn indexOf<T: Equal>(items: [T], wanted: T) -> Int? {
     for i, item in items {
-        if item.equals(wanted) { return i; }
+        if item.equals(wanted) {
+            return i;
+        }
     }
+
     return null;
 }
 
 // Whether two arrays hold equal items in the same order.
 pub fn same<T: Equal>(first: [T], second: [T]) -> Bool {
-    if arrays.len(first) != arrays.len(second) { return false; }
-    for i, item in first {
-        if !item.equals(second[i]) { return false; }
+    if arrays.len(first) != arrays.len(second) {
+        return false;
     }
+
+    for i, item in first {
+        if !item.equals(second[i]) {
+            return false;
+        }
+    }
+
     return true;
 }
 
 // The texts of the items, joined: join(points, ", ").
 pub fn join<T: Show>(items: [T], separator: String) -> String {
     let out = "";
+
     for i, item in items {
-        if i > 0 { out = out + separator; }
+        if i > 0 {
+            out = out + separator;
+        }
+
         out = out + item.show();
     }
+
     return out;
 }
 
@@ -259,70 +357,124 @@ impl Range {
     // The same numbers, taken one every `by`: (0..10).step(3) is 0, 3, 6, 9.
     // A step below 0 goes down from `from`: (10..0).step(-1) is 10 to 1.
     pub fn step(by: Int) -> Range {
-        if by == 0 { panic("a range cannot go by steps of 0"); }
+        if by == 0 {
+            panic("a range cannot go by steps of 0");
+        }
+
         return Range { from: self.from, to: self.to, inclusive: self.inclusive, by: by };
     }
 
     // The same numbers, from the last to the first.
     pub fn reversed() -> Range {
         let last = self.last();
-        if last == null { return Range { from: self.from, to: self.from, by: -self.by }; }
+
+        if last == null {
+            return Range { from: self.from, to: self.from, by: -self.by };
+        }
+
         return Range { from: last, to: self.from, inclusive: true, by: -self.by };
     }
 
     // How many numbers it holds.
     pub fn len() -> Int {
         let span = self.to - self.from;
-        if self.by < 0 { span = -span; }
-        if self.inclusive { span++; }
-        if span <= 0 { return 0; }
+
+        if self.by < 0 {
+            span = -span;
+        }
+
+        if self.inclusive {
+            span++;
+        }
+
+        if span <= 0 {
+            return 0;
+        }
+
         let by = self.by;
-        if by < 0 { by = -by; }
+
+        if by < 0 {
+            by = -by;
+        }
+
         return (span + by - 1) / by;
     }
 
-    pub fn isEmpty() -> Bool { return self.len() == 0; }
+    pub fn isEmpty() -> Bool {
+        return self.len() == 0;
+    }
 
     // The first number, or null when there is none.
     pub fn first() -> Int? {
-        if self.isEmpty() { return null; }
+        if self.isEmpty() {
+            return null;
+        }
+
         return self.from;
     }
 
     // The last number, or null when there is none.
     pub fn last() -> Int? {
         let count = self.len();
-        if count == 0 { return null; }
+
+        if count == 0 {
+            return null;
+        }
+
         return self.from + (count - 1) * self.by;
     }
 
     // Whether a number is one of them.
     pub fn contains(n: Int) -> Bool {
         let last = self.last();
-        if last == null { return false; }
-        if self.by > 0 && (n < self.from || n > last) { return false; }
-        if self.by < 0 && (n > self.from || n < last) { return false; }
+
+        if last == null {
+            return false;
+        }
+
+        if self.by > 0 && (n < self.from || n > last) {
+            return false;
+        }
+
+        if self.by < 0 && (n > self.from || n < last) {
+            return false;
+        }
+
         return (n - self.from) % self.by == 0;
     }
 
     // The numbers, as an array.
     pub fn toArray() -> [Int] {
         let out: [Int] = [];
-        for n in self { push(out, n); }
+
+        for n in self {
+            push(out, n);
+        }
+
         return out;
     }
 
     // What a function makes of each number.
     pub fn map<U>(convert: fn(Int) -> U) -> [U] {
         let out: [U] = [];
-        for n in self { push(out, convert(n)); }
+
+        for n in self {
+            push(out, convert(n));
+        }
+
         return out;
     }
 
     // The numbers a function says yes to.
     pub fn filter(wanted: fn(Int) -> Bool) -> [Int] {
         let out: [Int] = [];
-        for n in self { if wanted(n) { push(out, n); } }
+
+        for n in self {
+            if wanted(n) {
+                push(out, n);
+            }
+        }
+
         return out;
     }
 
@@ -335,14 +487,23 @@ impl Range {
 }
 
 impl Iterable<Int> for Range {
-    fn iterate() -> [Int] { return self.toArray(); }
+    fn iterate() -> [Int] {
+        return self.toArray();
+    }
 }
 
 impl Show for Range {
     fn show() -> String {
         let text = toString(self.from) + ".." + toString(self.to);
-        if self.inclusive { text = toString(self.from) + "..=" + toString(self.to); }
-        if self.by != 1 { text = "(" + text + ").step(" + toString(self.by) + ")"; }
+
+        if self.inclusive {
+            text = toString(self.from) + "..=" + toString(self.to);
+        }
+
+        if self.by != 1 {
+            text = "(" + text + ").step(" + toString(self.by) + ")";
+        }
+
         return text;
     }
 }

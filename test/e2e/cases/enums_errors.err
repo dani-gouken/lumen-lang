@@ -1,8 +1,8 @@
 [ERROR] E2028: match on Light does not handle Light.Amber
-enums_errors.lum:8:5
+enums_errors.lum:10:5
 Add a case for each, or a 'default' case: case Light.Amber: { ... }
 [ERROR] E2028: match on Option does not handle Option.Some(Order.Shipped)
-enums_errors.lum:15:5
+enums_errors.lum:22:5
 [ERROR] E2029: Order.Placed(Int) holds 1 value, the pattern has 2
 Write the pattern as Order.Placed(a)
 [ERROR] E2029: enum Order has no variant 'Shiped'

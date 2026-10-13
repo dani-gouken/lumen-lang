@@ -14,15 +14,15 @@ import std.arrays;
 // A pattern that has been checked.
 pub struct Regex {
     pattern: String;
-    names: [String];        // the name of each group, "" for those without one
+    names: [String];  // the name of each group, "" for those without one
 }
 
 // One place where a pattern fits.
 pub struct Match {
-    text: String;           // what was matched
-    start: Int;             // where it starts
-    end: Int;               // where it stops, just after its last character
-    groups: [String];       // what each ( ) took; "" for one that took no part
+    text: String;      // what was matched
+    start: Int;        // where it starts
+    end: Int;          // where it stops, just after its last character
+    groups: [String];  // what each ( ) took; "" for one that took no part
     names: [String];
 }
 
@@ -31,7 +31,11 @@ impl Match {
     // has no group of that name.
     pub fn named(name: String) -> String? {
         let at = arrays.indexOf(self.names, name);
-        if at == null || name == "" { return null; }
+
+        if at == null || name == "" {
+            return null;
+        }
+
         return self.groups[at];
     }
 
@@ -57,9 +61,11 @@ impl PatternError {
 // "\\d+".
 pub fn compile(pattern: String) -> Result<Regex, PatternError> {
     let wrong = mistake(pattern);
+
     if wrong != null {
         return Result.Err(PatternError { pattern: pattern, message: wrong });
     }
+
     let names = groupNames(pattern);
     return Result.Ok(Regex { pattern: pattern, names: arrays.slice(names, 1, arrays.len(names)) });
 }
@@ -68,8 +74,13 @@ pub fn compile(pattern: String) -> Result<Regex, PatternError> {
 // mistake to fix, so it stops the program.
 pub fn must(pattern: String) -> Regex {
     match compile(pattern) {
-        case Result.Ok(re): { return re; }
-        case Result.Err(error): { panic(error.describe()); }
+        case Result.Ok(re): {
+            return re;
+        }
+
+        case Result.Err(error): {
+            panic(error.describe());
+        }
     }
 }
 
@@ -115,11 +126,13 @@ impl Regex {
     pub fn replaceWith(text: String, convert: fn(Match) -> String) -> String {
         let out: [String] = [];
         let from = 0;
+
         for found in self.findAll(text) {
             push(out, strings.substring(text, from, found.start));
             push(out, convert(found));
             from = found.end;
         }
+
         push(out, strings.from(text, from));
         return strings.join(out, "");
     }
@@ -131,6 +144,7 @@ impl Regex {
 
     fn found(text: String, limit: Int) -> [Match] {
         let out: [Match] = [];
+
         // Per match: where it starts, where it stops, its text, its groups
         for row in search(self.pattern, text, limit) {
             push(out, Match {
@@ -141,6 +155,7 @@ impl Regex {
                 names: self.names,
             });
         }
+
         return out;
     }
 }

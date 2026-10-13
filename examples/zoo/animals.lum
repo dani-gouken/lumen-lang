@@ -9,14 +9,21 @@ pub fn new(name: String, weight: Int) -> Animal {
 
 pub fn heaviest(animals: [Animal]) -> Animal {
     let best = animals[0];
+
     for animal in animals {
-        if animal.weight > best.weight { best = animal; }
+        if animal.weight > best.weight {
+            best = animal;
+        }
     }
+
     return best;
 }
 
 // Without 'pub': a helper other modules cannot call.
 fn positive(n: Int) -> Int {
-    if n < 1 { return 1; }
+    if n < 1 {
+        return 1;
+    }
+
     return n;
 }

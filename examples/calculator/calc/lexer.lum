@@ -3,14 +3,15 @@
 import std.strings;
 
 pub struct Token {
-    kind: String;     // "number", "name", "symbol", "end" or "unknown"
+    kind: String;  // "number", "name", "symbol", "end" or "unknown"
     text: String;
-    value: Int;       // for a number
+    value: Int;    // for a number
 }
 
 pub fn tokenize(source: String) -> [Token] {
     let tokens: [Token] = [];
     let i = 0;
+
     while i < strings.len(source) {
         let c = source[i];
 
@@ -19,26 +20,35 @@ pub fn tokenize(source: String) -> [Token] {
         } else if isDigit(c) {
             let value = 0;
             let text = "";
+
             while i < strings.len(source) && isDigit(source[i]) {
                 value = value * 10 + digit(source[i]);
                 text += source[i];
                 i++;
             }
+
             push(tokens, Token { kind: "number", text: text, value: value });
         } else if isLetter(c) {
             let text = "";
+
             while i < strings.len(source) && (isLetter(source[i]) || isDigit(source[i])) {
                 text += source[i];
                 i++;
             }
+
             push(tokens, Token { kind: "name", text: text, value: 0 });
         } else {
             let kind = "unknown";
-            if isSymbol(c) { kind = "symbol"; }
+
+            if isSymbol(c) {
+                kind = "symbol";
+            }
+
             push(tokens, Token { kind: kind, text: c, value: 0 });
             i++;
         }
     }
+
     // A last token, so the parser never runs off the end
     push(tokens, Token { kind: "end", text: "the end of the line", value: 0 });
     return tokens;
@@ -55,14 +65,20 @@ fn isLetter(c: String) -> Bool {
 
 fn isSymbol(c: String) -> Bool {
     for symbol in ["+", "-", "*", "/", "%", "(", ")", "="] {
-        if c == symbol { return true; }
+        if c == symbol {
+            return true;
+        }
     }
+
     return false;
 }
 
 fn digit(c: String) -> Int {
     for value, known in ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"] {
-        if c == known { return value; }
+        if c == known {
+            return value;
+        }
     }
+
     return 0;
 }

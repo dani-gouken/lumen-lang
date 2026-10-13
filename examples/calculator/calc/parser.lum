@@ -21,17 +21,21 @@ impl Statement {
     pub fn run(env: Env) -> Int | Problem {
         let result = self.value.eval(env);
         let target = self.target;
+
         if target != null && result is Int {
             env.set(target, result);
         }
+
         return result;
     }
 
     pub fn show() -> String {
         let target = self.target;
+
         if target == null {
             return self.value.show();
         }
+
         return target + " = " + self.value.show();
     }
 }
@@ -42,17 +46,23 @@ pub fn parse(tokens: [Token]) -> Statement | Problem {
 
     // The first thing that went wrong is the one worth reporting
     let failure = p.failure;
+
     if failure != null {
         return failure;
     }
+
     if p.peek().kind != "end" {
         return problem("did not expect " + describe(p.peek()));
     }
+
     return statement;
 }
 
 fn describe(token: Token) -> String {
-    if token.kind == "end" { return token.text; }
+    if token.kind == "end" {
+        return token.text;
+    }
+
     return "'" + token.text + "'";
 }
 
@@ -69,17 +79,23 @@ impl Parser {
 
     fn next() -> Token {
         let token = self.peek();
-        if token.kind != "end" { self.at++; }
+
+        if token.kind != "end" {
+            self.at++;
+        }
+
         return token;
     }
 
     // Is the next token this symbol? If so, move past it.
     fn accept(symbol: String) -> Bool {
         let token = self.peek();
+
         if token.kind == "symbol" && token.text == symbol {
             self.at++;
             return true;
         }
+
         return false;
     }
 
@@ -89,24 +105,29 @@ impl Parser {
         if self.failure == null {
             self.failure = problem(message);
         }
+
         return Number { value: 0 };
     }
 
     fn statement() -> Statement {
         // `name =` starts an assignment; anything else is an expression
         let first = self.peek();
+
         if first.kind == "name" {
             let second = self.tokens[self.at + 1];
+
             if second.kind == "symbol" && second.text == "=" {
                 self.at += 2;
                 return Statement { target: first.text, value: self.expression() };
             }
         }
+
         return Statement { target: null, value: self.expression() };
     }
 
     fn expression() -> Expr {
         let left = self.term();
+
         while true {
             if self.accept("+") {
                 left = Binary { op: "+", left: left, right: self.term() };
@@ -120,8 +141,10 @@ impl Parser {
 
     fn term() -> Expr {
         let left = self.factor();
+
         while true {
             let op = self.peek().text;
+
             if self.accept("*") || self.accept("/") || self.accept("%") {
                 left = Binary { op: op, left: left, right: self.factor() };
             } else {
@@ -134,15 +157,19 @@ impl Parser {
         if self.accept("-") {
             return Negate { inner: self.factor() };
         }
+
         if self.accept("(") {
             let inner = self.expression();
+
             if !self.accept(")") {
                 return self.fail("expected ')' but found " + describe(self.peek()));
             }
+
             return inner;
         }
 
         let token = self.next();
+
         return match token.kind {
             case "number": Number { value: token.value };
             case "name": Variable { name: token.text };

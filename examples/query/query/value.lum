@@ -27,9 +27,11 @@ pub fn show(value: Value) -> String {
 
 fn showReal(x: Float) -> String {
     let text = toString(x);
+
     if strings.contains(text, ".") || strings.contains(text, "e") || strings.contains(text, "n") {
         return text;
     }
+
     return text + ".0";
 }
 
@@ -47,8 +49,12 @@ pub fn key(value: Value) -> String {
 fn realKey(x: Float) -> String {
     if x > -1000000000000.0 && x < 1000000000000.0 {
         let whole = math.trunc(x);
-        if math.toFloat(whole) == x { return "i" + toString(whole); }
+
+        if math.toFloat(whole) == x {
+            return "i" + toString(whole);
+        }
     }
+
     return "r" + toString(x);
 }
 
@@ -64,26 +70,50 @@ pub fn truth(value: Value) -> Bool? {
 }
 
 pub fn fromBool(truth: Bool?) -> Value {
-    if truth == null { return Value.Null; }
-    if truth { return Value.Int(1); }
+    if truth == null {
+        return Value.Null;
+    }
+
+    if truth {
+        return Value.Int(1);
+    }
+
     return Value.Int(0);
 }
 
 fn sign(n: Int) -> Int {
-    if n < 0 { return -1; }
-    if n > 0 { return 1; }
+    if n < 0 {
+        return -1;
+    }
+
+    if n > 0 {
+        return 1;
+    }
+
     return 0;
 }
 
 fn compareReals(a: Float, b: Float) -> Int {
-    if a < b { return -1; }
-    if a > b { return 1; }
+    if a < b {
+        return -1;
+    }
+
+    if a > b {
+        return 1;
+    }
+
     return 0;
 }
 
 fn compareTexts(a: String, b: String) -> Int {
-    if a < b { return -1; }
-    if a > b { return 1; }
+    if a < b {
+        return -1;
+    }
+
+    if a > b {
+        return 1;
+    }
+
     return 0;
 }
 
@@ -91,23 +121,55 @@ fn compareTexts(a: String, b: String) -> Int {
 // NULL comes before everything, a number before any text.
 pub fn order(a: Value, b: Value) -> Int {
     match (a, b) {
-        case (Value.Null, Value.Null): { return 0; }
-        case (Value.Null, _): { return -1; }
-        case (_, Value.Null): { return 1; }
-        case (Value.Int(x), Value.Int(y)): { return sign(x - y); }
-        case (Value.Int(x), Value.Real(y)): { return compareReals(math.toFloat(x), y); }
-        case (Value.Real(x), Value.Int(y)): { return compareReals(x, math.toFloat(y)); }
-        case (Value.Real(x), Value.Real(y)): { return compareReals(x, y); }
-        case (Value.Text(x), Value.Text(y)): { return compareTexts(x, y); }
-        case (Value.Text(x), _): { return 1; }
-        case (_, Value.Text(y)): { return -1; }
+        case (Value.Null, Value.Null): {
+            return 0;
+        }
+
+        case (Value.Null, _): {
+            return -1;
+        }
+
+        case (_, Value.Null): {
+            return 1;
+        }
+
+        case (Value.Int(x), Value.Int(y)): {
+            return sign(x - y);
+        }
+
+        case (Value.Int(x), Value.Real(y)): {
+            return compareReals(math.toFloat(x), y);
+        }
+
+        case (Value.Real(x), Value.Int(y)): {
+            return compareReals(x, math.toFloat(y));
+        }
+
+        case (Value.Real(x), Value.Real(y)): {
+            return compareReals(x, y);
+        }
+
+        case (Value.Text(x), Value.Text(y)): {
+            return compareTexts(x, y);
+        }
+
+        case (Value.Text(x), _): {
+            return 1;
+        }
+
+        case (_, Value.Text(y)): {
+            return -1;
+        }
     }
 }
 
 // The same for a comparison in a condition, where NULL compares with
 // nothing: null if either is.
 pub fn compare(a: Value, b: Value) -> Int? {
-    if a == Value.Null || b == Value.Null { return null; }
+    if a == Value.Null || b == Value.Null {
+        return null;
+    }
+
     return order(a, b);
 }
 
@@ -124,30 +186,65 @@ fn real(value: Value) -> Float {
 // anything real gives a real. Dividing by zero gives NULL.
 pub fn arithmetic(operator: String, a: Value, b: Value) -> Value {
     match (a, b) {
-        case (Value.Null, _): { return Value.Null; }
-        case (_, Value.Null): { return Value.Null; }
+        case (Value.Null, _): {
+            return Value.Null;
+        }
+
+        case (_, Value.Null): {
+            return Value.Null;
+        }
+
         case (Value.Int(x), Value.Int(y)): {
             return match operator {
                 case "+": Value.Int(x + y);
                 case "-": Value.Int(x - y);
                 case "*": Value.Int(x * y);
-                case "/": { if y == 0 { return Value.Null; } return Value.Int(x / y); }
-                default: { if y == 0 { return Value.Null; } return Value.Int(x % y); }
+
+                case "/": {
+                    if y == 0 {
+                        return Value.Null;
+                    }
+
+                    return Value.Int(x / y);
+                }
+
+                default: {
+                    if y == 0 {
+                        return Value.Null;
+                    }
+
+                    return Value.Int(x % y);
+                }
             };
         }
-        default: { }
+
+        default: {}
     }
+
     let x = real(a);
     let y = real(b);
+
     return match operator {
         case "+": Value.Real(x + y);
         case "-": Value.Real(x - y);
         case "*": Value.Real(x * y);
-        case "/": { if y == 0.0 { return Value.Null; } return Value.Real(x / y); }
+
+        case "/": {
+            if y == 0.0 {
+                return Value.Null;
+            }
+
+            return Value.Real(x / y);
+        }
+
         default: {
             // The remainder is of the whole parts
             let divisor = math.trunc(y);
-            if divisor == 0 { return Value.Null; }
+
+            if divisor == 0 {
+                return Value.Null;
+            }
+
             return Value.Real(math.toFloat(math.trunc(x) % divisor));
         }
     };
@@ -157,13 +254,23 @@ pub fn arithmetic(operator: String, a: Value, b: Value) -> Value {
 pub fn parse(text: String, kind: String) -> Value {
     if kind == "int" {
         let n = strings.parseInt(text);
-        if n != null { return Value.Int(n); }
+
+        if n != null {
+            return Value.Int(n);
+        }
+
         return Value.Null;
     }
+
     if kind == "real" {
         let x = strings.parseFloat(text);
-        if x != null { return Value.Real(x); }
+
+        if x != null {
+            return Value.Real(x);
+        }
+
         return Value.Null;
     }
+
     return Value.Text(text);
 }

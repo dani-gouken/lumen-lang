@@ -7,15 +7,26 @@ import std.strings;
 import std.result.{Result};
 
 enum Value { Number(Int), Text(String), Pair(Value, Value), Nothing }
+
 enum Step { Push(Value), Add, Join, Swap, Jump(Int), JumpIfZero(Int), Print, Halt }
+
 enum Option<T> { Some(T), None }
 
-struct Machine { stack: [Value]; at: Int; printed: [String]; ran: Int; }
+struct Machine {
+    stack: [Value];
+    at: Int;
+    printed: [String];
+    ran: Int;
+}
 
 impl Machine {
     fn pop() -> Option<Value> {
         let size = arrays.len(self.stack);
-        if size == 0 { return Option.None; }
+
+        if size == 0 {
+            return Option.None;
+        }
+
         let top = self.stack[size - 1];
         self.stack = arrays.slice(self.stack, 0, size - 1);
         return Option.Some(top);
@@ -26,11 +37,15 @@ impl Machine {
         if self.pop() is Option.Some(right) && self.pop() is Option.Some(left) {
             return Option.Some((left, right));
         }
+
         return Option.None;
     }
 
     fn step(steps: [Step]) -> Result<Bool, String> {
-        if self.at >= arrays.len(steps) { return Result.Ok(false); }
+        if self.at >= arrays.len(steps) {
+            return Result.Ok(false);
+        }
+
         let step = steps[self.at];
         self.at += 1;
         self.ran += 1;
@@ -42,7 +57,9 @@ impl Machine {
         } else if step is Step.Jump(to) {
             self.at = to;
         } else if step is Step.JumpIfZero(to) {
-            if self.pop() is Option.Some(Value.Number(0)) { self.at = to; }
+            if self.pop() is Option.Some(Value.Number(0)) {
+                self.at = to;
+            }
         } else if step is Step.Print {
             if self.pop() is Option.Some(value) {
                 push(self.printed, show(value));
@@ -63,24 +80,39 @@ impl Machine {
         } else {
             return Result.Err("two values are needed");
         }
+
         return Result.Ok(true);
     }
 }
 
 fn show(value: Value) -> String {
-    if value is Value.Number(n) { return toString(n); }
-    if value is Value.Text(text) { return text; }
-    if value is Value.Pair(first, second) { return "(${show(first)}, ${show(second)})"; }
+    if value is Value.Number(n) {
+        return toString(n);
+    }
+
+    if value is Value.Text(text) {
+        return text;
+    }
+
+    if value is Value.Pair(first, second) {
+        return "(${show(first)}, ${show(second)})";
+    }
+
     return "nothing";
 }
 
 fn run(steps: [Step]) -> Machine {
     let machine = Machine { stack: [], at: 0, printed: [], ran: 0 };
     let outcome = machine.step(steps);
+
     while outcome is Result.Ok(true) && machine.ran < 100 {
         outcome = machine.step(steps);
     }
-    if outcome is Result.Err(reason) { push(machine.printed, "failed: " + reason); }
+
+    if outcome is Result.Err(reason) {
+        push(machine.printed, "failed: " + reason);
+    }
+
     return machine;
 }
 
@@ -101,11 +133,12 @@ fn main() -> Int {
         Step.Push(Value.Number(-1)),
         Step.Add,
         Step.Push(Value.Text("left ")),
-        Step.Swap,                          // the text goes under the number
+        Step.Swap,  // the text goes under the number
         Step.Join,
         Step.Print,
         Step.Halt,
     ];
+
     println(run(countdown).printed);
 
     let failing = [Step.Push(Value.Text("a")), Step.Push(Value.Number(1)), Step.Add, Step.Print];
@@ -123,36 +156,74 @@ fn main() -> Int {
         Step.Push(Value.Text("done")),
         Step.Print,
     ];
+
     let machine = run(jumping);
     println(machine.printed, machine.ran);
 
     // Tests as values, and in the functions handed to the library
     let steps = arrays.concat(countdown, jumping);
     let pushes = arrays.filter(steps, step -> step is Step.Push(_));
-    let texts = arrays.filter(steps, step -> step is Step.Push(Value.Text(text)) && strings.len(text) > 4);
-    let jumpsBack = arrays.filter(steps, step -> step is Step.Jump(to) && to == 0 || step is Step.JumpIfZero(0));
-    println(arrays.len(pushes), arrays.len(texts), arrays.len(jumpsBack), steps[2] is Step.Add, !(steps[0] is Step.Halt));
+
+    let texts = arrays.filter(
+        steps,
+        step -> step is Step.Push(Value.Text(text)) && strings.len(text) > 4,
+    );
+
+    let jumpsBack = arrays.filter(
+        steps,
+        step -> step is Step.Jump(to) && to == 0 || step is Step.JumpIfZero(0),
+    );
+
+    println(
+        arrays.len(pushes),
+        arrays.len(texts),
+        arrays.len(jumpsBack),
+        steps[2] is Step.Add,
+        !(steps[0] is Step.Halt),
+    );
 
     // Each closure keeps the value its pattern named
     let later: [fn() -> String] = [];
+
     for step in steps {
         if step is Step.Push(value) && !(value is Value.Number(_)) {
             push(later, () -> "pushes ${show(value)}");
         }
     }
-    for each in later { println(each()); }
 
-    let nested = Value.Pair(Value.Number(1), Value.Pair(Value.Text("x"), Value.Pair(Value.Number(2), Value.Nothing)));
+    for each in later {
+        println(each());
+    }
+
+    let nested = Value.Pair(
+        Value.Number(1),
+        Value.Pair(Value.Text("x"), Value.Pair(Value.Number(2), Value.Nothing)),
+    );
+
     let found: [Int] = [];
     numbers(nested, found);
     println(found, show(nested));
 
     // A tuple is taken apart the same way; so is a value that may be null
     let pair = (nested, 2);
-    if pair is (Value.Pair(Value.Number(first), _), count) && count > first { println(first, count); }
+
+    if pair is (Value.Pair(Value.Number(first), _), count) && count > first {
+        println(first, count);
+    }
+
     let maybe: Value? = null;
-    if maybe is Value.Number(n) { println(n); } else { println("null is no number"); }
+
+    if maybe is Value.Number(n) {
+        println(n);
+    } else {
+        println("null is no number");
+    }
+
     maybe = Value.Number(5);
-    if maybe is Value.Number(n) { println(n, show(maybe)); }
+
+    if maybe is Value.Number(n) {
+        println(n, show(maybe));
+    }
+
     return 0;
 }

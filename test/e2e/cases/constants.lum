@@ -15,18 +15,26 @@ const LAST = CELLS - 1;
 const BELOW_ZERO = -COLUMNS;
 
 fn cell(index: Int) -> String {
-    if index % (COLUMNS + 1) == 0 { return "\\"; }
-    if index == LAST { return "!"; }
+    if index % (COLUMNS + 1) == 0 {
+        return "\\";
+    }
+
+    if index == LAST {
+        return "!";
+    }
+
     return ".";
 }
 
 fn row(y: Int) -> String {
     let line = "";
     let x = 0;
+
     while x < COLUMNS {
         line += cell(y * COLUMNS + x);
         x++;
     }
+
     return line;
 }
 
@@ -34,10 +42,12 @@ fn main() -> Int {
     println(TITLE, COLUMNS, ROWS, CELLS, WIDE, BELOW_ZERO);
     println(strings.repeat(RULE, COLUMNS));
     let y = 0;
+
     while y < ROWS {
         println(row(y));
         y++;
     }
+
     println(strings.repeat(RULE, COLUMNS));
     println(math.round(DIAGONAL * 1000.0), math.round(TAU * 1000.0), math.round(math.e * 1000.0));
 

@@ -4,17 +4,17 @@ import query.value.{Value};
 
 pub enum Expr {
     Literal(Value),
-    Column(String, String),             // The table it is asked of ("" for none) and its name
-    Slot(Int),                          // A column found: its place in a row (see engine.bind)
+    Column(String, String),       // The table it is asked of ("" for none) and its name
+    Slot(Int),                    // A column found: its place in a row (see engine.bind)
     Negate(Expr),
     Not(Expr),
-    Binary(String, Expr, Expr),         // + - * / % ||, the comparisons, AND, OR
-    Like(Expr, Expr, Bool),             // value, pattern, whether it is NOT LIKE
+    Binary(String, Expr, Expr),   // + - * / % ||, the comparisons, AND, OR
+    Like(Expr, Expr, Bool),       // value, pattern, whether it is NOT LIKE
     In(Expr, [Expr], Bool),
     Between(Expr, Expr, Expr, Bool),
-    IsNull(Expr, Bool),                 // IS NULL, or IS NOT NULL
-    Call(String, [Expr], Bool),         // The function in upper case, its arguments, whether it is f(*)
-    Case([(Expr, Expr)], Expr?),        // WHEN condition THEN value ..., ELSE value
+    IsNull(Expr, Bool),           // IS NULL, or IS NOT NULL
+    Call(String, [Expr], Bool),   // The function in upper case, its arguments, whether it is f(*)
+    Case([(Expr, Expr)], Expr?),  // WHEN condition THEN value ..., ELSE value
 }
 
 // One thing a query gives per row, and the name it gives it.
@@ -25,13 +25,13 @@ pub struct Item {
 
 pub struct Source {
     table: String;
-    alias: String;      // The name its columns are asked by: the table's, unless said otherwise
+    alias: String;  // The name its columns are asked by: the table's, unless said otherwise
 }
 
 pub struct Join {
     source: Source;
     on: Expr;
-    left: Bool;         // Rows of the left side without a match are kept
+    left: Bool;  // Rows of the left side without a match are kept
 }
 
 pub struct OrderKey {
@@ -41,7 +41,7 @@ pub struct OrderKey {
 
 pub struct Select {
     distinct: Bool;
-    everything: Bool;   // SELECT *
+    everything: Bool;  // SELECT *
     items: [Item];
     from: Source;
     joins: [Join];

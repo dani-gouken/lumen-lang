@@ -3,29 +3,60 @@
 
 pub enum Kind {
     // One character
-    LeftParen, RightParen, LeftBrace, RightBrace,
-    Comma, Dot, Minus, Plus, Semicolon, Slash, Star,
+    LeftParen,
+    RightParen,
+    LeftBrace,
+    RightBrace,
+    Comma,
+    Dot,
+    Minus,
+    Plus,
+    Semicolon,
+    Slash,
+    Star,
 
     // One or two characters
-    Bang, BangEqual, Equal, EqualEqual,
-    Greater, GreaterEqual, Less, LessEqual,
+    Bang,
+    BangEqual,
+    Equal,
+    EqualEqual,
+    Greater,
+    GreaterEqual,
+    Less,
+    LessEqual,
 
     // What they hold varies
-    Identifier, Text, Number,
+    Identifier,
+    Text,
+    Number,
 
     // Words of the language
-    And, Class, Else, False, Fun, For, If, Nil, Or,
-    Print, Return, Super, This, True, Var, While,
+    And,
+    Class,
+    Else,
+    False,
+    Fun,
+    For,
+    If,
+    Nil,
+    Or,
+    Print,
+    Return,
+    Super,
+    This,
+    True,
+    Var,
+    While,
 
     Eof,
 }
 
 pub struct Token {
     kind: Kind;
-    lexeme: String;         // As it is written in the program
+    lexeme: String;       // As it is written in the program
     line: Int;
-    number: Float = 0.0;    // What a Number is worth
-    text: String = "";      // What a Text says, without its quotes
+    number: Float = 0.0;  // What a Number is worth
+    text: String = "";    // What a Text says, without its quotes
 }
 
 // The word a name is, if it is one of the language's.

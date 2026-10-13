@@ -5,6 +5,7 @@ fn sign(n: Int) -> Int {
     } else {
         return 1;
     }
+
     println("never printed");
 }
 

@@ -27,7 +27,10 @@ import query.value.{show};
 // Answers a query: its rows, one per line, the values between bars.
 fn rows(text: String, folder: String) -> Result<[String], String> {
     let answer = engine.answer(parser.parse(text)?, folder)?;
-    return Result.Ok(answer.rows |> arrays.map(row -> row |> arrays.map(show) |> strings.join("|")));
+
+    return Result.Ok(
+        answer.rows |> arrays.map(row -> row |> arrays.map(show) |> strings.join("|")),
+    );
 }
 
 // A few queries that show what there is.
@@ -44,38 +47,60 @@ fn tour() -> [String] {
 
 fn main() -> Int {
     let arguments = os.args();
+
     if arrays.len(arguments) == 0 {
         let folder = path.join([path.dir(os.program()), "data"]);
+
         for text in tour() {
             println("> " + text);
+
             match rows(text, folder) {
-                case Result.Ok(lines): { for line in lines { println(line); } }
-                case Result.Err(problem): { println("Error: " + problem); }
+                case Result.Ok(lines): {
+                    for line in lines {
+                        println(line);
+                    }
+                }
+
+                case Result.Err(problem): {
+                    println("Error: " + problem);
+                }
             }
+
             println();
         }
+
         return 0;
     }
+
     if arrays.len(arguments) != 2 {
         io.printError("Usage: lumen run examples/query <folder> <file.sql | \"SELECT ...\">\n");
         return 2;
     }
 
     let text = arguments[1];
+
     if strings.endsWith(text, ".sql") {
         match io.readFile(text) {
-            case Result.Ok(content): { text = content; }
+            case Result.Ok(content): {
+                text = content;
+            }
+
             case Result.Err(error): {
                 io.printError("Error: ${error.describe()}\n");
                 return 2;
             }
         }
     }
+
     match rows(text, arguments[0]) {
         case Result.Ok(lines): {
-            for line in lines { println(line); }
+            for line in lines {
+                println(line);
+            }
+
             return 0;
         }
+
         case Result.Err(problem): {
             io.printError("Error: ${problem}\n");
             return 1;

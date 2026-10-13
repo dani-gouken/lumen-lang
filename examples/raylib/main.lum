@@ -28,7 +28,7 @@ const PADDLE_SPEED = 520.0;
 const BALL_RADIUS = 8.0;
 
 enum Phase {
-    Ready,          // The ball waits on the paddle
+    Ready,  // The ball waits on the paddle
     Playing,
     Won,
     Lost,
@@ -66,6 +66,7 @@ fn rowColor(row: Int) -> Color {
 fn wall() -> [Brick] {
     let bricks: [Brick] = [];
     let left = (WIDTH - COLUMNS * (BRICK_WIDTH + 4.0)) / 2.0;
+
     for row in 0..ROWS {
         for column in 0..COLUMNS {
             push(bricks, Brick {
@@ -80,13 +81,19 @@ fn wall() -> [Brick] {
             });
         }
     }
+
     return bricks;
 }
 
 fn newGame() -> Game {
     return Game {
         phase: Phase.Ready,
-        paddle: Rectangle { x: (WIDTH - PADDLE_WIDTH) / 2.0, y: HEIGHT - 40.0, width: PADDLE_WIDTH, height: 14.0 },
+        paddle: Rectangle {
+            x: (WIDTH - PADDLE_WIDTH) / 2.0,
+            y: HEIGHT - 40.0,
+            width: PADDLE_WIDTH,
+            height: 14.0,
+        },
         ball: Vector2 { x: 0.0, y: 0.0 },
         speed: Vector2 { x: 0.0, y: 0.0 },
         bricks: wall(),
@@ -99,35 +106,65 @@ impl Game {
     fn steer(demo: Bool) -> Float {
         if demo {
             let middle = self.paddle.x + self.paddle.width / 2.0;
-            if self.ball.x < middle - 10.0 { return -1.0; }
-            if self.ball.x > middle + 10.0 { return 1.0; }
+
+            if self.ball.x < middle - 10.0 {
+                return -1.0;
+            }
+
+            if self.ball.x > middle + 10.0 {
+                return 1.0;
+            }
+
             return 0.0;
         }
+
         let direction = 0.0;
-        if raylib.IsKeyDown(raylib.KEY_LEFT) || raylib.IsKeyDown(raylib.KEY_A) { direction -= 1.0; }
-        if raylib.IsKeyDown(raylib.KEY_RIGHT) || raylib.IsKeyDown(raylib.KEY_D) { direction += 1.0; }
+
+        if raylib.IsKeyDown(raylib.KEY_LEFT) || raylib.IsKeyDown(raylib.KEY_A) {
+            direction -= 1.0;
+        }
+
+        if raylib.IsKeyDown(raylib.KEY_RIGHT) || raylib.IsKeyDown(raylib.KEY_D) {
+            direction += 1.0;
+        }
+
         return direction;
     }
 
     fn update(elapsed: Float, demo: Bool) {
         let launch = demo || raylib.IsKeyPressed(raylib.KEY_SPACE);
+
         match self.phase {
             case Phase.Won | Phase.Lost: {
-                if launch && !demo { self.restart(); }
+                if launch && !demo {
+                    self.restart();
+                }
+
                 return;
             }
+
             default: {}
         }
 
-        self.paddle.x = math.fmax(0.0, math.fmin(WIDTH - self.paddle.width,
-            self.paddle.x + self.steer(demo) * PADDLE_SPEED * elapsed));
+        self.paddle.x = math.fmax(
+            0.0,
+            math.fmin(
+                WIDTH - self.paddle.width,
+                self.paddle.x + self.steer(demo) * PADDLE_SPEED * elapsed,
+            ),
+        );
 
         if self.phase == Phase.Ready {
-            self.ball = Vector2 { x: self.paddle.x + self.paddle.width / 2.0, y: self.paddle.y - BALL_RADIUS - 1.0 };
+            self.ball = Vector2 {
+                x: self.paddle.x + self.paddle.width / 2.0,
+                y: self.paddle.y - BALL_RADIUS - 1.0,
+            };
+
             if launch {
                 self.speed = Vector2 { x: 190.0, y: -330.0 };
                 self.phase = Phase.Playing;
             }
+
             return;
         }
 
@@ -135,13 +172,28 @@ impl Game {
         self.ball.y += self.speed.y * elapsed;
 
         // The walls
-        if self.ball.x < BALL_RADIUS { self.ball.x = BALL_RADIUS; self.speed.x = -self.speed.x; }
-        if self.ball.x > WIDTH - BALL_RADIUS { self.ball.x = WIDTH - BALL_RADIUS; self.speed.x = -self.speed.x; }
-        if self.ball.y < BALL_RADIUS { self.ball.y = BALL_RADIUS; self.speed.y = -self.speed.y; }
+        if self.ball.x < BALL_RADIUS {
+            self.ball.x = BALL_RADIUS;
+            self.speed.x = -self.speed.x;
+        }
+
+        if self.ball.x > WIDTH - BALL_RADIUS {
+            self.ball.x = WIDTH - BALL_RADIUS;
+            self.speed.x = -self.speed.x;
+        }
+
+        if self.ball.y < BALL_RADIUS {
+            self.ball.y = BALL_RADIUS;
+            self.speed.y = -self.speed.y;
+        }
 
         // The paddle sends the ball back where it was hit: to the side at its ends
-        if self.speed.y > 0.0 && raylib.CheckCollisionCircleRec(self.ball, BALL_RADIUS, self.paddle) {
-            let where = (self.ball.x - (self.paddle.x + self.paddle.width / 2.0)) / (self.paddle.width / 2.0);
+        if self.speed.y > 0.0
+            && raylib.CheckCollisionCircleRec(self.ball, BALL_RADIUS, self.paddle)
+        {
+            let where = (self.ball.x - (self.paddle.x + self.paddle.width / 2.0))
+                / (self.paddle.width / 2.0);
+
             self.speed = Vector2 { x: where * 340.0, y: -math.fabs(self.speed.y) * 1.02 };
             self.ball.y = self.paddle.y - BALL_RADIUS;
         }
@@ -151,12 +203,14 @@ impl Game {
             if brick.alive && raylib.CheckCollisionCircleRec(self.ball, BALL_RADIUS, brick.box) {
                 brick.alive = false;
                 self.score += brick.points;
+
                 // From the side if the ball is beside the brick, else from above or below
                 if self.ball.x < brick.box.x || self.ball.x > brick.box.x + brick.box.width {
                     self.speed.x = -self.speed.x;
                 } else {
                     self.speed.y = -self.speed.y;
                 }
+
                 break;
             }
         }
@@ -166,7 +220,10 @@ impl Game {
         } else if self.ball.y > HEIGHT + BALL_RADIUS {
             self.lives--;
             self.phase = Phase.Ready;
-            if self.lives == 0 { self.phase = Phase.Lost; }
+
+            if self.lives == 0 {
+                self.phase = Phase.Lost;
+            }
         }
     }
 
@@ -181,11 +238,13 @@ impl Game {
 
     fn draw() {
         raylib.ClearBackground(Color { r: 18, g: 20, b: 30, a: 255 });
+
         for brick in self.bricks {
             if brick.alive {
                 raylib.DrawRectangleRounded(brick.box, 0.3, 4, brick.color);
             }
         }
+
         raylib.DrawRectangleRounded(self.paddle, 0.6, 6, raylib.RAYWHITE);
         raylib.DrawCircleV(self.ball, BALL_RADIUS, raylib.YELLOW);
 
@@ -199,6 +258,7 @@ impl Game {
             case Phase.Lost: "Game over.  SPACE to play again";
             case Phase.Playing: "";
         };
+
         if message != "" {
             let width = raylib.MeasureText(message, 24);
             raylib.DrawText(message, (WIDTH - width) / 2, HEIGHT / 2 + 40, 24, raylib.LIGHTGRAY);
@@ -211,7 +271,10 @@ fn main() -> Int {
     let arguments = os.args();
     let demo = arrays.len(arguments) > 0 && arguments[0] == "demo";
     let pictures = 0;
-    if demo && arrays.len(arguments) > 1 { pictures = strings.parseInt(arguments[1]) ?? 0; }
+
+    if demo && arrays.len(arguments) > 1 {
+        pictures = strings.parseInt(arguments[1]) ?? 0;
+    }
 
     raylib.SetTraceLogLevel(raylib.LOG_WARNING);
     raylib.SetConfigFlags(raylib.FLAG_VSYNC_HINT | raylib.FLAG_MSAA_4X_HINT);
@@ -221,6 +284,7 @@ fn main() -> Int {
 
     let game = newGame();
     let drawn = 0;
+
     while !raylib.WindowShouldClose() && (pictures == 0 || drawn < pictures) {
         // A picture that took long (the window was dragged) moves the ball no further than one at 30 a second
         game.update(math.fmin(raylib.GetFrameTime(), 1.0 / 30.0), demo);
@@ -229,8 +293,15 @@ fn main() -> Int {
         game.draw();
         raylib.EndDrawing();
         drawn++;
-        if drawn == pictures && arrays.len(arguments) > 2 { raylib.TakeScreenshot(arguments[2]); }
+
+        if drawn == pictures && arrays.len(arguments) > 2 {
+            raylib.TakeScreenshot(arguments[2]);
+        }
     }
-    if demo { println("score ${game.score} after ${drawn} pictures"); }
+
+    if demo {
+        println("score ${game.score} after ${drawn} pictures");
+    }
+
     return 0;
 }

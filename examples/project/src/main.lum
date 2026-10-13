@@ -6,14 +6,16 @@
 //               `import textkit.format.pad;` is packages/textkit/format/pad.lum
 
 import app.guests;
-import textkit;                      // packages/textkit.lum
-import textkit.format.pad.{left};    // packages/textkit/format/pad.lum
+import textkit;                    // packages/textkit.lum
+import textkit.format.pad.{left};  // packages/textkit/format/pad.lum
 
 fn main() -> Int {
     let list = guests.invited();
+
     for i, name in list {
         println(left(toString(i + 1), 3), textkit.title(name));
     }
+
     println(textkit.repeat("-", 12));
     println(guests.count(list), "guests");
     return 0;

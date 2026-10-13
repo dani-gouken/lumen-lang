@@ -32,13 +32,16 @@ enum Command {
     Add(String, Priority, Date?),
     Done(Int),
     Remove(Int),
-    List(Bool),         // whether to show finished tasks too
+    List(Bool),  // whether to show finished tasks too
     Help,
 }
 
 // The command a line of arguments asks for, or why it is not one.
 fn parse(args: [String]) -> Result<Command, String> {
-    if arrays.len(args) == 0 { return Result.Ok(Command.List(false)); }
+    if arrays.len(args) == 0 {
+        return Result.Ok(Command.List(false));
+    }
+
     let rest = arrays.drop(args, 1);
     // Options may be anywhere after the command; the rest are words
     let options = arrays.filter(rest, arg -> strings.startsWith(arg, "--"));
@@ -46,39 +49,79 @@ fn parse(args: [String]) -> Result<Command, String> {
 
     match args[0] {
         case "add": {
-            if arrays.len(words) == 0 { return Result.Err("add what? Give the task a title"); }
+            if arrays.len(words) == 0 {
+                return Result.Err("add what? Give the task a title");
+            }
+
             let priority = Priority.Normal;
             let due: Date? = null;
+
             for option in options {
                 let (name, value) = strings.cut(option, "=") ?? (option, "");
+
                 match name {
                     case "--priority": {
                         let named = task.priorityOf(value);
-                        if named == null { return Result.Err("'${value}' is not a priority: use low, normal or high"); }
+
+                        if named == null {
+                            return Result.Err("'${value}' is not a priority: use low, normal or high");
+                        }
+
                         priority = named;
                     }
+
                     case "--due": {
                         due = time.parse(value);
-                        if due == null { return Result.Err("'${value}' is not a date: write it as 2026-10-20"); }
+
+                        if due == null {
+                            return Result.Err("'${value}' is not a date: write it as 2026-10-20");
+                        }
                     }
-                    default: { return Result.Err("add does not know the option ${name}"); }
+
+                    default: {
+                        return Result.Err("add does not know the option ${name}");
+                    }
                 }
             }
+
             return Result.Ok(Command.Add(strings.join(words, " "), priority, due));
         }
-        case "done": { return idOf(words, "done").map(Command.Done); }
-        case "remove": { return idOf(words, "remove").map(Command.Remove); }
-        case "list": { return Result.Ok(Command.List(arrays.contains(options, "--all"))); }
-        case "help": { return Result.Ok(Command.Help); }
-        default: { return Result.Err("there is no command '${args[0]}'; try help"); }
+
+        case "done": {
+            return idOf(words, "done").map(Command.Done);
+        }
+
+        case "remove": {
+            return idOf(words, "remove").map(Command.Remove);
+        }
+
+        case "list": {
+            return Result.Ok(Command.List(arrays.contains(options, "--all")));
+        }
+
+        case "help": {
+            return Result.Ok(Command.Help);
+        }
+
+        default: {
+            return Result.Err("there is no command '${args[0]}'; try help");
+        }
     }
 }
 
 fn idOf(words: [String], command: String) -> Result<Int, String> {
     let word = arrays.first(words);
-    if word == null { return Result.Err("${command} which? Give the number of the task"); }
+
+    if word == null {
+        return Result.Err("${command} which? Give the number of the task");
+    }
+
     let id = strings.parseInt(word);
-    if id == null { return Result.Err("'${word}' is not the number of a task"); }
+
+    if id == null {
+        return Result.Err("'${word}' is not the number of a task");
+    }
+
     return Result.Ok(id);
 }
 
@@ -86,22 +129,45 @@ fn idOf(words: [String], command: String) -> Result<Int, String> {
 fn run(command: Command, list: Store, today: Date) -> Result<[String], String> {
     match command {
         case Command.Add(title, priority, due): {
-            let new = Task { id: list.nextId(), title: title, priority: priority, due: due, state: State.Open };
+            let new = Task {
+                id: list.nextId(),
+                title: title,
+                priority: priority,
+                due: due,
+                state: State.Open,
+            };
+
             list.add(new);
             return saved(list, ["added ${new.id}: ${title}"]);
         }
+
         case Command.Done(id): {
             let found = list.find(id);
-            if found == null { return Result.Err("there is no task ${id}"); }
-            if !found.isOpen() { return Result.Ok(["task ${id} was already done"]); }
+
+            if found == null {
+                return Result.Err("there is no task ${id}");
+            }
+
+            if !found.isOpen() {
+                return Result.Ok(["task ${id} was already done"]);
+            }
+
             found.state = State.Done(today);
             return saved(list, ["done: ${found.title}"]);
         }
+
         case Command.Remove(id): {
-            if !list.remove(id) { return Result.Err("there is no task ${id}"); }
+            if !list.remove(id) {
+                return Result.Err("there is no task ${id}");
+            }
+
             return saved(list, ["removed task ${id}"]);
         }
-        case Command.List(all): { return Result.Ok(listing(list, today, all)); }
+
+        case Command.List(all): {
+            return Result.Ok(listing(list, today, all));
+        }
+
         case Command.Help: {
             return Result.Ok(strings.lines("""
                 add <title> [--due=YYYY-MM-DD] [--priority=low|normal|high]
@@ -114,31 +180,52 @@ fn run(command: Command, list: Store, today: Date) -> Result<[String], String> {
 }
 
 fn saved(list: Store, lines: [String]) -> Result<[String], String> {
-    return list.save()
-        .map(written -> lines)
-        .mapErr(error -> error.describe());
+    return list.save().map(written -> lines).mapErr(error -> error.describe());
 }
 
 // The open tasks, the most pressing first: late ones, then by priority,
 // then by date.
 fn listing(list: Store, today: Date, all: Bool) -> [String] {
     let shown = arrays.filter(list.tasks, t -> all || t.isOpen());
-    if arrays.len(shown) == 0 { return ["nothing to do"]; }
+
+    if arrays.len(shown) == 0 {
+        return ["nothing to do"];
+    }
 
     let urgency = fn(t: Task) -> Int {
-        if !t.isOpen() { return 1000000; }
+        if !t.isOpen() {
+            return 1000000;
+        }
+
         let due = t.due;
         let days = 9999;
-        if due != null { days = today.daysUntil(due); }
-        if days < 0 { return days; }
+
+        if due != null {
+            days = today.daysUntil(due);
+        }
+
+        if days < 0 {
+            return days;
+        }
+
         return t.priority.rank() * 10000 + days;
     };
+
     let rows = shown |> arrays.sortedBy(urgency) |> arrays.map(fn(t: Task) -> [String] {
         let mark = " ";
+
         match t.state {
-            case State.Open: { if t.isLate(today) { mark = "!"; } }
-            case State.Done(when): { mark = "x"; }
+            case State.Open: {
+                if t.isLate(today) {
+                    mark = "!";
+                }
+            }
+
+            case State.Done(when): {
+                mark = "x";
+            }
         }
+
         return [toString(t.id), mark, t.title, t.priority.name(), t.deadline(today)];
     });
 
@@ -154,9 +241,13 @@ fn listing(list: Store, today: Date, all: Bool) -> [String] {
 fn handle(args: [String], file: String, today: Date) -> Int {
     match answer(args, file, today) {
         case Result.Ok(lines): {
-            for line in lines { println(line); }
+            for line in lines {
+                println(line);
+            }
+
             return 0;
         }
+
         case Result.Err(problem): {
             println("todo: ${problem}");
             return 1;
@@ -191,14 +282,18 @@ fn demo() -> Int {
         ["add", "Book the dentist", "--priority=high"],
         ["list", "--all"],
         // What a person gets wrong
-        ["add"],
+        [
+            "add",
+        ],
         ["add", "Fly", "--due=someday"],
         ["add", "Fly", "--priority=urgent"],
         ["done", "nine"],
         ["done", "99"],
         ["frobnicate"],
     ];
+
     let failures = 0;
+
     for args in session {
         println("$ todo " + strings.join(args, " "));
         failures += handle(args, file, today);
@@ -210,6 +305,7 @@ fn demo() -> Int {
         [{"id": 1, "title": "ok"},
          {"id": 2, "title": }]
         """).expect("the file");
+
     println("$ todo list        (after a slip of the editor)");
     failures += handle(["list"], file, today);
     io.writeFile(file, """[{"id": 1, "title": "ok", "due": "soon"}]""").expect("the file");
@@ -223,6 +319,10 @@ fn demo() -> Int {
 
 fn main() -> Int {
     let args = os.args();
-    if arrays.len(args) == 0 { return demo(); }
+
+    if arrays.len(args) == 0 {
+        return demo();
+    }
+
     return handle(args, io.env("TODO_FILE") ?? "todo.json", time.today());
 }

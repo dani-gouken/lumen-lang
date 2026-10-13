@@ -18,15 +18,15 @@ import std.strings;
 struct Target {
     name: String;
     needs: [String] = [];
-    steps: Int = 1;             // how long it takes to build
-    broken: Bool = false;       // whether building it fails
+    steps: Int = 1;        // how long it takes to build
+    broken: Bool = false;  // whether building it fails
 }
 
 // How a target ended.
 enum Outcome {
-    Built(Int),                 // by which worker
-    Failed(String),             // why
-    Skipped(String),            // which of the targets it needs was not built
+    Built(Int),       // by which worker
+    Failed(String),   // why
+    Skipped(String),  // which of the targets it needs was not built
 }
 
 impl Outcome {
@@ -55,7 +55,7 @@ enum Event {
 struct Build {
     targets: Dict<Target>;
     running: Dict<Task<Outcome>>;
-    workers: Channel<Int>;      // the workers that are free
+    workers: Channel<Int>;  // the workers that are free
     events: Channel<Event>;
 }
 
@@ -66,8 +66,15 @@ fn newBuild(targets: [Target], workers: Int) -> Build {
         workers: task.channel<Int>(workers),
         events: task.channel<Event>(0),
     };
-    for target in targets { build.targets.set(target.name, target); }
-    for worker in 1..=workers { build.workers.send(worker); }
+
+    for target in targets {
+        build.targets.set(target.name, target);
+    }
+
+    for worker in 1..=workers {
+        build.workers.send(worker);
+    }
+
     return build;
 }
 
@@ -78,10 +85,18 @@ impl Build {
     fn unknown(names: [String]) -> String? {
         for name in names {
             let target = self.targets.get(name);
-            if target == null { return name; }
+
+            if target == null {
+                return name;
+            }
+
             let deeper = self.unknown(target.needs);
-            if deeper != null { return deeper; }
+
+            if deeper != null {
+                return deeper;
+            }
         }
+
         return null;
     }
 
@@ -89,12 +104,19 @@ impl Build {
     // a target several others need is built once.
     fn task(target: Target) -> Task<Outcome> {
         let known = self.running.get(target.name);
-        if known != null { return known; }
+
+        if known != null {
+            return known;
+        }
 
         let needed: [Task<Outcome>] = [];
+
         for need in target.needs {
             let needs = self.targets.get(need);
-            if needs != null { push(needed, self.task(needs)); }
+
+            if needs != null {
+                push(needed, self.task(needs));
+            }
         }
 
         let started = task.start(fn() -> Outcome {
@@ -102,6 +124,7 @@ impl Build {
             self.events.send(Event.Finished(target.name, outcome));
             return outcome;
         });
+
         self.running.set(target.name, started);
         return started;
     }
@@ -120,8 +143,14 @@ impl Build {
         defer self.workers.send(worker);
         self.events.send(Event.Started(target.name, worker));
 
-        let failure = result.guard(fn() { compile(target); });
-        if failure != null { return Outcome.Failed(failure.message); }
+        let failure = result.guard(fn() {
+            compile(target);
+        });
+
+        if failure != null {
+            return Outcome.Failed(failure.message);
+        }
+
         return Outcome.Built(worker);
     }
 
@@ -129,29 +158,48 @@ impl Build {
     // each target ended, by name.
     fn run(wanted: [String]) -> Result<Dict<Outcome>, String> {
         let missing = self.unknown(wanted);
-        if missing != null { return Result.Err("there is no target '${missing}'"); }
+
+        if missing != null {
+            return Result.Err("there is no target '${missing}'");
+        }
+
         for name in wanted {
             let target = self.targets.get(name);
-            if target != null { self.task(target); }
+
+            if target != null {
+                self.task(target);
+            }
         }
 
         // Once every target has ended there is nothing more to log
         let all = self.running.values();
+
         task.run(fn() {
             task.all(all);
             self.events.close();
         });
+
         self.events.each(fn(event: Event) {
             match event {
-                case Event.Started(name, worker): { println("  worker ${worker} starts ${name}"); }
-                case Event.Finished(name, outcome): { println("  ${name}: ${outcome.describe()}"); }
+                case Event.Started(name, worker): {
+                    println("  worker ${worker} starts ${name}");
+                }
+
+                case Event.Finished(name, outcome): {
+                    println("  ${name}: ${outcome.describe()}");
+                }
             }
         });
 
         let outcomes = dict.empty<Outcome>();
+
         for name in self.running.sortedKeys() {
-            outcomes.set(name, self.running.get(name)?.expect("the outcome of ${name}") ?? Outcome.Failed("lost"));
+            outcomes.set(
+                name,
+                self.running.get(name)?.expect("the outcome of ${name}") ?? Outcome.Failed("lost"),
+            );
         }
+
         return Result.Ok(outcomes);
     }
 }
@@ -159,14 +207,23 @@ impl Build {
 // The work itself. Each step lets the other tasks have their turn, as
 // reading a file or running a compiler would.
 fn compile(target: Target) {
-    for step in 0..target.steps { task.pause(); }
-    if target.broken { panic("${target.name} does not compile"); }
+    for step in 0..target.steps {
+        task.pause();
+    }
+
+    if target.broken {
+        panic("${target.name} does not compile");
+    }
 }
 
 fn report(title: String, targets: [Target], wanted: [String], workers: Int) {
     println("${title} (${workers} workers)");
+
     match newBuild(targets, workers).run(wanted) {
-        case Result.Err(reason): { println("  cannot build: ${reason}"); }
+        case Result.Err(reason): {
+            println("  cannot build: ${reason}");
+        }
+
         case Result.Ok(outcomes): {
             let built = arrays.count(outcomes.values(), outcome -> outcome.isBuilt());
             println("  ${built} of ${outcomes.size()} built");
@@ -184,13 +241,21 @@ fn main() -> Int {
         Target { name: "docs" },
         Target { name: "app", needs: ["stdlib", "docs"] },
     ];
+
     report("build", app, ["app"], 2);
     report("build", app, ["app"], 1);
 
     // One target that fails: what needs it is skipped, the rest is built
-    let flawed = arrays.map(app, target -> Target {
-        name: target.name, needs: target.needs, steps: target.steps, broken: target.name == "types",
-    });
+    let flawed = arrays.map(
+        app,
+        target -> Target {
+            name: target.name,
+            needs: target.needs,
+            steps: target.steps,
+            broken: target.name == "types",
+        },
+    );
+
     report("build with a mistake in types", flawed, ["app", "docs"], 3);
 
     report("build of what is not there", app, ["app", "tests"], 2);

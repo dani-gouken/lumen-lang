@@ -17,6 +17,7 @@ import calc.tree.{Env, Problem, newEnv};
 fn run(line: String, env: Env) -> String {
     let tokens = lexer.tokenize(line);
     let parsed = parser.parse(tokens);
+
     if parsed is Problem {
         return "cannot be read: " + parsed.message;
     }
@@ -24,14 +25,17 @@ fn run(line: String, env: Env) -> String {
     // Printing the tree back, fully parenthesized, shows how it was read
     let statement = parsed as parser.Statement;
     let result = statement.run(env);
+
     if result is Problem {
         return statement.show() + "  cannot be computed: " + result.message;
     }
+
     return statement.show() + "  =  " + toString(result as Int);
 }
 
 fn main() -> Int {
     let env = newEnv();
+
     let lines = [
         "1 + 2 * 3",
         "(1 + 2) * 3",
@@ -54,6 +58,7 @@ fn main() -> Int {
         println(line);
         println("    " + run(line, env));
     }
+
     println();
     println("variables:", env.describe());
     return 0;

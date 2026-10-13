@@ -50,7 +50,9 @@ pub fn ofNumbers(items: [Int]) -> Set<Int> {
 // `for item in seen` goes through the items, and two sets are == when
 // they hold the same items, in whatever order.
 impl<T> Iterable<T> for Set<T> {
-    fn iterate() -> [T] { return self.items(); }
+    fn iterate() -> [T] {
+        return self.items();
+    }
 }
 
 impl<T> Equal for Set<T> {
@@ -60,20 +62,30 @@ impl<T> Equal for Set<T> {
 }
 
 impl<T> Set<T> {
-    pub fn size() -> Int { return self.members.size(); }
+    pub fn size() -> Int {
+        return self.members.size();
+    }
 
-    pub fn isEmpty() -> Bool { return self.members.isEmpty(); }
+    pub fn isEmpty() -> Bool {
+        return self.members.isEmpty();
+    }
 
     // Adds an item. Returns whether it was new.
     pub fn add(item: T) -> Bool {
         let name = self.name(item);
-        if self.members.has(name) { return false; }
+
+        if self.members.has(name) {
+            return false;
+        }
+
         self.members.set(name, item);
         return true;
     }
 
     pub fn addAll(items: [T]) {
-        for item in items { self.add(item); }
+        for item in items {
+            self.add(item);
+        }
     }
 
     pub fn has(item: T) -> Bool {
@@ -117,17 +129,24 @@ impl<T> Set<T> {
     // The items a function accepts.
     pub fn filter(wanted: fn(T) -> Bool) -> Set<T> {
         let out = by(self.key);
+
         for item in self.items() {
-            if wanted(item) { out.add(item); }
+            if wanted(item) {
+                out.add(item);
+            }
         }
+
         return out;
     }
 
     // Whether every item of this set is in the other.
     pub fn isSubsetOf(other: Set<T>) -> Bool {
         for item in self.items() {
-            if !other.has(item) { return false; }
+            if !other.has(item) {
+                return false;
+            }
         }
+
         return true;
     }
 

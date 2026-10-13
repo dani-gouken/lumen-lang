@@ -24,7 +24,7 @@ pub enum Value {
     Number(Float),
     Text(String),
     Function(Closure),
-    Native(String),         // A function the interpreter provides, by its name
+    Native(String),  // A function the interpreter provides, by its name
     Class(Class),
     Instance(Instance),
 }
@@ -75,7 +75,10 @@ fn truthy(value: Value) -> Bool {
 fn equal(a: Value, b: Value) -> Bool {
     // Asked of the numbers themselves: a number that is not one (0/0)
     // equals nothing, the very value it is included
-    if a is Value.Number(x) && b is Value.Number(y) { return x == y; }
+    if a is Value.Number(x) && b is Value.Number(y) {
+        return x == y;
+    }
+
     return a == b;
 }
 
@@ -112,11 +115,17 @@ impl Environment {
     // The scope a number of scopes out, which the resolver counted
     fn ancestor(distance: Int) -> Environment {
         let environment = self;
+
         for step in 0..distance {
             let outer = environment.enclosing;
-            if outer == null { panic("the resolver counted ${distance} scopes, there are ${step}"); }
+
+            if outer == null {
+                panic("the resolver counted ${distance} scopes, there are ${step}");
+            }
+
             environment = outer;
         }
+
         return environment;
     }
 
@@ -135,11 +144,11 @@ enum Flow {
 // --- The interpreter ---
 
 pub struct Interpreter {
-    distances: [Int];           // From the resolver, by the number of the expression
+    distances: [Int];          // From the resolver, by the number of the expression
     globals: Environment;
-    environment: Environment;   // The scope the statement being run is in
+    environment: Environment;  // The scope the statement being run is in
     print: fn(String) -> Void;
-    line: Int = 0;              // The line of the call made last
+    line: Int = 0;             // The line of the call made last
 }
 
 pub fn interpreter(print: fn(String) -> Void) -> Interpreter {
@@ -153,9 +162,13 @@ impl Interpreter {
     // run by the same interpreter, as a prompt does, brings its own.
     pub fn run(statements: [Stmt], distances: [Int]) -> RuntimeError? {
         self.distances = distances;
+
         for statement in statements {
-            if self.execute(statement) is Result.Err(error) { return error; }
+            if self.execute(statement) is Result.Err(error) {
+                return error;
+            }
         }
+
         return null;
     }
 
@@ -166,41 +179,67 @@ impl Interpreter {
             case Stmt.Block(statements): {
                 return self.block(statements, scope(self.environment));
             }
+
             case Stmt.Class(name, superclass, methods): {
                 self.declareClass(name, superclass, methods)?;
             }
+
             case Stmt.Expression(value): {
                 self.evaluate(value)?;
             }
+
             case Stmt.Function(declaration): {
-                let function = Closure { declaration: declaration, closure: self.environment, isInitializer: false };
+                let function = Closure {
+                    declaration: declaration,
+                    closure: self.environment,
+                    isInitializer: false,
+                };
+
                 self.environment.define(declaration.name.lexeme, Value.Function(function));
             }
+
             case Stmt.If(condition, thenBranch, elseBranch): {
                 if truthy(self.evaluate(condition)?) {
                     return self.execute(thenBranch);
                 }
-                if elseBranch != null { return self.execute(elseBranch); }
+
+                if elseBranch != null {
+                    return self.execute(elseBranch);
+                }
             }
+
             case Stmt.Print(value): {
                 let print = self.print;
                 print(show(self.evaluate(value)?));
             }
+
             case Stmt.Return(keyword, value): {
-                if value == null { return Result.Ok(Flow.Return(Value.Nil)); }
+                if value == null {
+                    return Result.Ok(Flow.Return(Value.Nil));
+                }
+
                 return Result.Ok(Flow.Return(self.evaluate(value)?));
             }
+
             case Stmt.Var(name, initializer): {
                 let value = Value.Nil;
-                if initializer != null { value = self.evaluate(initializer)?; }
+
+                if initializer != null {
+                    value = self.evaluate(initializer)?;
+                }
+
                 self.environment.define(name.lexeme, value);
             }
+
             case Stmt.While(condition, body): {
                 while truthy(self.evaluate(condition)?) {
-                    if self.execute(body)? is Flow.Return(value) { return Result.Ok(Flow.Return(value)); }
+                    if self.execute(body)? is Flow.Return(value) {
+                        return Result.Ok(Flow.Return(value));
+                    }
                 }
             }
         }
+
         return Result.Ok(Flow.Next);
     }
 
@@ -209,16 +248,27 @@ impl Interpreter {
     fn block(statements: [Stmt], environment: Environment) -> Result<Flow, RuntimeError> {
         let previous = self.environment;
         self.environment = environment;
-        defer { self.environment = previous; }
+
+        defer {
+            self.environment = previous;
+        }
 
         for statement in statements {
-            if self.execute(statement)? is Flow.Return(value) { return Result.Ok(Flow.Return(value)); }
+            if self.execute(statement)? is Flow.Return(value) {
+                return Result.Ok(Flow.Return(value));
+            }
         }
+
         return Result.Ok(Flow.Next);
     }
 
-    fn declareClass(name: Token, superclassExpr: Expr?, methods: [Function]) -> Result<Flow, RuntimeError> {
+    fn declareClass(
+        name: Token,
+        superclassExpr: Expr?,
+        methods: [Function],
+    ) -> Result<Flow, RuntimeError> {
         let superclass: Class? = null;
+
         if superclassExpr != null {
             if self.evaluate(superclassExpr)? is Value.Class(parent) {
                 superclass = parent;
@@ -234,12 +284,14 @@ impl Interpreter {
 
         // The methods of a subclass close over a scope that holds `super`
         let closure = self.environment;
+
         if superclass != null {
             closure = scope(closure);
             closure.define("super", Value.Class(superclass));
         }
 
         let table = dict.empty<Closure>();
+
         for method in methods {
             table.set(method.name.lexeme, Closure {
                 declaration: method,
@@ -265,12 +317,23 @@ impl Interpreter {
                     case Literal.Text(text): Value.Text(text);
                 });
             }
-            case Expr.Grouping(inner): { return self.evaluate(inner); }
-            case Expr.Variable(name, number): { return self.lookUp(name, number); }
-            case Expr.This(keyword, number): { return self.lookUp(keyword, number); }
+
+            case Expr.Grouping(inner): {
+                return self.evaluate(inner);
+            }
+
+            case Expr.Variable(name, number): {
+                return self.lookUp(name, number);
+            }
+
+            case Expr.This(keyword, number): {
+                return self.lookUp(keyword, number);
+            }
+
             case Expr.Assign(name, valueExpr, number): {
                 let value = self.evaluate(valueExpr)?;
                 let distance = self.distances[number];
+
                 if distance != GLOBAL {
                     self.environment.ancestor(distance).values.set(name.lexeme, value);
                 } else if self.globals.values.has(name.lexeme) {
@@ -278,59 +341,97 @@ impl Interpreter {
                 } else {
                     return Result.Err(failed(name, "Undefined variable '${name.lexeme}'."));
                 }
+
                 return Result.Ok(value);
             }
+
             case Expr.Unary(operator, rightExpr): {
                 let right = self.evaluate(rightExpr)?;
-                if operator.kind == Kind.Bang { return Result.Ok(Value.Bool(!truthy(right))); }
-                if right is Value.Number(number) { return Result.Ok(Value.Number(-number)); }
+
+                if operator.kind == Kind.Bang {
+                    return Result.Ok(Value.Bool(!truthy(right)));
+                }
+
+                if right is Value.Number(number) {
+                    return Result.Ok(Value.Number(-number));
+                }
+
                 return Result.Err(failed(operator, "Operand must be a number."));
             }
+
             case Expr.Logical(leftExpr, operator, rightExpr): {
                 let left = self.evaluate(leftExpr)?;
+
                 // The right side is only worked out if the left has not decided
                 if operator.kind == Kind.Or {
-                    if truthy(left) { return Result.Ok(left); }
+                    if truthy(left) {
+                        return Result.Ok(left);
+                    }
                 } else if !truthy(left) {
                     return Result.Ok(left);
                 }
+
                 return self.evaluate(rightExpr);
             }
+
             case Expr.Binary(leftExpr, operator, rightExpr): {
                 let left = self.evaluate(leftExpr)?;
                 let right = self.evaluate(rightExpr)?;
                 return binary(left, operator, right);
             }
+
             case Expr.Call(calleeExpr, paren, argumentExprs): {
                 let callee = self.evaluate(calleeExpr)?;
                 let arguments: [Value] = [];
-                for argument in argumentExprs { push(arguments, self.evaluate(argument)?); }
+
+                for argument in argumentExprs {
+                    push(arguments, self.evaluate(argument)?);
+                }
+
                 return self.call(callee, paren, arguments);
             }
+
             case Expr.Get(objectExpr, name): {
-                if self.evaluate(objectExpr)? is Value.Instance(instance) { return property(instance, name); }
+                if self.evaluate(objectExpr)? is Value.Instance(instance) {
+                    return property(instance, name);
+                }
+
                 return Result.Err(failed(name, "Only instances have properties."));
             }
+
             case Expr.Set(objectExpr, name, valueExpr): {
                 if self.evaluate(objectExpr)? is Value.Instance(instance) {
                     let value = self.evaluate(valueExpr)?;
                     instance.fields.set(name.lexeme, value);
                     return Result.Ok(value);
                 }
+
                 return Result.Err(failed(name, "Only instances have fields."));
             }
+
             case Expr.Super(keyword, methodName, number): {
                 // `super` is one scope out of `this`, where the resolver found it
                 let distance = self.distances[number];
-                match (self.environment.at(distance, "super"), self.environment.at(distance - 1, "this")) {
+
+                match (
+                    self.environment.at(distance, "super"),
+                    self.environment.at(distance - 1, "this"),
+                ) {
                     case (Value.Class(superclass), Value.Instance(object)): {
                         let method = findMethod(superclass, methodName.lexeme);
+
                         if method == null {
-                            return Result.Err(failed(methodName, "Undefined property '${methodName.lexeme}'."));
+                            return Result.Err(
+                                failed(methodName, "Undefined property '${methodName.lexeme}'."),
+                            );
                         }
+
                         return Result.Ok(Value.Function(bind(method, object)));
                     }
-                    default: { panic("'super' without a superclass and an instance in reach"); }
+
+                    default: {
+                        panic("'super' without a superclass and an instance in reach");
+                    }
                 }
             }
         }
@@ -338,13 +439,17 @@ impl Interpreter {
 
     fn lookUp(name: Token, number: Int) -> Result<Value, RuntimeError> {
         let distance = self.distances[number];
+
         if distance != GLOBAL {
             return Result.Ok(self.environment.at(distance, name.lexeme));
         }
+
         let value = self.globals.values.get(name.lexeme);
+
         if value == null {
             return Result.Err(failed(name, "Undefined variable '${name.lexeme}'."));
         }
+
         return Result.Ok(value);
     }
 
@@ -352,40 +457,53 @@ impl Interpreter {
 
     fn call(callee: Value, paren: Token, arguments: [Value]) -> Result<Value, RuntimeError> {
         self.line = paren.line;
+
         match callee {
             case Value.Function(function): {
                 checkArity(arrays.len(function.declaration.params), arguments, paren)?;
                 return self.invoke(function, arguments);
             }
+
             case Value.Class(class): {
                 let instance = Instance { class: class, fields: dict.empty<Value>() };
                 let initializer = findMethod(class, "init");
+
                 if initializer == null {
                     checkArity(0, arguments, paren)?;
                 } else {
                     checkArity(arrays.len(initializer.declaration.params), arguments, paren)?;
                     self.invoke(bind(initializer, instance), arguments)?;
                 }
+
                 return Result.Ok(Value.Instance(instance));
             }
+
             case Value.Native(name): {
                 checkArity(0, arguments, paren)?;
                 // The only one there is: the seconds on the clock
                 return Result.Ok(Value.Number(math.toFloat(time.ticks()) / 1000000.0));
             }
-            default: { return Result.Err(failed(paren, "Can only call functions and classes.")); }
+
+            default: {
+                return Result.Err(failed(paren, "Can only call functions and classes."));
+            }
         }
     }
 
     fn invoke(function: Closure, arguments: [Value]) -> Result<Value, RuntimeError> {
         let environment = scope(function.closure);
+
         for i, param in function.declaration.params {
             environment.define(param.lexeme, arguments[i]);
         }
 
         let flow = self.block(function.declaration.body, environment)?;
+
         // An initializer gives the instance, whatever it returns
-        if function.isInitializer { return Result.Ok(function.closure.at(0, "this")); }
+        if function.isInitializer {
+            return Result.Ok(function.closure.at(0, "this"));
+        }
+
         return match flow {
             case Flow.Return(value): Result.Ok(value);
             case Flow.Next: Result.Ok(Value.Nil);
@@ -395,14 +513,21 @@ impl Interpreter {
 
 fn checkArity(expected: Int, arguments: [Value], paren: Token) -> Result<Int, RuntimeError> {
     if arrays.len(arguments) != expected {
-        return Result.Err(failed(paren, "Expected ${expected} arguments but got ${arrays.len(arguments)}."));
+        return Result.Err(
+            failed(paren, "Expected ${expected} arguments but got ${arrays.len(arguments)}."),
+        );
     }
+
     return Result.Ok(expected);
 }
 
 fn findMethod(class: Class, name: String) -> Closure? {
     let method = class.methods.get(name);
-    if method != null { return method; }
+
+    if method != null {
+        return method;
+    }
+
     return findMethod(class.superclass?, name);
 }
 
@@ -410,21 +535,38 @@ fn findMethod(class: Class, name: String) -> Closure? {
 fn bind(method: Closure, instance: Instance) -> Closure {
     let environment = scope(method.closure);
     environment.define("this", Value.Instance(instance));
-    return Closure { declaration: method.declaration, closure: environment, isInitializer: method.isInitializer };
+
+    return Closure {
+        declaration: method.declaration,
+        closure: environment,
+        isInitializer: method.isInitializer,
+    };
 }
 
 fn property(instance: Instance, name: Token) -> Result<Value, RuntimeError> {
     let field = instance.fields.get(name.lexeme);
-    if field != null { return Result.Ok(field); }
+
+    if field != null {
+        return Result.Ok(field);
+    }
 
     let method = findMethod(instance.class, name.lexeme);
-    if method != null { return Result.Ok(Value.Function(bind(method, instance))); }
+
+    if method != null {
+        return Result.Ok(Value.Function(bind(method, instance)));
+    }
+
     return Result.Err(failed(name, "Undefined property '${name.lexeme}'."));
 }
 
 fn binary(left: Value, operator: Token, right: Value) -> Result<Value, RuntimeError> {
-    if operator.kind == Kind.EqualEqual { return Result.Ok(Value.Bool(equal(left, right))); }
-    if operator.kind == Kind.BangEqual { return Result.Ok(Value.Bool(!equal(left, right))); }
+    if operator.kind == Kind.EqualEqual {
+        return Result.Ok(Value.Bool(equal(left, right)));
+    }
+
+    if operator.kind == Kind.BangEqual {
+        return Result.Ok(Value.Bool(!equal(left, right)));
+    }
 
     if left is Value.Number(a) && right is Value.Number(b) {
         return Result.Ok(match operator.kind {
@@ -436,14 +578,20 @@ fn binary(left: Value, operator: Token, right: Value) -> Result<Value, RuntimeEr
             case Kind.GreaterEqual: Value.Bool(a >= b);
             case Kind.Less: Value.Bool(a < b);
             case Kind.LessEqual: Value.Bool(a <= b);
-            default: { panic("'${operator.lexeme}' is not an operator on two values"); }
+
+            default: {
+                panic("'${operator.lexeme}' is not an operator on two values");
+            }
         });
     }
+
     if left is Value.Text(a) && right is Value.Text(b) && operator.kind == Kind.Plus {
         return Result.Ok(Value.Text(a + b));
     }
+
     if operator.kind == Kind.Plus {
         return Result.Err(failed(operator, "Operands must be two numbers or two strings."));
     }
+
     return Result.Err(failed(operator, "Operands must be numbers."));
 }

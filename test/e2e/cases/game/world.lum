@@ -2,9 +2,16 @@ import game.physics.body;
 import game.physics.body.{Body};
 import game.util.list.{List, newList};
 
-pub struct Thing { name: String; body: Body; speed: Int; }
+pub struct Thing {
+    name: String;
+    body: Body;
+    speed: Int;
+}
 
-pub struct World { width: Int; things: List<Thing>; }
+pub struct World {
+    width: Int;
+    things: List<Thing>;
+}
 
 pub fn create(width: Int) -> World {
     return World { width: width, things: newList<Thing>() };
@@ -24,10 +31,15 @@ impl World {
         }
     }
 
-    pub fn count() -> Int { return self.things.size(); }
+    pub fn count() -> Int {
+        return self.things.size();
+    }
 
     pub fn names() -> [String] {
-        let names = self.things.map<String>(fn(t: Thing) -> String { return t.name; });
+        let names = self.things.map<String>(fn(t: Thing) -> String {
+            return t.name;
+        });
+
         return names.items;
     }
 

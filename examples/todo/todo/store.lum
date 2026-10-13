@@ -12,9 +12,9 @@ import todo.task.{Task};
 // What can go wrong between the program and its file. Each case keeps
 // the error it came from: nothing is lost by passing it up.
 pub enum StoreError {
-    File(io.Error),             // the file cannot be read or written
-    NotJson(json.ParseError),   // someone edited it by hand, and slipped
-    NotTasks(String),           // it is JSON, of something else
+    File(io.Error),            // the file cannot be read or written
+    NotJson(json.ParseError),  // someone edited it by hand, and slipped
+    NotTasks(String),          // it is JSON, of something else
 }
 
 impl StoreError {
@@ -37,10 +37,16 @@ pub struct Store {
 pub fn open(file: String) -> Result<Store, StoreError> {
     match io.readFile(file) {
         case Result.Ok(text): {
-            return read(text).map(fn(tasks: [Task]) -> Store { return Store { file: file, tasks: tasks }; });
+            return read(text).map(fn(tasks: [Task]) -> Store {
+                return Store { file: file, tasks: tasks };
+            });
         }
+
         case Result.Err(error): {
-            if error.kind == ErrorKind.NotFound { return Result.Ok(Store { file: file, tasks: [] }); }
+            if error.kind == ErrorKind.NotFound {
+                return Result.Ok(Store { file: file, tasks: [] });
+            }
+
             return Result.Err(StoreError.File(error));
         }
     }
@@ -52,12 +58,18 @@ fn read(text: String) -> Result<[Task], StoreError> {
 
 fn fromDocument(document: Json) -> Result<[Task], StoreError> {
     let items = document.items();
-    if items == null { return Result.Err(StoreError.NotTasks("expected an array of tasks")); }
+
+    if items == null {
+        return Result.Err(StoreError.NotTasks("expected an array of tasks"));
+    }
+
     let tasks: [Task] = [];
+
     for item in items {
         // The first task that cannot be read ends it, with its reason
         push(tasks, task.fromJson(item).mapErr(StoreError.NotTasks)?);
     }
+
     return Result.Ok(tasks);
 }
 
@@ -84,7 +96,11 @@ impl Store {
     // Returns whether there was such a task.
     pub fn remove(id: Int) -> Bool {
         let at = arrays.findIndex(self.tasks, t -> t.id == id);
-        if at == null { return false; }
+
+        if at == null {
+            return false;
+        }
+
         self.tasks = arrays.without(self.tasks, at);
         return true;
     }

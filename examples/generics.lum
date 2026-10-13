@@ -12,13 +12,16 @@ fn collect<T>(items: ...T) -> [T] {
 fn join(separator: String, parts: ...String) -> String {
     let out = "";
     let i = 0;
+
     for part in parts {
         if i > 0 {
             out = out + separator;
         }
+
         out = out + part;
         i = i + 1;
     }
+
     return out;
 }
 
@@ -42,6 +45,7 @@ fn main() -> Int {
     for n in [0, 1, 2, 3] {
         print(spell(n), "");
     }
+
     println("");
 
     // ?? supplies a default for null, && and || stop as soon as they can

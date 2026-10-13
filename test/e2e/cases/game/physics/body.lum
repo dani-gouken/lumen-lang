@@ -1,14 +1,24 @@
 import game.physics.collide.{Shape};
 
-pub struct Body { x: Int; size: Int; }
+pub struct Body {
+    x: Int;
+    size: Int;
+}
 
 impl Shape for Body {
-    fn left() -> Int { return self.x; }
-    fn right() -> Int { return self.x + self.size; }
+    fn left() -> Int {
+        return self.x;
+    }
+
+    fn right() -> Int {
+        return self.x + self.size;
+    }
 }
 
 impl Body {
-    pub fn move(by: Int) { self.x += by; }
+    pub fn move(by: Int) {
+        self.x += by;
+    }
 }
 
 pub fn new(x: Int, size: Int) -> Body {
@@ -16,6 +26,9 @@ pub fn new(x: Int, size: Int) -> Body {
 }
 
 fn atLeastOne(size: Int) -> Int {
-    if size < 1 { return 1; }
+    if size < 1 {
+        return 1;
+    }
+
     return size;
 }

@@ -49,18 +49,27 @@ impl Method {
 
 // The method a name stands for, or null: methodOf("post") is Method.Post.
 pub fn methodOf(name: String) -> Method? {
-    let all = [Method.Get, Method.Post, Method.Put, Method.Patch, Method.Delete, Method.Head, Method.Options];
+    let all = [
+        Method.Get,
+        Method.Post,
+        Method.Put,
+        Method.Patch,
+        Method.Delete,
+        Method.Head,
+        Method.Options,
+    ];
+
     let wanted = strings.upper(name);
     return arrays.find(all, method -> method.name() == wanted);
 }
 
 // Why there was no answer.
 pub enum ErrorKind {
-    Timeout,        // nothing came back in time
-    Refused,        // nothing is listening there
-    UnknownHost,    // no machine has that name
-    BadUrl,         // the address is not one
-    InUse,          // for a server: the port is taken
+    Timeout,      // nothing came back in time
+    Refused,      // nothing is listening there
+    UnknownHost,  // no machine has that name
+    BadUrl,       // the address is not one
+    InUse,        // for a server: the port is taken
     Other,
 }
 
@@ -78,14 +87,16 @@ impl Error {
 
 // What a server answers, and what a server of your own answers with.
 pub struct Response {
-    status: Int;                // 200 is fine, 404 not found, 500 the server failed
-    headers: Dict<String>;      // names in lower case: "content-type"
+    status: Int;            // 200 is fine, 404 not found, 500 the server failed
+    headers: Dict<String>;  // names in lower case: "content-type"
     body: String;
 }
 
 impl Response {
     // Whether the status says it went well: 200 to 299.
-    pub fn ok() -> Bool { return self.status >= 200 && self.status < 300; }
+    pub fn ok() -> Bool {
+        return self.status >= 200 && self.status < 300;
+    }
 
     // The value of a header, whatever the case of its name, or null.
     pub fn header(name: String) -> String? {
@@ -114,11 +125,17 @@ pub struct Call {
     url: String;
     headers: Dict<String>;
     body: String;
-    timeout: Int;           // milliseconds to wait for the answer
+    timeout: Int;  // milliseconds to wait for the answer
 }
 
 pub fn to(method: Method, url: String) -> Call {
-    return Call { method: method, url: url, headers: dict.empty<String>(), body: "", timeout: 30000 };
+    return Call {
+        method: method,
+        url: url,
+        headers: dict.empty<String>(),
+        body: "",
+        timeout: 30000,
+    };
 }
 
 impl Call {
@@ -131,7 +148,11 @@ impl Call {
     // .query("q", "a b") adds ?q=a+b.
     pub fn query(name: String, value: String) -> Call {
         let joint = "?";
-        if strings.contains(self.url, "?") { joint = "&"; }
+
+        if strings.contains(self.url, "?") {
+            joint = "&";
+        }
+
         self.url = self.url + joint + encoding.toUrl(name) + "=" + encoding.toUrl(value);
         return self;
     }
@@ -153,8 +174,18 @@ impl Call {
     }
 
     pub fn send() -> Result<Response, Error> {
-        let parts = exchange(self.method.name(), self.url, pairs(self.headers), self.body, self.timeout);
-        if parts == null { return Result.Err(noAnswer(self.url)); }
+        let parts = exchange(
+            self.method.name(),
+            self.url,
+            pairs(self.headers),
+            self.body,
+            self.timeout,
+        );
+
+        if parts == null {
+            return Result.Err(noAnswer(self.url));
+        }
+
         // The status, the body, then the headers
         return Result.Ok(Response {
             status: strings.parseInt(parts[0]) ?? 0,
@@ -182,13 +213,13 @@ pub fn postJson(url: String, document: Json) -> Result<Response, Error> {
 // What someone asked a server.
 pub struct Request {
     method: Method;
-    path: String;               // "/users/7"
-    query: Dict<String>;        // what follows the ?: ?page=2 gives "page" -> "2"
-    headers: Dict<String>;      // names in lower case
+    path: String;           // "/users/7"
+    query: Dict<String>;    // what follows the ?: ?page=2 gives "page" -> "2"
+    headers: Dict<String>;  // names in lower case
     body: String;
-    params: Dict<String>;       // the parts of the path a route names: /users/:id
-    sender: String;             // the address it came from
-    id: Int = 0;                // which request of its server it is, for the answer
+    params: Dict<String>;   // the parts of the path a route names: /users/:id
+    sender: String;         // the address it came from
+    id: Int = 0;            // which request of its server it is, for the answer
 }
 
 impl Request {
@@ -210,7 +241,9 @@ pub fn respond(status: Int, body: String) -> Response {
 }
 
 // 200 with a text.
-pub fn text(body: String) -> Response { return respond(200, body); }
+pub fn text(body: String) -> Response {
+    return respond(200, body);
+}
 
 // 200 with a page.
 pub fn html(body: String) -> Response {
@@ -222,7 +255,9 @@ pub fn sendJson(status: Int, document: Json) -> Response {
     return respond(status, document.stringify()).with("Content-Type", "application/json");
 }
 
-pub fn notFound() -> Response { return respond(404, "not found"); }
+pub fn notFound() -> Response {
+    return respond(404, "not found");
+}
 
 // Sends the browser to another address.
 pub fn redirect(to: String) -> Response {
@@ -233,14 +268,18 @@ pub fn redirect(to: String) -> Response {
 pub struct Server {
     id: Int;
     port: Int;
-    last: Int = 0;              // the request `next` gave last
+    last: Int = 0;  // the request `next` gave last
 }
 
 // Starts listening on a port of this machine. Port 0 lets the system
 // choose a free one: server.port says which.
 pub fn listen(port: Int) -> Result<Server, Error> {
     let opened = open(port);
-    if opened == null { return Result.Err(noAnswer("port ${port}")); }
+
+    if opened == null {
+        return Result.Err(noAnswer("port ${port}"));
+    }
+
     return Result.Ok(Server { id: opened[0], port: opened[1] });
 }
 
@@ -256,6 +295,7 @@ impl Server {
         // sender, then the headers
         let parts = accept(self.id, milliseconds)?;
         self.last = strings.parseInt(parts[0]) ?? 0;
+
         return Request {
             method: methodOf(parts[1]) ?? Method.Get,
             path: parts[2],
@@ -308,13 +348,20 @@ impl Server {
 
 // Answers one request in a task of its own.
 fn answerApart(server: Server, request: Request, handler: fn(Request) -> Response) {
-    task.run(fn() { server.answer(request, answerOf(request, handler)); });
+    task.run(fn() {
+        server.answer(request, answerOf(request, handler));
+    });
 }
 
 // What a handler makes of a request, or status 500 if it stops.
 fn answerOf(request: Request, handler: fn(Request) -> Response) -> Response {
-    match result.attempt(fn() -> Response { return handler(request); }) {
-        case Result.Ok(response): { return response; }
+    match result.attempt(fn() -> Response {
+        return handler(request);
+    }) {
+        case Result.Ok(response): {
+            return response;
+        }
+
         case Result.Err(failure): {
             io.printError("${request.method.name()} ${request.path} failed: ${failure.describe()}\n");
             return respond(500, "the server failed");
@@ -369,33 +416,59 @@ impl Router {
         return self;
     }
 
-    pub fn get(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Get, path, handler); }
-    pub fn post(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Post, path, handler); }
-    pub fn put(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Put, path, handler); }
-    pub fn patch(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Patch, path, handler); }
-    pub fn delete(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Delete, path, handler); }
+    pub fn get(path: String, handler: fn(Request) -> Response) -> Router {
+        return self.on(Method.Get, path, handler);
+    }
+
+    pub fn post(path: String, handler: fn(Request) -> Response) -> Router {
+        return self.on(Method.Post, path, handler);
+    }
+
+    pub fn put(path: String, handler: fn(Request) -> Response) -> Router {
+        return self.on(Method.Put, path, handler);
+    }
+
+    pub fn patch(path: String, handler: fn(Request) -> Response) -> Router {
+        return self.on(Method.Patch, path, handler);
+    }
+
+    pub fn delete(path: String, handler: fn(Request) -> Response) -> Router {
+        return self.on(Method.Delete, path, handler);
+    }
 
     // The answer to a request.
     pub fn answer(request: Request) -> Response {
         let parts = partsOf(request.path);
         let pathIsKnown = false;
+
         for route in self.routes {
             let params = fit(route.parts, parts);
-            if params == null { continue; }
+
+            if params == null {
+                continue;
+            }
+
             pathIsKnown = true;
+
             if route.method == request.method {
                 request.params = params;
                 let handler = route.handler;
                 return handler(request);
             }
         }
-        if pathIsKnown { return respond(405, "method not allowed"); }
+
+        if pathIsKnown {
+            return respond(405, "method not allowed");
+        }
+
         return notFound();
     }
 
     // The router as one function, for serve and handle.
     pub fn handler() -> fn(Request) -> Response {
-        return fn(request: Request) -> Response { return self.answer(request); };
+        return fn(request: Request) -> Response {
+            return self.answer(request);
+        };
     }
 }
 
@@ -403,45 +476,71 @@ impl Router {
 // not one of that route.
 fn fit(route: [String], path: [String]) -> Dict<String>? {
     let params = dict.empty<String>();
+
     for i, part in route {
         if part == "*" && i == arrays.len(route) - 1 {
-            params.set("rest", strings.join(arrays.slice(path, math.min(i, arrays.len(path)), arrays.len(path)), "/"));
+            params.set(
+                "rest",
+                strings.join(
+                    arrays.slice(path, math.min(i, arrays.len(path)), arrays.len(path)),
+                    "/",
+                ),
+            );
+
             return params;
         }
-        if i >= arrays.len(path) { return null; }
+
+        if i >= arrays.len(path) {
+            return null;
+        }
+
         if strings.startsWith(part, ":") {
             params.set(strings.from(part, 1), path[i]);
         } else if part != path[i] {
             return null;
         }
     }
-    if arrays.len(path) != arrays.len(route) { return null; }
+
+    if arrays.len(path) != arrays.len(route) {
+        return null;
+    }
+
     return params;
 }
 
 fn partsOf(path: String) -> [String] {
-    let named = fn(part: String) -> Bool { return part != ""; };
+    let named = fn(part: String) -> Bool {
+        return part != "";
+    };
+
     return path |> strings.split("/") |> arrays.filter(named);
 }
 
 // "a=1&b=x+y" as a dictionary, the values decoded.
 pub fn queryOf(query: String) -> Dict<String> {
     let out = dict.empty<String>();
+
     for pair in strings.split(query, "&") {
-        if pair == "" { continue; }
+        if pair == "" {
+            continue;
+        }
+
         let (name, value) = strings.cut(pair, "=") ?? (pair, "");
         out.set(encoding.fromUrl(name) ?? name, encoding.fromUrl(value) ?? value);
     }
+
     return out;
 }
 
 // A dictionary as name, value, name, value.
 fn pairs(headers: Dict<String>) -> [String] {
     let out: [String] = [];
+
     headers.each(fn(name: String, value: String) {
         push(out, name);
         push(out, value);
     });
+
     return out;
 }
 
@@ -449,10 +548,12 @@ fn pairs(headers: Dict<String>) -> [String] {
 fn paired(parts: [String], from: Int) -> Dict<String> {
     let out = dict.empty<String>();
     let i = from;
+
     while i + 1 < arrays.len(parts) {
         out.set(parts[i], parts[i + 1]);
         i += 2;
     }
+
     return out;
 }
 
@@ -473,7 +574,14 @@ fn kindOf(name: String) -> ErrorKind {
     };
 }
 
-extern fn exchange(method: String, url: String, headers: [String], body: String, timeout: Int) -> [String]?;
+extern fn exchange(
+    method: String,
+    url: String,
+    headers: [String],
+    body: String,
+    timeout: Int,
+) -> [String]?;
+
 extern fn open(port: Int) -> [Int]?;
 extern fn accept(server: Int, timeout: Int) -> [String]?;
 extern fn respondTo(server: Int, request: Int, status: Int, headers: [String], body: String);

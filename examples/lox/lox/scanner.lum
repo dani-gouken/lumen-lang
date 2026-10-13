@@ -5,10 +5,12 @@ import lox.token.{Kind, Token, Reporter, keyword};
 
 pub fn scan(source: String, reporter: Reporter) -> [Token] {
     let scanner = Scanner { source: source, length: strings.len(source), reporter: reporter };
+
     while !scanner.atEnd() {
         scanner.start = scanner.current;
         scanner.token();
     }
+
     push(scanner.tokens, Token { kind: Kind.Eof, lexeme: "", line: scanner.line });
     return scanner.tokens;
 }
@@ -18,8 +20,8 @@ struct Scanner {
     length: Int;
     reporter: Reporter;
     tokens: [Token] = [];
-    start: Int = 0;       // Where the token being read starts
-    current: Int = 0;     // The character about to be read
+    start: Int = 0;    // Where the token being read starts
+    current: Int = 0;  // The character about to be read
     line: Int = 1;
 }
 
@@ -43,17 +45,26 @@ impl Scanner {
 
     // The character about to be read, and the one after: "" past the end
     fn peek() -> String {
-        if self.atEnd() { return ""; }
+        if self.atEnd() {
+            return "";
+        }
+
         return self.source[self.current];
     }
 
     fn peekNext() -> String {
-        if self.current + 1 >= self.length { return ""; }
+        if self.current + 1 >= self.length {
+            return "";
+        }
+
         return self.source[self.current + 1];
     }
 
     fn follows(expected: String) -> Bool {
-        if self.peek() != expected { return false; }
+        if self.peek() != expected {
+            return false;
+        }
+
         self.current++;
         return true;
     }
@@ -67,37 +78,94 @@ impl Scanner {
     }
 
     fn either(second: String, both: Kind, alone: Kind) {
-        if self.follows(second) { self.add(both); } else { self.add(alone); }
+        if self.follows(second) {
+            self.add(both);
+        } else {
+            self.add(alone);
+        }
     }
 
     fn token() {
         let c = self.advance();
+
         match c {
-            case "(": { self.add(Kind.LeftParen); }
-            case ")": { self.add(Kind.RightParen); }
-            case "{": { self.add(Kind.LeftBrace); }
-            case "}": { self.add(Kind.RightBrace); }
-            case ",": { self.add(Kind.Comma); }
-            case ".": { self.add(Kind.Dot); }
-            case "-": { self.add(Kind.Minus); }
-            case "+": { self.add(Kind.Plus); }
-            case ";": { self.add(Kind.Semicolon); }
-            case "*": { self.add(Kind.Star); }
-            case "!": { self.either("=", Kind.BangEqual, Kind.Bang); }
-            case "=": { self.either("=", Kind.EqualEqual, Kind.Equal); }
-            case "<": { self.either("=", Kind.LessEqual, Kind.Less); }
-            case ">": { self.either("=", Kind.GreaterEqual, Kind.Greater); }
+            case "(": {
+                self.add(Kind.LeftParen);
+            }
+
+            case ")": {
+                self.add(Kind.RightParen);
+            }
+
+            case "{": {
+                self.add(Kind.LeftBrace);
+            }
+
+            case "}": {
+                self.add(Kind.RightBrace);
+            }
+
+            case ",": {
+                self.add(Kind.Comma);
+            }
+
+            case ".": {
+                self.add(Kind.Dot);
+            }
+
+            case "-": {
+                self.add(Kind.Minus);
+            }
+
+            case "+": {
+                self.add(Kind.Plus);
+            }
+
+            case ";": {
+                self.add(Kind.Semicolon);
+            }
+
+            case "*": {
+                self.add(Kind.Star);
+            }
+
+            case "!": {
+                self.either("=", Kind.BangEqual, Kind.Bang);
+            }
+
+            case "=": {
+                self.either("=", Kind.EqualEqual, Kind.Equal);
+            }
+
+            case "<": {
+                self.either("=", Kind.LessEqual, Kind.Less);
+            }
+
+            case ">": {
+                self.either("=", Kind.GreaterEqual, Kind.Greater);
+            }
+
             case "/": {
                 if self.follows("/") {
                     // A comment goes to the end of the line
-                    while self.peek() != "\n" && !self.atEnd() { self.current++; }
+                    while self.peek() != "\n" && !self.atEnd() {
+                        self.current++;
+                    }
                 } else {
                     self.add(Kind.Slash);
                 }
             }
-            case " " | "\r" | "\t": { }
-            case "\n": { self.line++; }
-            case "\"": { self.text(); }
+
+            case " " | "\r" | "\t": {}
+
+            case "\n": {
+                self.line++;
+            }
+
+            case "\"": {
+                self.text();
+            }
+
             default: {
                 if isDigit(c) {
                     self.number();
@@ -112,32 +180,59 @@ impl Scanner {
 
     fn text() {
         while self.peek() != "\"" && !self.atEnd() {
-            if self.peek() == "\n" { self.line++; }
+            if self.peek() == "\n" {
+                self.line++;
+            }
+
             self.current++;
         }
+
         if self.atEnd() {
             self.reporter.atLine(self.line, "Unterminated string.");
             return;
         }
-        self.current++;     // The closing quote
+
+        self.current++;  // The closing quote
 
         let said = strings.substring(self.source, self.start + 1, self.current - 1);
-        push(self.tokens, Token { kind: Kind.Text, lexeme: self.lexeme(), line: self.line, text: said });
+
+        push(self.tokens, Token {
+            kind: Kind.Text,
+            lexeme: self.lexeme(),
+            line: self.line,
+            text: said,
+        });
     }
 
     fn number() {
-        while isDigit(self.peek()) { self.current++; }
+        while isDigit(self.peek()) {
+            self.current++;
+        }
+
         // A fraction needs a digit after the dot: "1." is a number and a dot
         if self.peek() == "." && isDigit(self.peekNext()) {
             self.current++;
-            while isDigit(self.peek()) { self.current++; }
+
+            while isDigit(self.peek()) {
+                self.current++;
+            }
         }
+
         let worth = strings.parseFloat(self.lexeme()) ?? 0.0;
-        push(self.tokens, Token { kind: Kind.Number, lexeme: self.lexeme(), line: self.line, number: worth });
+
+        push(self.tokens, Token {
+            kind: Kind.Number,
+            lexeme: self.lexeme(),
+            line: self.line,
+            number: worth,
+        });
     }
 
     fn identifier() {
-        while isAlpha(self.peek()) || isDigit(self.peek()) { self.current++; }
+        while isAlpha(self.peek()) || isDigit(self.peek()) {
+            self.current++;
+        }
+
         self.add(keyword(self.lexeme()) ?? Kind.Identifier);
     }
 }

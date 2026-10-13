@@ -50,7 +50,9 @@ pub struct TestResult {
 }
 
 impl TestResult {
-    pub fn passed() -> Bool { return self.outcome == Outcome.Passed; }
+    pub fn passed() -> Bool {
+        return self.outcome == Outcome.Passed;
+    }
 }
 
 // What became of a suite.
@@ -70,13 +72,23 @@ impl Suite {
     // Runs every test, in the order they were added, without printing.
     pub fn check() -> Report {
         let results: [TestResult] = [];
+
         for entry in self.cases {
             let watch = time.stopwatch();
             let failure = result.guard(entry.body);
             let outcome = Outcome.Passed;
-            if failure != null { outcome = Outcome.Failed(failure); }
-            push(results, TestResult { name: entry.name, outcome: outcome, microseconds: watch.microseconds() });
+
+            if failure != null {
+                outcome = Outcome.Failed(failure);
+            }
+
+            push(results, TestResult {
+                name: entry.name,
+                outcome: outcome,
+                microseconds: watch.microseconds(),
+            });
         }
+
         return Report { suite: self.name, results: results };
     }
 
@@ -97,11 +109,16 @@ impl Report {
         return arrays.len(self.results) - self.passed();
     }
 
-    pub fn ok() -> Bool { return self.failed() == 0; }
+    pub fn ok() -> Bool {
+        return self.failed() == 0;
+    }
 
     // What main returns for the run to count as failed when a test did.
     pub fn exitCode() -> Int {
-        if self.ok() { return 0; }
+        if self.ok() {
+            return 0;
+        }
+
         return 1;
     }
 
@@ -109,19 +126,31 @@ impl Report {
     // under a test that failed, and a count.
     pub fn lines() -> [String] {
         let out = [self.suite];
+
         for r in self.results {
             match r.outcome {
-                case Outcome.Passed: { push(out, "  ok    ${r.name}"); }
+                case Outcome.Passed: {
+                    push(out, "  ok    ${r.name}");
+                }
+
                 case Outcome.Failed(failure): {
                     push(out, "  FAIL  ${r.name}");
                     push(out, "        ${failure.message}");
                     let place = whereItFailed(failure);
-                    if place != null { push(out, "        at ${place.file}:${place.line}"); }
+
+                    if place != null {
+                        push(out, "        at ${place.file}:${place.line}");
+                    }
                 }
             }
         }
+
         let count = "${self.passed()} passed";
-        if !self.ok() { count = "${count}, ${self.failed()} failed"; }
+
+        if !self.ok() {
+            count = "${count}, ${self.failed()} failed";
+        }
+
         push(out, count);
         return out;
     }
@@ -134,7 +163,10 @@ impl Report {
 // The place to show for a failed test: where the test itself was when it
 // went wrong, not the line of this file that noticed.
 fn whereItFailed(failure: Failure) -> Location? {
-    let outside = fn(place: Location) -> Bool { return !strings.startsWith(place.function, "std."); };
+    let outside = fn(place: Location) -> Bool {
+        return !strings.startsWith(place.function, "std.");
+    };
+
     return arrays.find(failure.stack, outside);
 }
 
@@ -149,17 +181,24 @@ pub fn fail(message: String) {
 // booleans and values of enums by what they hold; arrays and structs only
 // when they are the very same one (see `same` for arrays).
 pub fn equal<T>(got: T, want: T) {
-    if got == want { return; }
+    if got == want {
+        return;
+    }
+
     let expected = "${want}";
+
     if expected == "${got}" {
         // Two arrays or two structs that print alike
         panic("expected ${want}, got one that looks the same but is another value: compare arrays with test.same, structs field by field");
     }
+
     panic("expected ${want}, got ${got}");
 }
 
 pub fn notEqual<T>(got: T, unwanted: T) {
-    if got == unwanted { panic("expected anything but ${unwanted}"); }
+    if got == unwanted {
+        panic("expected anything but ${unwanted}");
+    }
 }
 
 // Stops the test unless both arrays hold equal items in the same order.
@@ -167,39 +206,59 @@ pub fn same<T>(got: [T], want: [T]) {
     if arrays.len(got) != arrays.len(want) {
         panic("expected ${arrays.len(want)} items, got ${arrays.len(got)}: ${got}");
     }
+
     for i, item in want {
-        if got[i] != item { panic("expected ${item} at ${i}, got ${got[i]}: ${got}"); }
+        if got[i] != item {
+            panic("expected ${item} at ${i}, got ${got[i]}: ${got}");
+        }
     }
 }
 
 pub fn isTrue(condition: Bool, what: String) {
-    if !condition { panic("expected ${what}"); }
+    if !condition {
+        panic("expected ${what}");
+    }
 }
 
 pub fn isFalse(condition: Bool, what: String) {
-    if condition { panic("did not expect ${what}"); }
+    if condition {
+        panic("did not expect ${what}");
+    }
 }
 
 // Stops the test unless two numbers are within `tolerance` of each other.
 // Numbers with a point are rarely exactly equal: 0.1 + 0.2 is not 0.3.
 pub fn near(got: Float, want: Float, tolerance: Float) {
     let gap = got - want;
-    if gap < 0.0 { gap = -gap; }
-    if gap > tolerance { panic("expected ${want} give or take ${tolerance}, got ${got}"); }
+
+    if gap < 0.0 {
+        gap = -gap;
+    }
+
+    if gap > tolerance {
+        panic("expected ${want} give or take ${tolerance}, got ${got}");
+    }
 }
 
 // Stops the test if there is no value. Gives the value.
 pub fn present<T>(value: T?, what: String) -> T {
-    if value == null { panic("expected ${what}, got nothing"); }
+    if value == null {
+        panic("expected ${what}, got nothing");
+    }
+
     return value;
 }
 
 pub fn absent<T>(value: T?, what: String) {
-    if value != null { panic("expected no ${what}, got ${value}"); }
+    if value != null {
+        panic("expected no ${what}, got ${value}");
+    }
 }
 
 pub fn contains(text: String, part: String) {
-    if !strings.contains(text, part) { panic("expected '${part}' in '${text}'"); }
+    if !strings.contains(text, part) {
+        panic("expected '${part}' in '${text}'");
+    }
 }
 
 // Stops the test unless the function stops with a failure of that kind:
@@ -207,7 +266,14 @@ pub fn contains(text: String, part: String) {
 // to look at its message.
 pub fn fails(kind: Kind, action: fn() -> Void) -> Failure {
     let failure = result.guard(action);
-    if failure == null { panic("expected a failure, and there was none"); }
-    if failure.kind != kind { panic("expected a failure of kind ${kind}, got ${failure.kind}: ${failure.message}"); }
+
+    if failure == null {
+        panic("expected a failure, and there was none");
+    }
+
+    if failure.kind != kind {
+        panic("expected a failure of kind ${kind}, got ${failure.kind}: ${failure.message}");
+    }
+
     return failure;
 }

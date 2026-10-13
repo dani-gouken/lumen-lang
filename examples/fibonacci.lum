@@ -6,6 +6,7 @@ fn fib(n: Int) -> Int {
     if n < 2 {
         return n;
     }
+
     return fib(n - 1) + fib(n - 2);
 }
 
@@ -14,12 +15,14 @@ fn fibSequence(count: Int) -> [Int] {
     let seq: [Int] = [];
     let a = 0;
     let b = 1;
+
     for i in 0..count {
         push(seq, a);
         let next = a + b;
         a = b;
         b = next;
     }
+
     return seq;
 }
 
@@ -30,9 +33,11 @@ fn main() -> Int {
     println("first", arrays.len(seq), "numbers:", seq);
 
     let total = 0;
+
     for n in seq {
         total = total + n;
     }
+
     println("sum =", total);
     return 0;
 }

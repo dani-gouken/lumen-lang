@@ -21,11 +21,39 @@ struct Book {
 
 fn shelf() -> [Book] {
     return [
-        Book { title: "Dune", author: "Herbert", year: 1965, pages: 612, tags: ["sf", "classic"], rating: 4.5 },
+        Book {
+            title: "Dune",
+            author: "Herbert",
+            year: 1965,
+            pages: 612,
+            tags: ["sf", "classic"],
+            rating: 4.5,
+        },
         Book { title: "Emma", author: "Austen", year: 1815, pages: 474, tags: ["classic"] },
-        Book { title: "Neuromancer", author: "Gibson", year: 1984, pages: 271, tags: ["sf"], rating: 4.0 },
-        Book { title: "Persuasion", author: "Austen", year: 1817, pages: 249, tags: ["classic"], rating: 4.8 },
-        Book { title: "Foundation", author: "Asimov", year: 1951, pages: 255, tags: ["sf", "classic"], rating: 3.9 },
+        Book {
+            title: "Neuromancer",
+            author: "Gibson",
+            year: 1984,
+            pages: 271,
+            tags: ["sf"],
+            rating: 4.0,
+        },
+        Book {
+            title: "Persuasion",
+            author: "Austen",
+            year: 1817,
+            pages: 249,
+            tags: ["classic"],
+            rating: 4.8,
+        },
+        Book {
+            title: "Foundation",
+            author: "Asimov",
+            year: 1951,
+            pages: 255,
+            tags: ["sf", "classic"],
+            rating: 3.9,
+        },
     ];
 }
 
@@ -37,7 +65,11 @@ struct Filter {
 
 fn page(text: String) -> Result<Int, String> {
     let n = strings.parseInt(text);
-    if n == null { return Result.Err("'${text}' is not a number of pages"); }
+
+    if n == null {
+        return Result.Err("'${text}' is not a number of pages");
+    }
+
     return Result.Ok(n);
 }
 
@@ -55,7 +87,13 @@ fn main() -> Int {
 
     println(arrays.map(books, b -> b.title));
     println(arrays.map(arrays.sortedBy(books, b -> b.year), b -> "${b.year} ${b.title}"));
-    println(arrays.fold(books, 0, (sum, b) -> sum + b.pages), "pages,", arrays.count(books, b -> b.rating == null), "unrated");
+
+    println(
+        arrays.fold(books, 0, (sum, b) -> sum + b.pages),
+        "pages,",
+        arrays.count(books, b -> b.rating == null),
+        "unrated",
+    );
 
     let classics = arrays.filter(books, b -> arrays.contains(b.tags, "classic"));
     let rated = arrays.filter(classics, b -> b.rating != null);
@@ -64,19 +102,25 @@ fn main() -> Int {
 
     // Grouped, then each group summed up
     let byAuthor = arrays.groupBy(books, b -> b.author);
+
     let rows = arrays.map(byAuthor.sortedKeys(), author -> {
         let theirs = byAuthor[author] ?? [];
         return [author, toString(arrays.len(theirs)), toString(arrays.sumOf(theirs, b -> b.pages))];
     });
+
     print(format.table(["author", "books", "pages"], rows));
 
     // Filters as values, tried one after the other
     let filters = [
         Filter { label: "long", keeps: longerThan(400) },
         Filter { label: "science fiction", keeps: b -> arrays.contains(b.tags, "sf") },
-        Filter { label: "long science fiction", keeps: both(longerThan(260), b -> arrays.contains(b.tags, "sf")) },
+        Filter {
+            label: "long science fiction",
+            keeps: both(longerThan(260), b -> arrays.contains(b.tags, "sf")),
+        },
         Filter { label: "before 1900", keeps: b -> b.year < 1900 },
     ];
+
     for filter in filters {
         let kept = arrays.filter(books, filter.keeps);
         println("${strings.padRight(filter.label, 22)} ${strings.join(arrays.map(kept, b -> b.title), ", ")}");
@@ -84,9 +128,21 @@ fn main() -> Int {
 
     // With the methods of the library's own types
     let titles = list.of(arrays.map(books, b -> b.title));
-    println(titles.filter(t -> strings.len(t) > 4).map(t -> strings.upper(strings.first(t, 3))).items);
-    println(option.map(arrays.find(books, b -> b.year > 1980), b -> b.author), option.map(arrays.find(books, b -> b.year > 2000), b -> b.author));
-    println(page("300").map(n -> n * 2), page("many").map(n -> n * 2), page("12").then(n -> page("${n}0")).orElse(0));
+
+    println(
+        titles.filter(t -> strings.len(t) > 4).map(t -> strings.upper(strings.first(t, 3))).items,
+    );
+
+    println(
+        option.map(arrays.find(books, b -> b.year > 1980), b -> b.author),
+        option.map(arrays.find(books, b -> b.year > 2000), b -> b.author),
+    );
+
+    println(
+        page("300").map(n -> n * 2),
+        page("many").map(n -> n * 2),
+        page("12").then(n -> page("${n}0")).orElse(0),
+    );
 
     // Counting done by functions that give nothing back
     let words = dict.empty<Int>();

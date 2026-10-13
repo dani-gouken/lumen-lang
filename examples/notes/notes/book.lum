@@ -29,9 +29,9 @@ impl Note {
 // Why a note was refused. The web layer turns each into a status; a
 // command line tool would turn them into sentences.
 pub enum Refusal {
-    Missing(String),            // a field that has to be there
-    TooLong(String, Int),       // a field, and the most it may hold
-    Duplicate(String),          // a title already taken
+    Missing(String),       // a field that has to be there
+    TooLong(String, Int),  // a field, and the most it may hold
+    Duplicate(String),     // a title already taken
 }
 
 impl Refusal {
@@ -60,13 +60,17 @@ impl Book {
 
     // The notes that carry a tag, or all of them without one.
     pub fn tagged(tag: String?) -> [Note] {
-        if tag == null { return self.notes; }
+        if tag == null {
+            return self.notes;
+        }
+
         return arrays.filter(self.notes, note -> arrays.contains(note.tags, tag));
     }
 
     // The notes whose title or body holds a text, whatever its case.
     pub fn search(text: String) -> [Note] {
         let wanted = strings.lower(text);
+
         return arrays.filter(self.notes, fn(note: Note) -> Bool {
             return note.title + " " + note.body |> strings.lower() |> strings.contains(wanted);
         });
@@ -90,6 +94,7 @@ impl Book {
     // Replaces what a note says. Null if there is no such note.
     pub fn replace(id: Int, document: Json) -> Result<Note, Refusal>? {
         let old = self.find(id)?;
+
         return self.checked(document, id).map(fn(new: Note) -> Note {
             old.title = new.title;
             old.body = new.body;
@@ -100,7 +105,11 @@ impl Book {
 
     pub fn remove(id: Int) -> Bool {
         let at = arrays.findIndex(self.notes, note -> note.id == id);
-        if at == null { return false; }
+
+        if at == null {
+            return false;
+        }
+
         self.notes = arrays.without(self.notes, at);
         return true;
     }
@@ -110,21 +119,41 @@ impl Book {
     // may keep its own title.
     fn checked(document: Json, replacing: Int?) -> Result<Note, Refusal> {
         let title = strings.trim(document.get("title")?.text() ?? "");
-        if title == "" { return Result.Err(Refusal.Missing("title")); }
-        if strings.len(title) > 60 { return Result.Err(Refusal.TooLong("title", 60)); }
 
-        let taken = arrays.find(self.notes, note -> strings.lower(note.title) == strings.lower(title));
-        if taken != null && taken.id != replacing { return Result.Err(Refusal.Duplicate(taken.title)); }
+        if title == "" {
+            return Result.Err(Refusal.Missing("title"));
+        }
+
+        if strings.len(title) > 60 {
+            return Result.Err(Refusal.TooLong("title", 60));
+        }
+
+        let taken = arrays.find(
+            self.notes,
+            note -> strings.lower(note.title) == strings.lower(title),
+        );
+
+        if taken != null && taken.id != replacing {
+            return Result.Err(Refusal.Duplicate(taken.title));
+        }
 
         let body = document.get("body")?.text() ?? "";
-        if strings.len(body) > 2000 { return Result.Err(Refusal.TooLong("body", 2000)); }
+
+        if strings.len(body) > 2000 {
+            return Result.Err(Refusal.TooLong("body", 2000));
+        }
 
         // Tags: texts only, tidied, without repeats
         let tags = set.texts();
+
         for tag in document.get("tags")?.items() ?? [] {
             let name = tag.text() ?? "" |> strings.trim() |> strings.lower();
-            if name != "" { tags.add(name); }
+
+            if name != "" {
+                tags.add(name);
+            }
         }
+
         return Result.Ok(Note { id: 0, title: title, body: body, tags: tags.items() });
     }
 }

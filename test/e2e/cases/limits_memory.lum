@@ -6,15 +6,18 @@ import std.arrays;
 fn main() -> Int {
     let numbers: [Int] = [];
     let i = 0;
+
     while i < 1500000 {
         push(numbers, i);
         i++;
     }
 
     let total = 0;
+
     for n in numbers {
         total += n;
     }
+
     println(arrays.len(numbers), total);
     return 0;
 }

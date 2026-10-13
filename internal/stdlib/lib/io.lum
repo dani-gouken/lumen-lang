@@ -29,10 +29,12 @@ pub fn ask(question: String) -> String? {
 pub fn readLines() -> [String] {
     let out: [String] = [];
     let line = readLine();
+
     while line != null {
         push(out, line);
         line = readLine();
     }
+
     return out;
 }
 
@@ -40,22 +42,22 @@ pub fn readLines() -> [String] {
 
 // Why a file could not be read or written.
 pub enum ErrorKind {
-    NotFound,           // there is no file at that path
-    PermissionDenied,   // the file may not be read, or written
-    IsDirectory,        // the path is a folder
-    NotDirectory,       // part of the path is a file, where a folder is needed
+    NotFound,          // there is no file at that path
+    PermissionDenied,  // the file may not be read, or written
+    IsDirectory,       // the path is a folder
+    NotDirectory,      // part of the path is a file, where a folder is needed
     AlreadyExists,
-    Other,              // anything else; the message says what
+    Other,             // anything else; the message says what
 }
 
 // A failure to read or write a file: what kind it is, for the program to
 // act on, and the rest for telling a person.
 pub struct Error {
     kind: ErrorKind;
-    operation: String;      // "read", "write" or "append"
+    operation: String;  // "read", "write" or "append"
     path: String;
-    message: String;        // as the operating system puts it: "no such file or directory"
-    stack: [Location];      // where it was asked for: the call of readFile, then the calls that led to it
+    message: String;    // as the operating system puts it: "no such file or directory"
+    stack: [Location];  // where it was asked for: the call of readFile, then the calls that led to it
 }
 
 impl Error {
@@ -84,9 +86,11 @@ impl Error {
 //     }
 pub fn readFile(path: String) -> Result<String, Error> {
     let text = readText(path);
+
     if text == null {
         return Result.Err(failure("read", path));
     }
+
     return Result.Ok(text);
 }
 
@@ -96,6 +100,7 @@ pub fn writeFile(path: String, text: String) -> Result<Int, Error> {
     if writeText(path, text) {
         return Result.Ok(strings.len(text));
     }
+
     return Result.Err(failure("write", path));
 }
 
@@ -105,6 +110,7 @@ pub fn appendFile(path: String, text: String) -> Result<Int, Error> {
     if appendText(path, text) {
         return Result.Ok(strings.len(text));
     }
+
     return Result.Err(failure("append", path));
 }
 
@@ -119,9 +125,16 @@ pub fn readFileLines(path: String) -> Result<[String], Error> {
 pub fn failure(operation: String, path: String) -> Error {
     // The runtime keeps two things about it: the kind and the message
     let parts = problem();
+
     // Without this function and the one that called it: the trace starts
     // at the program's own call
-    return Error { kind: kindOf(parts[0]), operation: operation, path: path, message: parts[1], stack: result.stack(2) };
+    return Error {
+        kind: kindOf(parts[0]),
+        operation: operation,
+        path: path,
+        message: parts[1],
+        stack: result.stack(2),
+    };
 }
 
 fn kindOf(name: String) -> ErrorKind {

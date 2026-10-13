@@ -24,6 +24,7 @@ struct Member {
 }
 
 enum Option<T> { Some(T), None }
+
 enum Lookup { Found(Json), NoSuchKey(String), NotAnObject }
 
 fn member(key: String, value: Json) -> Member {
@@ -33,28 +34,71 @@ fn member(key: String, value: Json) -> Member {
 impl Json {
     fn kind() -> String {
         match self {
-            case Json.Null: { return "null"; }
-            case Json.Bool(_): { return "bool"; }
-            case Json.Number(_): { return "number"; }
-            case Json.String(_): { return "string"; }
-            case Json.Array(_): { return "array"; }
-            case Json.Object(_): { return "object"; }
+            case Json.Null: {
+                return "null";
+            }
+
+            case Json.Bool(_): {
+                return "bool";
+            }
+
+            case Json.Number(_): {
+                return "number";
+            }
+
+            case Json.String(_): {
+                return "string";
+            }
+
+            case Json.Array(_): {
+                return "array";
+            }
+
+            case Json.Object(_): {
+                return "object";
+            }
         }
     }
 
     // On one line.
     fn compact() -> String {
         match self {
-            case Json.Null: { return "null"; }
-            case Json.Bool(true): { return "true"; }
-            case Json.Bool(false): { return "false"; }
-            case Json.Number(n): { return toString(n); }
-            case Json.String(text): { return "\"" + text + "\""; }
-            case Json.Array(items): {
-                return "[" + strings.join(arrays.map(items, fn(j: Json) -> String { return j.compact(); }), ",") + "]";
+            case Json.Null: {
+                return "null";
             }
+
+            case Json.Bool(true): {
+                return "true";
+            }
+
+            case Json.Bool(false): {
+                return "false";
+            }
+
+            case Json.Number(n): {
+                return toString(n);
+            }
+
+            case Json.String(text): {
+                return "\"" + text + "\"";
+            }
+
+            case Json.Array(items): {
+                return "["
+                    + strings.join(
+                        arrays.map(items, fn(j: Json) -> String {
+                            return j.compact();
+                        }),
+                        ",",
+                    )
+                    + "]";
+            }
+
             case Json.Object(members): {
-                let parts = arrays.map(members, fn(m: Member) -> String { return "\"" + m.key + "\":" + m.value.compact(); });
+                let parts = arrays.map(members, fn(m: Member) -> String {
+                    return "\"" + m.key + "\":" + m.value.compact();
+                });
+
                 return "{" + strings.join(parts, ",") + "}";
             }
         }
@@ -64,20 +108,35 @@ impl Json {
     fn pretty(depth: Int) -> String {
         let pad = strings.repeat(INDENT, depth + 1);
         let close = strings.repeat(INDENT, depth);
+
         match self {
             case Json.Array(items): {
-                if arrays.len(items) == 0 || depth >= MAX_DEPTH { return self.compact(); }
-                let lines = arrays.map(items, fn(j: Json) -> String { return pad + j.pretty(depth + 1); });
+                if arrays.len(items) == 0 || depth >= MAX_DEPTH {
+                    return self.compact();
+                }
+
+                let lines = arrays.map(items, fn(j: Json) -> String {
+                    return pad + j.pretty(depth + 1);
+                });
+
                 return "[\n" + strings.join(lines, ",\n") + "\n" + close + "]";
             }
+
             case Json.Object(members): {
-                if arrays.len(members) == 0 || depth >= MAX_DEPTH { return self.compact(); }
+                if arrays.len(members) == 0 || depth >= MAX_DEPTH {
+                    return self.compact();
+                }
+
                 let lines = arrays.map(members, fn(m: Member) -> String {
                     return pad + "\"" + m.key + "\": " + m.value.pretty(depth + 1);
                 });
+
                 return "{\n" + strings.join(lines, ",\n") + "\n" + close + "}";
             }
-            default: { return self.compact(); }
+
+            default: {
+                return self.compact();
+            }
         }
     }
 
@@ -85,11 +144,17 @@ impl Json {
         match self {
             case Json.Object(members): {
                 for m in members {
-                    if m.key == key { return Lookup.Found(m.value); }
+                    if m.key == key {
+                        return Lookup.Found(m.value);
+                    }
                 }
+
                 return Lookup.NoSuchKey(key);
             }
-            default: { return Lookup.NotAnObject; }
+
+            default: {
+                return Lookup.NotAnObject;
+            }
         }
     }
 
@@ -97,22 +162,49 @@ impl Json {
     fn count() -> Int {
         match self {
             case Json.Array(items): {
-                return arrays.fold(items, 1, fn(n: Int, j: Json) -> Int { return n + j.count(); });
+                return arrays.fold(items, 1, fn(n: Int, j: Json) -> Int {
+                    return n + j.count();
+                });
             }
+
             case Json.Object(members): {
-                return arrays.fold(members, 1, fn(n: Int, m: Member) -> Int { return n + m.value.count(); });
+                return arrays.fold(members, 1, fn(n: Int, m: Member) -> Int {
+                    return n + m.value.count();
+                });
             }
-            default: { return 1; }
+
+            default: {
+                return 1;
+            }
         }
     }
 
     // The sum of every number in the tree.
     fn total() -> Int {
         match self {
-            case Json.Number(n): { return n; }
-            case Json.Array(items): { return arrays.sum(arrays.map(items, fn(j: Json) -> Int { return j.total(); })); }
-            case Json.Object(members): { return arrays.sum(arrays.map(members, fn(m: Member) -> Int { return m.value.total(); })); }
-            default: { return 0; }
+            case Json.Number(n): {
+                return n;
+            }
+
+            case Json.Array(items): {
+                return arrays.sum(
+                    arrays.map(items, fn(j: Json) -> Int {
+                        return j.total();
+                    }),
+                );
+            }
+
+            case Json.Object(members): {
+                return arrays.sum(
+                    arrays.map(members, fn(m: Member) -> Int {
+                        return m.value.total();
+                    }),
+                );
+            }
+
+            default: {
+                return 0;
+            }
         }
     }
 }
@@ -120,29 +212,49 @@ impl Json {
 // A value reached by a path of keys, or why it could not be.
 fn path(root: Json, keys: [String]) -> Lookup {
     let current = root;
+
     for key in keys {
         match current.get(key) {
-            case Lookup.Found(value): { current = value; }
-            case Lookup.NoSuchKey(missing): { return Lookup.NoSuchKey(missing); }
-            case Lookup.NotAnObject: { return Lookup.NotAnObject; }
+            case Lookup.Found(value): {
+                current = value;
+            }
+
+            case Lookup.NoSuchKey(missing): {
+                return Lookup.NoSuchKey(missing);
+            }
+
+            case Lookup.NotAnObject: {
+                return Lookup.NotAnObject;
+            }
         }
     }
+
     return Lookup.Found(current);
 }
 
 fn firstNumber(j: Json) -> Option<Int> {
     match j {
-        case Json.Number(n): { return Option.Some(n); }
+        case Json.Number(n): {
+            return Option.Some(n);
+        }
+
         case Json.Array(items): {
             for item in items {
                 match firstNumber(item) {
-                    case Option.Some(n): { return Option.Some(n); }
-                    case Option.None: { }
+                    case Option.Some(n): {
+                        return Option.Some(n);
+                    }
+
+                    case Option.None: {}
                 }
             }
+
             return Option.None;
         }
-        default: { return Option.None; }
+
+        default: {
+            return Option.None;
+        }
     }
 }
 
@@ -153,29 +265,70 @@ fn main() -> Int {
         member("stable", Json.Bool(false)),
         member("license", Json.Null),
         member("tags", Json.Array([Json.String("vm"), Json.String("typed")])),
-        member("build", Json.Object([
-            member("heap_mb", Json.Number(256)),
-            member("flags", Json.Array([])),
-            member("matrix", Json.Array([Json.Array([Json.Number(1), Json.Number(2)]), Json.Array([Json.Number(3)])])),
-        ])),
+        member(
+            "build",
+            Json.Object([
+                member("heap_mb", Json.Number(256)),
+                member("flags", Json.Array([])),
+                member(
+                    "matrix",
+                    Json.Array([
+                        Json.Array([Json.Number(1), Json.Number(2)]),
+                        Json.Array([Json.Number(3)]),
+                    ]),
+                ),
+            ]),
+        ),
     ]);
 
     println(doc.compact());
     println(doc.pretty(0));
     println(doc.kind(), doc.count(), doc.total());
 
-    for keys in [["name"], ["build", "heap_mb"], ["build", "matrix"], ["build", "debug"], ["name", "length"], []] {
+    for keys in [
+        ["name"],
+        ["build", "heap_mb"],
+        ["build", "matrix"],
+        ["build", "debug"],
+        ["name", "length"],
+        [],
+    ] {
         let found = path(doc, keys);
+
         match found {
-            case Lookup.Found(Json.String(text)): { println(keys, "-> the text", text); }
-            case Lookup.Found(Json.Number(n)): { println(keys, "-> the number", n); }
-            case Lookup.Found(other): { println(keys, "-> a value of kind", other.kind(), "holding", other.count()); }
-            case Lookup.NoSuchKey(key): { println(keys, "-> no key", key); }
-            case Lookup.NotAnObject: { println(keys, "-> not an object"); }
+            case Lookup.Found(Json.String(text)): {
+                println(keys, "-> the text", text);
+            }
+
+            case Lookup.Found(Json.Number(n)): {
+                println(keys, "-> the number", n);
+            }
+
+            case Lookup.Found(other): {
+                println(keys, "-> a value of kind", other.kind(), "holding", other.count());
+            }
+
+            case Lookup.NoSuchKey(key): {
+                println(keys, "-> no key", key);
+            }
+
+            case Lookup.NotAnObject: {
+                println(keys, "-> not an object");
+            }
         }
     }
 
-    println(firstNumber(Json.Array([Json.Null, Json.Array([Json.String("x"), Json.Number(9)])])), firstNumber(Json.String("x")));
-    println(Json.Number(1) == Json.Number(1), Json.Number(1) == Json.String("1"), Json.Null == Json.Null, Json.Bool(true) != Json.Bool(false));
+    println(
+        firstNumber(Json.Array([Json.Null, Json.Array([Json.String("x"), Json.Number(9)])])),
+        firstNumber(Json.String("x")),
+    );
+
+    println(
+        Json.Number(1) == Json.Number(1),
+        Json.Number(1) == Json.String("1"),
+        Json.Null == Json.Null,
+        Json.Bool(true) != Json.Bool(false),
+    );
+
     return 0;
 }

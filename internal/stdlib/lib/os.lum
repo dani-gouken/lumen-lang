@@ -30,25 +30,31 @@ pub extern fn hostname() -> String;
 // Every environment variable. One alone: io.env.
 pub fn environment() -> Dict<String> {
     let all = dict.empty<String>();
+
     for line in variables() {
         let (name, value) = strings.cut(line, "=") ?? (line, "");
         all.set(name, value);
     }
+
     return all;
 }
 
 // What a program that was run left behind.
 pub struct Output {
-    status: Int;        // 0 when the program says it went well
-    out: String;        // what it wrote
-    err: String;        // what it wrote as errors
+    status: Int;  // 0 when the program says it went well
+    out: String;  // what it wrote
+    err: String;  // what it wrote as errors
 }
 
 impl Output {
-    pub fn succeeded() -> Bool { return self.status == 0; }
+    pub fn succeeded() -> Bool {
+        return self.status == 0;
+    }
 
     // What it wrote, as lines.
-    pub fn lines() -> [String] { return strings.lines(self.out); }
+    pub fn lines() -> [String] {
+        return strings.lines(self.out);
+    }
 }
 
 // Runs another program and waits for it to end.
@@ -62,14 +68,22 @@ impl Output {
 // output.status. The error is for a program that could not be started.
 pub fn run(program: String, arguments: [String]) -> Result<Output, Error> {
     let parts = execute(program, arguments, "");
-    if parts == null { return Result.Err(io.failure("run", program)); }
+
+    if parts == null {
+        return Result.Err(io.failure("run", program));
+    }
+
     return Result.Ok(outputOf(parts));
 }
 
 // The same, with a text for the program to read as its input.
 pub fn runWithInput(program: String, arguments: [String], input: String) -> Result<Output, Error> {
     let parts = execute(program, arguments, input);
-    if parts == null { return Result.Err(io.failure("run", program)); }
+
+    if parts == null {
+        return Result.Err(io.failure("run", program));
+    }
+
     return Result.Ok(outputOf(parts));
 }
 

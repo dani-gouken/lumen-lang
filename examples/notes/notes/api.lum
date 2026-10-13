@@ -24,7 +24,11 @@ pub fn routes(notes: Book) -> Router {
     app.get("/notes", fn(request: Request) -> Response {
         let q = request.query.get("q");
         let found = notes.tagged(request.query.get("tag"));
-        if q != null { found = notes.search(q); }
+
+        if q != null {
+            found = notes.search(q);
+        }
+
         return http.sendJson(200, json.array(found, asJson));
     });
 
@@ -33,18 +37,31 @@ pub fn routes(notes: Book) -> Router {
             case Result.Ok(document): {
                 match notes.add(document) {
                     case Result.Ok(note): {
-                        return http.sendJson(201, note.toJson()).with("Location", "/notes/${note.id}");
+                        return http.sendJson(201, note.toJson()).with(
+                            "Location",
+                            "/notes/${note.id}",
+                        );
                     }
-                    case Result.Err(refusal): { return refused(refusal); }
+
+                    case Result.Err(refusal): {
+                        return refused(refusal);
+                    }
                 }
             }
-            case Result.Err(error): { return problem(400, "the body is not JSON: ${error.describe()}"); }
+
+            case Result.Err(error): {
+                return problem(400, "the body is not JSON: ${error.describe()}");
+            }
         }
     });
 
     app.get("/notes/:id", fn(request: Request) -> Response {
         let note = notes.find(idOf(request));
-        if note == null { return noSuchNote(request); }
+
+        if note == null {
+            return noSuchNote(request);
+        }
+
         return http.sendJson(200, note.toJson());
     });
 
@@ -52,18 +69,28 @@ pub fn routes(notes: Book) -> Router {
         match request.json() {
             case Result.Ok(document): {
                 let outcome = notes.replace(idOf(request), document);
-                if outcome == null { return noSuchNote(request); }
+
+                if outcome == null {
+                    return noSuchNote(request);
+                }
+
                 return match outcome {
                     case Result.Ok(note): http.sendJson(200, note.toJson());
                     case Result.Err(refusal): refused(refusal);
                 };
             }
-            case Result.Err(error): { return problem(400, "the body is not JSON: ${error.describe()}"); }
+
+            case Result.Err(error): {
+                return problem(400, "the body is not JSON: ${error.describe()}");
+            }
         }
     });
 
     app.delete("/notes/:id", fn(request: Request) -> Response {
-        if !notes.remove(idOf(request)) { return noSuchNote(request); }
+        if !notes.remove(idOf(request)) {
+            return noSuchNote(request);
+        }
+
         return http.respond(204, "");
     });
 
@@ -74,7 +101,9 @@ pub fn routes(notes: Book) -> Router {
     return app;
 }
 
-fn asJson(note: Note) -> Json { return note.toJson(); }
+fn asJson(note: Note) -> Json {
+    return note.toJson();
+}
 
 // The id in the address; -1, which no note has, if it is not a number.
 fn idOf(request: Request) -> Int {

@@ -25,11 +25,13 @@ pub fn resolve(program: Program, reporter: Reporter) -> [Int] {
         distances: arrays.fill(program.names, GLOBAL),
         scopes: [],
     };
+
     resolver.statements(program.statements);
     return resolver.distances;
 }
 
 enum Inside { Nothing, Function, Initializer, Method }
+
 enum InsideClass { None, Class, Subclass }
 
 struct Resolver {
@@ -53,10 +55,15 @@ impl Resolver {
 
     fn declare(name: Token) {
         let scope = arrays.last(self.scopes);
-        if scope == null { return; }
+
+        if scope == null {
+            return;
+        }
+
         if scope.has(name.lexeme) {
             self.reporter.atToken(name, "Already a variable with this name in this scope.");
         }
+
         scope.set(name.lexeme, false);
     }
 
@@ -67,6 +74,7 @@ impl Resolver {
     // Notes how far out the variable of a numbered expression is
     fn local(number: Int, name: Token) {
         let depth = arrays.len(self.scopes);
+
         for out in 0..depth {
             if self.scopes[depth - 1 - out].has(name.lexeme) {
                 self.distances[number] = out;
@@ -76,7 +84,9 @@ impl Resolver {
     }
 
     fn statements(statements: [Stmt]) {
-        for statement in statements { self.statement(statement); }
+        for statement in statements {
+            self.statement(statement);
+        }
     }
 
     fn statement(statement: Stmt) {
@@ -86,36 +96,59 @@ impl Resolver {
                 self.statements(statements);
                 self.end();
             }
-            case Stmt.Class(name, superclass, methods): { self.classDeclaration(name, superclass, methods); }
-            case Stmt.Expression(value): { self.expression(value); }
+
+            case Stmt.Class(name, superclass, methods): {
+                self.classDeclaration(name, superclass, methods);
+            }
+
+            case Stmt.Expression(value): {
+                self.expression(value);
+            }
+
             case Stmt.Function(declaration): {
                 // Defined before its body is read: it may call itself
                 self.declare(declaration.name);
                 self.define(declaration.name);
                 self.function(declaration, Inside.Function);
             }
+
             case Stmt.If(condition, thenBranch, elseBranch): {
                 self.expression(condition);
                 self.statement(thenBranch);
-                if elseBranch != null { self.statement(elseBranch); }
+
+                if elseBranch != null {
+                    self.statement(elseBranch);
+                }
             }
-            case Stmt.Print(value): { self.expression(value); }
+
+            case Stmt.Print(value): {
+                self.expression(value);
+            }
+
             case Stmt.Return(keyword, value): {
                 if self.function == Inside.Nothing {
                     self.reporter.atToken(keyword, "Can't return from top-level code.");
                 }
+
                 if value != null {
                     if self.function == Inside.Initializer {
                         self.reporter.atToken(keyword, "Can't return a value from an initializer.");
                     }
+
                     self.expression(value);
                 }
             }
+
             case Stmt.Var(name, initializer): {
                 self.declare(name);
-                if initializer != null { self.expression(initializer); }
+
+                if initializer != null {
+                    self.expression(initializer);
+                }
+
                 self.define(name);
             }
+
             case Stmt.While(condition, body): {
                 self.expression(condition);
                 self.statement(body);
@@ -126,7 +159,10 @@ impl Resolver {
     fn classDeclaration(name: Token, superclass: Expr?, methods: [Function]) {
         let enclosing = self.class;
         self.class = InsideClass.Class;
-        defer { self.class = enclosing; }
+
+        defer {
+            self.class = enclosing;
+        }
 
         self.declare(name);
         self.define(name);
@@ -135,6 +171,7 @@ impl Resolver {
             if superclass is Expr.Variable(parent, _) && parent.lexeme == name.lexeme {
                 self.reporter.atToken(parent, "A class can't inherit from itself.");
             }
+
             self.class = InsideClass.Subclass;
             self.expression(superclass);
 
@@ -145,26 +182,39 @@ impl Resolver {
 
         self.begin();
         arrays.last(self.scopes)?.set("this", true);
+
         for method in methods {
             let kind = Inside.Method;
-            if method.name.lexeme == "init" { kind = Inside.Initializer; }
+
+            if method.name.lexeme == "init" {
+                kind = Inside.Initializer;
+            }
+
             self.function(method, kind);
         }
+
         self.end();
 
-        if superclass != null { self.end(); }
+        if superclass != null {
+            self.end();
+        }
     }
 
     fn function(declaration: Function, kind: Inside) {
         let enclosing = self.function;
         self.function = kind;
-        defer { self.function = enclosing; }
+
+        defer {
+            self.function = enclosing;
+        }
 
         self.begin();
+
         for param in declaration.params {
             self.declare(param);
             self.define(param);
         }
+
         self.statements(declaration.body);
         self.end();
     }
@@ -175,46 +225,76 @@ impl Resolver {
                 self.expression(value);
                 self.local(number, name);
             }
+
             case Expr.Binary(left, operator, right): {
                 self.expression(left);
                 self.expression(right);
             }
+
             case Expr.Call(callee, paren, arguments): {
                 self.expression(callee);
-                for argument in arguments { self.expression(argument); }
+
+                for argument in arguments {
+                    self.expression(argument);
+                }
             }
-            case Expr.Get(object, name): { self.expression(object); }
-            case Expr.Grouping(inner): { self.expression(inner); }
-            case Expr.Literal(value): { }
+
+            case Expr.Get(object, name): {
+                self.expression(object);
+            }
+
+            case Expr.Grouping(inner): {
+                self.expression(inner);
+            }
+
+            case Expr.Literal(value): {}
+
             case Expr.Logical(left, operator, right): {
                 self.expression(left);
                 self.expression(right);
             }
+
             case Expr.Set(object, name, value): {
                 self.expression(value);
                 self.expression(object);
             }
+
             case Expr.Super(keyword, method, number): {
                 if self.class == InsideClass.None {
                     self.reporter.atToken(keyword, "Can't use 'super' outside of a class.");
                 } else if self.class != InsideClass.Subclass {
-                    self.reporter.atToken(keyword, "Can't use 'super' in a class with no superclass.");
+                    self.reporter.atToken(
+                        keyword,
+                        "Can't use 'super' in a class with no superclass.",
+                    );
                 }
+
                 self.local(number, keyword);
             }
+
             case Expr.This(keyword, number): {
                 if self.class == InsideClass.None {
                     self.reporter.atToken(keyword, "Can't use 'this' outside of a class.");
                     return;
                 }
+
                 self.local(number, keyword);
             }
-            case Expr.Unary(operator, right): { self.expression(right); }
+
+            case Expr.Unary(operator, right): {
+                self.expression(right);
+            }
+
             case Expr.Variable(name, number): {
                 let scope = arrays.last(self.scopes);
+
                 if scope != null && scope.get(name.lexeme) == false {
-                    self.reporter.atToken(name, "Can't read local variable in its own initializer.");
+                    self.reporter.atToken(
+                        name,
+                        "Can't read local variable in its own initializer.",
+                    );
                 }
+
                 self.local(number, name);
             }
         }

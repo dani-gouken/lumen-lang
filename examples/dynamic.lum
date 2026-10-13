@@ -11,27 +11,56 @@ trait Shape {
     fn area() -> Int;
 }
 
-struct Square { side: Int; }
-struct Circle { radius: Int; }
+struct Square {
+    side: Int;
+}
+
+struct Circle {
+    radius: Int;
+}
 
 impl Shape for Square {
-    fn area() -> Int { return self.side * self.side; }
+    fn area() -> Int {
+        return self.side * self.side;
+    }
 }
 
 impl Shape for Circle {
-    fn area() -> Int { return 3 * self.radius * self.radius; }
+    fn area() -> Int {
+        return 3 * self.radius * self.radius;
+    }
 }
 
 // Inside each case, `value` has the type of the case.
 fn describe(value: Any) -> String {
     match value {
-        case Int: { return "the number " + toString(value + 0); }
-        case String: { return "a text of " + toString(strings.len(value)) + " characters"; }
-        case [Int]: { return toString(arrays.len(value)) + " numbers"; }
-        case Square: { return "a square of side " + toString(value.side); }
-        case Shape: { return "a shape of area " + toString(value.area()); }
-        case fn(Int) -> Int: { return "a function; f(2) = " + toString(value(2)); }
-        default: { return "something else"; }
+        case Int: {
+            return "the number " + toString(value + 0);
+        }
+
+        case String: {
+            return "a text of " + toString(strings.len(value)) + " characters";
+        }
+
+        case [Int]: {
+            return toString(arrays.len(value)) + " numbers";
+        }
+
+        case Square: {
+            return "a square of side " + toString(value.side);
+        }
+
+        case Shape: {
+            return "a shape of area " + toString(value.area());
+        }
+
+        case fn(Int) -> Int: {
+            return "a function; f(2) = " + toString(value(2));
+        }
+
+        default: {
+            return "something else";
+        }
     }
 }
 
@@ -45,18 +74,26 @@ fn secondValue(node: Node) -> Int {
     if node.next == null {
         return -1;
     }
+
     return node.next.value;
 }
 
 fn main() -> Int {
     let things: [Any] = [42, "hello", [1, 2, 3], Square { side: 2 }, Circle { radius: 1 }, true];
+
     for thing in things {
         println(describe(thing));
     }
-    println(describe(fn(n: Int) -> Int { return n * n; }));
+
+    println(
+        describe(fn(n: Int) -> Int {
+            return n * n;
+        }),
+    );
 
     // `is` asks without failing
     let shape: Shape = Square { side: 5 };
+
     if shape is Square {
         println("side:", shape.side);
     }

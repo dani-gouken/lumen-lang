@@ -3,7 +3,10 @@
 import std.result.{Result};
 import std.strings;
 
-struct User { name: String; boss: User?; }
+struct User {
+    name: String;
+    boss: User?;
+}
 
 fn number(text: String) -> Result<Int, String> {
     return Result.Ok(1);
@@ -52,14 +55,25 @@ fn sizes() -> (Int, Int) {
 
 fn incomplete(point: (Bool, Bool)) -> Int {
     match point {
-        case (true, _): { return 1; }
-        case (false, true): { return 2; }
+        case (true, _): {
+            return 1;
+        }
+
+        case (false, true): {
+            return 2;
+        }
     }
 }
 
 fn changing(count: Int?) -> Int {
-    if count == null { return 0; }
-    let later = fn() -> Int { return count + 1; };
+    if count == null {
+        return 0;
+    }
+
+    let later = fn() -> Int {
+        return count + 1;
+    };
+
     count = null;
     return later();
 }

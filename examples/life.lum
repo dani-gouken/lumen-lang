@@ -15,11 +15,17 @@ struct Grid {
 
 fn newGrid(width: Int, height: Int) -> Grid {
     let cells: [[Bool]] = [];
+
     for y in 0..height {
         let row: [Bool] = [];
-        for x in 0..width { push(row, false); }
+
+        for x in 0..width {
+            push(row, false);
+        }
+
         push(cells, row);
     }
+
     return Grid { width: width, height: height, cells: cells };
 }
 
@@ -29,6 +35,7 @@ impl Grid {
         if x < 0 || y < 0 || x >= self.width || y >= self.height {
             return false;
         }
+
         return self.cells[y][x];
     }
 
@@ -38,6 +45,7 @@ impl Grid {
 
     fn neighbours(x: Int, y: Int) -> Int {
         let count = 0;
+
         for dy in [-1, 0, 1] {
             for dx in [-1, 0, 1] {
                 if (dx != 0 || dy != 0) && self.alive(x + dx, y + dy) {
@@ -45,6 +53,7 @@ impl Grid {
                 }
             }
         }
+
         return count;
     }
 
@@ -52,33 +61,46 @@ impl Grid {
     // the old one, before anything changes.
     fn step() -> Grid {
         let next = newGrid(self.width, self.height);
+
         for y, row in self.cells {
             for x, cell in row {
                 let n = self.neighbours(x, y);
+
                 if n == 3 || (cell && n == 2) {
                     next.set(x, y);
                 }
             }
         }
+
         return next;
     }
 
     fn population() -> Int {
         let count = 0;
+
         for row in self.cells {
             for cell in row {
-                if cell { count++; }
+                if cell {
+                    count++;
+                }
             }
         }
+
         return count;
     }
 
     fn show() {
         for row in self.cells {
             let line = "";
+
             for cell in row {
-                if cell { line += "#"; } else { line += "."; }
+                if cell {
+                    line += "#";
+                } else {
+                    line += ".";
+                }
             }
+
             println(line);
         }
     }
@@ -95,14 +117,17 @@ fn main() -> Int {
     grid.set(2, 2);
 
     let generation = 0;
+
     while generation <= 8 {
         if generation % 4 == 0 {
             println("generation", generation, "population", grid.population());
             grid.show();
             println();
         }
+
         grid = grid.step();
         generation++;
     }
+
     return 0;
 }

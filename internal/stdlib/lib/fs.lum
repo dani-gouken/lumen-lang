@@ -22,16 +22,21 @@ pub enum Kind { File, Folder }
 
 // What is known about a file or a folder.
 pub struct Entry {
-    name: String;       // its last part: "todo.txt"
-    path: String;       // where it is: "notes/todo.txt"
+    name: String;   // its last part: "todo.txt"
+    path: String;   // where it is: "notes/todo.txt"
     kind: Kind;
-    size: Int;          // in bytes
-    modified: Int;      // when it last changed, in milliseconds since 1970, as time.now
+    size: Int;      // in bytes
+    modified: Int;  // when it last changed, in milliseconds since 1970, as time.now
 }
 
 impl Entry {
-    pub fn isFile() -> Bool { return self.kind == Kind.File; }
-    pub fn isFolder() -> Bool { return self.kind == Kind.Folder; }
+    pub fn isFile() -> Bool {
+        return self.kind == Kind.File;
+    }
+
+    pub fn isFolder() -> Bool {
+        return self.kind == Kind.Folder;
+    }
 }
 
 pub extern fn isDir(path: String) -> Bool;
@@ -40,33 +45,53 @@ pub extern fn isFile(path: String) -> Bool;
 // What is known about one file or folder, or why it cannot be said.
 pub fn info(path: String) -> Result<Entry, Error> {
     let entry = describe(path);
-    if entry == null { return Result.Err(io.failure("inspect", path)); }
+
+    if entry == null {
+        return Result.Err(io.failure("inspect", path));
+    }
+
     return Result.Ok(entry);
 }
 
 // What a folder holds, sorted by name. Not what its folders hold.
 pub fn list(folder: String) -> Result<[Entry], Error> {
     let found = names(folder);
-    if found == null { return Result.Err(io.failure("list", folder)); }
+
+    if found == null {
+        return Result.Err(io.failure("list", folder));
+    }
+
     let entries: [Entry] = [];
+
     for name in found {
         // Gone between being listed and being looked at: leave it out
         let entry = describe(path.inside(folder, name));
-        if entry != null { push(entries, entry); }
+
+        if entry != null {
+            push(entries, entry);
+        }
     }
+
     return Result.Ok(entries);
 }
 
 // The path of every file under a folder, however deep, sorted.
 pub fn walk(folder: String) -> Result<[String], Error> {
     let found = tree(folder);
-    if found == null { return Result.Err(io.failure("walk", folder)); }
+
+    if found == null {
+        return Result.Err(io.failure("walk", folder));
+    }
+
     return Result.Ok(found);
 }
 
 // The files under a folder whose name fits a pattern: fs.find("src", "*.lum").
 pub fn find(folder: String, pattern: String) -> Result<[String], Error> {
-    let fits = fn(file: String) -> Bool { return path.matches(pattern, path.base(file)); };
+    let fits = fn(file: String) -> Bool {
+        return path.matches(pattern, path.base(file));
+    };
+
     return Result.Ok(arrays.filter(walk(folder)?, fits));
 }
 
@@ -102,12 +127,19 @@ pub extern fn tempDir() -> String;
 // the prefix. The program removes it when done: fs.removeAll.
 pub fn makeTempDir(prefix: String) -> Result<String, Error> {
     let created = newTempDir(prefix);
-    if created == null { return Result.Err(io.failure("create", prefix)); }
+
+    if created == null {
+        return Result.Err(io.failure("create", prefix));
+    }
+
     return Result.Ok(created);
 }
 
 fn done(worked: Bool, operation: String, target: String) -> Result<String, Error> {
-    if worked { return Result.Ok(target); }
+    if worked {
+        return Result.Ok(target);
+    }
+
     // One call further from the program than io.failure expects
     let error = io.failure(operation, target);
     error.stack = arrays.slice(error.stack, 1, arrays.len(error.stack));
@@ -117,8 +149,18 @@ fn done(worked: Bool, operation: String, target: String) -> Result<String, Error
 fn describe(target: String) -> Entry? {
     let facts = stat(target)?;
     let kind = Kind.File;
-    if isDir(target) { kind = Kind.Folder; }
-    return Entry { name: path.base(target), path: target, kind: kind, size: facts[0], modified: facts[1] };
+
+    if isDir(target) {
+        kind = Kind.Folder;
+    }
+
+    return Entry {
+        name: path.base(target),
+        path: target,
+        kind: kind,
+        size: facts[0],
+        modified: facts[1],
+    };
 }
 
 extern fn names(folder: String) -> [String]?;

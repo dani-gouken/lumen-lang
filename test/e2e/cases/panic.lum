@@ -3,13 +3,17 @@
 
 import std.arrays;
 
-struct Queue { items: [Int]; taken: Int; }
+struct Queue {
+    items: [Int];
+    taken: Int;
+}
 
 impl Queue {
     fn take() -> Int {
         if arrays.len(self.items) == 0 {
             panic("the queue is empty after", self.taken, "items");
         }
+
         self.taken++;
         return self.items[0];
     }
@@ -18,11 +22,13 @@ impl Queue {
 fn drain(q: Queue, times: Int) -> Int {
     let total = 0;
     let i = 0;
+
     while i < times {
         total += q.take();
         q.items = arrays.slice(q.items, 1, arrays.len(q.items));
         i++;
     }
+
     return total;
 }
 

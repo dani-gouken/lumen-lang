@@ -19,9 +19,11 @@ impl<T> Stack<T> {
     // A method can add type parameters of its own: U is chosen at the call.
     fn map<U>(convert: fn(T) -> U) -> Stack<U> {
         let out = Stack<U> { items: [] };
+
         for item in self.items {
             out.push(convert(item));
         }
+
         return out;
     }
 
@@ -30,6 +32,7 @@ impl<T> Stack<T> {
         if arrays.len(self.items) == 0 {
             return null;
         }
+
         return self.items[arrays.len(self.items) - 1];
     }
 }
@@ -38,15 +41,24 @@ trait Shape {
     fn area() -> Int;
 }
 
-struct Square { side: Int; }
-struct Circle { radius: Int; }
+struct Square {
+    side: Int;
+}
+
+struct Circle {
+    radius: Int;
+}
 
 impl Shape for Square {
-    fn area() -> Int { return self.side * self.side; }
+    fn area() -> Int {
+        return self.side * self.side;
+    }
 }
 
 impl Shape for Circle {
-    fn area() -> Int { return 3 * self.radius * self.radius; }
+    fn area() -> Int {
+        return 3 * self.radius * self.radius;
+    }
 }
 
 // `as` checks at runtime that the shape really is a Square.
@@ -63,6 +75,7 @@ fn main() -> Int {
 
     // peek() returns Int?; testing it against null makes it an Int inside
     let top = numbers.peek();
+
     if top != null {
         println("top + 1 =", top + 1, "of", numbers.size());
     }

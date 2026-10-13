@@ -8,6 +8,9 @@ pub fn left(text: String, width: Int) -> String {
 }
 
 pub fn fill(text: String, times: Int) -> String {
-    if times <= 0 { return ""; }
+    if times <= 0 {
+        return "";
+    }
+
     return text + fill(text, times - 1);
 }

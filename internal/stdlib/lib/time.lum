@@ -44,11 +44,17 @@ pub fn stopwatch() -> Stopwatch {
 }
 
 impl Stopwatch {
-    pub fn microseconds() -> Int { return ticks() - self.started; }
+    pub fn microseconds() -> Int {
+        return ticks() - self.started;
+    }
 
-    pub fn milliseconds() -> Int { return self.microseconds() / 1000; }
+    pub fn milliseconds() -> Int {
+        return self.microseconds() / 1000;
+    }
 
-    pub fn restart() { self.started = ticks(); }
+    pub fn restart() {
+        self.started = ticks();
+    }
 }
 
 // --- The calendar ---
@@ -78,7 +84,11 @@ const monthNames = "January February March April May June July August September 
 // The name of a month from its number, 1 for January.
 pub fn monthName(month: Int) -> String {
     let names = strings.split(monthNames, " ");
-    if month < 1 || month > 12 { panic("there is no month ${month}"); }
+
+    if month < 1 || month > 12 {
+        panic("there is no month ${month}");
+    }
+
     return names[month - 1];
 }
 
@@ -95,15 +105,15 @@ pub fn isLeapYear(year: Int) -> Bool {
 // A moment, told as a date and a time of day in some time zone.
 pub struct Date {
     year: Int;
-    month: Int;             // 1 for January
-    day: Int;               // of the month, from 1
+    month: Int;      // 1 for January
+    day: Int;        // of the month, from 1
     hour: Int;
     minute: Int;
     second: Int;
     millisecond: Int;
     weekday: Weekday;
-    dayOfYear: Int;         // from 1
-    offset: Int;            // minutes this time zone is ahead of UTC
+    dayOfYear: Int;  // from 1
+    offset: Int;     // minutes this time zone is ahead of UTC
 }
 
 // A moment as told in UTC, the time zone without daylight saving that
@@ -143,18 +153,46 @@ pub fn parse(text: String) -> Date? {
 }
 
 fn told(f: [Int]) -> Date {
-    let days = [Weekday.Sunday, Weekday.Monday, Weekday.Tuesday, Weekday.Wednesday, Weekday.Thursday, Weekday.Friday, Weekday.Saturday];
+    let days = [
+        Weekday.Sunday,
+        Weekday.Monday,
+        Weekday.Tuesday,
+        Weekday.Wednesday,
+        Weekday.Thursday,
+        Weekday.Friday,
+        Weekday.Saturday,
+    ];
+
     return Date {
-        year: f[0], month: f[1], day: f[2],
-        hour: f[3], minute: f[4], second: f[5], millisecond: f[6],
-        weekday: days[f[7]], dayOfYear: f[8], offset: f[9],
+        year: f[0],
+        month: f[1],
+        day: f[2],
+        hour: f[3],
+        minute: f[4],
+        second: f[5],
+        millisecond: f[6],
+        weekday: days[f[7]],
+        dayOfYear: f[8],
+        offset: f[9],
     };
 }
 
 impl Date {
     // The moment, in milliseconds since 1 January 1970.
     pub fn timestamp() -> Int {
-        let asUtc = moment([self.year, self.month, self.day, self.hour, self.minute, self.second, self.millisecond], false);
+        let asUtc = moment(
+            [
+                self.year,
+                self.month,
+                self.day,
+                self.hour,
+                self.minute,
+                self.second,
+                self.millisecond,
+            ],
+            false,
+        );
+
         return asUtc - self.offset * minute;
     }
 
@@ -190,9 +228,13 @@ impl Date {
         return (to - from) / day;
     }
 
-    pub fn isBefore(other: Date) -> Bool { return self.timestamp() < other.timestamp(); }
+    pub fn isBefore(other: Date) -> Bool {
+        return self.timestamp() < other.timestamp();
+    }
 
-    pub fn isAfter(other: Date) -> Bool { return self.timestamp() > other.timestamp(); }
+    pub fn isAfter(other: Date) -> Bool {
+        return self.timestamp() > other.timestamp();
+    }
 
     // Whether both name the same day of the calendar.
     pub fn isSameDay(other: Date) -> Bool {
@@ -225,75 +267,162 @@ impl Date {
         let hour12 = (self.hour + 11) % 12 + 1;
         let out: [String] = [];
         let i = 0;
+
         while i < strings.len(pattern) {
             // The longest run of the same letter
             let letter = pattern[i];
             let run = 1;
-            while i + run < strings.len(pattern) && pattern[i + run] == letter { run++; }
+
+            while i + run < strings.len(pattern) && pattern[i + run] == letter {
+                run++;
+            }
 
             if letter == "[" {
-                let close = strings.indexOf(strings.from(pattern, i), "]") ?? strings.len(pattern) - i;
+                let close = strings.indexOf(strings.from(pattern, i), "]")
+                    ?? strings.len(pattern) - i;
+
                 push(out, strings.substring(pattern, i + 1, i + close));
                 i += close + 1;
                 continue;
             }
 
             let used = run;
+
             match letter {
                 case "Y": {
-                    if run >= 4 { push(out, pad(self.year, 4)); used = 4; }
-                    else if run >= 2 { push(out, pad(self.year % 100, 2)); used = 2; }
-                    else { push(out, letter); }
+                    if run >= 4 {
+                        push(out, pad(self.year, 4));
+                        used = 4;
+                    } else if run >= 2 {
+                        push(out, pad(self.year % 100, 2));
+                        used = 2;
+                    } else {
+                        push(out, letter);
+                    }
                 }
+
                 case "M": {
-                    if run >= 4 { push(out, monthName(self.month)); used = 4; }
-                    else if run == 3 { push(out, strings.first(monthName(self.month), 3)); }
-                    else { push(out, pad(self.month, run)); }
+                    if run >= 4 {
+                        push(out, monthName(self.month));
+                        used = 4;
+                    } else if run == 3 {
+                        push(out, strings.first(monthName(self.month), 3));
+                    } else {
+                        push(out, pad(self.month, run));
+                    }
                 }
+
                 case "d": {
-                    if run >= 4 { push(out, self.weekday.name()); used = 4; }
-                    else if run == 3 { push(out, strings.first(self.weekday.name(), 3)); }
-                    else { push(out, strings.repeat(letter, run)); }
+                    if run >= 4 {
+                        push(out, self.weekday.name());
+                        used = 4;
+                    } else if run == 3 {
+                        push(out, strings.first(self.weekday.name(), 3));
+                    } else {
+                        push(out, strings.repeat(letter, run));
+                    }
                 }
-                case "D": { used = math.min(run, 2); push(out, pad(self.day, used)); }
-                case "H": { used = math.min(run, 2); push(out, pad(self.hour, used)); }
-                case "h": { used = math.min(run, 2); push(out, pad(hour12, used)); }
-                case "m": { used = math.min(run, 2); push(out, pad(self.minute, used)); }
-                case "s": { used = math.min(run, 2); push(out, pad(self.second, used)); }
+
+                case "D": {
+                    used = math.min(run, 2);
+                    push(out, pad(self.day, used));
+                }
+
+                case "H": {
+                    used = math.min(run, 2);
+                    push(out, pad(self.hour, used));
+                }
+
+                case "h": {
+                    used = math.min(run, 2);
+                    push(out, pad(hour12, used));
+                }
+
+                case "m": {
+                    used = math.min(run, 2);
+                    push(out, pad(self.minute, used));
+                }
+
+                case "s": {
+                    used = math.min(run, 2);
+                    push(out, pad(self.second, used));
+                }
+
                 case "S": {
-                    if run >= 3 { push(out, pad(self.millisecond, 3)); used = 3; }
-                    else { push(out, strings.repeat(letter, run)); }
+                    if run >= 3 {
+                        push(out, pad(self.millisecond, 3));
+                        used = 3;
+                    } else {
+                        push(out, strings.repeat(letter, run));
+                    }
                 }
+
                 case "A": {
                     used = 1;
-                    if self.hour < 12 { push(out, "AM"); } else { push(out, "PM"); }
+
+                    if self.hour < 12 {
+                        push(out, "AM");
+                    } else {
+                        push(out, "PM");
+                    }
                 }
-                case "Z": { used = 1; push(out, self.zone()); }
-                default: { push(out, strings.repeat(letter, run)); }
+
+                case "Z": {
+                    used = 1;
+                    push(out, self.zone());
+                }
+
+                default: {
+                    push(out, strings.repeat(letter, run));
+                }
             }
+
             i += used;
         }
+
         return strings.join(out, "");
     }
 
     // The time zone as an offset: "Z" for UTC, "+02:00", "-05:30".
     pub fn zone() -> String {
-        if self.offset == 0 { return "Z"; }
+        if self.offset == 0 {
+            return "Z";
+        }
+
         let sign = "+";
-        if self.offset < 0 { sign = "-"; }
+
+        if self.offset < 0 {
+            sign = "-";
+        }
+
         let minutes = math.abs(self.offset);
         return sign + pad(minutes / 60, 2) + ":" + pad(minutes % 60, 2);
     }
 
     // A moment told in the time zone of this date.
     fn at(moment: Int) -> Date {
-        if self.followsTheMachine() { return local(moment); }
+        if self.followsTheMachine() {
+            return local(moment);
+        }
+
         return self.shifted(moment + self.offset * minute);
     }
 
     fn moved(months: Int, days: Int) -> Date {
-        let f = [self.year, self.month + months, self.day + days, self.hour, self.minute, self.second, self.millisecond];
-        if self.followsTheMachine() { return local(moment(f, true)); }
+        let f = [
+            self.year,
+            self.month + months,
+            self.day + days,
+            self.hour,
+            self.minute,
+            self.second,
+            self.millisecond,
+        ];
+
+        if self.followsTheMachine() {
+            return local(moment(f, true));
+        }
+
         return self.shifted(moment(f, false));
     }
 

@@ -16,5 +16,7 @@ impl Keeper {
         return self.name + " gives " + toString(grams) + "g to the " + animal.name;
     }
 
-    fn count() { self.fed++; }
+    fn count() {
+        self.fed++;
+    }
 }

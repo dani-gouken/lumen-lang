@@ -21,6 +21,7 @@ impl Shape for Rect {
     fn area() -> Int {
         return self.width * self.height;
     }
+
     fn name() -> String {
         return "rect";
     }
@@ -30,6 +31,7 @@ impl Shape for Square {
     fn area() -> Int {
         return self.side * self.side;
     }
+
     fn name() -> String {
         return "square";
     }

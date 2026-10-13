@@ -20,15 +20,19 @@ struct Count {
 // The words of a text in lower case, without the punctuation around them.
 fn wordsOf(text: String) -> [String] {
     let out: [String] = [];
+
     for raw in text |> strings.lower() |> strings.words() {
         let word = raw;
+
         for mark in [",", ".", ";", ":", "!", "?", "\""] {
             word = strings.replace(word, mark, "");
         }
+
         if !strings.isEmpty(word) {
             push(out, word);
         }
     }
+
     return out;
 }
 
@@ -39,21 +43,29 @@ fn main() -> Int {
 
     // A map from each word to how often it occurs
     let counts = dict.empty<Int>();
+
     for word in words {
         counts.set(word, (counts.get(word) ?? 0) + 1);
     }
 
     // As a list of structs, most frequent first; ties in alphabetical order
     let table = list.empty<Count>();
+
     for word in counts.keys() |> arrays.sortedTexts() {
         table.add(Count { word: word, times: counts.get(word) ?? 0 });
     }
+
     table.sort((a, b) -> a.times > b.times);
 
     println(arrays.len(words), "words,", counts.size(), "different");
     println();
+
     for row in table.slice(0, 6).toArray() {
-        println(strings.padRight(row.word, 8), strings.padLeft(toString(row.times), 3), strings.repeat("#", row.times));
+        println(
+            strings.padRight(row.word, 8),
+            strings.padLeft(toString(row.times), 3),
+            strings.repeat("#", row.times),
+        );
     }
 
     // Numbers about the words

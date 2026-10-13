@@ -1,16 +1,16 @@
 [ERROR] E1001: undefined identifier 'r'
-is_names_errors.lum:7:61
+is_names_errors.lum:10:16
 [ERROR] E1001: undefined identifier 'radius'
-is_names_errors.lum:12:12
+is_names_errors.lum:16:12
 [ERROR] E1003: 'r' cannot be named here: nothing runs only when this test holds
-is_names_errors.lum:16:32
+is_names_errors.lum:20:32
 Write '_' to test without naming. A name can be used when the test is the condition of an 'if' or a 'while', or stands before an '&&'
 [ERROR] E1003: 'width' cannot be named here: nothing runs only when this test holds
-is_names_errors.lum:21:52
+is_names_errors.lum:28:52
 [ERROR] E1003: 'r' cannot be named here: nothing runs only when this test holds
-is_names_errors.lum:26:39
+is_names_errors.lum:36:39
 [ERROR] E1003: 'w' cannot be named here: nothing runs only when this test holds
 [ERROR] E1003: 'h' cannot be named here: nothing runs only when this test holds
-is_names_errors.lum:27:44
+is_names_errors.lum:37:44
 [ERROR] E1002: symbol 'side' is already declared
-is_names_errors.lum:31:34
+is_names_errors.lum:41:34

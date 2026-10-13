@@ -36,10 +36,15 @@ pub struct Program {
 pub fn parse(tokens: [Token], reporter: Reporter) -> Program {
     let parser = Parser { tokens: tokens, reporter: reporter };
     let statements: [Stmt] = [];
+
     while !parser.atEnd() {
         let statement = parser.declaration();
-        if statement != null { push(statements, statement); }
+
+        if statement != null {
+            push(statements, statement);
+        }
     }
+
     return Program { statements: statements, names: parser.names };
 }
 
@@ -49,7 +54,7 @@ struct Parser {
     tokens: [Token];
     reporter: Reporter;
     current: Int = 0;
-    names: Int = 0;       // The numbers given out so far
+    names: Int = 0;  // The numbers given out so far
 }
 
 impl Parser {
@@ -72,27 +77,39 @@ impl Parser {
     }
 
     fn advance() -> Token {
-        if !self.atEnd() { self.current++; }
+        if !self.atEnd() {
+            self.current++;
+        }
+
         return self.previous();
     }
 
     // Takes the next token if it is of a kind
     fn took(kind: Kind) -> Bool {
-        if !self.check(kind) { return false; }
+        if !self.check(kind) {
+            return false;
+        }
+
         self.advance();
         return true;
     }
 
     fn tookAny(kinds: [Kind]) -> Bool {
         for kind in kinds {
-            if self.took(kind) { return true; }
+            if self.took(kind) {
+                return true;
+            }
         }
+
         return false;
     }
 
     // The next token, which has to be of a kind
     fn expect(kind: Kind, message: String) -> Token? {
-        if self.check(kind) { return self.advance(); }
+        if self.check(kind) {
+            return self.advance();
+        }
+
         self.reporter.atToken(self.peek(), message);
         return null;
     }
@@ -105,12 +122,27 @@ impl Parser {
     // After a mistake: on to where a statement may start
     fn synchronize() {
         self.advance();
+
         while !self.atEnd() {
-            if self.previous().kind == Kind.Semicolon { return; }
-            match self.peek().kind {
-                case Kind.Class | Kind.Fun | Kind.Var | Kind.For | Kind.If | Kind.While | Kind.Print | Kind.Return: { return; }
-                default: { }
+            if self.previous().kind == Kind.Semicolon {
+                return;
             }
+
+            match self.peek().kind {
+                case Kind.Class
+                    | Kind.Fun
+                    | Kind.Var
+                    | Kind.For
+                    | Kind.If
+                    | Kind.While
+                    | Kind.Print
+                    | Kind.Return: {
+                    return;
+                }
+
+                default: {}
+            }
+
             self.advance();
         }
     }
@@ -119,14 +151,27 @@ impl Parser {
 
     fn declaration() -> Stmt? {
         let statement = self.declared();
-        if statement == null { self.synchronize(); }
+
+        if statement == null {
+            self.synchronize();
+        }
+
         return statement;
     }
 
     fn declared() -> Stmt? {
-        if self.took(Kind.Class) { return self.classDeclaration(); }
-        if self.took(Kind.Fun) { return Stmt.Function(self.function("function")?); }
-        if self.took(Kind.Var) { return self.varDeclaration(); }
+        if self.took(Kind.Class) {
+            return self.classDeclaration();
+        }
+
+        if self.took(Kind.Fun) {
+            return Stmt.Function(self.function("function")?);
+        }
+
+        if self.took(Kind.Var) {
+            return self.varDeclaration();
+        }
+
         return self.statement();
     }
 
@@ -134,6 +179,7 @@ impl Parser {
         let name = self.expect(Kind.Identifier, "Expect class name.")?;
 
         let superclass: Expr? = null;
+
         if self.took(Kind.Less) {
             self.expect(Kind.Identifier, "Expect superclass name.")?;
             superclass = Expr.Variable(self.previous(), self.name());
@@ -141,9 +187,11 @@ impl Parser {
 
         self.expect(Kind.LeftBrace, "Expect '{' before class body.")?;
         let methods: [Function] = [];
+
         while !self.check(Kind.RightBrace) && !self.atEnd() {
             push(methods, self.function("method")?);
         }
+
         self.expect(Kind.RightBrace, "Expect '}' after class body.")?;
         return Stmt.Class(name, superclass, methods);
     }
@@ -153,16 +201,23 @@ impl Parser {
         self.expect(Kind.LeftParen, "Expect '(' after ${kind} name.")?;
 
         let params: [Token] = [];
+
         if !self.check(Kind.RightParen) {
             let more = true;
+
             while more {
                 if arrays.len(params) >= MAX_ARGUMENTS {
-                    self.reporter.atToken(self.peek(), "Can't have more than ${MAX_ARGUMENTS} parameters.");
+                    self.reporter.atToken(
+                        self.peek(),
+                        "Can't have more than ${MAX_ARGUMENTS} parameters.",
+                    );
                 }
+
                 push(params, self.expect(Kind.Identifier, "Expect parameter name.")?);
                 more = self.took(Kind.Comma);
             }
         }
+
         self.expect(Kind.RightParen, "Expect ')' after parameters.")?;
 
         self.expect(Kind.LeftBrace, "Expect '{' before ${kind} body.")?;
@@ -172,7 +227,11 @@ impl Parser {
     fn varDeclaration() -> Stmt? {
         let name = self.expect(Kind.Identifier, "Expect variable name.")?;
         let initializer: Expr? = null;
-        if self.took(Kind.Equal) { initializer = self.expression()?; }
+
+        if self.took(Kind.Equal) {
+            initializer = self.expression()?;
+        }
+
         self.expect(Kind.Semicolon, "Expect ';' after variable declaration.")?;
         return Stmt.Var(name, initializer);
     }
@@ -180,12 +239,30 @@ impl Parser {
     // --- Statements ---
 
     fn statement() -> Stmt? {
-        if self.took(Kind.For) { return self.forStatement(); }
-        if self.took(Kind.If) { return self.ifStatement(); }
-        if self.took(Kind.Print) { return self.printStatement(); }
-        if self.took(Kind.Return) { return self.returnStatement(); }
-        if self.took(Kind.While) { return self.whileStatement(); }
-        if self.took(Kind.LeftBrace) { return Stmt.Block(self.block()?); }
+        if self.took(Kind.For) {
+            return self.forStatement();
+        }
+
+        if self.took(Kind.If) {
+            return self.ifStatement();
+        }
+
+        if self.took(Kind.Print) {
+            return self.printStatement();
+        }
+
+        if self.took(Kind.Return) {
+            return self.returnStatement();
+        }
+
+        if self.took(Kind.While) {
+            return self.whileStatement();
+        }
+
+        if self.took(Kind.LeftBrace) {
+            return Stmt.Block(self.block()?);
+        }
+
         return self.expressionStatement();
     }
 
@@ -194,6 +271,7 @@ impl Parser {
         self.expect(Kind.LeftParen, "Expect '(' after 'for'.")?;
 
         let initializer: Stmt? = null;
+
         if self.took(Kind.Semicolon) {
             // None
         } else if self.took(Kind.Var) {
@@ -203,17 +281,33 @@ impl Parser {
         }
 
         let condition = Expr.Literal(Literal.Bool(true));
-        if !self.check(Kind.Semicolon) { condition = self.expression()?; }
+
+        if !self.check(Kind.Semicolon) {
+            condition = self.expression()?;
+        }
+
         self.expect(Kind.Semicolon, "Expect ';' after loop condition.")?;
 
         let increment: Expr? = null;
-        if !self.check(Kind.RightParen) { increment = self.expression()?; }
+
+        if !self.check(Kind.RightParen) {
+            increment = self.expression()?;
+        }
+
         self.expect(Kind.RightParen, "Expect ')' after for clauses.")?;
 
         let body = self.statement()?;
-        if increment != null { body = Stmt.Block([body, Stmt.Expression(increment)]); }
+
+        if increment != null {
+            body = Stmt.Block([body, Stmt.Expression(increment)]);
+        }
+
         body = Stmt.While(condition, body);
-        if initializer != null { body = Stmt.Block([initializer, body]); }
+
+        if initializer != null {
+            body = Stmt.Block([initializer, body]);
+        }
+
         return body;
     }
 
@@ -224,7 +318,11 @@ impl Parser {
 
         let thenBranch = self.statement()?;
         let elseBranch: Stmt? = null;
-        if self.took(Kind.Else) { elseBranch = self.statement()?; }
+
+        if self.took(Kind.Else) {
+            elseBranch = self.statement()?;
+        }
+
         return Stmt.If(condition, thenBranch, elseBranch);
     }
 
@@ -237,7 +335,11 @@ impl Parser {
     fn returnStatement() -> Stmt? {
         let keyword = self.previous();
         let value: Expr? = null;
-        if !self.check(Kind.Semicolon) { value = self.expression()?; }
+
+        if !self.check(Kind.Semicolon) {
+            value = self.expression()?;
+        }
+
         self.expect(Kind.Semicolon, "Expect ';' after return value.")?;
         return Stmt.Return(keyword, value);
     }
@@ -257,10 +359,15 @@ impl Parser {
 
     fn block() -> [Stmt]? {
         let statements: [Stmt] = [];
+
         while !self.check(Kind.RightBrace) && !self.atEnd() {
             let statement = self.declaration();
-            if statement != null { push(statements, statement); }
+
+            if statement != null {
+                push(statements, statement);
+            }
         }
+
         self.expect(Kind.RightBrace, "Expect '}' after block.")?;
         return statements;
     }
@@ -273,13 +380,23 @@ impl Parser {
 
     fn assignment() -> Expr? {
         let target = self.either()?;
-        if !self.took(Kind.Equal) { return target; }
+
+        if !self.took(Kind.Equal) {
+            return target;
+        }
 
         let equals = self.previous();
         let value = self.assignment()?;
+
         match target {
-            case Expr.Variable(name, number): { return Expr.Assign(name, value, self.name()); }
-            case Expr.Get(object, name): { return Expr.Set(object, name, value); }
+            case Expr.Variable(name, number): {
+                return Expr.Assign(name, value, self.name());
+            }
+
+            case Expr.Get(object, name): {
+                return Expr.Set(object, name, value);
+            }
+
             default: {
                 // Reported, and read on: the tokens are in a known place
                 self.reporter.atToken(equals, "Invalid assignment target.");
@@ -290,55 +407,67 @@ impl Parser {
 
     fn either() -> Expr? {
         let left = self.both()?;
+
         while self.took(Kind.Or) {
             let operator = self.previous();
             left = Expr.Logical(left, operator, self.both()?);
         }
+
         return left;
     }
 
     fn both() -> Expr? {
         let left = self.equality()?;
+
         while self.took(Kind.And) {
             let operator = self.previous();
             left = Expr.Logical(left, operator, self.equality()?);
         }
+
         return left;
     }
 
     fn equality() -> Expr? {
         let left = self.comparison()?;
+
         while self.tookAny([Kind.BangEqual, Kind.EqualEqual]) {
             let operator = self.previous();
             left = Expr.Binary(left, operator, self.comparison()?);
         }
+
         return left;
     }
 
     fn comparison() -> Expr? {
         let left = self.term()?;
+
         while self.tookAny([Kind.Greater, Kind.GreaterEqual, Kind.Less, Kind.LessEqual]) {
             let operator = self.previous();
             left = Expr.Binary(left, operator, self.term()?);
         }
+
         return left;
     }
 
     fn term() -> Expr? {
         let left = self.factor()?;
+
         while self.tookAny([Kind.Minus, Kind.Plus]) {
             let operator = self.previous();
             left = Expr.Binary(left, operator, self.factor()?);
         }
+
         return left;
     }
 
     fn factor() -> Expr? {
         let left = self.unary()?;
+
         while self.tookAny([Kind.Slash, Kind.Star]) {
             let operator = self.previous();
             left = Expr.Binary(left, operator, self.unary()?);
         }
+
         return left;
     }
 
@@ -347,11 +476,13 @@ impl Parser {
             let operator = self.previous();
             return Expr.Unary(operator, self.unary()?);
         }
+
         return self.call();
     }
 
     fn call() -> Expr? {
         let callee = self.primary()?;
+
         while true {
             if self.took(Kind.LeftParen) {
                 callee = self.finishCall(callee)?;
@@ -366,26 +497,47 @@ impl Parser {
 
     fn finishCall(callee: Expr) -> Expr? {
         let arguments: [Expr] = [];
+
         if !self.check(Kind.RightParen) {
             let more = true;
+
             while more {
                 if arrays.len(arguments) >= MAX_ARGUMENTS {
-                    self.reporter.atToken(self.peek(), "Can't have more than ${MAX_ARGUMENTS} arguments.");
+                    self.reporter.atToken(
+                        self.peek(),
+                        "Can't have more than ${MAX_ARGUMENTS} arguments.",
+                    );
                 }
+
                 push(arguments, self.expression()?);
                 more = self.took(Kind.Comma);
             }
         }
+
         let paren = self.expect(Kind.RightParen, "Expect ')' after arguments.")?;
         return Expr.Call(callee, paren, arguments);
     }
 
     fn primary() -> Expr? {
-        if self.took(Kind.False) { return Expr.Literal(Literal.Bool(false)); }
-        if self.took(Kind.True) { return Expr.Literal(Literal.Bool(true)); }
-        if self.took(Kind.Nil) { return Expr.Literal(Literal.Nil); }
-        if self.took(Kind.Number) { return Expr.Literal(Literal.Number(self.previous().number)); }
-        if self.took(Kind.Text) { return Expr.Literal(Literal.Text(self.previous().text)); }
+        if self.took(Kind.False) {
+            return Expr.Literal(Literal.Bool(false));
+        }
+
+        if self.took(Kind.True) {
+            return Expr.Literal(Literal.Bool(true));
+        }
+
+        if self.took(Kind.Nil) {
+            return Expr.Literal(Literal.Nil);
+        }
+
+        if self.took(Kind.Number) {
+            return Expr.Literal(Literal.Number(self.previous().number));
+        }
+
+        if self.took(Kind.Text) {
+            return Expr.Literal(Literal.Text(self.previous().text));
+        }
 
         if self.took(Kind.Super) {
             let keyword = self.previous();
@@ -393,8 +545,14 @@ impl Parser {
             let method = self.expect(Kind.Identifier, "Expect superclass method name.")?;
             return Expr.Super(keyword, method, self.name());
         }
-        if self.took(Kind.This) { return Expr.This(self.previous(), self.name()); }
-        if self.took(Kind.Identifier) { return Expr.Variable(self.previous(), self.name()); }
+
+        if self.took(Kind.This) {
+            return Expr.This(self.previous(), self.name());
+        }
+
+        if self.took(Kind.Identifier) {
+            return Expr.Variable(self.previous(), self.name());
+        }
 
         if self.took(Kind.LeftParen) {
             let inner = self.expression()?;

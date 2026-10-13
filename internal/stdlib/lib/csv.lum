@@ -20,7 +20,10 @@ pub struct ParseError {
 
 impl ParseError {
     pub fn describe() -> String {
-        if self.line == 0 { return self.message; }
+        if self.line == 0 {
+            return self.message;
+        }
+
         return "line ${self.line}, column ${self.column}: ${self.message}";
     }
 }
@@ -33,18 +36,22 @@ pub fn parse(text: String) -> Result<[[String]], ParseError> {
 // The same with another separator: ";" or "\t".
 pub fn parseWith(text: String, separator: String) -> Result<[[String]], ParseError> {
     let found = rows(text, separator);
+
     if found == null {
         let parts = problem();
         let where = strings.split(parts[0], ":");
+
         if arrays.len(where) < 2 {
             return Result.Err(ParseError { message: parts[1], line: 0, column: 0 });
         }
+
         return Result.Err(ParseError {
             message: parts[1],
             line: strings.parseInt(where[0]) ?? 0,
             column: strings.parseInt(where[1]) ?? 0,
         });
     }
+
     return Result.Ok(found);
 }
 
@@ -72,7 +79,9 @@ fn asTable(all: [[String]]) -> Result<Table, ParseError> {
     if arrays.len(all) == 0 {
         return Result.Err(ParseError { message: "there is no header row", line: 0, column: 0 });
     }
+
     let header = all[0];
+
     for i, row in all {
         if arrays.len(row) != arrays.len(header) {
             return Result.Err(ParseError {
@@ -82,44 +91,65 @@ fn asTable(all: [[String]]) -> Result<Table, ParseError> {
             });
         }
     }
+
     return Result.Ok(Table { header: header, rows: arrays.slice(all, 1, arrays.len(all)) });
 }
 
 impl Table {
-    pub fn size() -> Int { return arrays.len(self.rows); }
+    pub fn size() -> Int {
+        return arrays.len(self.rows);
+    }
 
     // The values of a column, or null if there is none of that name.
     pub fn column(name: String) -> [String]? {
         let at = arrays.indexOf(self.header, name)?;
         let out: [String] = [];
-        for row in self.rows { push(out, row[at]); }
+
+        for row in self.rows {
+            push(out, row[at]);
+        }
+
         return out;
     }
 
     // The value of a column in a row, or null.
     pub fn cell(row: Int, name: String) -> String? {
         let at = arrays.indexOf(self.header, name);
-        if at == null || row < 0 || row >= arrays.len(self.rows) { return null; }
+
+        if at == null || row < 0 || row >= arrays.len(self.rows) {
+            return null;
+        }
+
         return self.rows[row][at];
     }
 
     // Each row as a dictionary from the name of a column to its value.
     pub fn records() -> [Dict<String>] {
         let out: [Dict<String>] = [];
+
         for row in self.rows {
             let record = dict.empty<String>();
-            for i, name in self.header { record.set(name, row[i]); }
+
+            for i, name in self.header {
+                record.set(name, row[i]);
+            }
+
             push(out, record);
         }
+
         return out;
     }
 
     // The rows a function accepts, as a table with the same columns.
     pub fn where(wanted: fn(Dict<String>) -> Bool) -> Table {
         let kept: [[String]] = [];
+
         for i, record in self.records() {
-            if wanted(record) { push(kept, self.rows[i]); }
+            if wanted(record) {
+                push(kept, self.rows[i]);
+            }
         }
+
         return Table { header: self.header, rows: kept };
     }
 

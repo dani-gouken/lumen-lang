@@ -30,74 +30,105 @@ struct Machine {
 impl Machine {
     fn take() -> Result<Int, String> {
         let top = arrays.pop(self.stack);
-        if top == null { return Result.Err("the stack is empty"); }
+
+        if top == null {
+            return Result.Err("the stack is empty");
+        }
+
         return Result.Ok(top);
     }
 
     fn put(value: Int) {
         push(self.stack, value);
-        if arrays.len(self.stack) > self.deepest { self.deepest = arrays.len(self.stack); }
+
+        if arrays.len(self.stack) > self.deepest {
+            self.deepest = arrays.len(self.stack);
+        }
     }
 
     fn step(op: Op) -> Result<Int, String> {
         match op {
-            case Op.Push(n): { self.put(n); }
+            case Op.Push(n): {
+                self.put(n);
+            }
+
             case Op.Add: {
                 let b = self.take()?;
                 let a = self.take()?;
                 self.put(a + b);
             }
+
             case Op.Mul: {
                 let b = self.take()?;
                 let a = self.take()?;
                 self.put(a * b);
             }
+
             case Op.Neg: {
                 let a = self.take()?;
                 self.put(-a);
             }
+
             case Op.Dup: {
                 let a = self.take()?;
                 self.put(a);
                 self.put(a);
             }
+
             case Op.Swap: {
                 let b = self.take()?;
                 let a = self.take()?;
                 self.put(b);
                 self.put(a);
             }
-            case Op.Drop: { self.take()?; }
-            case Op.Clear: { arrays.clear(self.stack); }
+
+            case Op.Drop: {
+                self.take()?;
+            }
+
+            case Op.Clear: {
+                arrays.clear(self.stack);
+            }
         }
+
         return Result.Ok(arrays.len(self.stack));
     }
 
     fn run(program: [Op]) -> Result<Int, String> {
         for i, op in program {
             match self.step(op) {
-                case Result.Err(message): { return Result.Err("step ${i}: ${message}"); }
+                case Result.Err(message): {
+                    return Result.Err("step ${i}: ${message}");
+                }
+
                 case Result.Ok(depth): {}
             }
         }
+
         return self.take();
     }
 }
 
 fn calculate(name: String, program: [Op]) {
     let machine = Machine {};
+
     match machine.run(program) {
-        case Result.Ok(value): { println(name, "=", value, "left", machine.stack, "deepest", machine.deepest); }
-        case Result.Err(message): { println(name, "failed:", message, "left", machine.stack); }
+        case Result.Ok(value): {
+            println(name, "=", value, "left", machine.stack, "deepest", machine.deepest);
+        }
+
+        case Result.Err(message): {
+            println(name, "failed:", message, "left", machine.stack);
+        }
     }
 }
 
 // --- An editor that can undo ---
 
 enum Edit {
-    Insert(Int, String),    // a line put at a position
-    Remove(Int, String),    // the line taken from a position
-    Wipe([String]),         // the lines there were before everything went
+    Insert(Int, String),  // a line put at a position
+    Remove(Int, String),  // the line taken from a position
+    Wipe([String]),       // the lines there were before everything went
 }
 
 struct Editor {
@@ -109,18 +140,34 @@ struct Editor {
 impl Editor {
     fn apply(edit: Edit) {
         match edit {
-            case Edit.Insert(at, line): { arrays.insertAt(self.lines, at, line); }
-            case Edit.Remove(at, line): { arrays.removeAt(self.lines, at); }
-            case Edit.Wipe(before): { arrays.clear(self.lines); }
+            case Edit.Insert(at, line): {
+                arrays.insertAt(self.lines, at, line);
+            }
+
+            case Edit.Remove(at, line): {
+                arrays.removeAt(self.lines, at);
+            }
+
+            case Edit.Wipe(before): {
+                arrays.clear(self.lines);
+            }
         }
     }
 
     fn revert(edit: Edit) {
         match edit {
-            case Edit.Insert(at, line): { arrays.removeAt(self.lines, at); }
-            case Edit.Remove(at, line): { arrays.insertAt(self.lines, at, line); }
+            case Edit.Insert(at, line): {
+                arrays.removeAt(self.lines, at);
+            }
+
+            case Edit.Remove(at, line): {
+                arrays.insertAt(self.lines, at, line);
+            }
+
             case Edit.Wipe(before): {
-                for line in before { push(self.lines, line); }
+                for line in before {
+                    push(self.lines, line);
+                }
             }
         }
     }
@@ -135,24 +182,41 @@ impl Editor {
     // A position past the end is the end. The edit keeps where the line
     // really went, which is where undoing it has to look.
     fn insert(at: Int, line: String) {
-        if at < 0 { return; }
+        if at < 0 {
+            return;
+        }
+
         let place = arrays.len(self.lines);
-        if at < place { place = at; }
+
+        if at < place {
+            place = at;
+        }
+
         self.perform(Edit.Insert(place, line));
     }
 
     fn remove(at: Int) -> Bool {
         let line = arrays.at(self.lines, at);
-        if line == null { return false; }
+
+        if line == null {
+            return false;
+        }
+
         self.perform(Edit.Remove(at, line));
         return true;
     }
 
-    fn wipe() { self.perform(Edit.Wipe(arrays.copy(self.lines))); }
+    fn wipe() {
+        self.perform(Edit.Wipe(arrays.copy(self.lines)));
+    }
 
     fn undo() -> Bool {
         let edit = arrays.pop(self.done);
-        if edit == null { return false; }
+
+        if edit == null {
+            return false;
+        }
+
         self.revert(edit);
         push(self.undone, edit);
         return true;
@@ -160,7 +224,11 @@ impl Editor {
 
     fn redo() -> Bool {
         let edit = arrays.pop(self.undone);
-        if edit == null { return false; }
+
+        if edit == null {
+            return false;
+        }
+
         self.apply(edit);
         push(self.done, edit);
         return true;
@@ -193,7 +261,10 @@ impl Shop {
             push(self.waiting, job);
             return;
         }
-        let at = arrays.findIndex(self.waiting, waiting -> !waiting.urgent) ?? arrays.len(self.waiting);
+
+        let at = arrays.findIndex(self.waiting, waiting -> !waiting.urgent)
+            ?? arrays.len(self.waiting);
+
         arrays.insertAt(self.waiting, at, job);
     }
 
@@ -202,17 +273,24 @@ impl Shop {
     fn serve(paper: Int) -> Int {
         while !arrays.isEmpty(self.waiting) {
             let next = self.waiting[0];
-            if next.pages > paper { break; }
+
+            if next.pages > paper {
+                break;
+            }
+
             arrays.removeAt(self.waiting, 0);
             paper -= next.pages;
             let notes: [String] = [];
             let i = arrays.len(self.after) - 1;
+
             while i >= 0 {
                 push(notes, self.after[i](next));
                 i--;
             }
+
             println("printed", next.name, strings.join(notes, ", "));
         }
+
         return paper;
     }
 
@@ -220,18 +298,25 @@ impl Shop {
     fn cancel(wanted: fn(Job) -> Bool) -> [Job] {
         let cancelled: [Job] = [];
         let i = 0;
+
         while i < arrays.len(self.waiting) {
             if wanted(self.waiting[i]) {
                 let job = arrays.removeAt(self.waiting, i);
-                if job != null { push(cancelled, job); }
+
+                if job != null {
+                    push(cancelled, job);
+                }
             } else {
                 i++;
             }
         }
+
         return cancelled;
     }
 
-    fn names() -> [String] { return arrays.map(self.waiting, job -> job.name); }
+    fn names() -> [String] {
+        return arrays.map(self.waiting, job -> job.name);
+    }
 }
 
 fn main() -> Int {
@@ -261,7 +346,11 @@ fn main() -> Int {
     editor.show("written again");
     println(editor.redo());
     let undos = 0;
-    while editor.undo() { undos++; }
+
+    while editor.undo() {
+        undos++;
+    }
+
     editor.show("all ${undos} undone");
     println(editor.undo());
     while editor.redo() {}
@@ -270,7 +359,12 @@ fn main() -> Int {
     let shop = Shop {};
     let printed = 0;
     arrays.insertAt(shop.after, 0, job -> "${job.pages} pages");
-    arrays.insertAt(shop.after, 1, job -> { printed += job.pages; return "total ${printed}"; });
+
+    arrays.insertAt(shop.after, 1, job -> {
+        printed += job.pages;
+        return "total ${printed}";
+    });
+
     shop.accept(Job { name: "thesis", pages: 120 });
     shop.accept(Job { name: "flyer", pages: 2 });
     shop.accept(Job { name: "boarding pass", pages: 1, urgent: true });
@@ -286,6 +380,12 @@ fn main() -> Int {
     arrays.pop(shop.after);
     left = shop.serve(left + 200);
     println("paper left", left, "waiting", shop.names(), "printed", printed);
-    println(shop.serve(10), arrays.pop(shop.waiting) == null, arrays.removeAt(shop.waiting, 0) == null);
+
+    println(
+        shop.serve(10),
+        arrays.pop(shop.waiting) == null,
+        arrays.removeAt(shop.waiting, 0) == null,
+    );
+
     return 0;
 }

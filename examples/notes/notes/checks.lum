@@ -17,6 +17,7 @@ import notes.book;
 // query: "/notes?tag=work".
 pub fn request(method: Method, address: String, body: String) -> Request {
     let (path, query) = strings.cut(address, "?") ?? (address, "");
+
     return Request {
         method: method,
         path: path,
@@ -32,7 +33,12 @@ pub fn request(method: Method, address: String, body: String) -> Request {
 fn service() -> Router {
     let app = api.routes(book.empty());
     post(app, """{"title": "Groceries", "body": "milk, eggs", "tags": ["home"]}""");
-    post(app, """{"title": "Standup", "body": "demo the parser", "tags": ["Work", " urgent ", "work"]}""");
+
+    post(
+        app,
+        """{"title": "Standup", "body": "demo the parser", "tags": ["Work", " urgent ", "work"]}""",
+    );
+
     post(app, """{"title": "Ideas"}""");
     return app;
 }
@@ -106,11 +112,19 @@ pub fn suite() -> Suite {
         })
         .test("replaces a note, which may keep its title", fn() {
             let app = service();
-            let answer = app.answer(request(Method.Put, "/notes/1", "{\"title\": \"Groceries\", \"body\": \"bread\"}"));
+
+            let answer = app.answer(
+                request(Method.Put, "/notes/1", "{\"title\": \"Groceries\", \"body\": \"bread\"}"),
+            );
+
             test.equal(answer.status, 200);
             test.equal(document(get(app, "/notes/1")).find("body"), Json.String("bread"));
+
             // ...but not take the title of another
-            test.equal(app.answer(request(Method.Put, "/notes/1", "{\"title\": \"Ideas\"}")).status, 409);
+            test.equal(
+                app.answer(request(Method.Put, "/notes/1", "{\"title\": \"Ideas\"}")).status,
+                409,
+            );
         })
         .test("deletes a note, once", fn() {
             let app = service();

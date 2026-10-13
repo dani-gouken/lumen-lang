@@ -21,24 +21,35 @@ struct Score {
 
 impl Add for Score {
     fn plus(other: Score) -> Score {
-        return Score { points: self.points + other.points, wins: self.wins + other.wins, played: self.played + other.played };
+        return Score {
+            points: self.points + other.points,
+            wins: self.wins + other.wins,
+            played: self.played + other.played,
+        };
     }
 }
 
 impl Ordered for Score {
     // More points first; with as many, more wins
     fn compare(other: Score) -> Int {
-        if self.points != other.points { return self.points - other.points; }
+        if self.points != other.points {
+            return self.points - other.points;
+        }
+
         return self.wins - other.wins;
     }
 }
 
 impl Equal for Score {
-    fn equals(other: Score) -> Bool { return self.compare(other) == 0; }
+    fn equals(other: Score) -> Bool {
+        return self.compare(other) == 0;
+    }
 }
 
 impl Show for Score {
-    fn show() -> String { return "${self.points} pts (${self.wins}/${self.played})"; }
+    fn show() -> String {
+        return "${self.points} pts (${self.wins}/${self.played})";
+    }
 }
 
 enum Result { Win, Draw, Loss }
@@ -68,19 +79,29 @@ trait Entrant {
     fn score() -> Score;
 
     // The same for every entrant, unless it says otherwise
-    fn line() -> String { return "${strings.padRight(self.name(), 8)} ${self.score()}"; }
-    fn leads(other: Self) -> Bool { return self.score() > other.score(); }
+    fn line() -> String {
+        return "${strings.padRight(self.name(), 8)} ${self.score()}";
+    }
+
+    fn leads(other: Self) -> Bool {
+        return self.score() > other.score();
+    }
 }
 
 struct Player {
     nick: String;
-    total: Score = Score { };
+    total: Score = Score {};
     seed: Int = 99;
 }
 
 impl Entrant for Player {
-    fn name() -> String { return self.nick; }
-    fn score() -> Score { return self.total; }
+    fn name() -> String {
+        return self.nick;
+    }
+
+    fn score() -> Score {
+        return self.total;
+    }
 }
 
 struct Team {
@@ -89,13 +110,23 @@ struct Team {
 }
 
 impl Entrant for Team {
-    fn name() -> String { return self.label; }
+    fn name() -> String {
+        return self.label;
+    }
+
     fn score() -> Score {
-        let sum = Score { };
-        for member in self.members { sum += member.total; }
+        let sum = Score {};
+
+        for member in self.members {
+            sum += member.total;
+        }
+
         return sum;
     }
-    fn line() -> String { return "${self.label} (${arrays.len(self.members)} players): ${self.score()}"; }
+
+    fn line() -> String {
+        return "${self.label} (${arrays.len(self.members)} players): ${self.score()}";
+    }
 }
 
 // --- A table of anything that can be ranked ---
@@ -122,11 +153,15 @@ impl<T: Entrant> Table<T> {
 }
 
 impl<T: Entrant> Iterable<T> for Table<T> {
-    fn iterate() -> [T] { return self.ranked(); }
+    fn iterate() -> [T] {
+        return self.ranked();
+    }
 }
 
 impl<T: Entrant> Indexed<Int, T> for Table<T> {
-    fn at(key: Int) -> T { return self.ranked()[key]; }
+    fn at(key: Int) -> T {
+        return self.ranked()[key];
+    }
 }
 
 // --- Where results come from ---
@@ -137,10 +172,12 @@ trait Source<T> {
     fn all() -> [T] {
         let out: [T] = [];
         let item = self.next();
+
         while item != null {
             push(out, item);
             item = self.next();
         }
+
         return out;
     }
 }
@@ -156,14 +193,28 @@ impl Source<(String, Result, String)> for Fixtures {
         while self.at < arrays.len(self.lines) {
             let words = strings.words(self.lines[self.at]);
             self.at++;
-            if arrays.len(words) != 3 { continue; }
+
+            if arrays.len(words) != 3 {
+                continue;
+            }
+
             match words[1] {
-                case "beat": { return (words[0], Result.Win, words[2]); }
-                case "drew": { return (words[0], Result.Draw, words[2]); }
-                case "lost": { return (words[0], Result.Loss, words[2]); }
-                default: { }
+                case "beat": {
+                    return (words[0], Result.Win, words[2]);
+                }
+
+                case "drew": {
+                    return (words[0], Result.Draw, words[2]);
+                }
+
+                case "lost": {
+                    return (words[0], Result.Loss, words[2]);
+                }
+
+                default: {}
             }
         }
+
         return null;
     }
 }
@@ -171,15 +222,16 @@ impl Source<(String, Result, String)> for Fixtures {
 // The widest of anything that says how it reads
 fn widest<T: Show>(items: [T]) -> Int {
     let most = 0;
-    for item in items { most = math.max(most, strings.len(item.show())); }
+
+    for item in items {
+        most = math.max(most, strings.len(item.show()));
+    }
+
     return most;
 }
 
 fn podium<T: Entrant>(table: Table<T>) -> String {
-    return table.ranked()
-        |> arrays.take(3)
-        |> arrays.map(row -> row.name())
-        |> strings.join(" > ");
+    return table.ranked() |> arrays.take(3) |> arrays.map(row -> row.name()) |> strings.join(" > ");
 }
 
 fn main() -> Int {
@@ -195,31 +247,54 @@ fn main() -> Int {
 
     // Scores by name, added up as the results come
     let scores = dict.empty<Score>();
+
     for (home, result, away) in fixtures.all() {
-        scores[home] = (scores[home] ?? Score { }) + result.score();
-        scores[away] = (scores[away] ?? Score { }) + result.other().score();
+        scores[home] = (scores[home] ?? Score {}) + result.score();
+        scores[away] = (scores[away] ?? Score {}) + result.other().score();
     }
 
     let players = Table<Player> { title: "players" };
-    for name in scores { players.add(Player { nick: name, total: scores[name] ?? Score { } }); }
+
+    for name in scores {
+        players.add(Player { nick: name, total: scores[name] ?? Score {} });
+    }
 
     println(players.title);
-    for i, player in players { println(" ${i + 1}. ${player.line()}"); }
+
+    for i, player in players {
+        println(" ${i + 1}. ${player.line()}");
+    }
+
     println("leader: ${players[0].name()}, last: ${players[arrays.len(players.rows) - 1].name()}, podium: ${podium(players)}");
 
     let ada = players[0];
     let dee = players[1];
-    println(ada.leads(dee), dee.leads(ada), ada.score() == dee.score(), ada.score() > dee.score(), ops.max(ada.score(), dee.score()));
+
+    println(
+        ada.leads(dee),
+        dee.leads(ada),
+        ada.score() == dee.score(),
+        ada.score() > dee.score(),
+        ops.max(ada.score(), dee.score()),
+    );
 
     // Teams are entrants too, with a line of their own
-    let find = fn(name: String) -> Player { return Player { nick: name, total: scores[name] ?? Score { } }; };
-    let teams = Table<Team> { }
+    let find = fn(name: String) -> Player {
+        return Player { nick: name, total: scores[name] ?? Score {} };
+    };
+
+    let teams = Table<Team> {}
         .add(Team { label: "north", members: [find("ada"), find("cy")] })
         .add(Team { label: "south", members: [find("bob"), find("dee")] })
         .add(Team { label: "bench" });
+
     println("");
     println(teams.title);
-    for team in teams { println(" " + team.line()); }
+
+    for team in teams {
+        println(" " + team.line());
+    }
+
     println("podium: ${podium(teams)}, leader: ${teams.leader()?.name() ?? "nobody"}, empty: ${Table<Team> { }.leader()?.name() ?? "nobody"}");
 
     // Everything through the trait, each doing what its own type says
@@ -230,8 +305,22 @@ fn main() -> Int {
     // how they compare and read
     let all = arrays.map(players.ranked(), player -> player.total);
     let lookup = scores.get;
-    println(arrays.map(["dee", "eve"], lookup), ops.largest(all), ops.smallest(all), widest(all), widest([1, 22, 333]));
+
+    println(
+        arrays.map(["dee", "eve"], lookup),
+        ops.largest(all),
+        ops.smallest(all),
+        widest(all),
+        widest([1, 22, 333]),
+    );
+
     println(ops.join(ops.sorted(all), " < "));
-    println(arrays.contains(all, Score { points: 4, wins: 1, played: 3 }), ops.indexOf(all, Score { points: 4, wins: 1 }), arrays.len(all));
+
+    println(
+        arrays.contains(all, Score { points: 4, wins: 1, played: 3 }),
+        ops.indexOf(all, Score { points: 4, wins: 1 }),
+        arrays.len(all),
+    );
+
     return 0;
 }

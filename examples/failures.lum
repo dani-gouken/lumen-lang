@@ -25,7 +25,7 @@ enum Reason { Empty, NotANumber(String), OutOfRange(Int) }
 struct ConfigError {
     key: String;
     reason: Reason;
-    stack: [Location];      // where it was found
+    stack: [Location];  // where it was found
 }
 
 impl ConfigError {
@@ -49,10 +49,13 @@ fn number(key: String, text: String) -> Result<Int, ConfigError> {
     if strings.isBlank(text) {
         return Result.Err(invalid(key, Reason.Empty));
     }
+
     let n = strings.parseInt(text);
+
     if n == null {
         return Result.Err(invalid(key, Reason.NotANumber(text)));
     }
+
     return Result.Ok(n);
 }
 
@@ -62,6 +65,7 @@ fn percent(key: String, text: String) -> Result<Int, ConfigError> {
         if n < 1 || n > 100 {
             return Result.Err(invalid(key, Reason.OutOfRange(n)));
         }
+
         return Result.Ok(n);
     });
 }
@@ -80,46 +84,77 @@ fn checked(n: Int) -> Int {
     if n < 0 {
         panic("a negative total:", n);
     }
+
     return n;
 }
 
 fn main() -> Int {
     println("-- settings");
+
     for text in ["40", "", "lots", "250"] {
         match percent("volume", text) {
-            case Result.Ok(n): { println("volume set to ${n}"); }
-            case Result.Err(error): { println("refused: ${error.describe()}"); }
+            case Result.Ok(n): {
+                println("volume set to ${n}");
+            }
+
+            case Result.Err(error): {
+                println("refused: ${error.describe()}");
+            }
         }
     }
 
     // An error is a value: it can be kept, passed on, asked where it came from
     let error = percent("brightness", "x").reason();
+
     if error != null {
         println(result.trace(error.describe(), error.stack));
     }
 
     println("-- files");
+
     match io.readFile("no-such-file.conf") {
-        case Result.Ok(text): { println(strings.len(text), "characters"); }
+        case Result.Ok(text): {
+            println(strings.len(text), "characters");
+        }
+
         case Result.Err(problem): {
             match problem.kind {
-                case ErrorKind.NotFound: { println("no settings file; using the defaults"); }
-                default: { println(problem.describe()); }
+                case ErrorKind.NotFound: {
+                    println("no settings file; using the defaults");
+                }
+
+                default: {
+                    println(problem.describe());
+                }
             }
         }
     }
+
     // Or in one line, when the reason does not matter
     println(arrays.len(io.readFileLines("no-such-file.conf").orElse([])), "lines");
 
     println("-- jobs");
+
     let jobs: [fn() -> Int] = [
-        fn() -> Int { return average([4, 8, 9]); },
-        fn() -> Int { return average([]); },
-        fn() -> Int { return third([1, 2]); },
-        fn() -> Int { return checked(3 - 10); },
-        fn() -> Int { return average([10, 20]); },
+        fn() -> Int {
+            return average([4, 8, 9]);
+        },
+        fn() -> Int {
+            return average([]);
+        },
+        fn() -> Int {
+            return third([1, 2]);
+        },
+        fn() -> Int {
+            return checked(3 - 10);
+        },
+        fn() -> Int {
+            return average([10, 20]);
+        },
     ];
+
     let completed = 0;
+
     for i, job in jobs {
         // Without attempt, the second job would end the program
         match attempt(job) {
@@ -127,14 +162,21 @@ fn main() -> Int {
                 println("job ${i} gave ${n}");
                 completed++;
             }
+
             case Result.Err(failure): {
                 match failure.kind {
-                    case Kind.Panic: { println("job ${i} gave up: ${failure.message}"); }
-                    default: { println("job ${i} broke: ${failure.message} in ${failure.at.function}"); }
+                    case Kind.Panic: {
+                        println("job ${i} gave up: ${failure.message}");
+                    }
+
+                    default: {
+                        println("job ${i} broke: ${failure.message} in ${failure.at.function}");
+                    }
                 }
             }
         }
     }
+
     println("${completed} of ${arrays.len(jobs)} jobs completed");
     return 0;
 }

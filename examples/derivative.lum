@@ -13,10 +13,10 @@ const VARIABLE = "x";
 
 enum Expr {
     Num(Int),
-    Var,                    // the variable, x
+    Var,             // the variable, x
     Add(Expr, Expr),
     Mul(Expr, Expr),
-    Pow(Expr, Int),         // a formula raised to a whole power
+    Pow(Expr, Int),  // a formula raised to a whole power
     Neg(Expr),
 }
 
@@ -24,17 +24,41 @@ impl Expr {
     // The formula as text. Parentheses only where they are needed.
     fn show() -> String {
         match self {
-            case Expr.Num(n): { return toString(n); }
-            case Expr.Var: { return VARIABLE; }
-            case Expr.Neg(inner): { return "-" + inner.factor(); }
-            case Expr.Add(left, Expr.Neg(right)): { return left.show() + " - " + right.factor(); }
+            case Expr.Num(n): {
+                return toString(n);
+            }
+
+            case Expr.Var: {
+                return VARIABLE;
+            }
+
+            case Expr.Neg(inner): {
+                return "-" + inner.factor();
+            }
+
+            case Expr.Add(left, Expr.Neg(right)): {
+                return left.show() + " - " + right.factor();
+            }
+
             case Expr.Add(left, Expr.Num(n)): {
-                if n < 0 { return left.show() + " - " + toString(-n); }
+                if n < 0 {
+                    return left.show() + " - " + toString(-n);
+                }
+
                 return left.show() + " + " + toString(n);
             }
-            case Expr.Add(left, right): { return left.show() + " + " + right.show(); }
-            case Expr.Mul(left, right): { return left.factor() + " * " + right.factor(); }
-            case Expr.Pow(base, power): { return base.factor() + "^" + toString(power); }
+
+            case Expr.Add(left, right): {
+                return left.show() + " + " + right.show();
+            }
+
+            case Expr.Mul(left, right): {
+                return left.factor() + " * " + right.factor();
+            }
+
+            case Expr.Pow(base, power): {
+                return base.factor() + "^" + toString(power);
+            }
         }
     }
 
@@ -62,15 +86,32 @@ impl Expr {
 // The rules of differentiation, one case each.
 fn derive(e: Expr) -> Expr {
     match e {
-        case Expr.Num(_): { return Expr.Num(0); }
-        case Expr.Var: { return Expr.Num(1); }
-        case Expr.Neg(inner): { return Expr.Neg(derive(inner)); }
+        case Expr.Num(_): {
+            return Expr.Num(0);
+        }
+
+        case Expr.Var: {
+            return Expr.Num(1);
+        }
+
+        case Expr.Neg(inner): {
+            return Expr.Neg(derive(inner));
+        }
+
         // (f + g)' = f' + g'
-        case Expr.Add(f, g): { return Expr.Add(derive(f), derive(g)); }
+        case Expr.Add(f, g): {
+            return Expr.Add(derive(f), derive(g));
+        }
+
         // (f * g)' = f' * g + f * g'
-        case Expr.Mul(f, g): { return Expr.Add(Expr.Mul(derive(f), g), Expr.Mul(f, derive(g))); }
+        case Expr.Mul(f, g): {
+            return Expr.Add(Expr.Mul(derive(f), g), Expr.Mul(f, derive(g)));
+        }
+
         // (f^n)' = n * f^(n-1) * f'
-        case Expr.Pow(f, n): { return Expr.Mul(Expr.Mul(Expr.Num(n), Expr.Pow(f, n - 1)), derive(f)); }
+        case Expr.Pow(f, n): {
+            return Expr.Mul(Expr.Mul(Expr.Num(n), Expr.Pow(f, n - 1)), derive(f));
+        }
     }
 }
 
@@ -78,27 +119,83 @@ fn derive(e: Expr) -> Expr {
 // specific patterns come first; the last cases tidy the parts.
 fn simplify(e: Expr) -> Expr {
     match e {
-        case Expr.Add(Expr.Num(0), f): { return f; }
-        case Expr.Add(f, Expr.Num(0)): { return f; }
-        case Expr.Add(Expr.Num(a), Expr.Num(b)): { return Expr.Num(a + b); }
-        case Expr.Mul(Expr.Num(0), _): { return Expr.Num(0); }
-        case Expr.Mul(_, Expr.Num(0)): { return Expr.Num(0); }
-        case Expr.Mul(Expr.Num(1), f): { return f; }
-        case Expr.Mul(f, Expr.Num(1)): { return f; }
-        case Expr.Mul(Expr.Num(a), Expr.Num(b)): { return Expr.Num(a * b); }
+        case Expr.Add(Expr.Num(0), f): {
+            return f;
+        }
+
+        case Expr.Add(f, Expr.Num(0)): {
+            return f;
+        }
+
+        case Expr.Add(Expr.Num(a), Expr.Num(b)): {
+            return Expr.Num(a + b);
+        }
+
+        case Expr.Mul(Expr.Num(0), _): {
+            return Expr.Num(0);
+        }
+
+        case Expr.Mul(_, Expr.Num(0)): {
+            return Expr.Num(0);
+        }
+
+        case Expr.Mul(Expr.Num(1), f): {
+            return f;
+        }
+
+        case Expr.Mul(f, Expr.Num(1)): {
+            return f;
+        }
+
+        case Expr.Mul(Expr.Num(a), Expr.Num(b)): {
+            return Expr.Num(a * b);
+        }
+
         // 2 * (3 * f) is 6 * f
-        case Expr.Mul(Expr.Num(a), Expr.Mul(Expr.Num(b), f)): { return Expr.Mul(Expr.Num(a * b), f); }
+        case Expr.Mul(Expr.Num(a), Expr.Mul(Expr.Num(b), f)): {
+            return Expr.Mul(Expr.Num(a * b), f);
+        }
+
         // f * 3 is written 3 * f
-        case Expr.Mul(f, Expr.Num(n)): { return Expr.Mul(Expr.Num(n), f); }
-        case Expr.Pow(_, 0): { return Expr.Num(1); }
-        case Expr.Pow(f, 1): { return f; }
-        case Expr.Neg(Expr.Neg(f)): { return f; }
-        case Expr.Neg(Expr.Num(n)): { return Expr.Num(-n); }
-        case Expr.Add(f, g): { return Expr.Add(simplify(f), simplify(g)); }
-        case Expr.Mul(f, g): { return Expr.Mul(simplify(f), simplify(g)); }
-        case Expr.Pow(f, n): { return Expr.Pow(simplify(f), n); }
-        case Expr.Neg(f): { return Expr.Neg(simplify(f)); }
-        default: { return e; }
+        case Expr.Mul(f, Expr.Num(n)): {
+            return Expr.Mul(Expr.Num(n), f);
+        }
+
+        case Expr.Pow(_, 0): {
+            return Expr.Num(1);
+        }
+
+        case Expr.Pow(f, 1): {
+            return f;
+        }
+
+        case Expr.Neg(Expr.Neg(f)): {
+            return f;
+        }
+
+        case Expr.Neg(Expr.Num(n)): {
+            return Expr.Num(-n);
+        }
+
+        case Expr.Add(f, g): {
+            return Expr.Add(simplify(f), simplify(g));
+        }
+
+        case Expr.Mul(f, g): {
+            return Expr.Mul(simplify(f), simplify(g));
+        }
+
+        case Expr.Pow(f, n): {
+            return Expr.Pow(simplify(f), n);
+        }
+
+        case Expr.Neg(f): {
+            return Expr.Neg(simplify(f));
+        }
+
+        default: {
+            return e;
+        }
     }
 }
 
@@ -106,17 +203,21 @@ fn simplify(e: Expr) -> Expr {
 // nothing changes. Two formulas are equal when they are the same tree.
 fn tidy(e: Expr) -> Expr {
     let current = e;
+
     while true {
         let next = simplify(current);
+
         if next == current {
             return current;
         }
+
         current = next;
     }
 }
 
 fn main() -> Int {
     let x = Expr.Var;
+
     let formulas = [
         // 7
         Expr.Num(7),
@@ -137,5 +238,6 @@ fn main() -> Int {
         println("        f(2) =", formula.at(2), " f'(2) =", slope.at(2));
         println();
     }
+
     return 0;
 }

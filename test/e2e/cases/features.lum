@@ -27,20 +27,24 @@ impl Account {
 
     fn largest() -> Int {
         let best = 0;
+
         for amount in self.history {
             if amount > best {
                 best = amount;
             }
         }
+
         return best;
     }
 }
 
 fn open(owner: String, deposits: ...Int) -> Account {
     let account = Account { owner: owner, balance: 0, history: [] };
+
     for amount in deposits {
         account.deposit(amount);
     }
+
     return account;
 }
 
@@ -48,19 +52,29 @@ fn pick<T>(condition: Bool, yes: T, no: T) -> T {
     if condition {
         return yes;
     }
+
     return no;
 }
 
 fn grade(score: Int) -> String {
     match score / 10 {
-        case 10: { return "perfect"; }
-        case 9: { return "great"; }
-        default: { return "ok"; }
+        case 10: {
+            return "perfect";
+        }
+
+        case 9: {
+            return "great";
+        }
+
+        default: {
+            return "ok";
+        }
     }
 }
 
 fn makeLogger(prefix: String) -> fn(String) -> Int {
     let lines = 0;
+
     return fn(message: String) -> Int {
         lines = lines + 1;
         println(prefix, toString(lines) + ":", message);
@@ -70,14 +84,17 @@ fn makeLogger(prefix: String) -> fn(String) -> Int {
 
 fn collatz(n: Int) -> Int {
     let steps = 0;
+
     while n != 1 {
         if n % 2 == 0 {
             n = n / 2;
         } else {
             n = 3 * n + 1;
         }
+
         steps = steps + 1;
     }
+
     return steps;
 }
 
@@ -102,11 +119,14 @@ fn main() -> Int {
 
     let words = ["a", "b", "c"];
     let joined = "";
+
     for word in words {
         if word == "b" {
             continue;
         }
+
         joined = joined + word;
     }
+
     return log(joined);
 }

@@ -4,21 +4,31 @@
 enum Shape { Circle(Float), Rect(Float, Float), Empty }
 
 fn inElse(shape: Shape) -> Float {
-    if shape is Shape.Circle(r) { return r; } else { return r; }
+    if shape is Shape.Circle(r) {
+        return r;
+    } else {
+        return r;
+    }
 }
 
 fn afterIf(shape: Shape) -> Float {
-    if shape is Shape.Circle(radius) { }
+    if shape is Shape.Circle(radius) {}
     return radius;
 }
 
 fn underNot(shape: Shape) -> Float {
-    if !(shape is Shape.Circle(r)) { return 0.0; }
+    if !(shape is Shape.Circle(r)) {
+        return 0.0;
+    }
+
     return 1.0;
 }
 
 fn eitherSide(shape: Shape) -> Bool {
-    if shape is Shape.Empty || shape is Shape.Rect(width, _) { return true; }
+    if shape is Shape.Empty || shape is Shape.Rect(width, _) {
+        return true;
+    }
+
     return false;
 }
 
@@ -28,7 +38,10 @@ fn asValue(shape: Shape) -> Bool {
 }
 
 fn twice(shape: Shape) -> Bool {
-    if shape is Shape.Rect(side, side) { return true; }
+    if shape is Shape.Rect(side, side) {
+        return true;
+    }
+
     return false;
 }
 

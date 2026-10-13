@@ -54,12 +54,19 @@ pub fn stem(path: String) -> String {
 pub fn withExtension(path: String, extension: String) -> String {
     let folder = dir(path);
     let name = stem(path) + extension;
-    if folder == "." && !strings.startsWith(path, ".") { return name; }
+
+    if folder == "." && !strings.startsWith(path, ".") {
+        return name;
+    }
+
     return inside(folder, name);
 }
 
 // The names along the path: "a/b/c.txt" gives ["a", "b", "c.txt"].
 pub fn parts(path: String) -> [String] {
-    let wanted = fn(part: String) -> Bool { return part != ""; };
+    let wanted = fn(part: String) -> Bool {
+        return part != "";
+    };
+
     return clean(path) |> strings.split(separator()) |> arrays.filter(wanted);
 }

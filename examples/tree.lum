@@ -16,7 +16,7 @@ struct Node<T> {
 struct Tree<T> {
     root: Node<T>?;
     size: Int;
-    before: fn(T, T) -> Bool;     // the order: must a come before b?
+    before: fn(T, T) -> Bool;  // the order: must a come before b?
 }
 
 fn newTree<T>(before: fn(T, T) -> Bool) -> Tree<T> {
@@ -28,6 +28,7 @@ impl<T> Tree<T> {
     fn add(value: T) -> Bool {
         let fresh = Node<T> { value: value, left: null, right: null };
         let root = self.root;
+
         if root == null {
             self.root = fresh;
             self.size = 1;
@@ -37,32 +38,40 @@ impl<T> Tree<T> {
         // Walk down to the empty place where the value belongs. `root` is
         // known not to be null here, so it fits a variable that never is.
         let node: Node<T> = root;
+
         while true {
             if self.before(value, node.value) {
                 let next = node.left;
+
                 if next == null {
                     node.left = fresh;
                     break;
                 }
+
                 node = next;
             } else {
                 if !self.before(node.value, value) {
-                    return false;       // neither before nor after: equal
+                    return false;  // neither before nor after: equal
                 }
+
                 let next = node.right;
+
                 if next == null {
                     node.right = fresh;
                     break;
                 }
+
                 node = next;
             }
         }
+
         self.size++;
         return true;
     }
 
     fn contains(value: T) -> Bool {
         let node = self.root;
+
         while node != null {
             if self.before(value, node.value) {
                 node = node.left;
@@ -70,9 +79,11 @@ impl<T> Tree<T> {
                 if !self.before(node.value, value) {
                     return true;
                 }
+
                 node = node.right;
             }
         }
+
         return false;
     }
 
@@ -90,15 +101,19 @@ impl<T> Tree<T> {
     // The smallest value, or null for an empty tree.
     fn first() -> T? {
         let root = self.root;
+
         if root == null {
             return null;
         }
+
         let node: Node<T> = root;
         let left = node.left;
+
         while left != null {
             node = left;
             left = node.left;
         }
+
         return node.value;
     }
 }
@@ -108,6 +123,7 @@ fn collect<T>(node: Node<T>?, out: [T]) {
     if node == null {
         return;
     }
+
     collect<T>(node.left, out);
     push(out, node.value);
     collect<T>(node.right, out);
@@ -117,11 +133,14 @@ fn heightOf<T>(node: Node<T>?) -> Int {
     if node == null {
         return 0;
     }
+
     let left = heightOf<T>(node.left);
     let right = heightOf<T>(node.right);
+
     if left > right {
         return left + 1;
     }
+
     return right + 1;
 }
 
@@ -133,28 +152,34 @@ struct Book {
 fn main() -> Int {
     // Numbers, smallest first
     let numbers = newTree<Int>((a, b) -> a < b);
+
     for n in [50, 30, 70, 20, 40, 60, 80, 30, 65] {
         numbers.add(n);
     }
+
     println(numbers.inOrder());
     println("size", numbers.size, "height", numbers.height(), "first", numbers.first() ?? -1);
     println("has 60:", numbers.contains(60), "has 61:", numbers.contains(61));
 
     // The same tree, largest first: only the order changes
     let descending = newTree<Int>((a, b) -> a > b);
+
     for n in numbers.inOrder() {
         descending.add(n);
     }
+
     // Fed in sorted order, a search tree degenerates into a list
     println(descending.inOrder(), "height", descending.height());
 
     // Words, alphabetically
     let words = newTree<String>((a, b) -> a < b);
+
     for word in ["pear", "apple", "fig", "pear", "kiwi"] {
         if !words.add(word) {
             println("already there:", word);
         }
     }
+
     println(words.inOrder(), "first", words.first() ?? "none");
 
     // Structs, by a field
@@ -162,10 +187,13 @@ fn main() -> Int {
     shelf.add(Book { title: "Dune", year: 1965 });
     shelf.add(Book { title: "Emma", year: 1815 });
     shelf.add(Book { title: "Ulysses", year: 1922 });
+
     for book in shelf.inOrder() {
         println(book.year, book.title);
     }
+
     let oldest = shelf.first();
+
     if oldest != null {
         println("oldest:", oldest.title);
     }
