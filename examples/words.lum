@@ -3,12 +3,12 @@
 // The library is built into lumen: `import std.strings;` works in any
 // program, nothing to install. See docs/stdlib.md for all of it.
 //
-// Shows: std.strings to take a text apart, std.map to count, std.arrays to
+// Shows: std.strings to take a text apart, std.dict to count, std.arrays to
 // sort and summarize, std.math for the numbers, std.list for a table.
 
 import std.arrays;
 import std.list;
-import std.map;
+import std.dict;
 import std.math;
 import std.strings;
 
@@ -38,7 +38,7 @@ fn main() -> Int {
     let words = wordsOf(text);
 
     // A map from each word to how often it occurs
-    let counts = map.empty<Int>();
+    let counts = dict.empty<Int>();
     for word in words {
         counts.set(word, (counts.get(word) ?? 0) + 1);
     }

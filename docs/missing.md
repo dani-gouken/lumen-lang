@@ -68,7 +68,7 @@ arrays.map(numbers, n => n * 2)
 
 ### The standard library has gaps — S to M each
 
-There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, maps, optionals, files, time, random numbers. Its own list of [what is missing](stdlib.md#what-is-missing) covers dates, number formatting, maps with other keys, sets, folders, program arguments and networking.
+There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, dictionaries, optionals, files, time, random numbers. Its own list of [what is missing](stdlib.md#what-is-missing) covers dates, number formatting, maps with other keys, sets, folders, program arguments and networking.
 
 Adding a function written in Lumen means editing a file in `internal/stdlib/lib/`. Adding a native one means an `extern fn` there and a Go function in `internal/vm/native_*.go`; a test fails if the two do not match.
 
@@ -126,12 +126,12 @@ Patterns on literals, on types and on the variants of an enum (with names, liter
 
 ### Structs are not containers yet — M
 
-A `List` or a `Map` from the standard library is a struct, and a struct cannot take part in the syntax of arrays:
+A `List` or a `Dict` from the standard library is a struct, and a struct cannot take part in the syntax of arrays:
 
 | Missing | Today |
 |---------|-------|
-| `for item in list` | `E2011`; write `for item in list.items`, `for key in map.keys()` |
-| `list[i]`, `map["key"]` | `E2006`; write `list.get(i)`, `map.get("key")` |
+| `for item in list` | `E2011`; write `for item in list.items`, `for key in dict.keys()` |
+| `list[i]`, `dict["key"]` | `E2006`; write `list.get(i)`, `dict.get("key")` |
 | A method as a value: `arrays.map(keys, users.get)` | `E2014`; wrap it: `fn(k: String) -> User? { return users.get(k); }` |
 
 The first two wait for generic traits, above.
@@ -166,7 +166,7 @@ The first two wait for generic traits, above.
 | Missing | Today |
 |---------|-------|
 | `%` on floats | `E2006`, although the VM implements it |
-| A literal for maps | `map.empty<V>()` then `set`; there is no `{"a": 1}` |
+| A literal for dictionaries | `dict.empty<V>()` then `set`; there is no `{"a": 1}` |
 | Numbers | `Int` is 48 bits (±140 737 488 355 327), not 64; there are no unsigned or sized integers, and no bytes: a file is read as text only |
 | Characters | A character is a text of length 1; `strings.code` and `fromCode` go to and from its number |
 | String interpolation, multi-line strings, `\u` escapes | Not parsed |
@@ -235,7 +235,7 @@ A cast to a function type is checked against the signature recorded when the fun
 
 Calls on a value whose struct is known are direct. Calls through a trait look the method up on the value, so each value of a struct that implements traits carries one function object per trait method, created with the value (see [ir_generation.md](compilation/ir_generation.md#structs-and-methods)). A method table shared per struct type would remove that; it needs VM support.
 
-The same lookup is used when IR generation does not know the receiver's struct, which happens more than it should: the types it works from are computed again after generics are instantiated, and that second computation loses the type arguments of generic structs. For `outer.get().get()` with `outer` a `Box<Box<Int>>`, the inner receiver is only known as "some value". The call still goes to the right method, by name when one struct has it, on the value otherwise; it is slower than it needs to be, and a method name shared by several generic structs (`get` of `List` and of `Map`) is stored on each of their values for this reason. Keeping the first type information through the later stages would fix both.
+The same lookup is used when IR generation does not know the receiver's struct, which happens more than it should: the types it works from are computed again after generics are instantiated, and that second computation loses the type arguments of generic structs. For `outer.get().get()` with `outer` a `Box<Box<Int>>`, the inner receiver is only known as "some value". The call still goes to the right method, by name when one struct has it, on the value otherwise; it is slower than it needs to be, and a method name shared by several generic structs (`get` of `List` and of `Dict`) is stored on each of their values for this reason. Keeping the first type information through the later stages would fix both.
 
 ### Every call allocates its registers — M
 

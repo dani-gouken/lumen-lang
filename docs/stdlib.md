@@ -4,10 +4,10 @@ The library is built into `lumen`. There is nothing to install and no project fi
 
 ```lumen
 import std.strings;
-import std.map;
+import std.dict;
 
 fn main() -> Int {
-    let counts = map.empty<Int>();
+    let counts = dict.empty<Int>();
     for word in strings.words("to be or not to be") {
         counts.set(word, (counts.get(word) ?? 0) + 1);
     }
@@ -24,7 +24,7 @@ A longer program using most of it is [`examples/words.lum`](../examples/words.lu
 | [`std.strings`](#stdstrings) | Taking text apart, searching, changing, parsing numbers |
 | [`std.arrays`](#stdarrays) | Functions on arrays: slice, map, filter, sort, ... |
 | [`std.list`](#stdlist) | `List<T>`: an array with methods |
-| [`std.map`](#stdmap) | `Map<V>`: values found by a text key |
+| [`std.dict`](#stddict) | `Dict<V>`: values found by a text key |
 | [`std.option`](#stdoption) | Chaining steps on values that may be `null` |
 | [`std.io`](#stdio) | Reading input, files, the environment |
 | [`std.time`](#stdtime) | The clock, waiting, measuring |
@@ -316,14 +316,14 @@ The field `items` is the array itself, for a `for` loop: `for name in names.item
 
 ---
 
-## `std.map`
+## `std.dict`
 
-`Map<V>` finds values by a text key. It is a hash table: finding a key takes about the same time however many there are.
+`Dict<V>` (a dictionary) finds values by a text key. It is a hash table: finding a key takes about the same time however many there are.
 
 ```lumen
-import std.map;
+import std.dict;
 
-let ages = map.empty<Int>();
+let ages = dict.empty<Int>();
 ages.set("ada", 36);
 ages.set("linus", 21);
 
@@ -334,7 +334,7 @@ println(ages.get("nobody") ?? 0);
 
 | Function / method | Result |
 |-------------------|--------|
-| `map.empty<V>() -> Map<V>` | An empty map. The type of the values has to be written |
+| `dict.empty<V>() -> Dict<V>` | An empty dictionary. The type of the values has to be written |
 | `set(key, value)` | Sets the value of a key, replacing the one it had |
 | `get(key) -> V?` | The value, or `null` if the key has none |
 | `has(key) -> Bool` | |
@@ -346,11 +346,11 @@ println(ages.get("nobody") ?? 0);
 
 Keys are compared exactly: `"a"` and `"A"` are two keys, and `""` is a key.
 
-The values can be of any type, including arrays, structs and other maps (`map.empty<Map<Int>>()`). To use something else than a text as key, make a text of it (`toString(id)`).
+The values can be of any type, including arrays, structs and other dictionaries (`dict.empty<Dict<Int>>()`). To use something else than a text as key, make a text of it (`toString(id)`).
 
 ```lumen
 // Group words by their first letter
-let groups = map.empty<[String]>();
+let groups = dict.empty<[String]>();
 for word in words {
     let letter = strings.first(word, 1);
     let group = groups.get(letter);
@@ -497,7 +497,7 @@ These numbers are for games and simulations. They are not fit for passwords or k
 
 The library has two halves.
 
-**Lumen source.** Each module is a `.lum` file in `internal/stdlib/lib/`, compiled into the `lumen` binary. Most of the library is written here, in the language itself: `math.gcd`, `arrays.sorted`, all of `List` and `Map`. These are ordinary modules; a program importing one gets its functions compiled along with its own.
+**Lumen source.** Each module is a `.lum` file in `internal/stdlib/lib/`, compiled into the `lumen` binary. Most of the library is written here, in the language itself: `math.gcd`, `arrays.sorted`, all of `List` and `Dict`. These are ordinary modules; a program importing one gets its functions compiled along with its own.
 
 **Native functions.** What cannot be written in Lumen, because it needs the machine (files, the clock) or would be too slow (searching a text), is declared in the module without a body:
 
@@ -519,5 +519,5 @@ A folder called `std` among a program's own modules is not reachable as `std.som
 *   **Program arguments**: a program cannot see what follows its name on the command line.
 *   **Networking**, running other programs.
 *   **Equality by content** for arrays and structs: `==`, and so `contains` and `indexOf`, only say whether two of them are the same object.
-*   **`for` over a `List` or a `Map`** directly: loop over `list.items`, `map.keys()`.
+*   **`for` over a `List` or a `Dict`** directly: loop over `list.items`, `dict.keys()`.
 *   Everything is compiled into the program that imports a module, used or not; there is no removal of unused functions yet.

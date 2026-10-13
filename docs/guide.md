@@ -448,7 +448,7 @@ fn main() -> Int {
 | `std.strings` | `split`, `join`, `substring`, `indexOf`, `replace`, `trim`, `upper`, `parseInt`, ... |
 | `std.arrays` | `range`, `fill`, `slice`, `map`, `filter`, `fold`, `sorted`, `contains`, `sum`, ... |
 | `std.list` | `List<T>`: an array with methods (`add`, `removeAt`, `sort`, `map`, ...) |
-| `std.map` | `Map<V>`: values by a text key (`set`, `get`, `has`, `keys`, ...) |
+| `std.dict` | `Dict<V>`: values by a text key (`set`, `get`, `has`, `keys`, ...) |
 | `std.option` | Chaining on values that may be `null`: `map`, `then`, `mapOr`, `orElse`, ... |
 | `std.io` | `readLine`, `readFile`, `writeFile`, `exists`, `env`, ... |
 | `std.time` | `now`, `sleep`, `stopwatch` |

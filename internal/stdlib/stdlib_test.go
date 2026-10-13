@@ -69,7 +69,7 @@ func expectFailure(t *testing.T, imports, body, want string) {
 }
 
 func TestModulesAreEmbedded(t *testing.T) {
-	want := []string{"std.arrays", "std.io", "std.list", "std.map", "std.math", "std.option", "std.random", "std.strings", "std.time"}
+	want := []string{"std.arrays", "std.dict", "std.io", "std.list", "std.math", "std.option", "std.random", "std.strings", "std.time"}
 	if got := stdlib.Modules(); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("expected the modules %v, got %v", want, got)
 	}
@@ -422,8 +422,8 @@ func TestList(t *testing.T) {
 }
 
 func TestMap(t *testing.T) {
-	expect(t, "import std.map;\nimport std.arrays;\nimport std.map.{Map};\nstruct Point { x: Int; y: Int; }", `
-		let ages = map.empty<Int>();
+	expect(t, "import std.dict;\nimport std.arrays;\nimport std.dict.{Dict};\nstruct Point { x: Int; y: Int; }", `
+		let ages = dict.empty<Int>();
 		println(ages.size(), ages.isEmpty(), ages.get("ada"), ages.has("ada"), ages.remove("ada"), ages.keys(), ages.values());
 
 		ages.set("ada", 36);
@@ -440,7 +440,7 @@ func TestMap(t *testing.T) {
 		println(ages.keys(), ages.values());
 
 		// Keys that are alike are different keys; "" is a key too
-		let odd = map.empty<String>();
+		let odd = dict.empty<String>();
 		odd.set("", "empty");
 		odd.set(" ", "space");
 		odd.set("a", "lower");
@@ -448,7 +448,7 @@ func TestMap(t *testing.T) {
 		println(odd.size(), odd.get(""), odd.get(" "), odd.get("a"), odd.get("A"));
 
 		// Many keys: the table grows several times, removed keys drop out
-		let big = map.empty<Int>();
+		let big = dict.empty<Int>();
 		let i = 0;
 		while i < 3000 { big.set("key" + toString(i), i * 2); i++; }
 		i = 0;
@@ -463,24 +463,24 @@ func TestMap(t *testing.T) {
 		println(sum == expected, big.keys()[0], big.keys()[1]);
 
 		// Counting with a map
-		let counts = map.empty<Int>();
+		let counts = dict.empty<Int>();
 		for word in ["to", "be", "or", "not", "to", "be"] {
 			counts.set(word, (counts.get(word) ?? 0) + 1);
 		}
 		println(counts.keys(), counts.values());
 
 		// Values of any type: structs, arrays, other maps
-		let points: Map<Point> = map.empty<Point>();
+		let points: Dict<Point> = dict.empty<Point>();
 		points.set("origin", Point { x: 0, y: 0 });
 		points.set("far", Point { x: 9, y: 4 });
 		let far = points.get("far");
 		if far != null { println(far.x + far.y); }
-		let groups = map.empty<[String]>();
+		let groups = dict.empty<[String]>();
 		groups.set("fruit", ["fig"]);
 		let fruit = groups.get("fruit");
 		if fruit != null { push(fruit, "pear"); }
 		println(groups.get("fruit"), groups.get("meat"));
-		let nested = map.empty<Map<Int>>();
+		let nested = dict.empty<Dict<Int>>();
 		nested.set("inner", counts);
 		let inner = nested.get("inner");
 		if inner != null { println(inner.get("to")); }
@@ -505,7 +505,7 @@ func TestOption(t *testing.T) {
 	expect(t, `import std.option;
 import std.strings;
 import std.arrays;
-import std.map;
+import std.dict;
 
 struct User { name: String; manager: String?; }
 
@@ -545,7 +545,7 @@ fn double(n: Int) -> Int { return n * 2; }`, `
 		if m == null { println(n + 1, "no half"); }
 
 		// Looking something up through two maps and a field that may be null
-		let users = map.empty<User>();
+		let users = dict.empty<User>();
 		users.set("ada", User { name: "Ada", manager: "grace" });
 		users.set("grace", User { name: "Grace", manager: null });
 		users.set("bob", User { name: "Bob", manager: "gone" });

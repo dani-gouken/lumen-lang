@@ -671,8 +671,8 @@ func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
 	// methods are called in turn. Several structs share the method names.
 	expectModulesOutput(t, sources{"main.lum": `
 		import std.list;
-		import std.map;
-		import std.map.{Map};
+		import std.dict;
+		import std.dict.{Dict};
 		import std.list.{List};
 
 		struct Box<V> { value: V; }
@@ -689,8 +689,8 @@ func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
 			if b != null { println(a.get(), b.get(), outer.get().get()); }
 
 			// A map of maps, a map of lists, a list of maps
-			let scores = map.empty<Map<Int>>();
-			let maths = map.empty<Int>();
+			let scores = dict.empty<Dict<Int>>();
+			let maths = dict.empty<Int>();
 			maths.set("ada", 19);
 			scores.set("maths", maths);
 			let found = scores.get("maths");
@@ -699,7 +699,7 @@ func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
 				println(found.get("ada"), found.keys(), found.size());
 			}
 
-			let groups = map.empty<List<String>>();
+			let groups = dict.empty<List<String>>();
 			groups.set("fruit", list.of(["fig"]));
 			let fruit = groups.get("fruit");
 			if fruit != null {
@@ -707,7 +707,7 @@ func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
 				println(fruit.get(1), fruit.size(), fruit.toArray());
 			}
 
-			let rows = list.empty<Map<Int>>();
+			let rows = list.empty<Dict<Int>>();
 			rows.add(maths);
 			let row = rows.get(0);
 			if row != null { println(row.get("bob"), row.has("zed")); }

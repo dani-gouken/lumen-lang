@@ -295,7 +295,7 @@ known defects are inventoried in [missing.md](missing.md).
 | `match` on enum variants, with names, literals and nested patterns | Supported | Checked for completeness |
 | Constants at the top level | Supported | Numbers, texts and booleans, known when the program is compiled |
 | Modules: `import`, `pub`, several files | Supported | Packages are folders named in `lumen.json`; no installer |
-| Standard library (`std.math`, `std.strings`, `std.arrays`, `std.list`, `std.map`, `std.option`, `std.io`, `std.time`, `std.random`) | Supported | Built into the compiler; see [stdlib.md](stdlib.md) |
+| Standard library (`std.math`, `std.strings`, `std.arrays`, `std.list`, `std.dict`, `std.option`, `std.io`, `std.time`, `std.random`) | Supported | Built into the compiler; see [stdlib.md](stdlib.md) |
 | `extern fn` | Supported | Only for functions built into the runtime; no loading of shared libraries |
 | Generic structs and their methods | Supported | `impl<T> Box<T> { ... }`; methods may add their own: `fn map<U>(...)` |
 | "All paths return" check, unreachable code | Supported | Unreachable code is a warning |
