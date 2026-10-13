@@ -138,7 +138,7 @@ Primary expressions: literals, identifiers (optionally with type arguments), par
 
 ### Struct literal or block?
 
-```lumen
+```rust
 if ready { run(); }        // `ready` is the condition, `{` opens the body
 let p = Point { x: 1 };    // `Point {` opens a struct literal
 ```
@@ -150,7 +150,7 @@ Both are an identifier followed by `{`. Two rules decide:
 
 ### Type arguments or comparison?
 
-```lumen
+```rust
 collect<Int>(1, 2)     // generic call
 a < b                  // comparison
 a < b > (c)            // two comparisons? or a<b>(c)?

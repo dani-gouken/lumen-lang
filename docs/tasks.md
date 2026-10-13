@@ -2,7 +2,7 @@
 
 A program can run several of its functions at the same time: ask three servers at once, answer a request while another is still being worked on, read a file while the user types. Each such function is a **task**, and tasks talk through **channels**. Both are in the module [`std.task`](stdlib.md#stdtask); nothing was added to the language itself.
 
-```lumen
+```rust
 import std.task;
 import std.http;
 
@@ -33,7 +33,7 @@ Nothing else switches tasks. Between two such moments a task is alone: it can re
 
 What needs care is a change with a wait in the middle of it:
 
-```lumen
+```rust
 let before = account.balance;
 let rate = http.get(ratesUrl);          // other tasks run here
 account.balance = before - amount;      // and may have changed the balance
@@ -49,7 +49,7 @@ The order is always the same: a new task starts when the one that made it next w
 
 `task.start(work)` runs a function and returns at once with a `Task<T>`, `T` being what the function returns. `task.run(action)` is the same for a function run for what it does: it gives a `Task<Bool>`.
 
-```lumen
+```rust
 let total = task.start(fn() -> Int { return count(file); });
 // ... something else ...
 match total.wait() {
@@ -74,7 +74,7 @@ match total.wait() {
 
 A `Channel<T>` carries values from the tasks that send to the tasks that receive, in order. `task.channel<T>(capacity)` makes one that holds up to `capacity` values waiting to be received.
 
-```lumen
+```rust
 let lines = task.channel<String>(16);
 task.run(fn() {
     for name in files { lines.send(io.readFile(name).orElse("")); }
@@ -119,7 +119,7 @@ The place is where the last task went to wait. The usual cause is a channel nobo
 
 `http.serve` and `server.handleAll` answer each request in a task of its own: a handler that waits, for another server or for the clock, does not keep the other requests waiting. To do something else while serving, start the server in a task:
 
-```lumen
+```rust
 let server = http.listen(8080).expect("a free port");
 let serving = task.run(fn() { server.handleAll(app.handler()); });
 // ... the program goes on; server.close() ends the task

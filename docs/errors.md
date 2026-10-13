@@ -13,7 +13,7 @@ A complete program using both: [`examples/failures.lum`](../examples/failures.lu
 
 `Result<T, E>` is an enum of the standard library: the value a function produced, or the reason there is none.
 
-```lumen
+```rust
 import std.result.{Result};
 
 enum Problem { Empty, NotANumber(String) }
@@ -28,7 +28,7 @@ fn count(text: String) -> Result<Int, Problem> {
 
 The caller takes it apart with a `match`, which has to handle both:
 
-```lumen
+```rust
 match count(input) {
     case Result.Ok(n): { println("ordered", n); }
     case Result.Err(Problem.Empty): { println("nothing was typed"); }
@@ -49,7 +49,7 @@ or with one of its methods:
 | `then<U>(step) -> Result<U, E>` | A next step that can fail too: runs only if there is a value; the first reason met is the one that comes out |
 | `expect(message) -> T` | The value; **stops the program** if there is none. For where a failure would be a mistake in the program |
 
-```lumen
+```rust
 fn order(text: String) -> Result<Order, Problem> {
     return count(text).then(limited).map(fn(n: Int) -> Order { return Order { count: n }; });
 }
@@ -59,7 +59,7 @@ fn order(text: String) -> Result<Order, Problem> {
 
 Most functions that call something that can fail have nothing to do about the failure but hand it to their own caller. A `?` after the call does that:
 
-```lumen
+```rust
 fn order(text: String) -> Result<Order, Problem> {
     let n = limited(count(text)?)?;
     return Result.Ok(Order { count: n });
@@ -82,7 +82,7 @@ The same operator works on an optional, in a function that may return `null`: `l
 
 An error that stops the program says where it happened. An error that is returned can too: `result.stack(skip)` gives the calls in progress, to keep in the error.
 
-```lumen
+```rust
 import std.result;
 import std.result.{Location};
 
@@ -113,7 +113,7 @@ A `Location` has `function`, `file`, `line`, `column`, and `describe()`.
 
 Reading and writing files returns a `Result` whose reason is a struct:
 
-```lumen
+```rust
 pub struct Error {
     kind: ErrorKind;        // NotFound, PermissionDenied, IsDirectory, NotDirectory, AlreadyExists, Other
     operation: String;      // "read", "write" or "append"
@@ -125,7 +125,7 @@ pub struct Error {
 
 The `kind` is for the program, the rest for telling a person:
 
-```lumen
+```rust
 match io.readFile("settings.conf") {
     case Result.Ok(text): { load(text); }
     case Result.Err(error): {
@@ -143,7 +143,7 @@ match io.readFile("settings.conf") {
 
 `panic` is a builtin. It stops the program with a message, written from its arguments as `println` writes them:
 
-```lumen
+```rust
 fn take(queue: Queue) -> Int {
     if arrays.len(queue.items) == 0 {
         panic("the queue is empty after", queue.taken, "items");
@@ -156,7 +156,7 @@ It is for a state the program cannot do anything sensible about: a mistake to be
 
 The compiler knows that nothing comes after a `panic`: a function may end with one in place of a `return`, a test against `null` followed by a `panic` leaves the value non-null afterwards, and code after one is reported as unreachable.
 
-```lumen
+```rust
 fn area(shape: Shape) -> Int {
     match shape {
         case Shape.Square(side): { return side * side; }
@@ -201,7 +201,7 @@ A function calling itself gives the same line many times: it is shown once, with
 
 `attempt` runs a function. If the function stops, for any of the reasons above, the program does not: the failure comes back as a value.
 
-```lumen
+```rust
 import std.result.{Result, Kind, attempt};
 
 for i, job in jobs {

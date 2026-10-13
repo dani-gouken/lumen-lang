@@ -135,7 +135,7 @@ Stores the value of a register into an upvalue.
 
 The sections above describe the VM mechanism. This is how Lumen source maps onto it.
 
-```lumen
+```rust
 fn makeCounter() -> fn() -> Int {
     let count = 0;
     return fn() -> Int {
@@ -165,7 +165,7 @@ A variable declared in a loop body has one register for all iterations. If nothi
 
 So when an iteration ends, the closures created in it are **detached** from the body's variables: `CLOSEUP r` closes the upvalue for a register, exactly as `RET` does for a whole frame. The closure keeps the value from that moment; the next iteration writes the register afresh and a closure created then gets a new upvalue.
 
-```lumen
+```rust
 for v in [1, 2, 3] {
     push(readers, fn() -> Int { return v; });
 }
@@ -187,7 +187,7 @@ Within one iteration nothing changes: the closure and the body share the variabl
 
 When a lambda uses a variable declared two or more functions up, every function in between has to carry it, even if it never mentions it:
 
-```lumen
+```rust
 fn main() -> Int {
     let a = 1;
     let outer = fn() -> Int {

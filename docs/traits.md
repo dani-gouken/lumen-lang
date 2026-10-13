@@ -2,7 +2,7 @@
 
 A trait says what a type can do, without saying how. Types that implement it can then be used wherever the trait is asked for, each doing it its own way.
 
-```lumen
+```rust
 trait Shape {
     fn area() -> Float;
 }
@@ -25,7 +25,7 @@ Complete programs: [`examples/tournament.lum`](../examples/tournament.lum) uses 
 
 ## Structs
 
-```lumen
+```rust
 struct Config {
     name: String;
     host: String = "localhost";     // a field with a value of its own
@@ -42,7 +42,7 @@ let other = Config { name: "db", port: 5432 };
 
 **Methods** are written in an `impl`. Inside, `self` is the value:
 
-```lumen
+```rust
 impl Config {
     fn address() -> String { return "${self.host}:${self.port}"; }
     pub fn rename(to: String) { self.name = to; }       // pub: callable from other modules
@@ -51,7 +51,7 @@ impl Config {
 
 **A method without its call is a function**, bound to the value it was taken from:
 
-```lumen
+```rust
 let ages = dict.empty<Int>();
 let names = arrays.filter(candidates, ages.has);      // fn(String) -> Bool
 let lookup = ages.get;                                // fn(String) -> Int?
@@ -63,7 +63,7 @@ The value has to be a variable or a field of one, and it is read when the functi
 
 ## Traits
 
-```lumen
+```rust
 trait Entrant {
     fn name() -> String;
     fn score() -> Int;
@@ -83,7 +83,7 @@ trait Entrant {
 
 Traits can be implemented for structs, for enums, and for the builtin types `Int`, `Float`, `String` and `Bool`:
 
-```lumen
+```rust
 impl Entrant for Int {
     fn name() -> String { return "number ${self}"; }
     fn score() -> Int { return self; }
@@ -96,7 +96,7 @@ That is the only way a number or a text gets a method: through a trait someone w
 
 ## Traits with Type Parameters
 
-```lumen
+```rust
 trait Source<T> {
     fn next() -> T?;
 
@@ -121,7 +121,7 @@ impl<T> Source<T> for Repeat<T> {
 
 `Source<Int>` and `Source<String>` are two types. A function that takes `Source<Int>` takes a `Counter` and a `Repeat<Int>`, not a `Repeat<String>`. Where the type argument is a type parameter, it is worked out from the value:
 
-```lumen
+```rust
 fn drain<T>(source: Source<T>) -> [T] { return source.all(); }
 
 drain(Counter { n: 0 })             // [Int]
@@ -132,7 +132,7 @@ drain(Repeat<String> { item: "x" }) // [String]
 
 Inside `fn f<T>(x: T)` nothing is known of a `T`, so nothing can be done with `x` but pass it on. A requirement says what `T` has to implement, and that is then what can be called:
 
-```lumen
+```rust
 import std.ops.{Ordered, Show};
 
 fn largest<T: Ordered>(items: [T]) -> T? {
@@ -155,7 +155,7 @@ Calling it with a type that does not implement the trait is an error where the c
 
 Requirements go wherever type parameters are introduced:
 
-```lumen
+```rust
 struct Sorted<T: Ordered> { items: [T]; }              // only of ordered things
 enum Tree<T: Ordered> { Leaf, Node(Tree<T>, T, Tree<T>) }
 
@@ -181,7 +181,7 @@ The module `std.ops` declares the traits that stand behind the syntax. Implement
 | `Indexed<K, V>` | `at(key: K) -> V` | `a[key]` |
 | `IndexedSet<K, V>` | `put(key: K, value: V)` | `a[key] = value;` |
 
-```lumen
+```rust
 import std.ops.{Equal, Ordered, Add, Show};
 
 struct Money { cents: Int = 0; }

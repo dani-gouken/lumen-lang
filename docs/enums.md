@@ -2,7 +2,7 @@
 
 An enum is a type whose values are one of several **variants**. Each variant may hold values of its own.
 
-```lumen
+```rust
 enum Shape {
     Circle(Float),          // holds a radius
     Rect(Float, Float),     // holds a width and a height
@@ -12,7 +12,7 @@ enum Shape {
 
 A value is made by naming a variant, and taken apart by a `match`:
 
-```lumen
+```rust
 fn area(shape: Shape) -> Float {
     match shape {
         case Shape.Circle(r): { return 3.14 * r * r; }
@@ -28,7 +28,7 @@ Complete programs: [`examples/derivative.lum`](../examples/derivative.lum) works
 
 ## Declaring
 
-```lumen
+```rust
 enum Light { Red, Amber, Green }                    // only names
 
 enum Event { Deposit(Int), Withdraw(Int), Closed }  // some with values
@@ -45,7 +45,7 @@ enum Json { Null, Bool(Bool), String(String), Array([Json]) }
 
 ## Making Values
 
-```lumen
+```rust
 let a = Shape.Circle(2.0);
 let b = Shape.Empty;                // no parentheses for a variant without values
 let shapes: [Shape] = [a, b, Shape.Rect(1.0, 2.0)];
@@ -55,7 +55,7 @@ The variant is always written with its enum: `Shape.Circle`, never `Circle` alon
 
 A variant with values, not called, is the function that makes one:
 
-```lumen
+```rust
 let circles = arrays.map([1.0, 2.0, 3.0], Shape.Circle);    // [Shape]
 let make: fn(Float) -> Shape = Shape.Circle;
 ```
@@ -64,7 +64,7 @@ let make: fn(Float) -> Shape = Shape.Circle;
 
 A `match` on an enum tries its cases in order and runs the first that fits.
 
-```lumen
+```rust
 match event {
     case Event.Deposit(amount): { balance += amount; }
     case Event.Withdraw(amount): { balance -= amount; }
@@ -74,7 +74,7 @@ match event {
 
 **Names.** A name in a pattern becomes a variable of that case, holding the value at that position. It exists only in the case. `_` takes a value without naming it.
 
-```lumen
+```rust
 case Shape.Rect(w, _): { return w; }
 ```
 
@@ -82,7 +82,7 @@ case Shape.Rect(w, _): { return w; }
 
 **Literals** match only that value. Put the specific cases before the general one:
 
-```lumen
+```rust
 match shape {
     case Shape.Circle(0.0): { return "a point"; }
     case Shape.Circle(r): { return "a circle"; }
@@ -92,7 +92,7 @@ match shape {
 
 **Patterns inside patterns** look into a value that is itself an enum, to any depth:
 
-```lumen
+```rust
 fn simplify(e: Expr) -> Expr {
     match e {
         case Expr.Add(Expr.Num(0), right): { return right; }      // 0 + x is x
@@ -111,7 +111,7 @@ A name of a pattern is a copy of what the variant holds: assigning to it does no
 
 A `match` on an enum without a `default` has to cover every value the enum can have. Leaving something out is a compile error that names it:
 
-```lumen
+```rust
 fn next(light: Light) -> Light {
     match light {
         case Light.Red: { return Light.Green; }
@@ -128,7 +128,7 @@ This is the point of an enum over a set of numbers or strings: add a variant, an
 
 The check looks inside patterns. These three cases are complete, because between them they take every `Option<Result<Int, String>>`:
 
-```lumen
+```rust
 case Option.Some(Result.Ok(n)): { ... }
 case Option.Some(Result.Err(message)): { ... }
 case Option.None: { ... }
@@ -150,7 +150,7 @@ A case that can never run, because a case above already takes its variant whole,
 
 The patterns of an enum mix with the [other kinds](guide.md#control-flow): a type (`case Shape:` takes any `Shape`, `case Int:`) and a literal. When the value is an `Any` or a trait, a variant pattern tests for the enum as well:
 
-```lumen
+```rust
 fn describe(value: Any) -> String {
     match value {
         case Shape.Circle(r): { return "circle"; }
@@ -163,7 +163,7 @@ fn describe(value: Any) -> String {
 
 ## Generic Enums
 
-```lumen
+```rust
 enum Option<T> { Some(T), None }
 enum Result<T, E> { Ok(T), Err(E) }
 enum List<T> { Cons(T, List<T>), Nil }
@@ -175,7 +175,7 @@ The type arguments are worked out, in this order, from:
 2.  the values given: `Option.Some(1)` is an `Option<Int>`
 3.  the type expected where the value goes:
 
-```lumen
+```rust
 let a: Option<Int> = Option.None;
 fn find() -> Option<String> { return Option.None; }
 if a == Option.None { ... }                    // the other side of a comparison
@@ -186,7 +186,7 @@ When none of these says what a type argument is, it is an error: `let x = Option
 
 In a pattern the type arguments are those of the value being matched; the names it binds have the matching types:
 
-```lumen
+```rust
 fn first(r: Result<[Int], String>) -> Int {
     match r {
         case Result.Ok(items): { return items[0]; }       // items: [Int]
@@ -199,7 +199,7 @@ fn first(r: Result<[Int], String>) -> Int {
 
 An enum has methods and implements traits exactly as a struct does. `self` is the value; a `match` on it is the usual body.
 
-```lumen
+```rust
 impl Shape {
     fn scaled(by: Float) -> Shape {
         match self {
@@ -228,7 +228,7 @@ A method cannot have the name of a variant.
 
 Two values of an enum are **equal** when they are the same variant holding equal values:
 
-```lumen
+```rust
 Shape.Circle(1.0) == Shape.Circle(1.0)      // true
 Shape.Empty == Shape.Empty                  // true
 Shape.Circle(1.0) == Shape.Circle(2.0)      // false
@@ -242,13 +242,13 @@ A value **prints** the way it is made, without the enum's name: `Circle(2)`, `Em
 
 A tuple, `(1, "a")` of type `(Int, String)`, is a value of an enum that the compiler declares for each size from two to six:
 
-```lumen
+```rust
 enum __Tuple2<A, B> { Of(A, B) }
 ```
 
 The parser writes everything about tuples in terms of it: the type `(Int, String)` is `__Tuple2<Int, String>`, the value `(1, "a")` is `__Tuple2.Of(1, "a")`, `case (n, text):` is a pattern on that variant, and `let (a, b) = pair;` is a variable per value. So what this page says of enums holds for tuples with no code of their own: type arguments worked out from the values, equality by content, patterns inside patterns, and the check that a `match` is complete.
 
-```lumen
+```rust
 match (wet, cold) {
     case (true, true): { return "snow"; }
     case (true, false): { return "rain"; }

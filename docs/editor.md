@@ -22,6 +22,10 @@ code --install-extension lumen-0.1.0.vsix
 
 It looks for the `lumen` program in this order: the `lumen.path` setting, a `lumen` at the root of the workspace or in a folder above it, then the `PATH`. After rebuilding `lumen`, run **Lumen: Restart the language server** from the command palette: the server is the program that was there when it started.
 
+## On GitHub
+
+GitHub does not know Lumen, so nothing colours it there by name. Two things borrow the colours of Rust, whose syntax is close enough (`fn`, `let`, `struct`, `enum`, `impl`, `match`): the `.gitattributes` file marks `.lum` files as Rust for display, and the examples in the documentation are fenced as `rust`. The cost is that GitHub counts the Lumen sources of the repository as Rust in its language bar.
+
 ## Any other editor
 
 Tell it to run `lumen lsp` for files ending in `.lum`, talking over standard input and output. For Neovim:

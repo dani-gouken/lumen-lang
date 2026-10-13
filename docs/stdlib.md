@@ -2,7 +2,7 @@
 
 The library is built into `lumen`. There is nothing to install and no project file is needed: any program can import its modules.
 
-```lumen
+```rust
 import std.strings;
 import std.dict;
 
@@ -54,7 +54,7 @@ The modules are imported and used like any other ([modules.md](modules.md)): `im
 
 **Nothing instead of failure.** A function that may have no answer returns an optional, and `null` means "none": the position of something not found, the first item of an empty array, a text that is not a number. Where there is a reason worth knowing, as for a file that cannot be read, it returns a [`Result`](#stdresult) with the reason in it. The type checker then makes sure the program deals with it:
 
-```lumen
+```rust
 let n = strings.parseInt(line);      // Int?
 if n != null { total += n; }         // an Int in here
 let port = strings.parseInt(text) ?? 8080;
@@ -117,7 +117,7 @@ The four fail if the number does not fit in an `Int`.
 | `atan2(y, x)` | The angle of the point (x, y), from -π to π |
 | `radians(degrees)`, `degrees(radians)` | Between the two units of angle |
 
-```lumen
+```rust
 // The length of the diagonal of a 3 by 4 rectangle
 let a = 3;
 let b = 4;
@@ -195,7 +195,7 @@ Building a long text piece by piece with `+=` copies everything so far at each s
 
 Going the other way, any value becomes text with the builtin `toString`.
 
-```lumen
+```rust
 let line = "name = Ada Lovelace";
 let at = strings.indexOf(line, "=");
 if at != null {
@@ -290,7 +290,7 @@ Generic functions on plain arrays. Type arguments are inferred: `arrays.reversed
 
 **Equal**, for `indexOf` and `contains`, means what `==` means: numbers, texts and booleans are equal when they have the same value; an array or a struct is only equal to itself. To look for a struct by what is in it, use `find` with a function.
 
-```lumen
+```rust
 let people = [Person { name: "Ada", age: 36 }, Person { name: "Linus", age: 21 }];
 
 let adults = arrays.filter(people, p -> p.age >= 18);
@@ -305,7 +305,7 @@ let totalAge = arrays.fold(people, 0, (sum, p) -> sum + p.age);
 
 `List<T>` is an array in a struct, with the functions of `std.arrays` as methods. Calls read left to right and can be chained.
 
-```lumen
+```rust
 import std.list;
 
 let names = list.of(["ada", "linus"]);
@@ -362,7 +362,7 @@ The field `items` is the array itself, for a `for` loop: `for name in names.item
 
 `Dict<V>` (a dictionary) finds values by a text key. It is a hash table: finding a key takes about the same time however many there are.
 
-```lumen
+```rust
 import std.dict;
 
 let ages = dict.empty<Int>();
@@ -396,7 +396,7 @@ Keys are compared exactly: `"a"` and `"A"` are two keys, and `""` is a key.
 
 The values can be of any type, including arrays, structs and other dictionaries (`dict.empty<Dict<Int>>()`). To use something else than a text as key, make a text of it (`toString(id)`).
 
-```lumen
+```rust
 // Group words by their first letter
 let groups = dict.empty<[String]>();
 for word in words {
@@ -416,7 +416,7 @@ for word in words {
 
 Functions on optionals: `T?`, a value or `null`. They carry "or nothing" through a series of steps, so that each step does not need its own null test.
 
-```lumen
+```rust
 import std.option;
 
 // Without: one test per step
@@ -448,7 +448,7 @@ let doubled = option.map(option.then(io.readLine(), strings.parseInt), n -> n * 
 
 What comes out is an ordinary optional: `??` gives it a fallback, and a test against `null` makes it a plain value inside the test.
 
-```lumen
+```rust
 // The name of a user's manager, through two lookups and a field that may be null
 let manager = option.then(users.get(key), u -> u.manager);
 let found = option.then(manager, k -> users.get(k));
@@ -528,7 +528,7 @@ An `io.Error` says what kind of failure it was, for the program to act on, and t
 
 Input is what the user types, or what is piped in: `lumen run sum.lum < numbers.txt`.
 
-```lumen
+```rust
 import std.io;
 import std.io.{ErrorKind};
 import std.result.{Result};
@@ -570,7 +570,7 @@ Paths are relative to the directory the program is run from, not to the program'
 
 A `Stopwatch` has `microseconds()`, `milliseconds()` and `restart()`.
 
-```lumen
+```rust
 let watch = time.stopwatch();
 work();
 println("took", watch.milliseconds(), "ms");
@@ -607,7 +607,7 @@ In a pattern for `format`:
 | `hh` 09 (of 12) | `h` 9 | `A` AM | `mm` 05 |
 | `ss` 07 | `SSS` 042 | `Z` +02:00 | `[text]` kept as it is |
 
-```lumen
+```rust
 let today = time.today();
 println(today.format("dddd D MMMM YYYY"));       // Tuesday 13 October 2026
 println(today.plusDays(30).iso(), today.daysUntil(time.date(2027, 1, 1)));
@@ -673,7 +673,7 @@ Folders and the files in them. Reading and writing the *content* of a file is in
 
 An `Entry` has `name`, `path`, `kind` (`Kind.File` or `Kind.Folder`), `size` in bytes, `modified` (a moment, as `time.now`), and `isFile()`, `isFolder()`.
 
-```lumen
+```rust
 match fs.list("notes") {
     case Result.Ok(entries): {
         for entry in entries { println(entry.name, format.bytes(entry.size)); }
@@ -730,7 +730,7 @@ Numbers and tables written for people.
 | `tableWith(titles, aligns, rows)` | The same, saying how each column is set |
 | `bar(value, largest, width)` | A bar of a chart, in `#` |
 
-```lumen
+```rust
 print(format.table(["name", "age"], [["ada", "36"], ["grace", "45"]]));
 ```
 ```
@@ -746,7 +746,7 @@ grace   45
 
 A document is a value of an enum, so a `match` takes it apart and the compiler checks every kind is handled:
 
-```lumen
+```rust
 pub enum Json { Null, Bool(Bool), Number(Float), String(String), Array([Json]), Object(Dict<Json>) }
 ```
 
@@ -763,7 +763,7 @@ pub enum Json { Null, Bool(Bool), Number(Float), String(String), Array([Json]), 
 | `json.object()` | An object built a key at a time: `.text(k, v)`, `.int`, `.number`, `.bool`, `.none`, `.set(k, json)`, then `.done()` |
 | `json.textOf`, `intOf`, `numberOf`, `boolOf`, `itemsOf` | The same accessors as functions, to hand to `arrays.map` and the like |
 
-```lumen
+```rust
 let document = json.parse(text).expect("a document");
 let name = document.get("name")?.text() ?? "nobody";
 let firstTag = document.find("user.tags.0")?.text();
@@ -797,7 +797,7 @@ A `Match` has `text`, `start`, `end` (positions in characters), `groups`, and `g
 
 In a text of a program a backslash is written twice, and `${` would start a value to insert: write `"\\d+"` and `"\${name}"`.
 
-```lumen
+```rust
 let date = regex.must("(\\d{4})-(\\d{2})-(\\d{2})");
 date.replace("on 2026-10-13", "$3/$2/$1")           // on 13/10/2026
 ```
@@ -857,7 +857,7 @@ These hashes are made to be fast: they are for telling contents apart and for si
 
 **Asking a server.**
 
-```lumen
+```rust
 match http.get("https://example.com/api/users/1") {
     case Result.Ok(response): { println(response.status, response.body); }
     case Result.Err(error): { println(error.describe()); }
@@ -877,7 +877,7 @@ A server that answers "not found" has answered: that is a `Response` with status
 
 **Being one.** A handler is a function from a `Request` to a `Response`. A `Router` chooses one from the method and the path:
 
-```lumen
+```rust
 let app = http.router();
 app.get("/hello/:name", fn(request: Request) -> Response {
     return http.text("hello, ${request.params.get("name") ?? "you"}");
@@ -933,7 +933,7 @@ For any type that implements the trait named:
 | `same<T: Equal>(first, second) -> Bool` | Equal items in the same order |
 | `join<T: Show>(items, separator) -> String` | The texts of the items |
 
-```lumen
+```rust
 import std.ops;
 import std.ops.{Ordered};
 
@@ -955,7 +955,7 @@ if newest != null && newest > installed { ... }
 
 Functions running at the same time, and channels between them. All of it, with how a program of several tasks ends, is in [tasks.md](tasks.md).
 
-```lumen
+```rust
 let pages = task.map(urls, url -> http.get(url));          // all asked at once
 
 let lines = task.channel<String>(16);
@@ -989,7 +989,7 @@ A task that stops does not stop the program: whoever waits for it gets the failu
 
 Asking a value what it is, while the program runs: for code that prints, saves or compares a struct it was never told about.
 
-```lumen
+```rust
 struct User { name: String; age: Int; }
 let user = User { name: "ada", age: 36 };
 
@@ -1022,7 +1022,7 @@ A value read this way has the type `Any`: test it with `is` or cast it with `as`
 
 The front of the compiler, asked about a program instead of told to run it. Every function takes the path of a file and its text: the text is what is looked at, the path says where its modules are and how places are named.
 
-```lumen
+```rust
 let source = io.readFile("main.lum").expect("a file");
 for problem in compiler.check("main.lum", source) {
     println(problem.describe());        // main.lum:4:9: error E1001: undefined identifier 'totl'
@@ -1045,7 +1045,7 @@ It is what the [language server](editor.md) is written with, and serves as well 
 
 ## `std.test`
 
-```lumen
+```rust
 import std.test;
 
 fn main() -> Int {
@@ -1090,7 +1090,7 @@ The library has two halves.
 
 **Native functions.** What cannot be written in Lumen, because it needs the machine (files, the clock) or would be too slow (searching a text), is declared in the module without a body:
 
-```lumen
+```rust
 pub extern fn sqrt(x: Float) -> Float;
 ```
 

@@ -74,7 +74,7 @@ Module paths start at one folder, in every file of the program (see [modules.md]
 { "entry": "src/main.lum", "root": "src" }
 ```
 
-```lumen
+```rust
 import app.guests;       // src/app/guests.lum, from any file of the project
 ```
 
@@ -98,7 +98,7 @@ A package is a folder of modules with a name. The name is the first part of the 
 
 Everything else about modules applies unchanged: `pub`, aliases, importing names, `pub import`. Inside a package, modules name each other through the package, like any other file of the program:
 
-```lumen
+```rust
 // packages/textkit.lum
 import textkit.format.pad;
 ```

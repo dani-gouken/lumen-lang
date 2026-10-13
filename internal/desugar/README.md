@@ -23,7 +23,7 @@ appears: conditions, `let` initializers, return values, arguments.
 
 An earlier version rewrote them into statements with temporaries:
 
-```lumen
+```rust
 // Source                         // What the old rewrite produced
 if a != null && a.ready {         let __tmp_0 = a != null;
     use(a);                       let __tmp_1 = false;
@@ -73,7 +73,7 @@ type DesugarInfo struct {
 
 ### 1. For-Loop Desugaring
 
-```lumen
+```rust
 // Before
 for item in collection {
     body
@@ -105,7 +105,7 @@ evaluated once.
 
 ### 2. Match Statement Desugaring
 
-```lumen
+```rust
 // Before
 match x {
     case 1: { action1(); }

@@ -18,7 +18,7 @@ Desugaring provides several benefits:
 ### Example
 
 Given this high-level code:
-```lumen
+```rust
 fn sum_evens(nums: [Int]) -> Int {
     let total = 0;
     for num in nums {
@@ -31,7 +31,7 @@ fn sum_evens(nums: [Int]) -> Int {
 ```
 
 After desugaring:
-```lumen
+```rust
 fn sum_evens(nums: [Int]) -> Int {
     let total = 0;
     let __iter_0 = 0;
@@ -66,7 +66,7 @@ fn sum_evens(nums: [Int]) -> Int {
 
 **Transformation**:
 
-```lumen
+```rust
 // Before
 for item in collection {
     body
@@ -87,7 +87,7 @@ for item in collection {
 With an index, `for i, item in collection`, the position is copied into `i`
 after the element is read and before the increment:
 
-```lumen
+```rust
 let item = collection[__iter_N];
 let i = __iter_N;
 __iter_N = __iter_N + 1;
@@ -103,7 +103,7 @@ loop would never advance.
 When the iterable is anything but a plain variable, it is stored in a temporary
 first so that it is evaluated exactly once:
 
-```lumen
+```rust
 // Before
 for item in loadItems() {
     body
@@ -123,7 +123,7 @@ for item in loadItems() {
 ```
 
 **For strings**:
-```lumen
+```rust
 // Before
 for char in str {
     body
@@ -157,7 +157,7 @@ checked when the loop runs.
 **Goal**: Transform `match` expressions into nested `if-else` statements.
 
 **Simple Value Matching**:
-```lumen
+```rust
 // Before
 match x {
     case 1: { action1(); }
@@ -179,7 +179,7 @@ if x == 1 {
 ```
 
 **Type Matching**:
-```lumen
+```rust
 // Before
 match value {
     case Int: { handleInt(value + 1); }
@@ -210,7 +210,7 @@ The last one is decided by the parser once the whole file is read
 (see [parsing.md](parsing.md)).
 
 **Enum Variant Matching**:
-```lumen
+```rust
 // Before
 match result {
     case Ok(val): { return val; }
@@ -249,14 +249,14 @@ destructuring patterns are rejected by the compiler driver with `E7001`
 
 A case on a variant of an enum ([enums.md](../enums.md)) becomes a test and, at the start of the case, a `let` for each name the pattern binds:
 
-```lumen
+```rust
 match shape {
     case Shape.Rect(w, 0.0): { flat(w); }
     case Shape.Circle(r): { round(r); }
     case Shape.Empty: { }
 }
 ```
-```lumen
+```rust
 if (shape is Shape.Rect) && (shape.Rect#1 == 0.0) {
     let w = shape.Rect#0;
     flat(w);
@@ -287,7 +287,7 @@ A use of a top-level constant is replaced by its value: the expression it is dec
 
 **Goal**: Transform optional chaining into explicit null checks.
 
-```lumen
+```rust
 // Before
 let result = user?.address?.street;
 
@@ -315,7 +315,7 @@ appears: conditions, `let` initializers, return values, arguments.
 
 An earlier version rewrote them into statements with temporaries:
 
-```lumen
+```rust
 // Source                         // What the old rewrite produced
 if a != null && a.ready {         let __tmp_0 = a != null;
     use(a);                       let __tmp_1 = false;
@@ -337,7 +337,7 @@ deep in a condition or a `let` initializer.
 
 `"Hello, ${name}! You are ${age}."` is concatenation, but it is not lowered here: it is the **lexer** that does it. A string with `${...}` in it is handed to the parser as the tokens of
 
-```lumen
+```rust
 ("Hello, " + __text(name) + "! You are " + __text(age) + ".")
 ```
 
@@ -474,7 +474,7 @@ The codes below are defined in `internal/desugar/errors.go`.
 ### E4001: Unsupported Iterable
 
 **Example**:
-```lumen
+```rust
 for x in 42 {  // Cannot iterate over Int
     print(x);
 }
@@ -488,7 +488,7 @@ code is only reached for programs built without it (as in the unit tests).
 ### E4002: Invalid Match Pattern
 
 **Example**:
-```lumen
+```rust
 match x {
     case 1..10: { action(); }  // Range patterns not supported yet
 }
@@ -614,7 +614,7 @@ Desugaring should have **no runtime impact**:
 ### 1. Loop Desugaring → Loop + Break
 
 Alternative desugaring that uses an infinite loop:
-```lumen
+```rust
 // Before
 for item in collection {
     body
@@ -636,7 +636,7 @@ for item in collection {
 ### 2. Pattern Matching Optimization
 
 For dense integer ranges, use jump tables instead of `if-else` chains:
-```lumen
+```rust
 // Before
 match x {
     case 0: { a(); }
@@ -656,7 +656,7 @@ switch_table x {
 
 ### 3. List Comprehensions
 
-```lumen
+```rust
 // Before
 let evens = [x * 2 for x in nums if x % 2 == 0];
 

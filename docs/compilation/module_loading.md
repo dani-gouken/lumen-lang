@@ -10,7 +10,7 @@ What a module is and how it is used is described in [../modules.md](../modules.m
 
 A program of several files is turned into one program, at the very start of the pipeline, by giving every top-level declaration a name that is unique in the whole program and rewriting every reference to it.
 
-```lumen
+```rust
 // physics/body.lum                      // after loading
 pub fn new(x: Int) -> Body { ... }       fn physics.body.new(x: Int) -> physics.body.Body { ... }
 

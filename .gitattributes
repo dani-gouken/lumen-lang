@@ -1,0 +1,3 @@
+# GitHub does not know Lumen. Its syntax is close enough to Rust's for
+# that highlighting to read well: fn, let, struct, enum, impl, match.
+*.lum linguist-language=Rust

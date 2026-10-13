@@ -32,7 +32,7 @@ The entry file itself is not a module and cannot be imported (`E8006`). What oth
 
 There are three forms.
 
-```lumen
+```rust
 import physics.body;                 // 1. the module
 import physics.body as pb;           // 2. the module, under another name
 import physics.collide.{Shape, overlaps};   // 3. names of the module
@@ -40,7 +40,7 @@ import physics.collide.{Shape, overlaps};   // 3. names of the module
 
 **1. The module.** Its declarations are used through the last part of its path:
 
-```lumen
+```rust
 import physics.body;
 
 let b = body.new(3, 4);              // a function
@@ -51,14 +51,14 @@ if value is body.Body { ... }        // type tests, casts and match patterns
 
 **2. Under another name**, when two modules end in the same word or the name is in the way:
 
-```lumen
+```rust
 import a.util;
 import b.util as butil;
 ```
 
 **3. Names of the module**, used as if they were declared in this file:
 
-```lumen
+```rust
 import physics.collide.{Shape, overlaps};
 
 fn touching(a: Shape, b: Shape) -> Bool { return overlaps(a, b); }
@@ -68,7 +68,7 @@ The forms can be combined; importing the same module twice is harmless.
 
 A local variable or parameter hides a module of the same name, as it hides a function:
 
-```lumen
+```rust
 import body;
 fn f(body: Thing) -> Int { return body.size; }   // the parameter's field, not the module
 ```
@@ -79,7 +79,7 @@ Imports are written at the top level of a file, anywhere among the declarations;
 
 **Everything is private to its module unless declared with `pub`.**
 
-```lumen
+```rust
 pub struct Body { x: Int; size: Int; }      // usable from other modules
 pub trait Shape { fn left() -> Int; }
 pub fn new(x: Int, size: Int) -> Body { ... }
@@ -100,7 +100,7 @@ fn atLeastOne(n: Int) -> Int { ... }        // only in this file
 
 A private struct cannot be *named* from outside, but its values can leave the module, typically behind a trait:
 
-```lumen
+```rust
 struct Percent { off: Int; }                       // private
 impl Rule for Percent { ... }
 pub fn percent(off: Int) -> Rule { return Percent { off: off }; }
@@ -112,13 +112,13 @@ In the entry file `pub` changes nothing, since nothing can import it. A single-f
 
 A module can export a name it imported, with `pub import`. This lets one file be the front door of a folder:
 
-```lumen
+```rust
 // physics.lum, next to the folder physics/
 pub import physics.collide.{Shape, overlaps};
 pub import physics.body.{Body};
 ```
 
-```lumen
+```rust
 import physics.{Shape, overlaps};      // without knowing which file declares what
 import physics;                        // or physics.Shape, physics.overlaps
 ```
@@ -129,7 +129,7 @@ Only names can be passed on, not a module as a whole (`pub import physics.body;`
 
 This is allowed, to any depth:
 
-```lumen
+```rust
 // even.lum
 import odd;
 pub fn isEven(n: Int) -> Bool { if n == 0 { return true; } return odd.isOdd(n - 1); }
@@ -145,7 +145,7 @@ It is harmless because a module has nothing that runs when it is loaded: no top-
 
 Any module can implement any trait for any struct it can name:
 
-```lumen
+```rust
 import physics.{Shape};
 
 struct Wall { at: Int; }
@@ -160,7 +160,7 @@ Implementations are global. Two modules implementing the same trait for the same
 
 A function can be declared without a body, for the runtime to provide:
 
-```lumen
+```rust
 pub extern fn sqrt(x: Float) -> Float;
 extern fn readLine() -> String?;
 ```

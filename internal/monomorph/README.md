@@ -6,7 +6,7 @@ This package implements **monomorphization** for the Lumen compiler - the proces
 
 Monomorphization transforms generic code like this:
 
-```lumen
+```rust
 fn identity<T>(x: T) -> T {
     return x;
 }
@@ -20,7 +20,7 @@ fn main() -> Int {
 
 Into concrete, specialized code like this:
 
-```lumen
+```rust
 fn identity_Int(x: Int) -> Int {
     return x;
 }
@@ -113,7 +113,7 @@ The package defines three error codes:
 Generic function/type used but type arguments cannot be inferred.
 
 **Example**:
-```lumen
+```rust
 fn identity<T>(x: T) -> T { return x; }
 
 fn main() -> Void {
@@ -125,7 +125,7 @@ fn main() -> Void {
 A generic function whose instances each need a larger one, without end. Calling itself with the same type arguments is ordinary recursion, not this.
 
 **Example**:
-```lumen
+```rust
 fn recurse<T>(x: T) -> T {
     return recurse<[T]>([x]);  // Infinite: T -> [T] -> [[T]] -> ...
 }
@@ -135,7 +135,7 @@ fn recurse<T>(x: T) -> T {
 Number of type arguments doesn't match number of type parameters.
 
 **Example**:
-```lumen
+```rust
 fn pair<T, U>(x: T, y: U) -> Void { }
 
 fn main() -> Void {

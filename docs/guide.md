@@ -12,7 +12,7 @@ or run without building: `go run ./cmd/lumen <command>`.
 
 ## Hello, World
 
-```lumen
+```rust
 // hello.lum
 fn main() -> Int {
     println("Hello, Lumen!");
@@ -61,7 +61,7 @@ The programs in [`examples/`](../examples) are runnable versions of what follows
 
 ### Values and variables
 
-```lumen
+```rust
 let count = 3;              // type inferred: Int
 let ratio: Float = 0.5;     // or stated
 let name = "lumen";
@@ -87,7 +87,7 @@ An `Int` holds 48 bits, from -140737488355328 to 140737488355327. Arithmetic tha
 
 ### Strings
 
-```lumen
+```rust
 let s = "foo" + "bar";      // concatenation
 strings.len(s)              // 6, with: import std.strings;
 s[0]                        // "f" (a one-character string)
@@ -98,7 +98,7 @@ toString(42) + "!"          // convert other values first
 
 A string can hold expressions, written `${...}`. Each is worked out and put in the text as `println` would write it:
 
-```lumen
+```rust
 let name = "Ada";
 let items = [3, 4];
 println("Hello, ${name}!");                                  // Hello, Ada!
@@ -110,7 +110,7 @@ Anything that is an expression can go between the braces: calls, arithmetic, fie
 
 A text over several lines goes between `"""` and `"""`:
 
-```lumen
+```rust
 let help = """
     usage: todo <command>
       add "title"       quotes need no escaping here
@@ -122,7 +122,7 @@ The line end after the opening quotes and the one before the closing quotes are 
 
 ### Control flow
 
-```lumen
+```rust
 if n < 0 { ... } else if n == 0 { ... } else { ... }
 
 while i < 10 {
@@ -148,7 +148,7 @@ match n {
 
 ### Functions
 
-```lumen
+```rust
 fn add(a: Int, b: Int) -> Int {
     return a + b;
 }
@@ -170,7 +170,7 @@ Functions are values: they can be stored in variables, passed and returned.
 
 ### Arrays
 
-```lumen
+```rust
 let xs = [10, 20, 30];
 xs[0] = 11;                 // replace an element
 push(xs, 40);               // grow
@@ -183,7 +183,7 @@ All elements have the same type. Reading or writing an index that does not exist
 
 ### Structs, traits and methods
 
-```lumen
+```rust
 struct Point { x: Int; y: Int; }
 
 trait Shape {
@@ -209,7 +209,7 @@ Structs are references: `let q = p;` makes `q` and `p` the same value.
 
 There is more to both, all of it in [traits.md](traits.md):
 
-```lumen
+```rust
 struct Config { name: String; port: Int = 8080; tags: [String] = []; }   // fields with a value of their own
 let config = Config { name: "api" };
 
@@ -236,7 +236,7 @@ Inside the header of `if`, `while`, `for` and `match`, wrap a struct literal in 
 
 An enum is a type whose values are one of several variants, each with the values it holds:
 
-```lumen
+```rust
 enum Shape {
     Circle(Float),
     Rect(Float, Float),
@@ -259,7 +259,7 @@ A `match` names what a variant holds (`r`, `w`, `h`) for the length of its case.
 
 Patterns can look inside values that are enums themselves, and match literals:
 
-```lumen
+```rust
 enum Expr { Num(Int), Add(Expr, Expr), Neg(Expr) }
 
 fn simplify(e: Expr) -> Expr {
@@ -273,7 +273,7 @@ fn simplify(e: Expr) -> Expr {
 
 Enums can be generic, and have methods and traits like structs:
 
-```lumen
+```rust
 enum Result<T, E> { Ok(T), Err(E) }
 
 fn divide(a: Int, b: Int) -> Result<Int, String> {
@@ -293,7 +293,7 @@ Values of an enum are equal when they are the same variant holding equal values.
 
 A value with a name, declared outside any function:
 
-```lumen
+```rust
 const WIDTH = 80;
 const HEIGHT = WIDTH / 4;
 const TITLE = "report";
@@ -306,7 +306,7 @@ Constants hold numbers, texts and booleans. For anything else, an array or a str
 
 ### Generic structs
 
-```lumen
+```rust
 struct Stack<T> { items: [T]; }
 
 impl<T> Stack<T> {                       // T is the struct's parameter
@@ -330,7 +330,7 @@ let texts = numbers.map(toString);       // Stack<String>; U is inferred
 
 ### Optionals and casts
 
-```lumen
+```rust
 fn length(name: String?) -> Int {
     if name == null { return 0; }        // from here on, name is a String
     return strings.len(name);
@@ -346,7 +346,7 @@ fn side(shape: Shape) -> Int {
 
 `value is Type` asks the same question without failing, and inside the branch the value has that type:
 
-```lumen
+```rust
 fn describe(value: Any) -> String {
     match value {                        // a match on types reads best
         case Int: { return "number " + toString(value + 1); }
@@ -363,7 +363,7 @@ Null tests work on fields as well: after `if node.next == null { return; }`, `no
 
 Three operators save most of those tests:
 
-```lumen
+```rust
 let city = user?.address?.city;       // String?: null if there is no user, or no address
 let name = user?.name ?? "nobody";    // with a fallback
 user?.rename("Ada");                  // called only if there is a user
@@ -380,7 +380,7 @@ fn port(config: Config) -> Int? {
 
 What a test established about a variable also holds inside a function written after it, as long as nothing ever assigns the variable again:
 
-```lumen
+```rust
 fn tagged(notes: [Note], tag: String?) -> [Note] {
     if tag == null { return notes; }
     return arrays.filter(notes, note -> arrays.contains(note.tags, tag));   // tag: String
@@ -395,7 +395,7 @@ Casts look inside the value: `v as [Int]` checks every element and reports the f
 
 A tuple is a few values together, without a struct to name them: what a function returns when it has two things to say.
 
-```lumen
+```rust
 fn divide(a: Int, b: Int) -> (Int, Int) {
     return (a / b, a % b);
 }
@@ -414,7 +414,7 @@ for i, (name, age) in pairs { ... }
 *   A tuple cannot be changed once made; make a new one.
 *   A `match` takes one apart, and is checked for completeness as for an [enum](enums.md):
 
-```lumen
+```rust
 match (item.quantity < 10, item.supplier != null) {
     case (true, true): { return "reorder"; }
     case (true, false): { return "find a supplier"; }
@@ -428,7 +428,7 @@ Two to six values. Beyond three, or when the values travel far from where they a
 
 A function can be written where it is used. Its long form says every type; its short form says none, and takes them from what it is handed to:
 
-```lumen
+```rust
 let names = arrays.map(people, p -> p.name);                  // p is a Person, the result a String
 let adults = arrays.filter(people, p -> p.age >= 18);
 let total = arrays.fold(people, 0, (sum, p) -> sum + p.age);  // several parameters go in parentheses
@@ -446,7 +446,7 @@ arrays.each(lines, line -> {                                  // several stateme
 *   It works wherever a function type is expected: an argument, a variable or a field declared with one, a `return`. Where nothing says what the parameters are (`let f = x -> x + 1;`), it is an error (`E2037`) and the long form is the one to write: `fn(x: Int) -> Int { return x + 1; }`.
 *   For a generic function, the other arguments say what the parameters are, and the body says what the result is: in `arrays.map(people, p -> p.name)`, `T` is `Person` from the array and `U` is `String` from `p.name`.
 
-```lumen
+```rust
 fn makeCounter() -> fn() -> Int {
     let count = 0;
     return fn() -> Int {
@@ -464,7 +464,7 @@ A closure shares the variables it captures with the function that declared them,
 
 In a loop, each iteration has its own variables, so closures made in different iterations do not interfere:
 
-```lumen
+```rust
 let readers: [fn() -> Int] = [];
 for v in [1, 2, 3] {
     push(readers, fn() -> Int { return v; });
@@ -484,7 +484,7 @@ shop/
     text.lum
 ```
 
-```lumen
+```rust
 // main.lum
 import stock;                    // stock.lum
 import util.text;                // util/text.lum
@@ -497,7 +497,7 @@ fn main() -> Int {
 }
 ```
 
-```lumen
+```rust
 // util/text.lum
 pub fn shout(s: String) -> String { return upper(s) + "!"; }
 
@@ -548,7 +548,7 @@ Available everywhere, without an import:
 
 Everything else comes from the library built into `lumen`, one `import` away:
 
-```lumen
+```rust
 import std.strings;
 import std.arrays;
 import std.math;
@@ -632,7 +632,7 @@ The program stops and exits with code 1. A program stops itself the same way wit
 
 A function whose failure is part of its job returns a `Result`: the value, or the reason there is none. The caller has to look.
 
-```lumen
+```rust
 import std.io;
 import std.result.{Result};
 
@@ -644,7 +644,7 @@ match io.readFile("notes.txt") {
 
 Most often the caller has nothing better to do with a failure than to hand it to its own caller. `?` does that: it gives the value, or returns the failure from the enclosing function.
 
-```lumen
+```rust
 fn order(row: Dict<String>) -> Result<Order, Flaw> {
     let number = whole(row, "order")?;          // an Int, or order() returns the Flaw here
     let quantity = whole(row, "quantity")?;
@@ -656,7 +656,7 @@ The function has to return a `Result` with the same kind of failure; one of anot
 
 A failure that should never happen stops the program; `attempt` is for the few places that must survive it, and gives it back as a value with its message, kind and call stack:
 
-```lumen
+```rust
 import std.result.{Result, attempt};
 
 match attempt(fn() -> Int { return job(); }) {

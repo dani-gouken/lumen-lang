@@ -2,7 +2,7 @@
 
 Lumen is a statically typed language that is small enough to learn in an afternoon and complete enough to write real programs: a web service, a build tool, its own language server. This repository holds all of it: the compiler, the virtual machine, the standard library, and the editor support.
 
-```lumen
+```rust
 import std.http;
 import std.task;
 import std.result.{Result};
@@ -54,7 +54,7 @@ A tour of all of it: [docs/guide.md](docs/guide.md).
 
 Tasks run functions at the same time, and channels carry values between them. There are no locks and no `async` to spread through the code: one task runs at a time and gives way only where it waits, so two tasks never see a value half changed.
 
-```lumen
+```rust
 let lines = task.channel<String>(16);
 task.run(fn() {
     for name in files { lines.send(io.readFile(name).orElse("")); }
@@ -73,7 +73,7 @@ More in [docs/tasks.md](docs/tasks.md).
 
 Built into the `lumen` binary, nothing to install: text, arrays, lists, dictionaries and sets, files and folders, dates, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and a server with routes, random numbers, program arguments, running other programs, a test module, tasks and channels, reflection on values, and the compiler itself as a module.
 
-```lumen
+```rust
 let app = http.router();
 app.get("/hello/:name", fn(request: Request) -> Response {
     return http.text("hello, ${request.params.get("name") ?? "you"}");

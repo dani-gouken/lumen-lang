@@ -73,7 +73,7 @@ Each function compiler keeps a stack of scopes mapping names to registers; a blo
 
 **`let` gives a variable its own register.** The initializer is compiled first. If its result is a temporary (the register was created by this expression), the variable simply adopts it. If the result is *another variable's* register, it is copied:
 
-```lumen
+```rust
 let a = 1;      // %v1 = MOV, 1          a is %v1
 let b = a;      // %v2 = MOV, %v1        b gets a copy, not a's register
 b = 2;          // %v2 = MOV, 2          a is unaffected
@@ -164,7 +164,7 @@ end:                             JMP end
 
 A struct literal becomes an object with its fields set **by name**:
 
-```lumen
+```rust
 Point { x: 1, y: 2 }
 ```
 ```
@@ -185,7 +185,7 @@ How `receiver.name(args)` is compiled depends on the **static type of the receiv
 | a struct without such a method | `name` is a field holding a function | read the field, call it |
 | a trait | any implementing struct may be behind it | look the method up on the value |
 
-```lumen
+```rust
 p.sum()                 // p: Point
 ```
 ```
@@ -193,7 +193,7 @@ p.sum()                 // p: Point
 %v5 = CALL, %v4, %v3            ; the receiver is passed as self
 ```
 
-```lumen
+```rust
 fn measure(s: Shape) -> Int { return s.area(); }
 ```
 ```
@@ -233,7 +233,7 @@ A generic struct is not duplicated per instantiation: `Box<Int>` and `Box<String
 *   a cast to a type the value always has (`n as Any`, `n as Int?`) emits nothing: the result is the value's register;
 *   a cast that can fail calls the host function `__cast` with the value and a **descriptor** of the type:
 
-```lumen
+```rust
 v as Int
 ```
 ```
@@ -269,7 +269,7 @@ A call compiles the callee and the arguments to registers and emits `CALL fn, ar
 
 When the callee is the **name of a user function whose last parameter is variadic**, the arguments beyond the fixed ones are packed into an array:
 
-```lumen
+```rust
 fn sum(first: Int, rest: ...Int) -> Int { ... }
 sum(1, 2, 3)
 ```

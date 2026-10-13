@@ -24,7 +24,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 ### Ranges — M
 
-```lumen
+```rust
 for i in 0..10 { ... }
 ```
 
@@ -32,7 +32,7 @@ for i in 0..10 { ... }
 
 ### Chaining calls — S
 
-```lumen
+```rust
 numbers |> arrays.filter(isEven) |> arrays.map(double) |> arrays.sum()
 ```
 

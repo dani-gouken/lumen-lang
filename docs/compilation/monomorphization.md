@@ -18,7 +18,7 @@ Lumen uses **monomorphization** (similar to Rust, C++, and other statically-type
 ### Example
 
 Given this generic function:
-```lumen
+```rust
 fn identity<T>(x: T) -> T {
     return x;
 }
@@ -31,7 +31,7 @@ fn main() -> Int {
 ```
 
 Monomorphization produces:
-```lumen
+```rust
 fn identity_Int(x: Int) -> Int {
     return x;
 }
@@ -103,7 +103,7 @@ type Instantiation struct {
 Instances that need each other, or themselves, are not a problem: `sorted<T>` calling `sorted<T>` is recursion, and `sorted<Int>` is one instance however often it is needed. What cannot be compiled is a function whose every instance needs a *new*, larger one. That shows as a chain of new instantiations that does not end; it is cut off after 100 links and reported as `E3002`.
 
 **Example**:
-```lumen
+```rust
 fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { ... }
 fn double(x: Int) -> Int { return x * 2; }
 
@@ -174,7 +174,7 @@ func (s TypeSubstitution) Apply(t types.Type) types.Type {
 3. Update the resolution table to point to new declarations
 
 **Example Transformation**:
-```lumen
+```rust
 // Before
 let result = identity<Int>(42);
 
@@ -285,7 +285,7 @@ func (m *Monomorphizer) extractTypeArgs(node ast.Node) []types.Type
 **Description**: Generic function/type is used but type arguments cannot be inferred.
 
 **Example**:
-```lumen
+```rust
 fn identity<T>(x: T) -> T { return x; }
 
 fn main() -> Void {
@@ -301,14 +301,14 @@ fn main() -> Void {
 **Description**: A generic function whose instances each require another instance with a larger type, without end.
 
 **Example**:
-```lumen
+```rust
 fn recurse<T>(x: T) -> T {
     return recurse<[T]>([x]);  // Infinite: T -> [T] -> [[T]] -> ...
 }
 ```
 
 A generic function that calls itself with the *same* type arguments is ordinary recursion and compiles:
-```lumen
+```rust
 fn count<T>(items: [T], from: Int) -> Int {
     if from >= arrays.len(items) { return 0; }
     return 1 + count<T>(items, from + 1);
@@ -322,7 +322,7 @@ fn count<T>(items: [T], from: Int) -> Int {
 **Description**: Number of type arguments doesn't match number of type parameters.
 
 **Example**:
-```lumen
+```rust
 fn pair<T, U>(x: T, y: U) -> (T, U) { ... }
 
 fn main() -> Void {
@@ -335,7 +335,7 @@ fn main() -> Void {
 
 **Note on Duplicate Instantiations**: Multiple calls to the same generic with the same type arguments is normal and expected behavior. The monomorphizer will generate only **one** concrete instance and reuse it for all call sites:
 
-```lumen
+```rust
 fn identity<T>(x: T) -> T { return x; }
 
 fn main() -> Int {
@@ -353,7 +353,7 @@ This is an implementation detail handled by the instantiation cache - the monomo
 
 In many cases, type arguments can be inferred from usage context:
 
-```lumen
+```rust
 fn identity<T>(x: T) -> T { return x; }
 
 fn main() -> Int {
