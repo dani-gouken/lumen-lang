@@ -966,3 +966,89 @@ func TestLengthIsNotAField(t *testing.T) {
 		t.Errorf("expected the length of an object to be refused, got %v", err)
 	}
 }
+
+// ONCE runs the function of a constant the first time, and hands out what
+// it returned every time after that, frozen.
+func TestOnceRunsItsFunctionOnce(t *testing.T) {
+	chunk := NewChunk()
+	chunk.Code = []Instr{
+		// main: asks for the constant three times, returns the last
+		NewInstr(OpONCE, 1, 1, 0), // 0
+		NewInstr(OpONCE, 2, 1, 0), // 1
+		NewInstr(OpONCE, 0, 1, 0), // 2
+		NewInstr(OpRET, 0, 0, 0),  // 3
+		// maker: a new array holding a new array
+		NewInstr(OpNEWARRAY, 0, 4, 0), // 4
+		NewInstr(OpNEWARRAY, 1, 4, 0), // 5
+		NewInstr(OpARRPUSH, 0, 1, 0),  // 6
+		NewInstr(OpRET, 0, 0, 0),      // 7
+	}
+	chunk.Prototypes = []FunctionPrototype{
+		{Name: "main", CodeStart: 0, CodeSize: 4, RegisterCount: 3},
+		{Name: "__const.TABLE", CodeStart: 4, CodeSize: 4, RegisterCount: 2},
+	}
+	machine := NewVM()
+	result, err := machine.Exec(chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outer := header(result)
+	if outer == nil || outer.Type != ObjTypeArray || !outer.Frozen {
+		t.Fatalf("expected a frozen array, got %s", result.String())
+	}
+	inner := (*ArrayObj)(unsafe.Pointer(outer)).elements[0]
+	if !frozen(inner) {
+		t.Errorf("expected what the constant holds to be frozen too")
+	}
+
+	// Asked twice in one run: the very same value, not another like it
+	chunk.Code[1] = NewInstr(OpONCE, 2, 1, 0)
+	chunk.Code[2] = NewInstr(OpEQ, 0, 1, 2)
+	same, err := NewVM().Exec(chunk)
+	if err != nil || same != NewBool(true) {
+		t.Errorf("expected the same value both times, got %s, %v", same.String(), err)
+	}
+}
+
+func TestFrozenValuesRefuseEveryWrite(t *testing.T) {
+	writes := map[string][]Instr{
+		"SETELEM":  {NewInstr(OpLOADI, 1, 0, 0), NewInstr(OpSETELEM, 0, 1, 1)},
+		"SETINDEX": {NewInstr(OpLOADI, 1, 0, 0), NewInstr(OpSETINDEX, 0, 1, 1)},
+		"ARRPUSH":  {NewInstr(OpARRPUSH, 0, 0, 0)},
+	}
+	for name, write := range writes {
+		chunk := NewChunk()
+		chunk.Code = append([]Instr{NewInstr(OpONCE, 0, 1, 0)}, write...)
+		chunk.Code = append(chunk.Code, NewInstr(OpRET, 0, 0, 0))
+		maker := len(chunk.Code)
+		chunk.Code = append(chunk.Code,
+			NewInstr(OpNEWARRAY, 0, 4, 0),
+			NewInstr(OpLOADI, 1, 7, 0),
+			NewInstr(OpARRPUSH, 0, 1, 0),
+			NewInstr(OpRET, 0, 0, 0))
+		chunk.Prototypes = []FunctionPrototype{
+			{Name: "main", CodeStart: 0, CodeSize: maker, RegisterCount: 3},
+			{Name: "__const.XS", CodeStart: maker, CodeSize: 4, RegisterCount: 2},
+		}
+		_, err := NewVM().Exec(chunk)
+		if err == nil || !strings.Contains(err.Error(), "cannot change what a constant holds") {
+			t.Errorf("%s: expected the write to be refused, got %v", name, err)
+		}
+	}
+}
+
+// A chunk is refused when ONCE names a function that is not one of a
+// constant: none at all, or one that takes arguments.
+func TestOnceIsVerified(t *testing.T) {
+	for name, protos := range map[string][]FunctionPrototype{
+		"no such function":           {{Name: "main", CodeStart: 0, CodeSize: 2, RegisterCount: 2}},
+		"a function of one argument": {{Name: "main", CodeStart: 0, CodeSize: 2, RegisterCount: 2}, {Name: "f", CodeStart: 1, CodeSize: 1, RegisterCount: 2, ArgCount: 1}},
+	} {
+		chunk := NewChunk()
+		chunk.Code = []Instr{NewInstr(OpONCE, 0, 1, 0), NewInstr(OpRET, 0, 0, 0)}
+		chunk.Prototypes = protos
+		if err := Verify(chunk); err == nil {
+			t.Errorf("%s: expected the chunk to be refused", name)
+		}
+	}
+}

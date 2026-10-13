@@ -451,7 +451,9 @@ const START = Light.Red;
 const PALETTE = [RED, Color { r: 0, g: 0, b: 0 }];
 ```
 
-Such a constant is made again wherever it is used, so each use is a value of its own: `let mine = RED; mine.r = 0;` changes `mine` and nothing else, and assigning through the constant itself (`RED.r = 0;`) is an error. What a function works out is not a constant: write the function, and call it.
+Such a constant is made once, the first time the program uses it, and is that one value everywhere: reading it costs what reading a variable costs, however large it is. So nothing may change it. `RED.r = 0;` is refused when the program is compiled, and a write through another name (`let mine = RED; mine.r = 0;`, or `push` in a function it was given to) stops the program where it happens. To change something, make a copy and change that: `arrays.copy(PRIMES)`, or a new struct with the fields of the constant.
+
+What a function works out is not a constant: write the function, and call it.
 
 ### Generic structs
 

@@ -592,7 +592,7 @@ var direct = map[ir.OpType]bool{
 	ir.OpAdd: true, ir.OpSub: true, ir.OpMul: true, ir.OpDiv: true, ir.OpMod: true,
 	ir.OpBitAnd: true, ir.OpBitOr: true, ir.OpBitXor: true, ir.OpShl: true, ir.OpShr: true,
 	ir.OpEq: true, ir.OpNeq: true, ir.OpLt: true, ir.OpLte: true, ir.OpGt: true, ir.OpGte: true,
-	ir.OpNeg: true, ir.OpNot: true, ir.OpGetField: true, ir.OpGetIndex: true, ir.OpLen: true,
+	ir.OpNeg: true, ir.OpNot: true, ir.OpGetField: true, ir.OpGetIndex: true, ir.OpLen: true, ir.OpOnce: true,
 	ir.OpGetMethod: true, ir.OpLoadUpvalue: true, ir.OpCall: true,
 }
 
@@ -1120,6 +1120,16 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 		// the array
 		if f.arity(instr, 3) {
 			f.emit(vm.OpSETELEM, f.reg(instr.Operands[0]), f.reg(instr.Operands[1]), f.reg(instr.Operands[2]))
+		}
+	case ir.OpOnce:
+		if f.arity(instr, 1) {
+			name, _ := instr.Operands[0].(ir.Constant).Val.(string)
+			index, known := f.g.protoIndex[name]
+			if !known {
+				f.fail(ErrUnsupportedIR, fmt.Sprintf("the constant made by %s has no function", name), "")
+				break
+			}
+			f.emit(vm.OpONCE, f.dest(instr), uint16(index), 0)
 		}
 	case ir.OpLen:
 		if f.arity(instr, 1) {

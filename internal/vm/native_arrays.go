@@ -1,5 +1,7 @@
 package vm
 
+import "fmt"
+
 // The natives of std.arrays: taking items out of an array, and putting one
 // in the middle, without making the array again. Lumen itself can only add
 // at the end (push) and replace (xs[i] = v), so what shortens an array has
@@ -37,6 +39,9 @@ func init() {
 			if err != nil {
 				return NewNull(), err
 			}
+			if arr.header.Frozen {
+				return NewNull(), fmt.Errorf(errFrozen)
+			}
 			arr.removeAt(len(arr.elements) - 1)
 			return NewNull(), nil
 		}},
@@ -46,6 +51,9 @@ func init() {
 			arr, err := argArray(args, 0)
 			if err != nil {
 				return NewNull(), err
+			}
+			if arr.header.Frozen {
+				return NewNull(), fmt.Errorf(errFrozen)
 			}
 			index, err := argInt(args, 1)
 			if err != nil {
@@ -63,6 +71,9 @@ func init() {
 			arr, err := argArray(args, 0)
 			if err != nil {
 				return NewNull(), err
+			}
+			if arr.header.Frozen {
+				return NewNull(), fmt.Errorf(errFrozen)
 			}
 			index, err := argInt(args, 1)
 			if err != nil {
@@ -93,6 +104,9 @@ func init() {
 			arr, err := argArray(args, 0)
 			if err != nil {
 				return NewNull(), err
+			}
+			if arr.header.Frozen {
+				return NewNull(), fmt.Errorf(errFrozen)
 			}
 			for i := range arr.elements {
 				arr.elements[i] = NewNull()

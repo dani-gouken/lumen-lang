@@ -455,6 +455,14 @@ func (fc *FunctionCompiler) compileCallExpr(expr *ast.CallExpr) *ir.Register {
 		}
 	}
 
+	// A constant that is made once: its function is only run the first time
+	if ident, ok := expr.Func.(*ast.Ident); ok && len(expr.Args) == 0 && strings.HasPrefix(ident.Name, resolve.ConstantPrefix) {
+		fc.setPos(expr)
+		dest := fc.builder.NewRegister()
+		fc.builder.Emit(ir.OpOnce, dest, ir.Constant{Val: ident.Name, Type: "FuncRef"})
+		return dest
+	}
+
 	// The length of an array or a text is one instruction, not a call
 	if ident, ok := expr.Func.(*ast.Ident); ok && len(expr.Args) == 1 && isLengthFunction(ident.Name) {
 		if _, hidden := fc.lookup(ident.Name); !hidden {

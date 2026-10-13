@@ -130,6 +130,11 @@ const (
 
 	// Whether a value is of a struct, or a variant of an enum, by the name
 	// its values carry: what a case of a match on an enum asks.
+	// The value of a constant that is a struct, an array or a value of an
+	// enum: what the function B returns, which is run the first time and
+	// never again. What it returned is frozen (see frozen.go).
+	OpONCE // A = dest, B = the function that makes the value
+
 	OpISTYPE // A = dest (a Bool), B = the value, C = the constant of the name
 	OpJNTYPE // A = the value, B = the constant of the name, C = where to go on unless it is
 
@@ -289,7 +294,7 @@ func (i Instr) String() string {
 		return formatInstr("CALLK", i.A, i.B, i.C)
 	case OpCALLX:
 		return formatInstr("CALLX", i.A, i.B, i.C)
-	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI, OpISTYPE, OpJNTYPE, OpGETMETHOD, OpCALLM, OpSWITCH, OpCASE:
+	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI, OpONCE, OpISTYPE, OpJNTYPE, OpGETMETHOD, OpCALLM, OpSWITCH, OpCASE:
 		return formatInstr(shortNames[i.Op], i.A, i.B, i.C)
 	case OpGC:
 		return "GC"
@@ -326,6 +331,7 @@ var shortNames = map[OpCode]string{
 	OpJNLT: "JNLT", OpJNLE: "JNLE", OpJNEQ: "JNEQ", OpJNNE: "JNNE",
 	OpJNLTI: "JNLTI", OpJNLEI: "JNLEI", OpJNGTI: "JNGTI", OpJNGEI: "JNGEI", OpJNEQI: "JNEQI", OpJNNEI: "JNNEI",
 	OpADDI: "ADDI", OpSUBI: "SUBI",
+	OpONCE:   "ONCE",
 	OpISTYPE: "ISTYPE", OpJNTYPE: "JNTYPE",
 	OpGETMETHOD: "GETMETHOD", OpCALLM: "CALLM",
 	OpSWITCH: "SWITCH", OpCASE: "CASE",

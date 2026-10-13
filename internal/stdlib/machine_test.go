@@ -1489,10 +1489,11 @@ func TestWholeNumbersAreTakenForFloats(t *testing.T) {
 }
 
 // Constants that are structs, arrays and values of enums: made of
-// constants, used anywhere, and each use a value of its own.
+// constants, used anywhere, and every use the same value.
 func TestConstantsThatAreStructsAndArrays(t *testing.T) {
 	out, err := runWith(t, 16<<20, `
 		import std.arrays;
+		import std.reflect;
 		import std.strings;
 
 		struct Color { r: Int; g: Int; b: Int; a: Int = 255; }
@@ -1532,15 +1533,15 @@ func TestConstantsThatAreStructsAndArrays(t *testing.T) {
 			println(area(UNIT), area(PAGE), ONE / 2, HALF, HALF * 2 == ONE);
 			println(PLAIN.name, PLAIN.ink.a, PLAIN.paper.r, PLAIN.margins, PLAIN.paper.a);
 
-			// Each use is a value of its own: changing one changes nothing else
-			let mine = RED;
+			// Every use is the same value, made once
+			println(RED == RED, PALETTE[0] == RED, PLAIN.ink == CLEAR, PRIMES == PRIMES);
+
+			// A copy is the program's to change
+			let mine = Color { r: RED.r, g: RED.g, b: RED.b };
 			mine.r = 0;
-			let more = PRIMES;
+			let more = arrays.copy(PRIMES);
 			push(more, 13);
-			let theme = PLAIN;
-			theme.ink.a = 99;
-			push(theme.margins, 1);
-			println(mine.r, RED.r, more, PRIMES, theme.ink.a, PLAIN.ink.a, CLEAR.a, PLAIN.margins);
+			println(mine.r, RED.r, more, PRIMES);
 
 			// In a loop, a pattern and a closure
 			let total = 0;
@@ -1558,7 +1559,8 @@ func TestConstantsThatAreStructsAndArrays(t *testing.T) {
 		"mon-tue-wed 1 [[1, 0], [0, 1]] true 3 true",
 		"3 619.5 0.5 0.5 true",
 		"plain 3 0 255 [3, 6] 255",
-		"0 230 [2, 3, 5, 7, 11, 13] [2, 3, 5, 7, 11] 99 0 0 [3, 6]",
+		"true true true true",
+		"0 230 [2, 3, 5, 7, 11, 13] [2, 3, 5, 7, 11]",
 		"28 [230, 460] stop")
 }
 
@@ -1698,4 +1700,120 @@ func TestGenericCallsAreSpecializedEverywhere(t *testing.T) {
 			}
 		})
 	}
+}
+
+// What a constant holds is the same value wherever the constant is used,
+// so nothing may change it: by any way of writing to a struct or an array,
+// through any name it was given, however deep.
+func TestConstantsCannotBeChanged(t *testing.T) {
+	decls := `
+		import std.arrays;
+		import std.reflect;
+		import std.result;
+		import std.result.{Result};
+
+		struct Color { r: Int; g: Int; b: Int; }
+		struct Theme { ink: Color; margins: [Int]; }
+		enum Shape { Circle(Color), Dot }
+
+		const RED = Color { r: 230, g: 41, b: 55 };
+		const PRIMES = [2, 3, 5, 7];
+		const GRID = [[1, 0], [0, 1]];
+		const PLAIN = Theme { ink: RED, margins: [1, 2] };
+		const PALETTE = [RED, Color { r: 0, g: 0, b: 0 }];
+		const ROUND = Shape.Circle(RED);
+
+		fn darken(c: Color) { c.r = 0; }
+		fn grow(xs: [Int]) { push(xs, 1); }
+	`
+	writes := map[string]string{
+		"a field, through a variable":         `let c = RED; c.r = 0;`,
+		"a field, added to":                   `let c = RED; c.g += 1;`,
+		"a field, in a function":              `darken(RED);`,
+		"a field of a struct in a struct":     `let t = PLAIN; t.ink.r = 0;`,
+		"a field of a struct in an array":     `let first = PALETTE[0]; first.b = 0;`,
+		"a field of a struct in a variant":    `match ROUND { case Shape.Circle(c): { c.r = 0; } case Shape.Dot: { } }`,
+		"a field of a struct, from a loop":    `for c in PALETTE { c.r = 1; }`,
+		"an item":                             `let xs = PRIMES; xs[0] = 1;`,
+		"an item of an array in an array":     `let row = GRID[0]; row[0] = 9;`,
+		"an item of an array in a struct":     `let m = PLAIN.margins; m[0] = 9;`,
+		"an array pushed onto":                `let xs = PRIMES; push(xs, 11);`,
+		"an array pushed onto in a function":  `grow(PRIMES);`,
+		"an array a field holds, pushed onto": `push(PLAIN.margins, 3);`,
+		"the last item taken out":             `let xs = PRIMES; arrays.pop(xs);`,
+		"an item taken out":                   `let xs = PRIMES; arrays.removeAt(xs, 0);`,
+		"an item put in":                      `let xs = PRIMES; arrays.insertAt(xs, 0, 1);`,
+		"an array emptied":                    `let xs = PRIMES; arrays.clear(xs);`,
+		"a field set by its name":             `reflect.set(RED, "r", 0);`,
+	}
+	for name, body := range writes {
+		t.Run(name, func(t *testing.T) {
+			out, err := runWith(t, 16<<20, decls+"fn main() { "+body+" println(RED.r, PRIMES, GRID, PLAIN.margins); }", nil)
+			if err == nil || !strings.Contains(err.Error(), "cannot change what a constant holds") {
+				t.Errorf("expected the write to be refused, got %q, %v", out, err)
+			}
+		})
+	}
+
+	// Refused, the constant is what it was, and the program can go on
+	out, err := runWith(t, 16<<20, decls+`
+		fn main() {
+			match result.attempt(() -> { grow(PRIMES); return 1; }) {
+				case Result.Ok(n): println("grew");
+				case Result.Err(failure): println(strings.first(failure.message, 35));
+			}
+			println(RED.r, PRIMES, GRID, PLAIN.margins, PLAIN.ink.r);
+
+			// What is made from a constant, and not the constant, can change
+			let copy = arrays.copy(PRIMES);
+			push(copy, 11);
+			copy[0] = 0;
+			let rows = arrays.map(GRID, row -> arrays.copy(row));
+			rows[0][0] = 9;
+			let mine = Color { r: RED.r, g: RED.g, b: RED.b };
+			mine.r = 1;
+			let theme = Theme { ink: mine, margins: arrays.concat(PLAIN.margins, [3]) };
+			theme.ink.g = 2;
+			println(copy, rows, mine.r, theme.ink.g, theme.margins);
+			println(RED.r, RED.g, PRIMES, GRID, PLAIN.margins);
+		}
+	`+"\nimport std.strings;\n", nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out,
+		"cannot change what a constant holds",
+		"230 [2, 3, 5, 7] [[1, 0], [0, 1]] [1, 2] 230",
+		"[0, 3, 5, 7, 11] [[9, 0], [0, 1]] 1 2 [1, 2, 3]",
+		"230 41 [2, 3, 5, 7] [[1, 0], [0, 1]] [1, 2]")
+}
+
+// A constant is made the first time it is used, once, however often and
+// from wherever it is used after that; one that is never used is not made.
+func TestConstantsAreMadeOnce(t *testing.T) {
+	out, err := runWith(t, 2<<20, `
+		import std.reflect;
+
+		struct Point { x: Int; y: Int; }
+		const ORIGIN = Point { x: 0, y: 0 };
+		const TABLE = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16];
+		const UNUSED = [ORIGIN, ORIGIN];
+
+		fn origin() -> Point { return ORIGIN; }
+		fn at(i: Int) -> Int { return TABLE[i % 16]; }
+
+		fn main() {
+			// A million uses in a heap that could not hold a million tables
+			let sum = 0;
+			for i in 0..1000000 { sum += TABLE[i % 16] + ORIGIN.x + at(i); }
+			println(sum);
+			println(origin() == ORIGIN, origin() == origin(), TABLE == TABLE);
+			let f = () -> ORIGIN;
+			println(f() == ORIGIN);
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out, "17000000", "true true true", "true")
 }

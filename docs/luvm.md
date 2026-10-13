@@ -159,6 +159,7 @@ type Chunk struct {
 - `MOD r_dest r_a r_b` - Remainder
 - `NEG r_dest r_a` - Negation
 - `SWITCH r_value count else` followed by `count` words `CASE name target` - Go on at the target of the case that names the type of the value, or at `else` for a value of none of them
+- `ONCE r_dest function` - The value of a constant that is made (`const RED = Color { ... };`): what the function of the chunk with that number returns. The function takes nothing and captures nothing (verified), is run the first time the instruction is reached in a run, and its result is kept for the others and for the collector. The result is frozen with everything it holds: `SETFIELD`, `SETELEM`, `SETINDEX`, `ARRPUSH`, `DELFIELD` and the native functions that change an array or a field refuse a frozen value.
 - `ISTYPE r_dest r_value name`, `JNTYPE r_value name target` - Whether a value is of a struct or a variant, by the name it carries; the second goes on at `target` unless it is
 - `ADDI r_dest r_a k`, `SUBI r_dest r_a k` - Addition and subtraction of a number `k` (0 to 65535) written in the instruction
 - `NOT r_dest r_a` - Boolean negation

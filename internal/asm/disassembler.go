@@ -378,6 +378,9 @@ func FormatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 	case vm.OpCALLM:
 		return fmt.Sprintf("CALLM r%d %d %d", instr.A, instr.B, instr.C)
 
+	case vm.OpONCE:
+		return fmt.Sprintf("ONCE r%d %d", instr.A, instr.B)
+
 	case vm.OpISTYPE:
 		return fmt.Sprintf("ISTYPE r%d r%d %d", instr.A, instr.B, instr.C)
 

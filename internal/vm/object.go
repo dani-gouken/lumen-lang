@@ -19,6 +19,10 @@ const (
 type ObjHeader struct {
 	Type   ObjType
 	Marked bool
+	// Frozen marks what a constant holds: an object or an array that is
+	// made once and is the same wherever the constant is used, so that
+	// nothing may change it (see freeze).
+	Frozen bool
 	Next   *ObjHeader
 }
 

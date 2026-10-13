@@ -60,6 +60,7 @@ const (
 	OpGetIndex // Dest = Src1[Src2]
 	OpSetIndex // Src1[Src2] = Src3
 	OpLen      // Dest = length of Src1 (array or string)
+	OpOnce     // Dest = what the function Src1 returns, which is only run the first time
 	OpPush     // Append Src2 to array Src1
 
 	// Closures
@@ -149,6 +150,8 @@ func (op OpType) String() string {
 		return "GET_INDEX"
 	case OpSetIndex:
 		return "SET_INDEX"
+	case OpOnce:
+		return "ONCE"
 	case OpLen:
 		return "LEN"
 	case OpPush:

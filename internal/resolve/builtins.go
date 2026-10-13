@@ -7,6 +7,13 @@ import "github.com/dani-gouken/lumen/internal/ast"
 // language has no `.length`.
 const LengthFunction = "__len"
 
+// ConstantPrefix starts the name of the function that makes the value of
+// a constant that is a struct, an array or a value of an enum. No program
+// writes such a function: the compiler does, one for each of those
+// constants, and a use of the constant is a call of it that is only run
+// the first time.
+const ConstantPrefix = "__const."
+
 // Builtins returns declarations for the host-provided functions that every
 // module can call without importing anything. They have no body; the VM
 // supplies the implementation as extern functions of the same name.

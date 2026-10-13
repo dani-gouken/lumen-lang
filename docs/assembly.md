@@ -876,6 +876,7 @@ A listing made from a Lumen program (`lumen build program.lum program.lasm`) sho
 | `ADDI rd ra k`, `SUBI rd ra k` | `rd = ra + k`, `rd = ra - k` |
 | `CALLM rW n name`, `GETMETHOD rd ra name` | Calls the method `name` of the value in `rW+1`, found by the type the value carries; the second gives the method as a value |
 | `SWITCH ra n else`, then `n` lines `CASE name target` | Goes on at the target of the case naming the type of the value in `ra`, or at `else` |
+| `ONCE rd function` | The value of a constant that is a struct, an array or a value of an enum: what `function` returns. It is run the first time and never again; what it returned is frozen, with all it holds, and every write to a frozen value is refused |
 | `ISTYPE rd ra name`, `JNTYPE ra name target` | Whether the value in `ra` is of the struct or variant `name` (a constant); the second goes on at `target` unless it is |
 
 In assembly, write the instructions they stand for: `NEWFUNC` and `CALL`, a comparison and `JMPIFNOT`, `LOADI` and `ADD`, a call of `__is`.

@@ -56,6 +56,12 @@ type chunkCache struct {
 
 	// How many SWITCH instructions have been given a number (see switchTo)
 	switches int32
+
+	// The value of each constant that is made once (see the ONCE
+	// instruction), by the function that makes it, and whether it is
+	// being made. Not there until a first one is.
+	once   []Value
+	making []bool
 }
 
 // noMethod is what is remembered of a type that has no method of a name.
@@ -1017,6 +1023,20 @@ func (vm *VM) execute(base int) (Value, error) {
 			vm.pinned = vm.pinned[:pinned]
 			vm.collectIfNeeded()
 
+		case OpONCE:
+			// The value of a constant: A = dest, B = the function that
+			// makes it, which is only run the first time
+			if kept.once != nil && kept.once[instr.B] != 0 {
+				regs[instr.A] = kept.once[instr.B]
+				break
+			}
+			value, err := vm.once(chunk, kept, int(instr.B))
+			if err != nil {
+				return NewNull(), err
+			}
+			regs = vm.regs
+			regs[instr.A] = value
+
 		case OpJNLT:
 			// Go on at C unless A < B
 			a, b := regs[instr.A], regs[instr.B]
@@ -1455,6 +1475,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			if index < 0 || index >= cap(arrayObj.elements) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
 			}
+			if arrayObj.header.Frozen {
+				return NewNull(), vm.runtimeError(errFrozen)
+			}
 			arrayObj.Set(index, regs[instr.C])
 
 		case OpSETELEM:
@@ -1473,6 +1496,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 			if index < 0 || index >= len(arrayObj.elements) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
+			}
+			if arrayObj.header.Frozen {
+				return NewNull(), vm.runtimeError(errFrozen)
 			}
 			arrayObj.elements[index] = regs[instr.C]
 
@@ -1509,6 +1535,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			if target == nil || target.Type != ObjTypeObject {
 				_, err := vm.objectOperand("SETFIELD", regs[instr.A])
 				return NewNull(), err
+			}
+			if target.Frozen {
+				return NewNull(), vm.runtimeError(errFrozen)
 			}
 			obj := (*ObjectObj)(unsafe.Pointer(target))
 
@@ -1565,6 +1594,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			if err != nil {
 				return NewNull(), err
 			}
+			if arrayObj.header.Frozen {
+				return NewNull(), vm.runtimeError(errFrozen)
+			}
 			before := cap(arrayObj.elements)
 			arrayObj.elements = append(arrayObj.elements, regs[instr.B])
 			if after := cap(arrayObj.elements); after > before {
@@ -1596,6 +1628,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			fieldName, err := vm.fieldName("DELFIELD", instr.C)
 			if err != nil {
 				return NewNull(), err
+			}
+			if objObj.header.Frozen {
+				return NewNull(), vm.runtimeError(errFrozen)
 			}
 			regs[instr.A] = NewBool(objObj.Delete(fieldName))
 

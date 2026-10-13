@@ -101,7 +101,7 @@ Patterns on literals, ranges, types and the variants of an enum (with names, lit
 
 ### Variables outside functions — M
 
-**Today**: `const LIMIT = 100;` at the top level works, and a constant can be a struct, an array or a value of an enum made of constants. There are no global variables. A constant is replaced by its value at each use, so a constant struct or array is made again each time: every use is a value of its own, which is why assigning through one is refused, and two uses of a constant struct are not the same object.
+**Today**: `const LIMIT = 100;` at the top level works, and a constant can be a struct, an array or a value of an enum made of constants. There are no global variables. A constant struct or array is made once and frozen: every use is the same value, and a write to it, through any name, is a runtime error. There is no way to say that a value of the program's own is read-only, and no copy of a struct other than writing its fields out.
 
 **Notes**: Needs storage that lives for the whole run (global slots in the VM) and an order in which initializers run across modules.
 

@@ -35,6 +35,11 @@ type Desugarer struct {
 	// Source lines for error reporting (map of line number to line content)
 	sourceLines map[int]string
 
+	// The functions that make the constants that are made once (see
+	// madeOnce), by the constant, in the order they were first needed
+	constants     map[*ast.ConstDecl]*ast.FnDecl
+	constantOrder []*ast.FnDecl
+
 	// The structs of the program by name, found when first asked for
 	structs map[string]*ast.StructDecl
 	// The value of each field that has one of its own, desugared
@@ -76,6 +81,12 @@ func (d *Desugarer) Desugar() (*ast.Program, *DesugarInfo) {
 		}
 		newDecl := d.desugarDecl(decl)
 		newDecls = append(newDecls, newDecl)
+	}
+
+	// The functions of the constants that are made once. Making one may
+	// need another, so the list can grow while it is gone through
+	for i := 0; i < len(d.constantOrder); i++ {
+		newDecls = append(newDecls, d.constantOrder[i])
 	}
 
 	newProg := &ast.Program{
@@ -350,6 +361,9 @@ func (d *Desugarer) desugarExprAsWritten(expr ast.Expr) ast.Expr {
 		return &ast.TypeTestExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Type: expr.Type}
 	case *ast.Ident:
 		if decl := d.constOf(expr); decl != nil {
+			if once := d.madeOnce(decl, expr.BaseNode); once != nil {
+				return once
+			}
 			return d.inlineConstant(decl.Value, expr.BaseNode, 0)
 		}
 		return expr

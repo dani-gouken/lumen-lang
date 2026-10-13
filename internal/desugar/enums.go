@@ -28,16 +28,10 @@ func (d *Desugarer) constOf(ident *ast.Ident) *ast.ConstDecl {
 // The new nodes are positioned at the use: if working the value out fails
 // when the program runs (a division by zero), that is the line to show.
 func (d *Desugarer) inlineConstant(value ast.Expr, at ast.BaseNode, depth int) ast.Expr {
-	switch value.(type) {
-	case *ast.StructInitExpr, *ast.ArrayLiteralExpr, *ast.MemberExpr:
-		// A struct, an array, a value of an enum: made again here, as
-		// the constant has it. Each use has its own, so that changing
-		// one does not change what the constant is elsewhere.
+	if composite(d, value) {
+		// Without the constant it belongs to (a constant used inside the
+		// value of another is asked for by its name, below): made here
 		return d.desugarExpr(value)
-	case *ast.CallExpr:
-		if _, variant := d.variantOf(value.(*ast.CallExpr).Func); variant != nil {
-			return d.desugarExpr(value)
-		}
 	}
 	inlined := d.inlineConstantAsWritten(value, at, depth)
 	if node, ok := value.(ast.Widenable); ok && node.IsWidened() {
@@ -45,6 +39,59 @@ func (d *Desugarer) inlineConstant(value ast.Expr, at ast.BaseNode, depth int) a
 		return d.asFloat(inlined)
 	}
 	return inlined
+}
+
+// composite reports whether the value of a constant is a struct, an array
+// or a value of an enum: something that is made, where a number or a text
+// is written.
+func composite(d *Desugarer, value ast.Expr) bool {
+	switch e := value.(type) {
+	case *ast.StructInitExpr, *ast.ArrayLiteralExpr:
+		return true
+	case *ast.MemberExpr:
+		_, variant := d.variantOf(e)
+		return variant != nil
+	case *ast.CallExpr:
+		_, variant := d.variantOf(e.Func)
+		return variant != nil
+	}
+	return false
+}
+
+// madeOnce is a use of a constant that is a struct, an array or a value of
+// an enum: a call of the function that makes its value, which the machine
+// only runs the first time (see vm.OpONCE). Every use of the constant is
+// then the same value, and reading it costs what reading a variable does.
+//
+//	const RED = Color { r: 230, g: 41, b: 55 };
+//
+//	fn __const.RED() -> Color { return Color { r: 230, g: 41, b: 55, a: 255 }; }
+//	... __const.RED() ...
+//
+// It returns nil for a constant that is not made that way.
+func (d *Desugarer) madeOnce(decl *ast.ConstDecl, at ast.BaseNode) ast.Expr {
+	if !composite(d, decl.Value) {
+		return nil
+	}
+	maker, known := d.constants[decl]
+	if !known {
+		returns := d.typeToASTType(d.typeInfo.Types[decl.Value], decl.Position())
+		if returns == nil {
+			return nil
+		}
+		if d.constants == nil {
+			d.constants = make(map[*ast.ConstDecl]*ast.FnDecl)
+		}
+		maker = &ast.FnDecl{BaseNode: decl.BaseNode, Name: resolve.ConstantPrefix + decl.Name, ReturnType: returns}
+		// Known before its value is made: a constant that held itself
+		// would otherwise be made for ever
+		d.constants[decl] = maker
+		d.constantOrder = append(d.constantOrder, maker)
+		maker.Body = &ast.BlockStmt{BaseNode: decl.BaseNode, Stmts: []ast.Stmt{
+			&ast.ReturnStmt{BaseNode: decl.BaseNode, Value: d.desugarExpr(decl.Value)},
+		}}
+	}
+	return &ast.CallExpr{BaseNode: at, Func: &ast.Ident{BaseNode: at, Name: maker.Name}}
 }
 
 func (d *Desugarer) inlineConstantAsWritten(value ast.Expr, at ast.BaseNode, depth int) ast.Expr {
@@ -68,6 +115,9 @@ func (d *Desugarer) inlineConstantAsWritten(value ast.Expr, at ast.BaseNode, dep
 		}
 	case *ast.Ident:
 		if decl := d.constOf(e); decl != nil {
+			if once := d.madeOnce(decl, at); once != nil {
+				return once
+			}
 			return d.inlineConstant(decl.Value, at, depth+1)
 		}
 	case *ast.CallExpr:

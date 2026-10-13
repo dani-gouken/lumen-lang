@@ -183,6 +183,9 @@ func init() {
 			if was != "null" && is != "null" && was != is {
 				return NewNull(), fmt.Errorf("the field '%s' of %s holds %s, it cannot be given %s", name, obj.shape.typeName, article(typeName(old)), article(typeName(args[2])))
 			}
+			if obj.header.Frozen {
+				return NewNull(), fmt.Errorf(errFrozen)
+			}
 			obj.Set(name, args[2])
 			return NewNull(), nil
 		}},

@@ -201,6 +201,16 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 		case OpCASE:
 			err = fmt.Errorf("CASE without SWITCH before it")
 
+		case OpONCE:
+			if err = v.registers(instr.A); err == nil {
+				switch {
+				case int(instr.B) >= len(chunk.Prototypes):
+					err = fmt.Errorf("function %d of %d", instr.B, len(chunk.Prototypes))
+				case chunk.Prototypes[instr.B].ArgCount != 0 || chunk.Prototypes[instr.B].UpvalueCount != 0:
+					err = fmt.Errorf("the function of a constant takes nothing and captures nothing")
+				}
+			}
+
 		case OpISTYPE, OpGETMETHOD:
 			if err = v.registers(instr.A, instr.B); err == nil {
 				err = v.pooledString(instr.C)

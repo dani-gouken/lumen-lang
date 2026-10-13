@@ -249,6 +249,10 @@ func (vm *VM) registerBuiltins() {
 		if t, ok := heapType(args[0]); !ok || t != ObjTypeArray {
 			return NewNull(), fmt.Errorf("push expects an array, got %s", typeName(args[0]))
 		}
+		if frozen(args[0]) {
+			// Said as the program's mistake, at the line of the push
+			return NewNull(), vm.runtimeError(errFrozen)
+		}
 		// The caller collects garbage after the call if it is due
 		return NewNull(), vm.appendToArray((*ArrayObj)(unsafe.Pointer(args[0].AsHeapPtr())), args[1])
 	})
@@ -285,6 +289,9 @@ func (vm *VM) newString(s string) (Value, error) {
 // follow the size of the data; an array that grows unseen keeps the
 // threshold low, and every collection then walks the whole array again.
 func (vm *VM) appendToArray(arr *ArrayObj, v Value) error {
+	if arr.header.Frozen {
+		return fmt.Errorf(errFrozen)
+	}
 	before := cap(arr.elements)
 	arr.Append(v)
 	if after := cap(arr.elements); after > before {
@@ -297,6 +304,9 @@ func (vm *VM) appendToArray(arr *ArrayObj, v Value) error {
 // setField gives a field of an object a value, and accounts for the memory
 // when that makes the object larger.
 func (vm *VM) setField(obj *ObjectObj, name string, v Value) error {
+	if obj.header.Frozen {
+		return fmt.Errorf(errFrozen)
+	}
 	before := cap(obj.slots)
 	obj.Set(name, v)
 	if after := cap(obj.slots); after > before {
