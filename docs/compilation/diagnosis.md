@@ -153,7 +153,7 @@ that detects the problem.
 | `E6006` | No `main` function, or `main` takes parameters |
 | `E6007` | Call with more arguments than fit in the register window |
 
-`E6001`-`E6003` and `E6007` are limits of the bytecode format (one-byte
+`E6001`-`E6003` and `E6007` are limits of the bytecode format (16-bit
 operands), not mistakes in the program; their suggestions say how to stay
 within them.
 
@@ -161,7 +161,24 @@ within them.
 
 | Code | Meaning |
 |------|---------|
-| `E7001` | Language feature that parses but cannot be compiled yet (imports, enums, match patterns other than literals and types) |
+| `E7001` | Language feature that parses but cannot be compiled yet (enums, match patterns other than literals and types) |
+
+### E8xxx — Modules (`internal/modules`)
+
+| Code | Meaning |
+|------|---------|
+| `E8001` | No file for an imported module, or `module.Name` whose module is not imported |
+| `E8002` | The module does not declare the name |
+| `E8003` | The name is not exported with `pub` |
+| `E8004` | An import clashes with another name in scope |
+| `E8005` | A module or type used as a value, or a module or function used as a type |
+| `E8006` | An import that cannot work: the entry file, or a whole module after `pub` |
+
+A method that is not `pub`, called from another module, is `E2027`: it is found by the type checker, which knows the receiver's type.
+
+### Diagnostics in programs of several files
+
+`Handler.AddSource(file, lines)` registers the text of a file. A diagnostic whose token is in a registered file quotes that file's line, whatever lines the reporting stage passes. The module loader registers every file it reads, so no stage needs to know which file it is reporting about. `Handler.SourceLine(file, line)` gives the same lookup to the bytecode generator, for the source lines kept in debug information.
 
 ### Severity
 

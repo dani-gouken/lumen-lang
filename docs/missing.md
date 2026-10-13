@@ -14,7 +14,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Correctness | unused variables |
 | Types | inference from the expected type, richer `match` patterns, array literals of mixed structs |
 | Runtime | register allocation per call, method dispatch cost |
-| Program structure | imports, enums, global constants |
+| Program structure | a place for packages and a standard library, enums, global constants |
 
 ---
 
@@ -50,11 +50,22 @@ There is no standard library beyond `print`, `println`, `toString` and `push`. C
 
 Adding one means a host function in `internal/vm/vm.go` and a declaration in `internal/resolve/builtins.go`.
 
-### Imports and multi-file programs — L
+### Packages and a standard library path — M
 
-**Today**: `import` parses and is rejected with `E7001`. A program is one file.
+**Today**: a program can be split into modules ([modules.md](modules.md)), but modules are found next to the entry file only. Code cannot be shared between programs except by copying it, and there is nowhere for a standard library to live.
 
-**Notes**: Needs module resolution, a notion of exported names, the `module::name` syntax from the spec, and linking several files into one chunk.
+**Notes**: Needs a second root to look in (per package, plus one shipped with `lumen`), and a decision on how a package is named in an import. The loader takes a `read` function and a single root today; both are in `internal/modules`.
+
+### Gaps in modules — S each
+
+| Missing | Today |
+|---------|-------|
+| Unused import warning | Silent |
+| Per-field privacy | A `pub struct` exposes every field |
+| `pub` signatures checked for private types | `pub fn f() -> Secret` compiles; the caller holds a value whose type it cannot name |
+| Dead code removal | Every imported module ends up in the bytecode whole, used or not |
+| Separate compilation | All modules are parsed and compiled on every run |
+| Native functions declared in source (`extern fn`) | Host functions are a fixed list in the compiler |
 
 ### Enums — L
 
@@ -200,8 +211,8 @@ A sequence that keeps each step small and makes the language noticeably more com
 
 1.  **Null operators**: `x!`, `a?.b`, and rejecting a value known to be null.
 2.  **Everyday syntax**: ranges, `array(n, value)`, a first batch of string and array builtins, `toInt`/`toFloat`.
-3.  **A prelude**: a way to compile library code in front of every program, the first step towards a standard library.
+3.  **Native functions declared in source** (`extern fn`), then a standard library as ordinary modules.
 4.  **Types**: inference from the expected result type, `match` as an expression with bindings and guards.
-5.  **Program structure**: global constants, then imports, then enums with pattern matching.
+5.  **Program structure**: global constants, then packages, then enums with pattern matching.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

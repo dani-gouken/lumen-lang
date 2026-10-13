@@ -1251,7 +1251,7 @@ func TestCompileErrors(t *testing.T) {
 		{"break outside loop", "fn main() -> Void { break; }", "E5005", "'break' outside of a loop"},
 		{"missing main", "fn helper() -> Int { return 1; }", "E6006", "no 'main' function"},
 		{"main with parameters", "fn main(a: Int) -> Int { return a; }", "E6006", "must not take parameters"},
-		{"imports", `import "std/io"; fn main() -> Int { return 0; }`, "E7001", "imports are not supported yet"},
+		{"missing module", "import nowhere; fn main() -> Int { return 0; }", "E8001", "module 'nowhere' not found"},
 		{"uninferred generic", "fn none<T>() -> [T] { return []; }\nfn main() -> Int { return none().length; }", "E3001", "Cannot infer type arguments"},
 		{"enums", "enum Color { Red, Green }\nfn main() -> Int { return 0; }", "E7001", "enums are not supported yet"},
 		{"type pattern that can never match", "fn main() -> Int { match 1 { case String: { return 1; } default: { return 0; } } }", "E2021", "int can never be string"},

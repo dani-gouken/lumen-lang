@@ -8,9 +8,9 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Straightforward lowering to luvm
 
 ## 1. Lexical Structure
-- Source files: UTF-8 `.lum`, one file = one module.
+- Source files: UTF-8 `.lum`, one file = one module (see [Modules & Imports](#6-modules--imports)).
 - Identifiers: `Letter {Letter | Digit | _}`, case-sensitive.
-- Keywords: `fn let const struct enum trait impl if else match case while for in break continue return true false null import as`, plus the type names `Int Float Bool String Any Void Self`.
+- Keywords: `fn let const struct enum trait impl if else match case while for in break continue return true false null import as pub`, plus the type names `Int Float Bool String Any Void Self`.
 - Literals: ints (`123`), floats (`1.0`, `10e3`), strings (`"hi"`), bools, `null`. No char literal in v0. A leading `-` is the unary operator, so `-42` is the negation of `42`.
 - String literals stay on one line and support the escapes `\n \t \r \0 \\ \"`.
 - Comments: `// line`, `/* block */` (non-nested).
@@ -101,9 +101,17 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Each iteration of a loop has its own variables: closures created in different iterations keep the values of their own iteration, including the loop's variables (`for i, item in items`). Within one iteration a closure and the loop body still share them. A variable declared outside the loop is shared by all of them.
 
 ## 6. Modules & Imports
-- One module per `.lum` file; module name = path relative to a chosen root (TBD).
-- Imports: `import "std/io" as io; import "app/user";` use `module::name` (or alias).
-- No selective imports in v0.
+Full description: [modules.md](modules.md).
+
+- One module per `.lum` file. Its name is its path from the folder of the program's entry file, with dots: `physics/body.lum` is `physics.body`. A folder is not a module.
+- Paths always start at that folder; there are no relative imports.
+- `import physics.body;` then `body.new(1)`, `body.Body`. The module is used through the last part of its path, or through an alias: `import physics.body as pb;`.
+- `import physics.body.{Body, new};` brings names in directly.
+- A declaration is private to its module unless marked `pub` (`pub fn`, `pub struct`, `pub trait`). Fields are as visible as their struct. A method of a plain `impl` needs `pub fn` to be called from another module; methods that implement a trait are always visible.
+- `pub import physics.body.{Body};` exports an imported name again.
+- Modules may import each other. Nothing runs when a module is loaded.
+- A local variable hides a module of the same name.
+- The program starts in the `main` of the entry file, which cannot itself be imported.
 
 ## 7. Type Rules (grab bag)
 - `if`/`while` conditions must be `Bool`.
@@ -157,9 +165,11 @@ Values print as `42`, `2.5`, `true`, `null`, the text of a string, `[1, 2]` for 
 
 ## 12. Grammar (EBNF sketch)
 ```
-Program      = { Import | Decl } EOF ;
-Import       = "import" StringLiteral [ "as" Ident ] ";" ;
-Decl         = FnDecl | StructDecl | TraitDecl | ImplDecl ;
+Program      = { Import | [ "pub" ] Decl } EOF ;
+Import       = [ "pub" ] "import" ModulePath [ "." "{" Ident { "," Ident } "}" | "as" Ident ] ";" ;
+ModulePath   = Ident { "." Ident } ;
+Decl         = FnDecl | StructDecl | TraitDecl | ImplDecl ;   (* "pub" not allowed before ImplDecl *)
+TypeName     = Ident [ "." Ident ] ;                          (* a type of an imported module *)
 
 TraitDecl    = "trait" Ident "{" { TraitMethod } "}" ;
 TraitMethod  = "fn" Ident "(" [ParamList] ")" "->" Type ";" ;
@@ -255,7 +265,7 @@ known defects are inventoried in [missing.md](missing.md).
 | `match` on literals, `default` | Supported | |
 | `match` on types (`case Int:`), `value is Type` | Supported | Narrows the tested variable or field |
 | Enums | Not yet | Parsed, rejected with `E7001` |
-| Imports / multiple files | Not yet | Parsed, rejected with `E7001` |
+| Modules: `import`, `pub`, several files | Supported | Found next to the entry file only; no packages or standard library path yet |
 | Generic structs and their methods | Supported | `impl<T> Box<T> { ... }`; methods may add their own: `fn map<U>(...)` |
 | "All paths return" check, unreachable code | Supported | Unreachable code is a warning |
 

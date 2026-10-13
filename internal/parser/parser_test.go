@@ -389,7 +389,7 @@ func TestParseTypePatterns(t *testing.T) {
 
 func TestParseDeclarations(t *testing.T) {
 	prog := parseOK(t, `
-		import "std/io" as io;
+		import std.io as io;
 
 		struct Pair<A, B> { first: A; second: B, }
 		enum Shape { Circle(Float), Square(Float, Float), Empty }
@@ -399,7 +399,7 @@ func TestParseDeclarations(t *testing.T) {
 		fn map<T, U>(xs: [T], f: fn(T) -> U, rest: ...Int) -> [U]? | Int { return xs; }
 	`)
 
-	if len(prog.Imports) != 1 || prog.Imports[0].Path != "std/io" || prog.Imports[0].Alias != "io" {
+	if len(prog.Imports) != 1 || prog.Imports[0].Path != "std.io" || prog.Imports[0].Alias != "io" {
 		t.Errorf("unexpected imports: %v", prog.Imports)
 	}
 	if len(prog.Decls) != 6 {
@@ -500,6 +500,15 @@ func TestParseErrors(t *testing.T) {
 		{"duplicate field", "fn main() -> Int {\n  let p = P { x: 1, x: 2 };\n}", ErrDuplicateField, "duplicate field 'x'", 2},
 		{"unterminated string", "fn main() -> Int {\n  let s = \"abc;\n}", ErrLexical, "unterminated string literal", 2},
 		{"unknown character", "fn main() -> Int {\n  let s = 1 # 2;\n}", ErrLexical, "unexpected character '#'", 2},
+		{"import of a string", "import \"std/io\";", ErrUnexpectedToken, "expected module path", 1},
+		{"import without a path", "import ;", ErrUnexpectedToken, "expected module path", 1},
+		{"import ending in a dot", "import a.;", ErrUnexpectedToken, "expected module name", 1},
+		{"empty import list", "import a.b.{};", ErrUnexpectedToken, "expected a name to import", 1},
+		{"alias after a list", "import a.b.{c} as d;", ErrUnexpectedToken, "'as' cannot follow a list", 1},
+		{"import without semicolon", "import a.b\nfn main() -> Int { return 0; }", ErrMissingSemicolon, "expected ';'", 1},
+		{"pub on an impl", "pub impl Point {\n}", ErrUnexpectedToken, "'pub' cannot be applied to an impl block", 1},
+		{"pub on nothing", "pub let x = 1;", ErrUnexpectedToken, "expected declaration", 1},
+		{"pub in a trait", "trait T {\n  pub fn m();\n}", ErrUnexpectedToken, "expected 'fn'", 2},
 	}
 
 	for _, tt := range tests {
@@ -589,5 +598,177 @@ fn last() -> Int {
 	first := prog.Decls[0].(*ast.FnDecl)
 	if len(first.Body.Stmts) != 3 {
 		t.Errorf("expected 3 statements in first(), got %d", len(first.Body.Stmts))
+	}
+}
+
+func TestParseImports(t *testing.T) {
+	prog := parseOK(t, `
+		import player;
+		import physics.body;
+		import physics.body as pb;
+		import physics.collide.{overlaps, Shape};
+		import util.{clamp,};
+		pub import physics.body.{Body};
+
+		fn main() -> Int { return 0; }
+	`)
+
+	type want struct {
+		path, alias, names string
+		pub                bool
+	}
+	wants := []want{
+		{"player", "", "", false},
+		{"physics.body", "", "", false},
+		{"physics.body", "pb", "", false},
+		{"physics.collide", "", "overlaps,Shape", false},
+		{"util", "", "clamp", false},
+		{"physics.body", "", "Body", true},
+	}
+	if len(prog.Imports) != len(wants) {
+		t.Fatalf("expected %d imports, got %d", len(wants), len(prog.Imports))
+	}
+	for i, w := range wants {
+		imp := prog.Imports[i]
+		var names []string
+		for _, n := range imp.Names {
+			names = append(names, n.Name)
+		}
+		if imp.Path != w.path || imp.Alias != w.alias || strings.Join(names, ",") != w.names || imp.Pub != w.pub {
+			t.Errorf("import %d: expected %+v, got %s", i, w, imp)
+		}
+	}
+
+	// The import is positioned at its path, all of it
+	body := prog.Imports[1]
+	if tok := body.Token(); tok.Pos.Col != 10 || tok.EndPos.Col-tok.Pos.Col != len("physics.body") {
+		t.Errorf("expected the token to span the path, got columns %d-%d", tok.Pos.Col, tok.EndPos.Col)
+	}
+	// Each imported name has its own position
+	if name := prog.Imports[3].Names[1]; name.Token().Literal != "Shape" || name.Position().Line != 5 {
+		t.Errorf("unexpected position of an imported name: %v", name.Token())
+	}
+	// Printed back in the syntax it was written in
+	if got := prog.Imports[5].String(); got != "pub import physics.body.{Body};" {
+		t.Errorf("unexpected rendering: %s", got)
+	}
+	if got := prog.Imports[2].String(); got != "import physics.body as pb;" {
+		t.Errorf("unexpected rendering: %s", got)
+	}
+}
+
+func TestParsePub(t *testing.T) {
+	prog := parseOK(t, `
+		pub struct Point { x: Int; }
+		struct Hidden { x: Int; }
+		pub trait Named { fn name() -> String; }
+		pub enum Color { Red, Green }
+		pub fn origin() -> Point { return Point { x: 0 }; }
+		fn helper() -> Int { return 1; }
+		impl Point {
+			pub fn shown() -> Int { return self.hidden(); }
+			fn hidden() -> Int { return 1; }
+		}
+	`)
+
+	if !prog.Decls[0].(*ast.StructDecl).Pub || prog.Decls[1].(*ast.StructDecl).Pub {
+		t.Error("expected only Point to be a pub struct")
+	}
+	if !prog.Decls[2].(*ast.TraitDecl).Pub || !prog.Decls[3].(*ast.EnumDecl).Pub {
+		t.Error("expected the trait and the enum to be pub")
+	}
+	if !prog.Decls[4].(*ast.FnDecl).Pub || prog.Decls[5].(*ast.FnDecl).Pub {
+		t.Error("expected only origin to be a pub function")
+	}
+	methods := prog.Decls[6].(*ast.ImplDecl).Methods
+	if !methods[0].Pub || methods[1].Pub {
+		t.Error("expected only shown to be a pub method")
+	}
+}
+
+func TestParseQualifiedNames(t *testing.T) {
+	prog := parseOK(t, `
+		impl body.Shape for Wall { fn left() -> Int { return 0; } }
+		impl Shape for body.Body { fn left() -> Int { return 0; } }
+		impl<T> box.Box<T> { fn get() -> T { return self.value; } }
+
+		fn f(a: body.Body, b: [body.Body]?, c: box.Box<body.Body>, d: fn(body.Body) -> geo.Point) -> body.Body | Int {
+			let made = body.Body { x: 1 };
+			let boxed = box.Box<Int> { value: 1 };
+			let empty = body.Empty {};
+			let called = body.new(1);
+			let generic = body.first<Int>([1]);
+			let test = a is body.Body;
+			let cast = a as body.Body;
+			if a.visible { return a; }
+			while a.next.ready { return a; }
+			match a {
+				case body.Body: { return a; }
+				default: { return 0; }
+			}
+		}
+	`)
+
+	first, second, third := prog.Decls[0].(*ast.ImplDecl), prog.Decls[1].(*ast.ImplDecl), prog.Decls[2].(*ast.ImplDecl)
+	if first.TraitName != "body.Shape" || first.StructName != "Wall" {
+		t.Errorf("unexpected impl: %s for %s", first.TraitName, first.StructName)
+	}
+	if second.TraitName != "Shape" || second.StructName != "body.Body" {
+		t.Errorf("unexpected impl: %s for %s", second.TraitName, second.StructName)
+	}
+	if third.StructName != "box.Box" || len(third.TypeParams) != 1 {
+		t.Errorf("unexpected generic impl: %s", third)
+	}
+
+	fn := prog.Decls[3].(*ast.FnDecl)
+	types := []string{"body.Body", "[body.Body]?", "box.Box<body.Body>", "fn(body.Body) -> geo.Point"}
+	for i, want := range types {
+		if got := fn.Params[i].Type.String(); got != want {
+			t.Errorf("parameter %d: expected %s, got %s", i, want, got)
+		}
+	}
+	if got := fn.ReturnType.String(); got != "body.Body | Int" {
+		t.Errorf("unexpected return type %s", got)
+	}
+	// A qualified type is underlined whole
+	if tok := fn.Params[0].Type.Token(); tok.Literal != "body.Body" || tok.EndPos.Col-tok.Pos.Col != len("body.Body") {
+		t.Errorf("unexpected token of a qualified type: %+v", tok)
+	}
+
+	value := func(i int) ast.Expr { return fn.Body.Stmts[i].(*ast.LetStmt).Value }
+	made, ok := value(0).(*ast.StructInitExpr)
+	if !ok || made.Name != "body.Body" || len(made.Fields) != 1 {
+		t.Errorf("expected a struct literal of body.Body, got %s", value(0))
+	}
+	if tok := made.Token(); tok.Literal != "body.Body" || tok.EndPos.Col-tok.Pos.Col != len("body.Body") {
+		t.Errorf("unexpected token of a qualified struct literal: %+v", tok)
+	}
+	boxed, ok := value(1).(*ast.StructInitExpr)
+	if !ok || boxed.Name != "box.Box" || len(boxed.TypeArgs) != 1 {
+		t.Errorf("expected a generic struct literal of box.Box, got %s", value(1))
+	}
+	if empty, ok := value(2).(*ast.StructInitExpr); !ok || empty.Name != "body.Empty" {
+		t.Errorf("expected an empty struct literal, got %s", value(2))
+	}
+	// Calls stay member accesses: only the module pass knows `body` is a module
+	if call, ok := value(3).(*ast.CallExpr); !ok || call.Func.String() != "body.new" {
+		t.Errorf("expected a call of body.new, got %s", value(3))
+	}
+	if call, ok := value(4).(*ast.CallExpr); !ok || call.Func.String() != "body.first<Int>" {
+		t.Errorf("expected a generic call, got %s", value(4))
+	}
+	if got := value(5).String(); got != "(a is body.Body)" {
+		t.Errorf("unexpected type test %s", got)
+	}
+	if got := value(6).String(); got != "(a as body.Body)" {
+		t.Errorf("unexpected cast %s", got)
+	}
+
+	// `a.visible {` in a condition is a field followed by a block
+	if cond, ok := fn.Body.Stmts[7].(*ast.IfStmt).Cond.(*ast.MemberExpr); !ok || cond.Name != "visible" {
+		t.Errorf("expected the condition to be a field access")
+	}
+	if _, ok := fn.Body.Stmts[8].(*ast.WhileStmt).Cond.(*ast.MemberExpr); !ok {
+		t.Errorf("expected the loop condition to be a field access")
 	}
 }

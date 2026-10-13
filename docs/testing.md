@@ -62,6 +62,7 @@ Lumen uses a pragmatic, three-level testing approach focused on **concise, high-
 - Every `examples/*.lum` is run too and compared with `examples/expected/NAME.out`, so the examples in the repository are guaranteed to work.
 - A few Go tests cover the other commands: `build` then `exec`, `build` to a `.lasm` listing, `ir`, a missing file, and usage errors.
 - A run that takes longer than 20 seconds fails the test. `limits_memory.lum` builds an array of a million and a half elements; it takes a fraction of a second, and took minutes when appending was quadratic. Performance that regresses that far is caught here.
+- The `modules_*.lum` cases import the modules in `cases/game/`: a working program, private names and methods, missing modules, a runtime error inside a module. Files in subfolders of `cases/` are not run on their own, so that is where modules go. `TestModulesThroughCommands` takes a multi-file program through `build`, `exec`, `ir` and `lumdbg`; `TestModulesAreFoundNextToTheEntryFile` runs one from another directory by absolute path.
 - `TestLargeProgram` generates a program of 500 structs, each with a trait implementation, and runs it from source and from a bytecode file. `TestDebuggerSession` drives `lumdbg` with commands on standard input: stepping, registers, state, continue.
 - The `program_*.lum` cases are complete programs of 150 to 250 lines (a bank, matrix arithmetic, a calculator with tokenizer and parser). Each combines most of the language in one place: traits and generics, closures, optionals and narrowing, casts and `match` on types, loops with indexes. They catch interactions that one-feature tests cannot.
 
@@ -145,6 +146,7 @@ Tests for the stages that turn source into IR are driven **from source text**: a
 | Package | File | Critical tests |
 |---------|------|----------------|
 | `internal/parser` | `lexer_test.go`, `parser_test.go` | Tokens and positions; operator precedence; `a < b` vs `f<T>(x)`; struct literal vs block; every error code; recovery after a broken statement |
+| `internal/modules` | `modules_test.go`, `errors_test.go` | Programs of several files held in a map, checked by printing the merged program back as source: names reached through each form of import; what a local variable or type parameter hides; match patterns on imported types; chains of re-exports; modules importing each other; each file read once; every error code with its message and suggestion; diagnostics quoting the line of the right file |
 | `internal/resolve` | `source_test.go` | Builtins in scope; lambda parameters and bodies; `self` only in methods |
 | `internal/types` | `source_test.go` | Inferred types of member/index/lambda/generic expressions; programs that must be accepted; programs that must be rejected, with the message. Covers methods and their type arguments, traits, `Self`, optionals and narrowing of variables and fields, type tests and `match` on types, `Any`, generics, type argument inference from arguments and from the expected type (including the arguments written into the AST), which calls end what is known about a field, casts (including the runtime descriptor each one produces), recorded function signatures, `const`, return paths and unreachable-code warnings |
 | `internal/analysis` | `source_test.go` | Which variables each lambda captures, including ones passed through an intermediate lambda |
@@ -172,6 +174,7 @@ Feature tests: one test per language feature, each a short program whose printed
 - ✅ Runtime errors name the source line and function
 - ✅ One compile error per stage, checked by error code
 - ✅ The pipeline stops at the first failing stage
+- ✅ Programs of several files (`modules_test.go`): a shop spread over six modules using generics, traits, closures and optionals across files; structs of the same name in different modules told apart by `is`, `as` and `match`; type errors across modules; method visibility, with accepted and rejected calls; compile and runtime errors naming the module's file, line and function
 
 **When a program misbehaves**, add the smallest reproduction here first; move down to the package that owns the bug once it is located.
 
@@ -196,8 +199,12 @@ lumen/
       source_test.go       # Stage tests driven from source text
     codegen/
       codegen_test.go      # IR -> bytecode, verified by execution
+    modules/
+      modules_test.go      # Multi-file programs: loading and renaming
+      errors_test.go       # Every way an import can be wrong
     compiler/
       compiler_test.go     # Feature tests through the whole pipeline
+      modules_test.go      # The same for programs of several files
   examples/
     *.lum                  # Example programs, run by the e2e tests
     expected/*.out         # Their expected output
@@ -205,6 +212,7 @@ lumen/
     e2e/
       e2e_test.go          # Runs the lumen binary on .lum files
       cases/               # Programs with expected .out/.err/.exit
+        game/              # Modules imported by the modules_*.lum cases
     integration/           # Toolchain integration tests
       test.sh             # Main test script
     output/               # Test artifacts (gitignored)

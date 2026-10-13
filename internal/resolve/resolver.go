@@ -521,6 +521,23 @@ func (r *Resolver) findSimilarName(target string) string {
 	return ""
 }
 
+// ClosestName returns the candidate most similar to target, or "" when none
+// is close enough to be worth suggesting.
+func ClosestName(target string, candidates []string) string {
+	bestDist := 1000
+	bestName := ""
+	for _, name := range candidates {
+		if dist := levenshtein(target, name); dist < bestDist || (dist == bestDist && name < bestName) {
+			bestDist = dist
+			bestName = name
+		}
+	}
+	if bestDist <= 3 || (bestDist < len(target)/2 && bestDist < 5) {
+		return bestName
+	}
+	return ""
+}
+
 // levenshtein computes the Levenshtein distance between two strings.
 func levenshtein(s1, s2 string) int {
 	r1, r2 := []rune(s1), []rune(s2)

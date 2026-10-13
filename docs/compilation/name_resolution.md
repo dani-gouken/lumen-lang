@@ -93,7 +93,7 @@ Traverse the `ast.Program` to collect all top-level declarations into the Global
 
 *   Register `struct`, `enum`, `trait` names.
 *   Register `fn` names.
-*   Register `import` aliases.
+*   Imports are gone by this point: [module loading](module_loading.md) has already merged all files into one program with unique names.
 *   **Error Check**: Detect duplicate top-level names.
 
 ### Pass 2: Body Resolution

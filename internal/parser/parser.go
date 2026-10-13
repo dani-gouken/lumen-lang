@@ -204,17 +204,42 @@ func (p *Parser) parseTopLevel(prog *ast.Program) {
 		}
 	}()
 
+	pubTok, pub := p.cur(), p.accept(token.PUB)
 	if p.at(token.IMPORT) {
-		prog.Imports = append(prog.Imports, p.parseImport())
+		imp := p.parseImport()
+		imp.Pub = pub
+		prog.Imports = append(prog.Imports, imp)
 		return
 	}
-	prog.Decls = append(prog.Decls, p.parseDecl())
+	decl := p.parseDecl()
+	if pub {
+		p.markPub(decl, pubTok)
+	}
+	prog.Decls = append(prog.Decls, decl)
+}
+
+// markPub records that a declaration is exported from its module.
+func (p *Parser) markPub(decl ast.Decl, pubTok token.Token) {
+	switch d := decl.(type) {
+	case *ast.FnDecl:
+		d.Pub = true
+	case *ast.StructDecl:
+		d.Pub = true
+	case *ast.EnumDecl:
+		d.Pub = true
+	case *ast.TraitDecl:
+		d.Pub = true
+	case *ast.ImplDecl:
+		p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+			"'pub' cannot be applied to an impl block",
+			"Mark the methods instead: pub fn name() { ... }", pubTok, p.sourceLines)
+	}
 }
 
 func (p *Parser) synchronize() {
 	for {
 		switch p.cur().Type {
-		case token.EOF, token.STRUCT, token.ENUM, token.TRAIT, token.IMPL, token.IMPORT:
+		case token.EOF, token.STRUCT, token.ENUM, token.TRAIT, token.IMPL, token.IMPORT, token.PUB:
 			return
 		case token.FN:
 			// `fn name` starts a declaration; `fn(` is a function type or
@@ -230,8 +255,44 @@ func (p *Parser) synchronize() {
 func (p *Parser) parseImport() *ast.ImportDecl {
 	tok := p.expect(token.IMPORT, "'import'")
 	decl := &ast.ImportDecl{BaseNode: base(tok)}
-	decl.Path = p.expect(token.STRING, "import path").Literal
-	if p.accept(token.AS) {
+	if p.at(token.STRING) {
+		p.failWith(ErrUnexpectedToken, "Name the module by its path from the program's folder: import physics.body;",
+			"expected module path, found %s", describe(p.cur()))
+	}
+
+	// The token of the import is its path, so diagnostics underline it
+	first := p.expect(token.IDENT, "module path")
+	decl.BaseNode = base(first)
+	segments := []string{first.Literal}
+	for p.accept(token.DOT) {
+		if p.accept(token.LBRACE) {
+			for !p.at(token.RBRACE) {
+				nameTok := p.expect(token.IDENT, "name to import")
+				decl.Names = append(decl.Names, &ast.ImportName{BaseNode: base(nameTok), Name: nameTok.Literal})
+				if !p.accept(token.COMMA) {
+					break
+				}
+			}
+			closing := p.expect(token.RBRACE, "'}'")
+			if len(decl.Names) == 0 {
+				p.pos--
+				p.failWith(ErrUnexpectedToken, "List the names to import, or import the module itself: import "+strings.Join(segments, ".")+";",
+					"expected a name to import, found %s", describe(closing))
+			}
+			break
+		}
+		last := p.expect(token.IDENT, "module name")
+		segments = append(segments, last.Literal)
+		decl.Tok.EndPos = last.EndPos
+	}
+	decl.Path = strings.Join(segments, ".")
+
+	if p.at(token.AS) {
+		if len(decl.Names) > 0 {
+			p.failWith(ErrUnexpectedToken, "An alias names the module; with a list of names, use the names directly",
+				"'as' cannot follow a list of imported names")
+		}
+		p.next()
 		decl.Alias = p.expect(token.IDENT, "import alias").Literal
 	}
 	p.expectSemicolon()
@@ -251,7 +312,7 @@ func (p *Parser) parseDecl() ast.Decl {
 	case token.IMPL:
 		return p.parseImplDecl()
 	}
-	p.fail("expected declaration (fn, struct, enum, trait, impl), found %s", describe(p.cur()))
+	p.fail("expected declaration (fn, struct, enum, trait, impl, import), found %s", describe(p.cur()))
 	return nil
 }
 
@@ -390,7 +451,10 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
-		decl.Methods = append(decl.Methods, p.parseFnDecl(false))
+		pub := p.accept(token.PUB)
+		method := p.parseFnDecl(false)
+		method.Pub = pub
+		decl.Methods = append(decl.Methods, method)
 	}
 	p.expect(token.RBRACE, "'}'")
 	return decl
@@ -428,7 +492,13 @@ func (p *Parser) expectTypeName(what string) string {
 	if isBuiltinTypeToken(p.cur().Type) {
 		return p.next().Literal
 	}
-	return p.expect(token.IDENT, what).Literal
+	name := p.expect(token.IDENT, what).Literal
+	// A type of another module: module.Name
+	if p.at(token.DOT) && p.peekAt(1).Type == token.IDENT {
+		p.next()
+		name += "." + p.next().Literal
+	}
+	return name
 }
 
 // --- Types ---
@@ -475,6 +545,14 @@ func (p *Parser) parsePrimaryType() *ast.Type {
 	case tok.Type == token.IDENT:
 		p.next()
 		t := &ast.Type{BaseNode: base(tok), Kind: ast.TypeBasic, Name: tok.Literal}
+		// A type of another module: module.Name
+		if p.at(token.DOT) && p.peekAt(1).Type == token.IDENT {
+			p.next()
+			member := p.next()
+			t.Name += "." + member.Literal
+			t.Tok.Literal = t.Name
+			t.Tok.EndPos = member.EndPos
+		}
 		if p.accept(token.LT) {
 			t.Generics = p.parseTypeList(token.GT)
 			p.expect(token.GT, "'>'")
@@ -869,10 +947,21 @@ func (p *Parser) parsePostfix() ast.Expr {
 			expr = &ast.IndexExpr{BaseNode: base(tok), Expr: expr, Index: index}
 		case token.DOT:
 			p.next()
-			name := p.expect(token.IDENT, "member name").Literal
+			nameTok := p.expect(token.IDENT, "member name")
+			name := nameTok.Literal
 			// Like a generic function name, a method name may carry type
 			// arguments when a call follows: stack.map<String>(f)
-			expr = &ast.MemberExpr{BaseNode: base(tok), Expr: expr, Name: name, TypeArgs: p.tryTypeArgs()}
+			typeArgs := p.tryTypeArgs()
+
+			// A struct of another module: module.Name { ... }
+			if owner, ok := expr.(*ast.Ident); ok && len(owner.TypeArgs) == 0 && p.at(token.LBRACE) && p.structLitFollows() {
+				qualified := owner.Tok
+				qualified.Literal = owner.Name + "." + name
+				qualified.EndPos = nameTok.EndPos
+				expr = p.parseStructInit(qualified, typeArgs)
+				continue
+			}
+			expr = &ast.MemberExpr{BaseNode: base(tok), Expr: expr, Name: name, TypeArgs: typeArgs}
 		default:
 			return expr
 		}

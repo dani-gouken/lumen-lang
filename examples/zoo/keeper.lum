@@ -1,0 +1,20 @@
+import zoo.animals.{Animal};
+
+pub struct Keeper {
+    name: String;
+    fed: Int;
+}
+
+pub fn hire(name: String) -> Keeper {
+    return Keeper { name: name, fed: 0 };
+}
+
+impl Keeper {
+    // Methods need 'pub' as well to be called from another module.
+    pub fn feed(animal: Animal, grams: Int) -> String {
+        self.count();
+        return self.name + " gives " + toString(grams) + "g to the " + animal.name;
+    }
+
+    fn count() { self.fed++; }
+}

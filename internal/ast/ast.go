@@ -64,18 +64,44 @@ func (p *Program) String() string {
 	return sb.String()
 }
 
-// ImportDecl represents an import statement.
+// ImportDecl represents an import statement:
+//
+//	import physics.body;              the module, used as body.name
+//	import physics.body as pb;        the module under another name
+//	import physics.body.{Body, new};  names of the module, used directly
+//	pub import physics.body.{Body};   the same, and exported again
 type ImportDecl struct {
 	BaseNode
-	Path  string
+	Path  string // Module path, dotted: "physics.body"
 	Alias string
+	Names []*ImportName // Names imported directly, if any
+	Pub   bool
 }
 
+// ImportName is one name of an `import module.{...}` list.
+type ImportName struct {
+	BaseNode
+	Name string
+}
+
+func (n *ImportName) String() string { return n.Name }
+
 func (d *ImportDecl) String() string {
-	if d.Alias != "" {
-		return fmt.Sprintf("import %q as %s;", d.Path, d.Alias)
+	s := "import " + d.Path
+	if d.Pub {
+		s = "pub " + s
 	}
-	return fmt.Sprintf("import %q;", d.Path)
+	if len(d.Names) > 0 {
+		var names []string
+		for _, n := range d.Names {
+			names = append(names, n.Name)
+		}
+		s += ".{" + strings.Join(names, ", ") + "}"
+	}
+	if d.Alias != "" {
+		s += " as " + d.Alias
+	}
+	return s + ";"
 }
 
 // TypeKind distinguishes different kinds of types.
@@ -158,6 +184,11 @@ type FnDecl struct {
 	ReturnType    *Type
 	Body          *BlockStmt
 	IsTraitMethod bool
+
+	// Pub marks a declaration other modules may use. Module is the module
+	// the declaration was written in, "" for the program's entry file.
+	Pub    bool
+	Module string
 }
 
 func (d *FnDecl) declNode() {}
@@ -200,6 +231,7 @@ type StructDecl struct {
 	Name       string
 	TypeParams []string
 	Fields     []*Field
+	Pub        bool
 }
 
 func (d *StructDecl) declNode() {}
@@ -224,6 +256,7 @@ type EnumDecl struct {
 	Name       string
 	TypeParams []string
 	Variants   []*EnumVariant
+	Pub        bool
 }
 
 func (d *EnumDecl) declNode() {}
@@ -274,6 +307,7 @@ type TraitDecl struct {
 	BaseNode
 	Name    string
 	Methods []*FnDecl
+	Pub     bool
 }
 
 func (d *TraitDecl) declNode() {}

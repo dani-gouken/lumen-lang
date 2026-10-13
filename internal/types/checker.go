@@ -39,6 +39,7 @@ const (
 	ErrMethodTypeArgs    = "E2024"
 	ErrIntOutOfRange     = "E2025"
 	ErrAssignToLoopVar   = "E2026"
+	ErrPrivateMethod     = "E2027"
 )
 
 type Checker struct {
@@ -1178,6 +1179,10 @@ func (c *Checker) checkIndexExpr(e *ast.IndexExpr) Type {
 func (c *Checker) checkFnExpr(e *ast.FnExpr) Type {
 	// Reuse the FnDecl machinery so `return` is checked against the lambda
 	fn := &ast.FnDecl{BaseNode: e.BaseNode, Params: e.Params, ReturnType: e.ReturnType, Body: e.Body}
+	if c.currentFn != nil {
+		// A lambda belongs to the module of the function it is written in
+		fn.Module = c.currentFn.Module
+	}
 	c.checkFnDecl(fn)
 	c.recordSignature(e, fn)
 	return c.resolveFnType(fn)

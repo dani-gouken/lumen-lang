@@ -13,6 +13,7 @@ import (
 	"github.com/dani-gouken/lumen/internal/errors"
 	"github.com/dani-gouken/lumen/internal/ir"
 	"github.com/dani-gouken/lumen/internal/irgen"
+	"github.com/dani-gouken/lumen/internal/modules"
 	"github.com/dani-gouken/lumen/internal/monomorph"
 	"github.com/dani-gouken/lumen/internal/parser"
 	"github.com/dani-gouken/lumen/internal/resolve"
@@ -28,7 +29,8 @@ const (
 // Result holds what each stage of a compilation produced. Stages that did
 // not run because an earlier one reported errors leave their field nil.
 type Result struct {
-	// AST is the program as parsed.
+	// AST is the program as parsed: the entry file and the modules it
+	// imports, as one program.
 	AST *ast.Program
 
 	// Lowered is the program after monomorphization and desugaring.
@@ -51,20 +53,35 @@ func CompileFile(path string, errs *errors.Handler) (*Result, error) {
 	return Compile(string(src), path, errs), nil
 }
 
-// Compile runs the pipeline on source text:
+// Compile runs the pipeline on the source text of a program's entry file:
 //
-//	parse -> resolve -> type check -> monomorphize -> desugar
-//	      -> closure analysis -> IR generation -> bytecode generation
+//	parse and load modules -> resolve -> type check -> monomorphize
+//	      -> desugar -> closure analysis -> IR generation
+//	      -> bytecode generation
 //
+// Modules the program imports are read from disk, next to file.
 // Diagnostics go to errs. The pipeline stops after the first stage that
 // reports an error, so later stages never see a broken program.
 func Compile(src, file string, errs *errors.Handler) *Result {
+	return CompileWith(src, file, readSourceFile, errs)
+}
+
+func readSourceFile(path string) (string, error) {
+	src, err := os.ReadFile(path)
+	return string(src), err
+}
+
+// CompileWith is Compile with the files of imported modules supplied by
+// read instead of taken from disk.
+func CompileWith(src, file string, read modules.ReadFile, errs *errors.Handler) *Result {
 	result := &Result{}
 	lines := parser.SourceLines(src)
 	failed := errs.HasErrors
 
-	// 1. Parsing
-	prog := parser.Parse(src, file, errs)
+	// 1. Parsing, of the entry file and of the modules it imports. They
+	// come back as one program in which every declaration has a unique
+	// name, so the stages below know nothing about modules.
+	prog := modules.Load(src, file, read, errs)
 	result.AST = prog
 	if failed() {
 		return result

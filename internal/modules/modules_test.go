@@ -1,0 +1,483 @@
+package modules
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/errors"
+)
+
+// files is a program held in memory: file path to source text. The entry
+// file is main.lum.
+type files map[string]string
+
+// load runs the loader on files and returns the merged program, the
+// diagnostics and the files that were read, in order.
+func load(fs files) (*ast.Program, *errors.Handler, []string) {
+	var read []string
+	errs := errors.NewHandler()
+	prog := Load(fs["main.lum"], "main.lum", func(path string) (string, error) {
+		read = append(read, path)
+		src, ok := fs[path]
+		if !ok {
+			return "", fmt.Errorf("no such file: %s", path)
+		}
+		return src, nil
+	}, errs)
+	return prog, errs, read
+}
+
+// loadOK is load for programs that must load without diagnostics.
+func loadOK(t *testing.T, fs files) *ast.Program {
+	t.Helper()
+	prog, errs, _ := load(fs)
+	for _, d := range errs.Diagnostics {
+		t.Errorf("unexpected diagnostic:\n%s", d.String())
+	}
+	if t.Failed() {
+		t.FailNow()
+	}
+	return prog
+}
+
+// decl finds a top-level declaration by its program-wide name.
+func decl(t *testing.T, prog *ast.Program, name string) ast.Decl {
+	t.Helper()
+	for _, d := range prog.Decls {
+		switch d := d.(type) {
+		case *ast.FnDecl:
+			if d.Name == name {
+				return d
+			}
+		case *ast.StructDecl:
+			if d.Name == name {
+				return d
+			}
+		case *ast.TraitDecl:
+			if d.Name == name {
+				return d
+			}
+		}
+	}
+	t.Fatalf("no declaration named %s in:\n%s", name, prog)
+	return nil
+}
+
+func body(t *testing.T, prog *ast.Program, fn string) string {
+	t.Helper()
+	return decl(t, prog, fn).(*ast.FnDecl).Body.String()
+}
+
+func TestSingleFileIsUnchanged(t *testing.T) {
+	src := `
+		struct Point { x: Int; }
+		trait Named { fn name() -> String; }
+		impl Named for Point { fn name() -> String { return "p"; } }
+		fn helper(p: Point) -> Int { return p.x; }
+		fn main() -> Int { return helper(Point { x: 1 }); }
+	`
+	prog := loadOK(t, files{"main.lum": src})
+
+	if len(prog.Decls) != 5 || len(prog.Imports) != 0 {
+		t.Fatalf("expected the five declarations and no imports, got:\n%s", prog)
+	}
+	for _, name := range []string{"Point", "Named", "helper", "main"} {
+		decl(t, prog, name)
+	}
+	if got := body(t, prog, "main"); got != "{ return helper(Point { x: 1 }); }" {
+		t.Errorf("expected the body to be left alone, got %s", got)
+	}
+	if fn := decl(t, prog, "main").(*ast.FnDecl); fn.Module != "" {
+		t.Errorf("expected the entry file to be the module \"\", got %q", fn.Module)
+	}
+}
+
+func TestNamesBecomeProgramWide(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import player;
+			import physics.body;
+			import physics.body as pb;
+			import physics.collide.{overlaps, Shape};
+
+			struct Wall { x: Int; }
+			impl Shape for Wall { fn left() -> Int { return self.x; } }
+
+			fn main() -> Int {
+				let a = body.new(1);
+				let b: body.Body = body.Body { x: 2 };
+				let c = pb.count<body.Body>([a, b]);
+				let d = player.spawn("ada");
+				let e: [Shape] = [a, Wall { x: 3 }];
+				let f = a is body.Body;
+				let g = (b as Shape).left();
+				let h = body.new;
+				if overlaps(a, b) { return d.body.x; }
+				return c;
+			}
+		`,
+		"player.lum": `
+			import physics.body.{Body, new};
+			pub struct Player { name: String; body: Body; }
+			pub fn spawn(name: String) -> Player { return Player { name: name, body: new(0) }; }
+		`,
+		"physics/body.lum": `
+			import physics.collide.{Shape};
+			pub struct Body { x: Int; }
+			impl Shape for Body { fn left() -> Int { return self.x; } }
+			pub fn new(x: Int) -> Body { return checked(Body { x: x }); }
+			fn checked(b: Body) -> Body { return b; }
+			pub fn count<T>(items: [T]) -> Int { return items.length; }
+		`,
+		"physics/collide.lum": `
+			pub trait Shape { fn left() -> Int; }
+			pub fn overlaps(a: Shape, b: Shape) -> Bool { return a.left() == b.left(); }
+		`,
+	})
+
+	// Declarations outside the entry file carry their module's path
+	for _, name := range []string{
+		"Wall", "main",
+		"player.Player", "player.spawn",
+		"physics.body.Body", "physics.body.new", "physics.body.checked", "physics.body.count",
+		"physics.collide.Shape", "physics.collide.overlaps",
+	} {
+		decl(t, prog, name)
+	}
+	if len(prog.Imports) != 0 {
+		t.Errorf("expected no imports in the merged program, got %v", prog.Imports)
+	}
+
+	// References through a module, an alias, and a list of names
+	main := body(t, prog, "main")
+	for _, want := range []string{
+		"let a = physics.body.new(1);",
+		"let b: physics.body.Body = physics.body.Body { x: 2 };",
+		"let c = physics.body.count<physics.body.Body>([a, b]);",
+		`let d = player.spawn("ada");`,
+		"let e: [physics.collide.Shape] = [a, Wall { x: 3 }];",
+		"let f = (a is physics.body.Body);",
+		"let g = (b as physics.collide.Shape).left();",
+		"let h = physics.body.new;",
+		"if physics.collide.overlaps(a, b) { return d.body.x; }",
+	} {
+		if !strings.Contains(main, want) {
+			t.Errorf("expected main to contain %q, got:\n%s", want, main)
+		}
+	}
+
+	// Inside a module, its own names and the ones it imports
+	if got := body(t, prog, "player.spawn"); got != "{ return player.Player { body: physics.body.new(0), name: name }; }" &&
+		got != "{ return player.Player { name: name, body: physics.body.new(0) }; }" {
+		t.Errorf("unexpected body of player.spawn: %s", got)
+	}
+	if got := body(t, prog, "physics.body.new"); got != "{ return physics.body.checked(physics.body.Body { x: x }); }" {
+		t.Errorf("unexpected body of physics.body.new: %s", got)
+	}
+	player := decl(t, prog, "player.Player").(*ast.StructDecl)
+	if got := player.Fields[1].Type.String(); got != "physics.body.Body" {
+		t.Errorf("expected the field to name the imported struct, got %s", got)
+	}
+	overlaps := decl(t, prog, "physics.collide.overlaps").(*ast.FnDecl)
+	if got := overlaps.Params[0].Type.String(); got != "physics.collide.Shape" {
+		t.Errorf("expected the parameter to name the module's trait, got %s", got)
+	}
+
+	// Impl blocks name their struct and trait the same way
+	var impls []string
+	for _, d := range prog.Decls {
+		if impl, ok := d.(*ast.ImplDecl); ok {
+			impls = append(impls, impl.TraitName+" for "+impl.StructName)
+		}
+	}
+	want := "physics.collide.Shape for Wall, physics.collide.Shape for physics.body.Body"
+	if got := strings.Join(impls, ", "); got != want {
+		t.Errorf("expected impls %q, got %q", want, got)
+	}
+}
+
+func TestLocalNamesHideModuleNames(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import util;
+			import util.{twice, Pair};
+			struct Thing { size: Int; }
+
+			fn helper() -> Int { return 1; }
+
+			fn params(util: Thing, twice: Int, helper: Int) -> Int {
+				return util.size + twice + helper;
+			}
+			fn lets() -> Int {
+				let before = twice(1);
+				let twice = 5;
+				let util = Thing { size: 2 };
+				return before + twice + util.size;
+			}
+			fn blocks() -> Int {
+				if true {
+					let helper = 2;
+					println(helper);
+				}
+				return helper();
+			}
+			fn loops(items: [Thing]) -> Int {
+				for twice, util in items { println(twice, util.size); }
+				return twice(util.one());
+			}
+			fn lambdas() -> Int {
+				let f = fn(util: Thing) -> Int { return util.size; };
+				return f(Thing { size: util.one() });
+			}
+			fn generic<Pair>(value: Pair) -> Pair { return value; }
+			fn concrete(value: Pair) -> Pair { return value; }
+			fn main() -> Int { return 0; }
+		`,
+		"util.lum": `
+			pub struct Pair { a: Int; }
+			pub fn twice(n: Int) -> Int { return n * 2; }
+			pub fn one() -> Int { return 1; }
+			pub struct Box<T> { value: T; }
+			impl<T> Box<T> { pub fn get() -> T { return self.value; } }
+			pub fn wrap<T>(value: T) -> Box<T> { return Box<T> { value: value }; }
+		`,
+	})
+
+	tests := []struct{ fn, want string }{
+		// Parameters hide a module, an imported function and a local one
+		{"params", "{ return ((util.size + twice) + helper); }"},
+		// A variable hides the function only after its declaration
+		{"lets", "{ let before = util.twice(1); let twice = 5; let util = Thing { size: 2 }; return ((before + twice) + util.size); }"},
+		// ...and only inside its block
+		{"blocks", "{ if true { let helper = 2; println(helper); } return helper(); }"},
+		// Loop variables hide for the body of the loop
+		{"loops", "{ for twice, util in items { println(twice, util.size); } return util.twice(util.one()); }"},
+		// Lambda parameters hide for the lambda
+		{"lambdas", "{ let f = fn(util: Thing) -> Int { return util.size; }; return f(Thing { size: util.one() }); }"},
+	}
+	for _, tt := range tests {
+		if got := body(t, prog, tt.fn); got != tt.want {
+			t.Errorf("%s:\n  want %s\n   got %s", tt.fn, tt.want, got)
+		}
+	}
+
+	// A type parameter hides an imported type of the same name
+	generic := decl(t, prog, "generic").(*ast.FnDecl)
+	if got := generic.Params[0].Type.String(); got != "Pair" {
+		t.Errorf("expected the type parameter to win, got %s", got)
+	}
+	concrete := decl(t, prog, "concrete").(*ast.FnDecl)
+	if got := concrete.ReturnType.String(); got != "util.Pair" {
+		t.Errorf("expected the imported struct, got %s", got)
+	}
+
+	// Type parameters of a module's own generics are left alone
+	wrap := decl(t, prog, "util.wrap").(*ast.FnDecl)
+	if got := wrap.ReturnType.String(); got != "util.Box<T>" {
+		t.Errorf("unexpected return type %s", got)
+	}
+	if got := wrap.Body.String(); got != "{ return util.Box<T> { value: value }; }" {
+		t.Errorf("unexpected body %s", got)
+	}
+}
+
+func TestMatchPatternsOnImportedTypes(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import shapes;
+			import shapes.{Circle};
+			struct Local { x: Int; }
+
+			fn main() -> Int {
+				let value: Any = 1;
+				match value {
+					case Circle: { return 1; }
+					case shapes.Square: { return 2; }
+					case shapes.Box<Int>: { return 3; }
+					case [shapes.Square]: { return 4; }
+					case Local: { return 5; }
+					case 6: { return 6; }
+					default: { return 0; }
+				}
+			}
+		`,
+		"shapes.lum": `
+			pub struct Circle { r: Int; }
+			pub struct Square { side: Int; }
+			pub struct Box<T> { value: T; }
+		`,
+	})
+
+	match := decl(t, prog, "main").(*ast.FnDecl).Body.Stmts[1].(*ast.MatchStmt)
+	wants := []string{"shapes.Circle", "shapes.Square", "shapes.Box<Int>", "[shapes.Square]", "Local"}
+	for i, want := range wants {
+		typ, ok := match.Cases[i].Pattern.(*ast.Type)
+		if !ok {
+			t.Errorf("case %d: expected a type pattern, got %T", i, match.Cases[i].Pattern)
+			continue
+		}
+		if typ.String() != want {
+			t.Errorf("case %d: expected %s, got %s", i, want, typ)
+		}
+	}
+	if _, ok := match.Cases[5].Pattern.(*ast.Literal); !ok {
+		t.Errorf("expected the literal pattern to stay a literal, got %T", match.Cases[5].Pattern)
+	}
+}
+
+func TestMethodsRecordModuleAndVisibility(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import shapes;
+			impl shapes.Square { fn local() -> Int { return 1; } }
+			fn main() -> Int { return 0; }
+		`,
+		"shapes.lum": `
+			pub trait Shape { fn area() -> Int; }
+			pub struct Square { side: Int; }
+			impl Shape for Square { fn area() -> Int { return self.side; } }
+			impl Square {
+				pub fn shown() -> Int { return self.hidden(); }
+				fn hidden() -> Int { return 1; }
+			}
+		`,
+	})
+
+	type method struct {
+		module string
+		pub    bool
+	}
+	got := make(map[string]method)
+	for _, d := range prog.Decls {
+		switch d := d.(type) {
+		case *ast.ImplDecl:
+			for _, m := range d.Methods {
+				got[d.StructName+"."+m.Name] = method{m.Module, m.Pub}
+			}
+		case *ast.TraitDecl:
+			for _, m := range d.Methods {
+				got[d.Name+"."+m.Name] = method{m.Module, m.Pub}
+			}
+		}
+	}
+	want := map[string]method{
+		"shapes.Shape.area":    {"shapes", true}, // What a trait declares
+		"shapes.Square.area":   {"shapes", true}, // What implements it
+		"shapes.Square.shown":  {"shapes", true},
+		"shapes.Square.hidden": {"shapes", false},
+		"shapes.Square.local":  {"", false}, // Added by the entry file
+	}
+	for name, w := range want {
+		if got[name] != w {
+			t.Errorf("%s: expected %+v, got %+v", name, w, got[name])
+		}
+	}
+}
+
+func TestReexports(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import physics;
+			import physics.{Body};
+			import front.{make};
+			fn main() -> Int {
+				let a: Body = physics.new(1);
+				let b: physics.Body = make(2);
+				return a.x + b.x;
+			}
+		`,
+		// A front door for a folder: a file next to it passing names on
+		"physics.lum": `
+			pub import physics.body.{Body, new};
+		`,
+		// A chain of two, written before what it passes on
+		"front.lum": `
+			pub import middle.{make};
+		`,
+		"middle.lum": `
+			pub import physics.body.{new};
+			pub import physics.body.{make};
+		`,
+		"physics/body.lum": `
+			pub struct Body { x: Int; }
+			pub fn new(x: Int) -> Body { return Body { x: x }; }
+			pub fn make(x: Int) -> Body { return new(x); }
+		`,
+	})
+
+	want := "{ let a: physics.body.Body = physics.body.new(1); let b: physics.body.Body = physics.body.make(2); return (a.x + b.x); }"
+	if got := body(t, prog, "main"); got != want {
+		t.Errorf("expected re-exported names to lead to the declaration:\n  want %s\n   got %s", want, got)
+	}
+}
+
+func TestModulesMayImportEachOther(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import even;
+			fn main() -> Int { if even.isEven(10) { return 1; } return 0; }
+		`,
+		"even.lum": `
+			import odd;
+			import even;
+			pub fn isEven(n: Int) -> Bool { if n == 0 { return true; } return odd.isOdd(n - 1); }
+			pub fn same(n: Int) -> Bool { return even.isEven(n); }
+		`,
+		"odd.lum": `
+			import even.{isEven};
+			pub fn isOdd(n: Int) -> Bool { if n == 0 { return false; } return isEven(n - 1); }
+		`,
+	})
+
+	if got := body(t, prog, "odd.isOdd"); !strings.Contains(got, "return even.isEven((n - 1));") {
+		t.Errorf("unexpected body of odd.isOdd: %s", got)
+	}
+	// A module may name itself
+	if got := body(t, prog, "even.same"); got != "{ return even.isEven(n); }" {
+		t.Errorf("unexpected body of even.same: %s", got)
+	}
+}
+
+func TestEachFileIsReadOnce(t *testing.T) {
+	_, errs, read := load(files{
+		"main.lum": `
+			import a;
+			import b;
+			import a as again;
+			import a.{f};
+			fn main() -> Int { return 0; }
+		`,
+		"a.lum":      `import b; import deep.c; pub fn f() -> Int { return 1; }`,
+		"b.lum":      `import a; import deep.c;`,
+		"deep/c.lum": `import a;`,
+	})
+	if errs.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", errs.Diagnostics)
+	}
+	if got, want := strings.Join(read, " "), "a.lum b.lum deep/c.lum"; got != want {
+		t.Errorf("expected the files to be read once each, in order of first import: %q, got %q", want, got)
+	}
+}
+
+func TestSameNameInTwoModules(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import a;
+			import b;
+			struct Node { own: Int; }
+			fn make() -> Node { return Node { own: 0 }; }
+			fn main() -> Int { return a.make().value + b.make().size + make().own; }
+		`,
+		"a.lum": `pub struct Node { value: Int; } pub fn make() -> Node { return Node { value: 1 }; }`,
+		"b.lum": `pub struct Node { size: Int; } pub fn make() -> Node { return Node { size: 2 }; }`,
+	})
+
+	for _, name := range []string{"Node", "a.Node", "b.Node", "make", "a.make", "b.make"} {
+		decl(t, prog, name)
+	}
+	if got := body(t, prog, "b.make"); got != "{ return b.Node { size: 2 }; }" {
+		t.Errorf("unexpected body of b.make: %s", got)
+	}
+}

@@ -120,12 +120,41 @@ func (d Diagnostic) String() string {
 // Handler collects diagnostics during compilation.
 type Handler struct {
 	Diagnostics []Diagnostic
+
+	// Source text of the files being compiled, by file name. A program
+	// made of several modules has one entry per file, so a diagnostic
+	// shows the line of the file it is about.
+	sources map[string]map[int]string
 }
 
 func NewHandler() *Handler {
 	return &Handler{
 		Diagnostics: make([]Diagnostic, 0),
 	}
+}
+
+// AddSource registers the lines of a file (1-based). Diagnostics positioned
+// in that file take their source line from here, whatever lines the
+// reporting stage passes.
+func (h *Handler) AddSource(file string, lines map[int]string) {
+	if h.sources == nil {
+		h.sources = make(map[string]map[int]string)
+	}
+	h.sources[file] = lines
+}
+
+// SourceLine returns a line of a registered file.
+func (h *Handler) SourceLine(file string, line int) (string, bool) {
+	text, ok := h.sources[file][line]
+	return text, ok
+}
+
+// linesFor picks the lines a diagnostic at tok should quote.
+func (h *Handler) linesFor(tok token.Token, fallback map[int]string) map[int]string {
+	if lines, ok := h.sources[tok.Pos.File]; ok {
+		return lines
+	}
+	return fallback
 }
 
 func (h *Handler) Add(d Diagnostic) {
@@ -143,17 +172,17 @@ func (h *Handler) HasErrors() bool {
 
 // ReportErrorFromToken adds an error diagnostic with automatic context from a token.
 func (h *Handler) ReportErrorFromToken(code, msg string, tok token.Token, sourceLines map[int]string) {
-	h.Add(NewDiagnosticFromToken(SeverityError, code, msg, tok, sourceLines))
+	h.Add(NewDiagnosticFromToken(SeverityError, code, msg, tok, h.linesFor(tok, sourceLines)))
 }
 
 // ReportWarningFromToken adds a warning diagnostic with automatic context from a token.
 func (h *Handler) ReportWarningFromToken(code, msg string, tok token.Token, sourceLines map[int]string) {
-	h.Add(NewDiagnosticFromToken(SeverityWarning, code, msg, tok, sourceLines))
+	h.Add(NewDiagnosticFromToken(SeverityWarning, code, msg, tok, h.linesFor(tok, sourceLines)))
 }
 
 // ReportErrorWithSuggestion adds an error diagnostic with a suggestion.
 func (h *Handler) ReportErrorWithSuggestion(code, msg, suggestion string, tok token.Token, sourceLines map[int]string) {
-	d := NewDiagnosticFromToken(SeverityError, code, msg, tok, sourceLines)
+	d := NewDiagnosticFromToken(SeverityError, code, msg, tok, h.linesFor(tok, sourceLines))
 	d.Suggestion = suggestion
 	h.Add(d)
 }

@@ -48,7 +48,11 @@ A hand-written recursive descent parser over the full token list. Having all tok
 
 ### Declarations
 
-`Program = { Import | Decl }`. A declaration is selected by its first token: `fn`, `struct`, `enum`, `trait`, `impl`.
+`Program = { Import | Decl }`. A declaration is selected by its first token: `fn`, `struct`, `enum`, `trait`, `impl`. `pub` may come first; it sets `Pub` on the declaration (on a method inside an `impl`, too) and is an error before `impl`.
+
+An import is `import a.b.c;`, optionally followed by `as name` or by `.{X, y}`, and optionally preceded by `pub`. The `ImportDecl` carries the dotted path, and is positioned at the path so that diagnostics underline it.
+
+Where a type is expected, `m.T` names a type of an imported module; it is parsed into a single type whose name is `"m.T"`. The same goes for the struct of a literal (`m.T { ... }`) and the names of an `impl`. In expressions `m.f` is an ordinary member access: only [module loading](module_loading.md) knows whether `m` is a module.
 
 *   **Functions**: `fn name<T>(params) -> Type { body }`. The return type may be omitted (`Void`). Trait methods end with `;` instead of a body.
 *   **Structs**: fields may be separated by `;` or `,`, and the last separator is optional.
@@ -97,7 +101,7 @@ Binary expressions use precedence climbing. All binary operators are left-associ
 
 `value is Type` sits at the same level and produces a `TypeTestExpr`. `is` is not a reserved word: after a complete expression an identifier cannot follow, so in that position it can only be this operator, and `is` remains usable as a name elsewhere.
 
-A cast produces a `CastExpr`. Its type is parsed without unions, so `v as Int | String` is not a cast to a union; `v as Int?` is fine. `as` is also the keyword of `import "..." as name`, where it is handled by the import rule.
+A cast produces a `CastExpr`. Its type is parsed without unions, so `v as Int | String` is not a cast to a union; `v as Int?` is fine. `as` is also the keyword of `import a.b as name`, where it is handled by the import rule.
 
 Primary expressions: literals, identifiers (optionally with type arguments), parenthesized expressions, array literals `[a, b]`, struct literals `Name { field: value }` and function expressions `fn(params) -> Type { body }`.
 
@@ -140,7 +144,7 @@ A syntax error unwinds to the nearest recovery point, which then skips ahead to 
 | Level | Recovery point | Skips to |
 |-------|----------------|----------|
 | Statement | `parseStmtRecovering`, called for each statement of a block | Past the next `;` at the same nesting depth, or to the `}` closing the block |
-| Declaration | `parseTopLevel`, called for each import and declaration | The next `fn`, `struct`, `enum`, `trait`, `impl` or `import` |
+| Declaration | `parseTopLevel`, called for each import and declaration | The next `fn`, `struct`, `enum`, `trait`, `impl`, `import` or `pub` |
 
 The broken statement is dropped from the AST; the statements around it are kept. So a file with three unrelated mistakes reports three errors, and each is reported once.
 

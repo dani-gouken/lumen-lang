@@ -470,3 +470,91 @@ func TestDebuggerSession(t *testing.T) {
 		t.Errorf("expected a stack overflow at depth 50, got exit %d:\n%s", res.exit, res.stderr)
 	}
 }
+
+// TestModulesThroughCommands checks that every command that takes a source
+// file loads the modules it imports.
+func TestModulesThroughCommands(t *testing.T) {
+	program := "examples/modules.lum"
+	want, err := os.ReadFile(filepath.Join(repoRoot, "examples/expected/modules.out"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A bytecode file holds the whole program: no source is needed to run it
+	bytecode := filepath.Join(t.TempDir(), "modules.lc")
+	if res := runLumen(t, "build", program, bytecode); res.exit != 0 {
+		t.Fatalf("build failed:\n%s", res.stderr)
+	}
+	if res := runLumen(t, "exec", bytecode); !strings.HasPrefix(res.stdout, string(want)) {
+		t.Errorf("exec: expected output starting with %q, got %q\n%s", want, res.stdout, res.stderr)
+	}
+
+	// Functions of a module are named with its path, in the IR and in the listing
+	ir := runLumen(t, "ir", program)
+	for _, name := range []string{"fn main()", "fn zoo.animals.new(", "fn zoo.keeper.Keeper.feed(", "fn zoo.feed.portion("} {
+		if !strings.Contains(ir.stdout, name) {
+			t.Errorf("expected the IR to contain %q, got:\n%s", name, ir.stdout)
+		}
+	}
+	listing := filepath.Join(t.TempDir(), "modules.lasm")
+	if res := runLumen(t, "build", program, listing); res.exit != 0 {
+		t.Fatalf("build of the listing failed:\n%s", res.stderr)
+	}
+	text, _ := os.ReadFile(listing)
+	for _, name := range []string{".func zoo.animals.heaviest ", "NEWFUNC r5 zoo.animals.new"} {
+		if !strings.Contains(string(text), name) {
+			t.Errorf("expected the listing to contain %q", name)
+		}
+	}
+
+	// The debugger steps into a module and shows the module's source
+	session := runLumenWithInput(t, "s\ns\ns\ns\ns\ns\ns\ns\nc\n", "lumdbg", program)
+	if session.exit != 0 || !strings.Contains(session.stdout, "[zoo.animals.new]") || !strings.Contains(session.stdout, "examples/zoo/animals.lum:") {
+		t.Errorf("expected the session to step into zoo.animals.new, got exit %d:\n%s", session.exit, session.stdout)
+	}
+}
+
+// TestModulesAreFoundNextToTheEntryFile checks that modules are looked up
+// from the folder of the entry file, whatever the current directory and
+// however the file is named on the command line.
+func TestModulesAreFoundNextToTheEntryFile(t *testing.T) {
+	dir := t.TempDir()
+	write := func(path, src string) {
+		t.Helper()
+		full := filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(src), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("app/start.lum", "import lib.text;\nimport peer;\nfn main() -> Int { println(text.shout(peer.word())); return 0; }\n")
+	write("app/lib/text.lum", "pub fn shout(s: String) -> String { return s + \"!\"; }\n")
+	write("app/peer.lum", "import lib.text;\npub fn word() -> String { return text.shout(\"hey\"); }\n")
+	// A file outside the program's folder is not reachable
+	write("text.lum", "pub fn shout(s: String) -> String { return \"wrong file\"; }\n")
+
+	// An absolute path; the tests run from the repository root
+	res := runLumen(t, "run", filepath.Join(dir, "app", "start.lum"))
+	if res.exit != 0 || res.stdout != "hey!!\n" {
+		t.Errorf("expected hey!!, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+	}
+
+	// A module is not found through a parent folder
+	write("app/start.lum", "import text;\nfn main() -> Int { return 0; }\n")
+	res = runLumen(t, "run", filepath.Join(dir, "app", "start.lum"))
+	if res.exit != 1 || !strings.Contains(res.stderr, "E8001") || !strings.Contains(res.stderr, filepath.Join(dir, "app", "text.lum")) {
+		t.Errorf("expected the module to be looked for in app/, got exit %d:\n%s", res.exit, res.stderr)
+	}
+
+	// An error in a module shows the module's file and line
+	write("app/start.lum", "import lib.text;\nfn main() -> Int { println(text.shout(1)); return 0; }\n")
+	write("app/lib/text.lum", "pub fn shout(s: String) -> String {\n    let n: Int = s;\n    return s;\n}\n")
+	res = runLumen(t, "run", filepath.Join(dir, "app", "start.lum"))
+	for _, want := range []string{"E2001", filepath.Join(dir, "app", "lib", "text.lum") + ":2:", "let n: Int = s;", "E2010", "start.lum:2:"} {
+		if !strings.Contains(res.stderr, want) {
+			t.Errorf("expected stderr to contain %q, got:\n%s", want, res.stderr)
+		}
+	}
+}

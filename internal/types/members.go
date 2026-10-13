@@ -124,6 +124,19 @@ func (c *Checker) methodDecl(recv Type, name string) *ast.FnDecl {
 	return nil
 }
 
+// checkMethodVisible reports a use of a method from a module that may not
+// see it. A method is visible in the module that declares it; elsewhere it
+// has to be declared with 'pub', or implement a trait.
+func (c *Checker) checkMethodVisible(recv Type, member *ast.MemberExpr) {
+	decl := c.methodDecl(recv, member.Name)
+	if decl == nil || decl.Pub || c.currentFn == nil || c.currentFn.Module == decl.Module {
+		return
+	}
+	c.errorfWithSuggestion(member.Token(), ErrPrivateMethod,
+		"Declare it with 'pub fn "+member.Name+"' to use it from other modules",
+		"method '%s' of %s is private", member.Name, recv)
+}
+
 // methodType returns the signature of a method as seen on a receiver of the
 // given type: a struct with an impl method of that name, or a trait that
 // declares it. `Self` in the signature is the receiver's type, the type
@@ -213,6 +226,7 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 
 	case *StructType:
 		if ft, ok := c.methodType(t, member.Name, c.methodTypeArgs(t, member, e, expected)); ok {
+			c.checkMethodVisible(t, member)
 			c.info.Types[member] = ft
 			return c.checkArgs(e, ft)
 		}

@@ -13,10 +13,6 @@ func checkSupported(prog *ast.Program, errs *errors.Handler, lines map[int]strin
 		errs.ReportErrorWithSuggestion(ErrUnsupportedFeature, what+" not supported yet", suggestion, node.Token(), lines)
 	}
 
-	for _, imp := range prog.Imports {
-		unsupported(imp, "imports are", "Keep the program in a single file for now")
-	}
-
 	for _, decl := range prog.Decls {
 		switch d := decl.(type) {
 		case *ast.EnumDecl:

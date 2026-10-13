@@ -1,0 +1,3 @@
+Runtime error: index out of bounds: 3 (length 2)
+test/e2e/cases/game/util/pick.lum:4:22 in function 'game.util.pick.nth_Int'
+return list.items[index];

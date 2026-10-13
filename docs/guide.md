@@ -270,6 +270,45 @@ for v in [1, 2, 3] {
 readers[0]();     // 1, not 3
 ```
 
+### Programs in several files
+
+A file is a module. Other files use it through `import`, with the path from the folder of the file you run:
+
+```
+shop/
+  main.lum
+  stock.lum
+  util/
+    text.lum
+```
+
+```lumen
+// main.lum
+import stock;                    // stock.lum
+import util.text;                // util/text.lum
+import util.text.{shout};        // or just a name of it
+
+fn main() -> Int {
+    let s = stock.open();
+    println(text.shout("open"), shout("really"));
+    return 0;
+}
+```
+
+```lumen
+// util/text.lum
+pub fn shout(s: String) -> String { return upper(s) + "!"; }
+
+fn upper(s: String) -> String { return s; }     // no 'pub': only this file can call it
+```
+
+*   Only what is declared with `pub` can be used from another file: `pub fn`, `pub struct`, `pub trait`, and `pub fn` for methods.
+*   A module is named by the last part of its path (`text.shout`). Use `import util.text as t;` to pick another name.
+*   Paths always start at the folder of the file you run, in every file. A folder is not a module: `import util;` needs a file `util.lum`.
+*   `lumen run shop/main.lum` is all it takes; imported files are found and compiled automatically.
+
+The details, including how a file can pass names on with `pub import`, are in [modules.md](modules.md).
+
 ### Builtin functions
 
 | Function | Description |
@@ -321,7 +360,6 @@ The program stops and exits with code 1.
 
 These are rejected with a clear error rather than miscompiled:
 
-*   `import` and programs spanning several files
 *   `enum`
 *   `match` on types (`case Int:`)
 

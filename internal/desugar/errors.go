@@ -145,6 +145,9 @@ func (d *Desugarer) warnExcessiveNesting(expr ast.Expr, depth int) {
 
 // getSourceLine retrieves the source line for a given position
 func (d *Desugarer) getSourceLine(pos token.Position) string {
+	if line, ok := d.errs.SourceLine(pos.File, pos.Line); ok {
+		return line
+	}
 	if d.sourceLines == nil {
 		return ""
 	}

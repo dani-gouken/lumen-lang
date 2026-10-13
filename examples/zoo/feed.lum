@@ -1,0 +1,6 @@
+import zoo.animals.{Animal};
+
+// Grams of food for one meal.
+pub fn portion(animal: Animal) -> Int {
+    return animal.weight * 25;
+}

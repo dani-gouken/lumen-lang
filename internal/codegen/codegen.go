@@ -164,7 +164,12 @@ func (g *Generator) debugInfo(pos token.Position, funcName string) *vm.DebugInfo
 	if pos.Line == 0 {
 		return nil
 	}
+	// A program of several modules has its lines registered per file
+	line, ok := g.errs.SourceLine(pos.File, pos.Line)
+	if !ok {
+		line = g.sourceLines[pos.Line]
+	}
 	return vm.NewDebugInfo(pos.File, pos.Line, pos.Col).
-		WithSourceLine(g.sourceLines[pos.Line]).
+		WithSourceLine(line).
 		WithFuncName(funcName)
 }

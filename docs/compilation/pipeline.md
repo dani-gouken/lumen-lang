@@ -12,7 +12,7 @@ computes information about it for the stages that follow.
 
 ```mermaid
 graph TD
-    A[Source Code] -->|Parser| B[AST]
+    A[Source Files] -->|Parser, Module Loading| B[AST]
     B -->|Name Resolution| C[Resolved AST]
     C -->|Type Checking| D[Typed AST]
     D -->|Monomorphization| E[Monomorphized AST]
@@ -33,7 +33,8 @@ The whole pipeline is driven by one function, `compiler.Compile`, which is what
 | `internal/token` | — | — | Token and position types | |
 | `internal/ast` | — | — | AST node types | |
 | `internal/errors` | — | — | `Diagnostic`, `Handler` | [diagnosis.md](diagnosis.md) |
-| `internal/parser` | 1. Parsing | source text | `*ast.Program` | [parsing.md](parsing.md) |
+| `internal/parser` | 1. Parsing | source text of one file | `*ast.Program` | [parsing.md](parsing.md) |
+| `internal/modules` | 1. Module loading | entry file, file reader | one `*ast.Program` for all files | [module_loading.md](module_loading.md) |
 | `internal/resolve` | 2. Name resolution | AST | `*resolve.Table` | [name_resolution.md](name_resolution.md) |
 | `internal/types` | 3. Type checking | AST, table | `*types.Info` | |
 | `internal/monomorph` | 4. Monomorphization | AST, types | AST with concrete instances | [monomorphization.md](monomorphization.md) |
@@ -114,7 +115,6 @@ internals the user never wrote:
 
 | Construct | Message |
 |-----------|---------|
-| `import "..."` | imports are not supported yet |
 | `enum ...` | enums are not supported yet |
 | match patterns other than literals, types and `default` | this kind of match pattern is not supported yet |
 
