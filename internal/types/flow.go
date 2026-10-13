@@ -122,6 +122,40 @@ func (c *Checker) narrowAfter(known facts, since flowState) {
 	}
 }
 
+// withBranches checks the alternatives of a statement of which only one
+// runs: the two sides of an `if`, the cases of a `match`. Each one starts
+// from what was known before the statement, plus its own facts. What an
+// earlier alternative assigned does not concern a later one, since the
+// later one only runs when the earlier one did not.
+//
+// Afterwards, what was known before still holds, except for whatever any
+// of them assigned.
+func (c *Checker) withBranches(count int, facts func(i int) facts, check func(i int)) {
+	before := c.flowSnapshot()
+	for i := 0; i < count; i++ {
+		if i > 0 {
+			c.flowReset(before)
+		}
+		c.narrow(facts(i))
+		check(i)
+	}
+	c.flowRestore(before)
+}
+
+// flowReset brings back the facts of a snapshot as they were, including
+// those about variables assigned since. Unlike flowRestore it is for going
+// back to a point the code about to be checked is reached from directly.
+func (c *Checker) flowReset(state flowState) {
+	c.narrowed = make(map[*resolve.Symbol]Type, len(state.facts.vars))
+	for sym, typ := range state.facts.vars {
+		c.narrowed[sym] = typ
+	}
+	c.narrowedPaths = make(map[string]pathFact, len(state.facts.paths))
+	for key, fact := range state.facts.paths {
+		c.narrowedPaths[key] = fact
+	}
+}
+
 // withNarrowing runs check with extra facts that only hold inside it.
 func (c *Checker) withNarrowing(known facts, check func()) {
 	state := c.flowSnapshot()

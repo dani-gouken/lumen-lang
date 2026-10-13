@@ -1,0 +1,60 @@
+// A calculator: it reads lines such as `area = width * (height - 2)`,
+// works them out and remembers the variables.
+//
+// It is a small language implementation, in three steps that are one
+// module each:
+//
+//   calc/lexer.lum    text            -> tokens     "12", "+", "("
+//   calc/parser.lum   tokens          -> a tree     Binary(+, Number, ...)
+//   calc/tree.lum     the tree, which can work itself out
+//
+// Run it with:  lumen run examples/calculator
+
+import calc.lexer;
+import calc.parser;
+import calc.tree.{Env, Problem, newEnv};
+
+fn run(line: String, env: Env) -> String {
+    let tokens = lexer.tokenize(line);
+    let parsed = parser.parse(tokens);
+    if parsed is Problem {
+        return "cannot be read: " + parsed.message;
+    }
+
+    // Printing the tree back, fully parenthesized, shows how it was read
+    let statement = parsed as parser.Statement;
+    let result = statement.run(env);
+    if result is Problem {
+        return statement.show() + "  cannot be computed: " + result.message;
+    }
+    return statement.show() + "  =  " + toString(result as Int);
+}
+
+fn main() -> Int {
+    let env = newEnv();
+    let lines = [
+        "1 + 2 * 3",
+        "(1 + 2) * 3",
+        "width = 4",
+        "height = width * 3 - 2",
+        "area = width * height",
+        "-area / (height - 2 * 3)",
+        "100 % 7 - -3",
+        // Things that go wrong, each at a different step
+        "4 + $",
+        "2 * (3 +",
+        "1 2",
+        "depth * 2",
+        "8 / (width - 4)",
+        "width = width + 1",
+        "width * height",
+    ];
+
+    for line in lines {
+        println(line);
+        println("    " + run(line, env));
+    }
+    println();
+    println("variables:", env.describe());
+    return 0;
+}

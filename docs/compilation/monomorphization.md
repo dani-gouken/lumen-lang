@@ -96,10 +96,11 @@ type Instantiation struct {
 **Goal**: Handle transitive dependencies where one generic function calls another.
 
 **Process**:
-1. Build a dependency graph of instantiations
-2. If `foo<T>` calls `bar<T>`, then instantiating `foo<Int>` requires instantiating `bar<Int>`
-3. Perform topological sort to determine instantiation order
-4. Detect cycles (which would indicate infinite instantiation)
+1. For each known instantiation, find the instantiations its body needs: if `foo<T>` calls `bar<T>`, then `foo<Int>` requires `bar<Int>`. Type parameters are substituted wherever they occur in the type arguments (`bar<[T]>` becomes `bar<[Int]>`).
+2. Repeat for the ones just found, until nothing new turns up.
+3. Instances are generated in the order they were found, which is the same on every run.
+
+Instances that need each other, or themselves, are not a problem: `sorted<T>` calling `sorted<T>` is recursion, and `sorted<Int>` is one instance however often it is needed. What cannot be compiled is a function whose every instance needs a *new*, larger one. That shows as a chain of new instantiations that does not end; it is cut off after 100 links and reported as `E3002`.
 
 **Example**:
 ```lumen
@@ -297,12 +298,20 @@ fn main() -> Void {
 
 ### E3002: Infinite Instantiation
 
-**Description**: Recursive generic types or functions that would cause infinite instantiation.
+**Description**: A generic function whose instances each require another instance with a larger type, without end.
 
 **Example**:
 ```lumen
 fn recurse<T>(x: T) -> T {
     return recurse<[T]>([x]);  // Infinite: T -> [T] -> [[T]] -> ...
+}
+```
+
+A generic function that calls itself with the *same* type arguments is ordinary recursion and compiles:
+```lumen
+fn count<T>(items: [T], from: Int) -> Int {
+    if from >= items.length { return 0; }
+    return 1 + count<T>(items, from + 1);
 }
 ```
 

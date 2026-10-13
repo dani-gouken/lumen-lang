@@ -134,7 +134,8 @@ A test narrows a **local variable, parameter or field path** (`node.next`) insid
 *   **fields are forgotten after anything that may assign a field**: a field assignment, or a call of a function that assigns one, directly or through what it calls. Calls that cannot (builtins, functions that only read) change nothing. A call whose target is not known counts as one that may: a function value, a function stored in a field, and a method if *any* method of that name assigns a field (the receiver's type is not used). Copy the field into a local to keep it across such calls;
 *   **elements are not narrowed**: `if xs[0] != null` says nothing about the next `xs[0]`;
 *   **the false branch of a type test** learns nothing: after `if v is Int { ... } else { ... }`, `v` is not "anything but Int";
-*   **after a loop**: `while x == null { ... }` does not make `x` non-null afterwards.
+*   **after a loop**: `while x == null { ... }` does not make `x` non-null afterwards;
+*   **a variable assigned in a loop** is not narrowed inside that loop by a test made before it, even when everything assigned to it is non-null. Walking a linked structure needs a second variable of the non-optional type: `let node: Node = root;` after `root` was tested.
 
 These are conservative choices, not holes. The third could be made more precise by tracking *which* fields a function assigns and by using the receiver's type for method calls.
 

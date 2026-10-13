@@ -622,16 +622,24 @@ func (c *Checker) checkIfStmt(s *ast.IfStmt) {
 	whenFalse := c.factsFrom(s.Cond, false)
 	before := c.flowSnapshot()
 
-	c.withNarrowing(whenTrue, func() { c.checkBlockStmt(s.Then) })
+	branches := 1
 	if s.Else != nil {
-		c.withNarrowing(whenFalse, func() {
-			if elseBlock, ok := s.Else.(*ast.BlockStmt); ok {
-				c.checkBlockStmt(elseBlock)
-			} else if elseIf, ok := s.Else.(*ast.IfStmt); ok {
-				c.checkIfStmt(elseIf)
-			}
-		})
+		branches = 2
 	}
+	c.withBranches(branches, func(i int) facts {
+		if i == 0 {
+			return whenTrue
+		}
+		return whenFalse
+	}, func(i int) {
+		if i == 0 {
+			c.checkBlockStmt(s.Then)
+		} else if elseBlock, ok := s.Else.(*ast.BlockStmt); ok {
+			c.checkBlockStmt(elseBlock)
+		} else if elseIf, ok := s.Else.(*ast.IfStmt); ok {
+			c.checkIfStmt(elseIf)
+		}
+	})
 
 	// When one branch never continues, the code after the if is only
 	// reached through the other one: `if x == null { return; }` leaves x
@@ -681,8 +689,13 @@ func (c *Checker) checkForStmt(s *ast.ForStmt) {
 func (c *Checker) checkMatchStmt(s *ast.MatchStmt) {
 	condType := c.checkExpr(s.Cond)
 
-	for _, matchCase := range s.Cases {
+	// The facts of each case are worked out first, the bodies checked
+	// after: only one case runs, so each body starts from what was known
+	// before the match, whatever the cases above it assign.
+	caseFacts := make([]facts, len(s.Cases))
+	for i, matchCase := range s.Cases {
 		known := newFacts()
+		caseFacts[i] = known
 
 		switch pattern := matchCase.Pattern.(type) {
 		case *ast.Type:
@@ -703,16 +716,17 @@ func (c *Checker) checkMatchStmt(s *ast.MatchStmt) {
 			}
 		}
 
-		// Check the body - can be either BlockStmt or Expr
-		c.withNarrowing(known, func() {
-			switch body := matchCase.Body.(type) {
-			case *ast.BlockStmt:
-				c.checkBlockStmt(body)
-			case ast.Expr:
-				c.checkExpr(body)
-			}
-		})
 	}
+
+	c.withBranches(len(s.Cases), func(i int) facts { return caseFacts[i] }, func(i int) {
+		// The body can be either a block or an expression
+		switch body := s.Cases[i].Body.(type) {
+		case *ast.BlockStmt:
+			c.checkBlockStmt(body)
+		case ast.Expr:
+			c.checkExpr(body)
+		}
+	})
 }
 
 func (c *Checker) checkExpr(expr ast.Expr) Type {

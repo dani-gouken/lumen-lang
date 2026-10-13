@@ -1,0 +1,10 @@
+ascending:  [4, 5, 8, 9, 15, 26, 31, 35]
+descending: [35, 31, 26, 15, 9, 8, 5, 4]
+untouched:  [31, 4, 15, 9, 26, 5, 35, 8]
+alphabetic: ["apple", "banana", "fig", "kiwi", "pear"]
+by length:  ["fig", "pear", "kiwi", "apple", "banana"]
+by size:    ["Lagos", "Lima", "Kyoto", "Oslo"]
+by name:    ["Kyoto", "Lagos", "Lima", "Oslo"]
+in place:   [4, 5, 8, 9, 15, 26, 31, 35]
+26 is at position 5
+27 is not there

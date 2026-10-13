@@ -7,61 +7,49 @@ import (
 	"github.com/dani-gouken/lumen/internal/types"
 )
 
-// resolveDependencies performs topological sort of instantiations to handle
-// transitive dependencies and detect infinite instantiation cycles.
-// Returns the instantiation keys in the order they should be generated.
+// maxInstantiationDepth bounds how long a chain of instantiations, each
+// required by the one before, may get. No real program comes near it; a
+// chain that long means every instance needs a bigger one, as when f<T>
+// calls f<[T]>.
+const maxInstantiationDepth = 100
+
+// resolveDependencies finds the instantiations that the known ones need in
+// turn, until nothing new turns up: sorted<Int> calls slice<T> with T = Int,
+// so slice<Int> is needed too. It returns every instantiation to generate,
+// in the order they were found.
+//
+// Instances that need each other, or themselves, are fine: that is
+// recursion, and the set of instances is finite. What cannot be compiled is
+// a function whose instances require ever larger types (E3002); that shows
+// as a chain of new instantiations that does not end.
 func (m *Monomorphizer) resolveDependencies() []InstantiationKey {
-	// Build dependency graph
-	deps := make(map[InstantiationKey][]InstantiationKey)
-
-	for key, inst := range m.instantiations {
-		deps[key] = m.findDependencies(inst)
-	}
-
-	// Perform topological sort with cycle detection
+	depth := make(map[InstantiationKey]int)
+	reported := make(map[string]bool)
 	var result []InstantiationKey
-	visited := make(map[InstantiationKey]bool)
-	inProgress := make(map[InstantiationKey]bool)
 
-	var visit func(key InstantiationKey) bool
-	visit = func(key InstantiationKey) bool {
-		if visited[key] {
-			return true
-		}
-		if inProgress[key] {
-			// Cycle detected
-			inst := m.instantiations[key]
-			if inst != nil && len(inst.UseSites) > 0 {
-				useSite := inst.UseSites[0]
+	// m.order grows while it is walked: findDependencies records the
+	// instantiations it comes across
+	for i := 0; i < len(m.order); i++ {
+		key := m.order[i]
+		inst := m.instantiations[key]
+
+		if depth[key] > maxInstantiationDepth {
+			if !reported[inst.BaseName] && len(inst.UseSites) > 0 {
+				reported[inst.BaseName] = true
 				msg := fmt.Sprintf("Generic function '%s' causes infinite instantiation. Detected cycle in type argument expansion.", inst.BaseName)
 				suggestion := "Break the cycle by using a concrete type instead of recursively expanding the type parameter, or add a termination condition"
-				m.errs.ReportErrorWithSuggestion(ErrInfiniteInstantiation, msg, suggestion, useSite.Token(), m.sourceLines)
+				m.errs.ReportErrorWithSuggestion(ErrInfiniteInstantiation, msg, suggestion, inst.UseSites[0].Token(), m.sourceLines)
 			}
-			return false
+			continue // Do not expand further
 		}
-
-		inProgress[key] = true
-
-		// Visit dependencies first
-		for _, dep := range deps[key] {
-			if !visit(dep) {
-				return false
-			}
-		}
-
-		inProgress[key] = false
-		visited[key] = true
 		result = append(result, key)
-		return true
-	}
 
-	for key := range m.instantiations {
-		if !visit(key) {
-			// Cycle detected, continue to report all errors
-			continue
+		known := len(m.order)
+		m.findDependencies(inst)
+		for _, found := range m.order[known:] {
+			depth[found] = depth[key] + 1
 		}
 	}
-
 	return result
 }
 
@@ -222,17 +210,38 @@ func (m *Monomorphizer) substituteTypeParams(astTypes []*ast.Type, typeArgs []ty
 	return result
 }
 
-// substituteTypeParam substitutes type parameters in a single type.
+// substituteTypeParam converts a type written inside a generic declaration
+// to the type it stands for in one instance: type parameters are replaced
+// by the instance's type arguments, wherever they occur in the type.
 func (m *Monomorphizer) substituteTypeParam(astType *ast.Type, typeArgs []types.Type, typeParams []string) types.Type {
-	// Check if this is a type parameter reference
-	if astType.Kind == ast.TypeBasic {
+	if astType == nil {
+		return types.Void
+	}
+	sub := func(t *ast.Type) types.Type { return m.substituteTypeParam(t, typeArgs, typeParams) }
+
+	switch astType.Kind {
+	case ast.TypeBasic:
 		for i, param := range typeParams {
 			if astType.Name == param && i < len(typeArgs) {
 				return typeArgs[i]
 			}
 		}
+		// Box<T>: the struct, with its arguments substituted
+		if len(astType.Generics) > 0 {
+			if st, ok := m.astTypeToType(astType).(*types.StructType); ok {
+				instance := *st
+				instance.TypeArgs = m.substituteTypeParams(astType.Generics, typeArgs, typeParams)
+				return &instance
+			}
+		}
+	case ast.TypeArray:
+		return &types.ArrayType{ElementType: sub(astType.ElemType)}
+	case ast.TypeOption:
+		return types.NewUnion(sub(astType.ElemType), types.Null)
+	case ast.TypeFunction:
+		return types.NewFunction(m.substituteTypeParams(astType.ParamTypes, typeArgs, typeParams), sub(astType.ReturnType))
 	}
 
-	// Otherwise, convert normally
+	// No type parameter can occur in anything else
 	return m.astTypeToType(astType)
 }

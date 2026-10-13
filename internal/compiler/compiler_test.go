@@ -1461,3 +1461,101 @@ func TestLargeProgramRuntimeErrorLocation(t *testing.T) {
 		}
 	}
 }
+
+func TestRecursiveGenericFunctions(t *testing.T) {
+	// A generic function may call itself, and generic functions may call
+	// each other: the instances are the same ones again, not new ones
+	decls := `
+		fn count<T>(items: [T], from: Int) -> Int {
+			if from >= items.length { return 0; }
+			return 1 + count<T>(items, from + 1);
+		}
+
+		fn reversed<T>(items: [T]) -> [T] {
+			let out: [T] = [];
+			collect<T>(items, items.length - 1, out);
+			return out;
+		}
+		fn collect<T>(items: [T], at: Int, out: [T]) {
+			if at < 0 { return; }
+			push(out, items[at]);
+			collect<T>(items, at - 1, out);
+		}
+
+		// Two functions that need each other
+		fn evens<T>(items: [T], at: Int) -> [T] {
+			if at >= items.length { return []; }
+			let rest = odds<T>(items, at + 1);
+			let out: [T] = [items[at]];
+			for item in rest { push(out, item); }
+			return out;
+		}
+		fn odds<T>(items: [T], at: Int) -> [T] {
+			if at >= items.length { return []; }
+			return evens<T>(items, at + 1);
+		}
+
+		// An instance that needs another one with a bigger type, once
+		fn pair<T>(value: T) -> [T] { return [value, value]; }
+		fn nested<T>(value: T) -> [[T]] { return pair<[T]>(pair<T>(value)); }
+		fn deeper<T>(value: T) -> Int { return nested<[T]>([value]).length; }
+	`
+	expectOutput(t, decls, `
+		println(count([1, 2, 3], 0), count(["a", "b"], 0), count<Bool>([], 0));
+		println(reversed([1, 2, 3]), reversed(["x", "y"]));
+		println(evens([10, 11, 12, 13, 14], 0), evens(["a", "b", "c"], 0));
+		println(nested(7), nested("s"), deeper(1.5));
+	`, `3 2 0
+[3, 2, 1] ["y", "x"]
+[10, 12, 14] ["a", "c"]
+[[7, 7], [7, 7]] [["s", "s"], ["s", "s"]] 2
+`)
+
+	// A function whose instances each need a bigger one never ends
+	errs := errors.NewHandler()
+	Compile(`
+		fn grow<T>(value: T, n: Int) -> Int {
+			if n == 0 { return 0; }
+			return grow<[T]>([value], n - 1);
+		}
+		fn main() -> Int { return grow<Int>(1, 3); }
+	`, "test.lum", errs)
+	if len(errs.Diagnostics) != 1 || errs.Diagnostics[0].Code != "E3002" || !strings.Contains(errs.Diagnostics[0].Message, "'grow'") {
+		t.Errorf("expected one E3002 about grow, got %v", errs.Diagnostics)
+	}
+}
+
+func TestGeneratedInstancesHaveAStableOrder(t *testing.T) {
+	// The same source must compile to the same bytecode every time
+	src := `
+		fn a<T>(v: T) -> T { return b<T>(v); }
+		fn b<T>(v: T) -> T { return c<T>(v); }
+		fn c<T>(v: T) -> T { return v; }
+		fn main() -> Int {
+			println(a(1), a("s"), b(true), c(2.5), a([1]), b(["x"]));
+			return 0;
+		}
+	`
+	var first []string
+	for run := 0; run < 20; run++ {
+		errs := errors.NewHandler()
+		result := Compile(src, "test.lum", errs)
+		if errs.HasErrors() {
+			t.Fatalf("unexpected diagnostics: %v", errs.Diagnostics)
+		}
+		var names []string
+		for _, proto := range result.Chunk.Prototypes {
+			names = append(names, proto.Name)
+		}
+		if run == 0 {
+			first = names
+			continue
+		}
+		if strings.Join(names, " ") != strings.Join(first, " ") {
+			t.Fatalf("run %d produced another order:\n%v\n%v", run, first, names)
+		}
+	}
+	if len(first) < 10 {
+		t.Errorf("expected an instance per type, got %v", first)
+	}
+}

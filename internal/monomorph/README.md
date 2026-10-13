@@ -47,8 +47,8 @@ The monomorphization process consists of **four main phases**:
 
 ### Phase 2: Dependency Resolution
 - Builds a dependency graph (e.g., if `foo<T>` calls `bar<T>`, then `foo<Int>` depends on `bar<Int>`)
-- Performs topological sort to determine generation order
-- Detects cycles (infinite instantiation)
+- Follows what each instantiation needs in turn until nothing new turns up; the order of generation is the order of discovery
+- Recursion between instances is fine; a chain of ever larger instances is cut off and reported (infinite instantiation)
 
 ### Phase 3: Code Generation
 - For each instantiation, clones the generic AST declaration
@@ -122,7 +122,7 @@ fn main() -> Void {
 ```
 
 ### E3002: Infinite Instantiation
-Recursive generic types causing infinite instantiation (cycle detected).
+A generic function whose instances each need a larger one, without end. Calling itself with the same type arguments is ordinary recursion, not this.
 
 **Example**:
 ```lumen

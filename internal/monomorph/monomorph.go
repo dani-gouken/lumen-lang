@@ -59,8 +59,10 @@ type Monomorphizer struct {
 	errs         *errors.Handler
 	sourceLines  map[int]string
 
-	// Tracks all discovered instantiations
+	// Tracks all discovered instantiations, and the order they were found
+	// in, so that the generated program does not depend on map order
 	instantiations map[InstantiationKey]*Instantiation
+	order          []InstantiationKey
 
 	// Tracks generated monomorphic functions/types
 	generated map[InstantiationKey]ast.Node

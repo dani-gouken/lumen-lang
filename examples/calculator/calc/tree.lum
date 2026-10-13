@@ -1,0 +1,131 @@
+// Step 3: the tree a line is turned into, and how it works itself out.
+//
+// Every kind of node implements Expr. A number knows its value, a Binary
+// asks its two sides and combines them: evaluating the tree is one method
+// call on its top.
+
+// What went wrong, when something did. A computation gives an Int or a
+// Problem; `is` tells which.
+pub struct Problem {
+    message: String;
+}
+
+pub fn problem(message: String) -> Problem {
+    return Problem { message: message };
+}
+
+pub trait Expr {
+    fn eval(env: Env) -> Int | Problem;
+    fn show() -> String;
+}
+
+// --- The variables ---
+
+pub struct Env {
+    names: [String];
+    values: [Int];
+}
+
+pub fn newEnv() -> Env {
+    return Env { names: [], values: [] };
+}
+
+impl Env {
+    pub fn get(name: String) -> Int? {
+        for i, known in self.names {
+            if known == name { return self.values[i]; }
+        }
+        return null;
+    }
+
+    pub fn set(name: String, value: Int) {
+        for i, known in self.names {
+            if known == name {
+                self.values[i] = value;
+                return;
+            }
+        }
+        push(self.names, name);
+        push(self.values, value);
+    }
+
+    pub fn describe() -> String {
+        let text = "";
+        for i, name in self.names {
+            if i > 0 { text += ", "; }
+            text += name + " = " + toString(self.values[i]);
+        }
+        return text;
+    }
+}
+
+// --- The nodes ---
+
+pub struct Number { value: Int; }
+
+impl Expr for Number {
+    fn eval(env: Env) -> Int | Problem { return self.value; }
+    fn show() -> String { return toString(self.value); }
+}
+
+pub struct Variable { name: String; }
+
+impl Expr for Variable {
+    fn eval(env: Env) -> Int | Problem {
+        let value = env.get(self.name);
+        if value == null {
+            return problem("there is no variable '" + self.name + "'");
+        }
+        return value;
+    }
+    fn show() -> String { return self.name; }
+}
+
+pub struct Negate { inner: Expr; }
+
+impl Expr for Negate {
+    fn eval(env: Env) -> Int | Problem {
+        let value = self.inner.eval(env);
+        if value is Int {
+            return -value;
+        }
+        return value;
+    }
+    fn show() -> String { return "(-" + self.inner.show() + ")"; }
+}
+
+pub struct Binary {
+    op: String;
+    left: Expr;
+    right: Expr;
+}
+
+impl Expr for Binary {
+    fn eval(env: Env) -> Int | Problem {
+        // A problem on either side is the result: it travels up the tree
+        let left = self.left.eval(env);
+        if left is Problem { return left; }
+        let right = self.right.eval(env);
+        if right is Problem { return right; }
+        return apply(self.op, left as Int, right as Int);
+    }
+
+    // Fully parenthesized, so the shape of the tree can be seen
+    fn show() -> String {
+        return "(" + self.left.show() + " " + self.op + " " + self.right.show() + ")";
+    }
+}
+
+fn apply(op: String, a: Int, b: Int) -> Int | Problem {
+    match op {
+        case "+": { return a + b; }
+        case "-": { return a - b; }
+        case "*": { return a * b; }
+        default: { }
+    }
+    if b == 0 {
+        return problem("division by zero");
+    }
+    if op == "/" { return a / b; }
+    return a % b;
+}

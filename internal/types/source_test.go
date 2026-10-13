@@ -306,6 +306,54 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 		{"loop index captured by a lambda", `fn main() -> Int { let fs: [fn() -> Int] = []; for i, x in [1, 2] { push(fs, fn() -> Int { return i + x; }); } return fs[0](); }`},
 		{"largest and smallest Int literals", `fn main() -> Int { let big = 140737488355327; let small = -140737488355328; return 0; }`},
 		{"Any compared and printed", `fn same(a: Any, b: Any) -> Bool { return a == b; }`},
+
+		// Only one branch of an if runs: what one assigns does not concern the other
+		{"else branch after a branch that assigns", `struct N { v: Int; next: N?; }
+			fn f(start: N?, flag: Bool) -> Int {
+				let node = start;
+				while node != null {
+					if flag { node = node.next; } else { return node.v; }
+				}
+				return 0;
+			}`},
+		{"else-if chain after a branch that assigns", `struct N { v: Int; next: N?; }
+			fn f(n: N?, k: Int) -> Int {
+				if n == null { return 0; }
+				if k == 0 { n = null; } else if k == 1 { return n.v; } else { return n.v + 1; }
+				return 0;
+			}`},
+		{"own test of each branch kept", `fn f(a: Int?, b: Int?) -> Int {
+				if a != null { b = null; return a + 1; } else if b != null { a = null; return b + 1; }
+				return 0;
+			}`},
+		{"field known in the else branch after a branch that assigns it", `struct N { v: Int; next: N?; }
+			fn f(n: N, flag: Bool) -> Int {
+				if n.next == null { return 0; }
+				if flag { n.next = null; } else { return n.next.v; }
+				return 0;
+			}`},
+		{"match case after a case that assigns", `fn f(n: Int?, k: Int) -> Int {
+				if n == null { return 0; }
+				match k {
+					case 0: { n = null; }
+					case 1: { return n + 1; }
+					default: { return n + 2; }
+				}
+				return 0;
+			}`},
+		{"match on types after a case that assigns", `fn f(v: Any, n: Int?) -> Int {
+				if n == null { return 0; }
+				match v {
+					case String: { n = null; return v.length; }
+					case Int: { return v + n; }
+					default: { return n; }
+				}
+			}`},
+		{"variable untouched by either branch stays narrowed", `fn f(n: Int?, m: Int?, flag: Bool) -> Int {
+				if n == null { return 0; }
+				if flag { m = null; } else { m = 1; }
+				return n + 1;
+			}`},
 	}
 
 	for _, tt := range tests {
@@ -372,6 +420,14 @@ func TestCheckRejectsInvalidPrograms(t *testing.T) {
 		{"narrowing does not survive a loop that assigns", `fn f(n: Int?) -> Int { if n == null { return 0; } let i = 0; while i < 2 { i = i + n; n = null; } return 0; }`, "the value may be null"},
 		{"narrowing does not reach into a lambda", `fn f(n: Int?) -> Int { if n == null { return 0; } let g = fn() -> Int { return n + 1; }; return g(); }`, "the value may be null"},
 		{"wrong branch narrowed", `fn f(n: Int?) -> Int { if n == null { return n + 1; } return 0; }`, "the value may be null"},
+		{"assigned in the then branch, used after the if", `fn f(n: Int?, flag: Bool) -> Int { if n == null { return 0; } if flag { n = null; } else { } return n + 1; }`, "the value may be null"},
+		{"assigned in the else branch, used after the if", `fn f(n: Int?, flag: Bool) -> Int { if n == null { return 0; } if flag { } else { n = null; } return n + 1; }`, "the value may be null"},
+		{"assigned in the else branch, used later in it", `fn f(n: Int?, flag: Bool) -> Int { if n == null { return 0; } if flag { return n; } else { n = null; return n + 1; } }`, "the value may be null"},
+		{"assigned in a match case, used after the match", `fn f(n: Int?, k: Int) -> Int { if n == null { return 0; } match k { case 0: { n = null; } default: { } } return n + 1; }`, "the value may be null"},
+		{"assigned in a match case, used later in it", `fn f(n: Int?, k: Int) -> Int { if n == null { return 0; } match k { case 0: { return n; } default: { n = null; return n + 1; } } }`, "the value may be null"},
+		{"field assigned in a branch, read after the if", `struct N { v: Int; next: N?; }
+			fn f(n: N, flag: Bool) -> Int { if n.next == null { return 0; } if flag { n.next = null; } else { } return n.next.v; }`, "the value may be null"},
+		{"fact of the then branch does not reach the else branch", `fn f(n: Int?, m: Int?) -> Int { if n != null { return n; } else { return n + 1; } }`, "the value may be null"},
 		{"assign to a constant", `fn main() -> Int { const c = 1; c = 2; return c; }`, "cannot assign to constant 'c'"},
 		{"assign to a constant in a lambda", `fn main() -> Int { const c = 1; let f = fn() -> Void { c = 2; }; return c; }`, "cannot assign to constant 'c'"},
 		{"missing return", `fn f(n: Int) -> Int { if n > 0 { return 1; } }`, "function 'f' can reach its end without returning a value"},

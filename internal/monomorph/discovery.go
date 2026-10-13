@@ -293,6 +293,7 @@ func (m *Monomorphizer) recordInstantiation(key InstantiationKey, baseName strin
 	if inst, exists := m.instantiations[key]; exists {
 		inst.UseSites = append(inst.UseSites, useSite)
 	} else {
+		m.order = append(m.order, key)
 		m.instantiations[key] = &Instantiation{
 			Key:      key,
 			BaseName: baseName,

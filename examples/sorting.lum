@@ -1,0 +1,157 @@
+// Sorting and searching, written once for every type.
+//
+// The order is not built into the algorithms: it is a function passed in,
+// so the same code sorts numbers, texts and structs, in any order.
+//
+// Shows: generic functions, functions as arguments, closures, recursion,
+// arrays changed in place, optionals.
+
+// --- Merge sort: returns a new, sorted array ---
+
+// `before(a, b)` says whether a must come before b.
+fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
+    if items.length < 2 {
+        return items;
+    }
+    let middle = items.length / 2;
+    let left = sorted<T>(slice<T>(items, 0, middle), before);
+    let right = sorted<T>(slice<T>(items, middle, items.length), before);
+    return merge<T>(left, right, before);
+}
+
+fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
+    let out: [T] = [];
+    let i = from;
+    while i < to {
+        push(out, items[i]);
+        i++;
+    }
+    return out;
+}
+
+fn merge<T>(left: [T], right: [T], before: fn(T, T) -> Bool) -> [T] {
+    let out: [T] = [];
+    let l = 0;
+    let r = 0;
+    while l < left.length && r < right.length {
+        // Taking from the left on a tie keeps equal items in their
+        // original order
+        if before(right[r], left[l]) {
+            push(out, right[r]);
+            r++;
+        } else {
+            push(out, left[l]);
+            l++;
+        }
+    }
+    while l < left.length { push(out, left[l]); l++; }
+    while r < right.length { push(out, right[r]); r++; }
+    return out;
+}
+
+// --- Quicksort: sorts the array itself ---
+
+fn quicksort<T>(items: [T], before: fn(T, T) -> Bool) {
+    sortRange<T>(items, 0, items.length - 1, before);
+}
+
+fn sortRange<T>(items: [T], low: Int, high: Int, before: fn(T, T) -> Bool) {
+    if low >= high {
+        return;
+    }
+    let pivot = items[high];
+    let boundary = low;
+    let i = low;
+    while i < high {
+        if before(items[i], pivot) {
+            swap<T>(items, i, boundary);
+            boundary++;
+        }
+        i++;
+    }
+    swap<T>(items, boundary, high);
+    sortRange<T>(items, low, boundary - 1, before);
+    sortRange<T>(items, boundary + 1, high, before);
+}
+
+fn swap<T>(items: [T], a: Int, b: Int) {
+    let held = items[a];
+    items[a] = items[b];
+    items[b] = held;
+}
+
+// --- Binary search in a sorted array ---
+
+// Returns the position of an item for which `compare` gives 0, or null.
+// `compare(item)` is negative when the item is too small, positive when it
+// is too big.
+fn search<T>(items: [T], compare: fn(T) -> Int) -> Int? {
+    let low = 0;
+    let high = items.length - 1;
+    while low <= high {
+        let middle = (low + high) / 2;
+        let order = compare(items[middle]);
+        if order == 0 {
+            return middle;
+        }
+        if order < 0 {
+            low = middle + 1;
+        } else {
+            high = middle - 1;
+        }
+    }
+    return null;
+}
+
+// --- Using them ---
+
+struct City {
+    name: String;
+    people: Int;
+}
+
+fn names(cities: [City]) -> [String] {
+    let out: [String] = [];
+    for city in cities { push(out, city.name); }
+    return out;
+}
+
+fn ascending(a: Int, b: Int) -> Bool { return a < b; }
+
+fn main() -> Int {
+    let numbers = [31, 4, 15, 9, 26, 5, 35, 8];
+    println("ascending: ", sorted(numbers, ascending));
+    println("descending:", sorted(numbers, fn(a: Int, b: Int) -> Bool { return a > b; }));
+    println("untouched: ", numbers);
+
+    // Texts compare alphabetically with <
+    let words = ["pear", "fig", "banana", "kiwi", "apple"];
+    println("alphabetic:", sorted(words, fn(a: String, b: String) -> Bool { return a < b; }));
+    println("by length: ", sorted(words, fn(a: String, b: String) -> Bool { return a.length < b.length; }));
+
+    // Structs, by whichever field
+    let cities = [
+        City { name: "Lagos", people: 15400 },
+        City { name: "Oslo", people: 700 },
+        City { name: "Lima", people: 10900 },
+        City { name: "Kyoto", people: 1460 },
+    ];
+    println("by size:   ", names(sorted(cities, fn(a: City, b: City) -> Bool { return a.people > b.people; })));
+
+    // In place: the array itself changes
+    quicksort(cities, fn(a: City, b: City) -> Bool { return a.name < b.name; });
+    println("by name:   ", names(cities));
+    quicksort(numbers, ascending);
+    println("in place:  ", numbers);
+
+    // The closure remembers what is being looked for
+    for wanted in [26, 27] {
+        let at = search(numbers, fn(n: Int) -> Int { return n - wanted; });
+        if at == null {
+            println(wanted, "is not there");
+        } else {
+            println(wanted, "is at position", at);
+        }
+    }
+    return 0;
+}

@@ -1,0 +1,30 @@
+1 + 2 * 3
+    (1 + (2 * 3))  =  7
+(1 + 2) * 3
+    ((1 + 2) * 3)  =  9
+width = 4
+    width = 4  =  4
+height = width * 3 - 2
+    height = ((width * 3) - 2)  =  10
+area = width * height
+    area = (width * height)  =  40
+-area / (height - 2 * 3)
+    ((-area) / (height - (2 * 3)))  =  -10
+100 % 7 - -3
+    ((100 % 7) - (-3))  =  5
+4 + $
+    cannot be read: '$' means nothing here
+2 * (3 +
+    cannot be read: expected a number or a name but found the end of the line
+1 2
+    cannot be read: did not expect '2'
+depth * 2
+    (depth * 2)  cannot be computed: there is no variable 'depth'
+8 / (width - 4)
+    (8 / (width - 4))  cannot be computed: division by zero
+width = width + 1
+    width = (width + 1)  =  5
+width * height
+    (width * height)  =  50
+
+variables: width = 5, height = 10, area = 40

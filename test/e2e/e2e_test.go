@@ -214,6 +214,26 @@ func TestExamples(t *testing.T) {
 	}
 }
 
+// TestExampleProjects runs every example that is a folder with a project
+// file, and compares its output with examples/expected/<folder>.out.
+func TestExampleProjects(t *testing.T) {
+	configs, err := filepath.Glob(filepath.Join(repoRoot, "examples", "*", "lumen.json"))
+	if err != nil || len(configs) == 0 {
+		t.Fatal("no example projects found")
+	}
+	for _, config := range configs {
+		name := filepath.Base(filepath.Dir(config))
+
+		t.Run(name, func(t *testing.T) {
+			res := runLumen(t, "run", filepath.Join("examples", name))
+			if res.exit != 0 || res.stderr != "" {
+				t.Fatalf("expected a clean run, got exit code %d\nstderr:\n%s", res.exit, res.stderr)
+			}
+			checkStdout(t, res.stdout, filepath.Join(repoRoot, "examples", "expected", name+".out"))
+		})
+	}
+}
+
 // TestBuildThenExec checks that compiled bytecode behaves like `lumen run`.
 func TestBuildThenExec(t *testing.T) {
 	bytecode := filepath.Join(t.TempDir(), "features.lc")

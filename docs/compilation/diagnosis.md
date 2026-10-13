@@ -117,7 +117,7 @@ that detects the problem.
 | Code | Meaning |
 |------|---------|
 | `E3001` | Generic function called without type arguments where the arguments do not determine them |
-| `E3002` | Recursive generic types causing infinite instantiation |
+| `E3002` | A generic function whose instances each need a larger one, without end (`f<T>` calling `f<[T]>`) |
 | `E3003` | Number of type arguments differs from the number of type parameters |
 
 ### E4xxx — Desugaring and closure analysis

@@ -153,8 +153,12 @@ Example programs in [examples/](examples/):
 - **generics.lum** - Generic and variadic functions, `match`
 - **stack.lum** - A generic struct with methods, optionals, casts
 - **dynamic.lum** - `Any`, `is`, `match` on types, null tests on fields
+- **life.lum** - Conway's Game of Life: arrays of arrays, nested loops
+- **sorting.lum** - Merge sort, quicksort and binary search for any type, the order passed as a function
+- **tree.lum** - A generic binary search tree: a struct that refers to itself, optional fields
 - **modules.lum** - A program in several files: `import`, `pub`, with its modules in `zoo/`
 - **project/** - A program with a project file (`lumen.json`): entry, module root, a package. Run it with `lumen run examples/project`
+- **calculator/** - A small language implementation in three modules: lexer, recursive-descent parser, and a tree of trait objects that evaluates itself. `lumen run examples/calculator`
 
 ## Working with Bytecode
 

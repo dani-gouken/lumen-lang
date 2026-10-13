@@ -1,0 +1,153 @@
+// Step 2: turn the tokens into a tree.
+//
+// One method per level of the grammar, each calling the level below, which
+// is what makes `*` bind tighter than `+`:
+//
+//   statement  =  name "=" expression  |  expression
+//   expression =  term   { ("+" | "-") term }
+//   term       =  factor { ("*" | "/" | "%") factor }
+//   factor     =  number | name | "-" factor | "(" expression ")"
+
+import calc.lexer.{Token};
+import calc.tree.{Expr, Env, Problem, problem, Number, Variable, Negate, Binary};
+
+// A line: an expression, and the variable its value goes to, if any.
+pub struct Statement {
+    target: String?;
+    value: Expr;
+}
+
+impl Statement {
+    pub fn run(env: Env) -> Int | Problem {
+        let result = self.value.eval(env);
+        let target = self.target;
+        if target != null && result is Int {
+            env.set(target, result);
+        }
+        return result;
+    }
+
+    pub fn show() -> String {
+        let target = self.target;
+        if target == null {
+            return self.value.show();
+        }
+        return target + " = " + self.value.show();
+    }
+}
+
+pub fn parse(tokens: [Token]) -> Statement | Problem {
+    let p = Parser { tokens: tokens, at: 0, failure: null };
+    let statement = p.statement();
+
+    // The first thing that went wrong is the one worth reporting
+    let failure = p.failure;
+    if failure != null {
+        return failure;
+    }
+    if p.peek().kind != "end" {
+        return problem("did not expect " + describe(p.peek()));
+    }
+    return statement;
+}
+
+fn describe(token: Token) -> String {
+    if token.kind == "end" { return token.text; }
+    return "'" + token.text + "'";
+}
+
+struct Parser {
+    tokens: [Token];
+    at: Int;
+    failure: Problem?;
+}
+
+impl Parser {
+    fn peek() -> Token {
+        return self.tokens[self.at];
+    }
+
+    fn next() -> Token {
+        let token = self.peek();
+        if token.kind != "end" { self.at++; }
+        return token;
+    }
+
+    // Is the next token this symbol? If so, move past it.
+    fn accept(symbol: String) -> Bool {
+        let token = self.peek();
+        if token.kind == "symbol" && token.text == symbol {
+            self.at++;
+            return true;
+        }
+        return false;
+    }
+
+    // Records a problem and returns something to carry on with, so the
+    // methods below never have to return "nothing".
+    fn fail(message: String) -> Expr {
+        if self.failure == null {
+            self.failure = problem(message);
+        }
+        return Number { value: 0 };
+    }
+
+    fn statement() -> Statement {
+        // `name =` starts an assignment; anything else is an expression
+        let first = self.peek();
+        if first.kind == "name" {
+            let second = self.tokens[self.at + 1];
+            if second.kind == "symbol" && second.text == "=" {
+                self.at += 2;
+                return Statement { target: first.text, value: self.expression() };
+            }
+        }
+        return Statement { target: null, value: self.expression() };
+    }
+
+    fn expression() -> Expr {
+        let left = self.term();
+        while true {
+            if self.accept("+") {
+                left = Binary { op: "+", left: left, right: self.term() };
+            } else if self.accept("-") {
+                left = Binary { op: "-", left: left, right: self.term() };
+            } else {
+                return left;
+            }
+        }
+    }
+
+    fn term() -> Expr {
+        let left = self.factor();
+        while true {
+            let op = self.peek().text;
+            if self.accept("*") || self.accept("/") || self.accept("%") {
+                left = Binary { op: op, left: left, right: self.factor() };
+            } else {
+                return left;
+            }
+        }
+    }
+
+    fn factor() -> Expr {
+        if self.accept("-") {
+            return Negate { inner: self.factor() };
+        }
+        if self.accept("(") {
+            let inner = self.expression();
+            if !self.accept(")") {
+                return self.fail("expected ')' but found " + describe(self.peek()));
+            }
+            return inner;
+        }
+
+        let token = self.next();
+        match token.kind {
+            case "number": { return Number { value: token.value }; }
+            case "name": { return Variable { name: token.text }; }
+            case "unknown": { return self.fail("'" + token.text + "' means nothing here"); }
+            default: { return self.fail("expected a number or a name but found " + describe(token)); }
+        }
+    }
+}

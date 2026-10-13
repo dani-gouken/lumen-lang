@@ -1,0 +1,176 @@
+// A binary search tree that keeps anything in order.
+//
+// Each node holds a value and up to two children: everything in the left
+// one comes before the value, everything in the right one after. Finding,
+// adding and listing in order follow from that.
+//
+// Shows: a generic struct that refers to itself, optional fields and what
+// testing them against null allows, recursion, a function stored in a field.
+
+struct Node<T> {
+    value: T;
+    left: Node<T>?;
+    right: Node<T>?;
+}
+
+struct Tree<T> {
+    root: Node<T>?;
+    size: Int;
+    before: fn(T, T) -> Bool;     // the order: must a come before b?
+}
+
+fn newTree<T>(before: fn(T, T) -> Bool) -> Tree<T> {
+    return Tree<T> { root: null, size: 0, before: before };
+}
+
+impl<T> Tree<T> {
+    // Adds a value; a value already there is not added twice.
+    fn add(value: T) -> Bool {
+        let fresh = Node<T> { value: value, left: null, right: null };
+        let root = self.root;
+        if root == null {
+            self.root = fresh;
+            self.size = 1;
+            return true;
+        }
+
+        // Walk down to the empty place where the value belongs. `root` is
+        // known not to be null here, so it fits a variable that never is.
+        let node: Node<T> = root;
+        while true {
+            if self.before(value, node.value) {
+                let next = node.left;
+                if next == null {
+                    node.left = fresh;
+                    break;
+                }
+                node = next;
+            } else {
+                if !self.before(node.value, value) {
+                    return false;       // neither before nor after: equal
+                }
+                let next = node.right;
+                if next == null {
+                    node.right = fresh;
+                    break;
+                }
+                node = next;
+            }
+        }
+        self.size++;
+        return true;
+    }
+
+    fn contains(value: T) -> Bool {
+        let node = self.root;
+        while node != null {
+            if self.before(value, node.value) {
+                node = node.left;
+            } else {
+                if !self.before(node.value, value) {
+                    return true;
+                }
+                node = node.right;
+            }
+        }
+        return false;
+    }
+
+    // The values from first to last.
+    fn inOrder() -> [T] {
+        let out: [T] = [];
+        collect<T>(self.root, out);
+        return out;
+    }
+
+    fn height() -> Int {
+        return heightOf<T>(self.root);
+    }
+
+    // The smallest value, or null for an empty tree.
+    fn first() -> T? {
+        let root = self.root;
+        if root == null {
+            return null;
+        }
+        let node: Node<T> = root;
+        let left = node.left;
+        while left != null {
+            node = left;
+            left = node.left;
+        }
+        return node.value;
+    }
+}
+
+// Left subtree, then the node, then the right subtree: that is the order.
+fn collect<T>(node: Node<T>?, out: [T]) {
+    if node == null {
+        return;
+    }
+    collect<T>(node.left, out);
+    push(out, node.value);
+    collect<T>(node.right, out);
+}
+
+fn heightOf<T>(node: Node<T>?) -> Int {
+    if node == null {
+        return 0;
+    }
+    let left = heightOf<T>(node.left);
+    let right = heightOf<T>(node.right);
+    if left > right {
+        return left + 1;
+    }
+    return right + 1;
+}
+
+struct Book {
+    title: String;
+    year: Int;
+}
+
+fn main() -> Int {
+    // Numbers, smallest first
+    let numbers = newTree<Int>(fn(a: Int, b: Int) -> Bool { return a < b; });
+    for n in [50, 30, 70, 20, 40, 60, 80, 30, 65] {
+        numbers.add(n);
+    }
+    println(numbers.inOrder());
+    println("size", numbers.size, "height", numbers.height(), "first", numbers.first() ?? -1);
+    println("has 60:", numbers.contains(60), "has 61:", numbers.contains(61));
+
+    // The same tree, largest first: only the order changes
+    let descending = newTree<Int>(fn(a: Int, b: Int) -> Bool { return a > b; });
+    for n in numbers.inOrder() {
+        descending.add(n);
+    }
+    // Fed in sorted order, a search tree degenerates into a list
+    println(descending.inOrder(), "height", descending.height());
+
+    // Words, alphabetically
+    let words = newTree<String>(fn(a: String, b: String) -> Bool { return a < b; });
+    for word in ["pear", "apple", "fig", "pear", "kiwi"] {
+        if !words.add(word) {
+            println("already there:", word);
+        }
+    }
+    println(words.inOrder(), "first", words.first() ?? "none");
+
+    // Structs, by a field
+    let shelf = newTree<Book>(fn(a: Book, b: Book) -> Bool { return a.year < b.year; });
+    shelf.add(Book { title: "Dune", year: 1965 });
+    shelf.add(Book { title: "Emma", year: 1815 });
+    shelf.add(Book { title: "Ulysses", year: 1922 });
+    for book in shelf.inOrder() {
+        println(book.year, book.title);
+    }
+    let oldest = shelf.first();
+    if oldest != null {
+        println("oldest:", oldest.title);
+    }
+
+    let empty = newTree<Int>(fn(a: Int, b: Int) -> Bool { return a < b; });
+    println("empty:", empty.inOrder(), empty.height(), empty.first() == null);
+    return 0;
+}
