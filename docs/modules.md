@@ -24,6 +24,8 @@ game/
 
 The folder is that of the file given on the command line, not the current directory: `lumen run /some/where/game/main.lum` works from anywhere.
 
+A project file, [`lumen.json`](project.md), can put the starting point elsewhere (`"root": "src"`) and give names to folders of modules outside it (`"packages"`), so that `import textkit.format.pad;` reads a file of a library kept somewhere else. Everything below applies to those modules too.
+
 The entry file itself is not a module and cannot be imported (`E8006`). What other files need from it belongs in a module of its own.
 
 ## Importing
@@ -192,7 +194,7 @@ A diagnostic shows the file it is about and quotes that file's line, wherever in
 
 ## What Is Not There
 
-*   **Packages and a standard library path.** Modules are found next to the entry file only. There is no second place to look, no manifest, no versions.
+*   **Getting packages.** [`lumen.json`](project.md) can say where a package is; nothing downloads, installs or versions one, and no standard library ships with `lumen`.
 *   **Global constants and variables.** A module can only export functions, structs and traits.
 *   **Per-field privacy.** A `pub struct` exposes all its fields.
 *   **A check that a `pub` signature only uses `pub` types.** `pub fn f() -> Secret` compiles; callers get a value they cannot name the type of.

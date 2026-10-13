@@ -16,16 +16,22 @@ type files map[string]string
 // load runs the loader on files and returns the merged program, the
 // diagnostics and the files that were read, in order.
 func load(fs files) (*ast.Program, *errors.Handler, []string) {
+	return loadWith(fs, "main.lum", Options{})
+}
+
+// loadWith is load with an entry file and options of the caller's choice.
+func loadWith(fs files, entry string, opts Options) (*ast.Program, *errors.Handler, []string) {
 	var read []string
 	errs := errors.NewHandler()
-	prog := Load(fs["main.lum"], "main.lum", func(path string) (string, error) {
+	opts.Read = func(path string) (string, error) {
 		read = append(read, path)
 		src, ok := fs[path]
 		if !ok {
 			return "", fmt.Errorf("no such file: %s", path)
 		}
 		return src, nil
-	}, errs)
+	}
+	prog := Load(fs[entry], entry, opts, errs)
 	return prog, errs, read
 }
 
@@ -479,5 +485,140 @@ func TestSameNameInTwoModules(t *testing.T) {
 	}
 	if got := body(t, prog, "b.make"); got != "{ return b.Node { size: 2 }; }" {
 		t.Errorf("unexpected body of b.make: %s", got)
+	}
+}
+
+func TestRootOtherThanTheEntryFolder(t *testing.T) {
+	// The entry file is two folders below the root; paths still start at
+	// the root, for it and for every module
+	fs := files{
+		"proj/src/cmd/tool/main.lum": `
+			import lib.text;
+			import cmd.tool.flags;
+			fn main() -> Int { return text.size(flags.name()); }
+		`,
+		"proj/src/cmd/tool/flags.lum": `import lib.text; pub fn name() -> String { return text.same("tool"); }`,
+		"proj/src/lib/text.lum":       `pub fn size(s: String) -> Int { return s.length; } pub fn same(s: String) -> String { return s; }`,
+		// Next to the entry file, where it would be found without a root
+		"proj/src/cmd/tool/lib/text.lum": `pub fn size(s: String) -> Int { return 0 - 1; }`,
+	}
+	prog, errs, read := loadWith(fs, "proj/src/cmd/tool/main.lum", Options{Root: "proj/src"})
+	for _, d := range errs.Diagnostics {
+		t.Fatalf("unexpected diagnostic:\n%s", d.String())
+	}
+
+	if got, want := strings.Join(read, " "), "proj/src/lib/text.lum proj/src/cmd/tool/flags.lum"; got != want {
+		t.Errorf("expected the files under the root to be read: %q, got %q", want, got)
+	}
+	for _, name := range []string{"main", "lib.text.size", "cmd.tool.flags.name"} {
+		decl(t, prog, name)
+	}
+
+	// The entry file has a module path now, and still cannot be imported
+	fs["proj/src/lib/text.lum"] = `import cmd.tool.main; pub fn size(s: String) -> Int { return 1; }`
+	_, errs, _ = loadWith(fs, "proj/src/cmd/tool/main.lum", Options{Root: "proj/src"})
+	if len(errs.Diagnostics) == 0 || errs.Diagnostics[0].Code != ErrInvalidImport {
+		t.Errorf("expected the entry file to be refused as a module, got %v", errs.Diagnostics)
+	}
+
+	// A missing module is looked for under the root, and the message says so
+	fs["proj/src/lib/text.lum"] = `import lib.nothing;`
+	_, errs, _ = loadWith(fs, "proj/src/cmd/tool/main.lum", Options{Root: "proj/src"})
+	if len(errs.Diagnostics) == 0 {
+		t.Fatal("expected a diagnostic")
+	}
+	if d := errs.Diagnostics[0]; d.Code != ErrModuleNotFound ||
+		!strings.Contains(d.Suggestion, "Expected the file proj/src/lib/nothing.lum") ||
+		!strings.Contains(d.Suggestion, "the root of the project, proj/src") {
+		t.Errorf("unexpected diagnostic: %s: %s (%s)", d.Code, d.Message, d.Suggestion)
+	}
+}
+
+func TestPackages(t *testing.T) {
+	opts := Options{Packages: map[string]string{
+		"std":    "vendor/std",
+		"shapes": "../shared/shapes",
+	}}
+	fs := files{
+		"main.lum": `
+			import std;
+			import std.list;
+			import std.text.pad.{left};
+			import shapes.circle as c;
+			import util;
+
+			fn main() -> Int {
+				let l = list.of(1);
+				let s: std.Version = std.version();
+				println(left("x", 3), c.area(2), util.helper());
+				return l.size + s.major;
+			}
+		`,
+		"util.lum": `import std.list; pub fn helper() -> Int { return list.of(2).size; }`,
+
+		// `import std;` is the file next to the package's folder
+		"vendor/std.lum": `
+			pub import std.list.{List};
+			pub struct Version { major: Int; }
+			pub fn version() -> Version { return Version { major: 1 }; }
+		`,
+		// Modules of a package name each other through the package
+		"vendor/std/list.lum": `
+			import std.text.pad;
+			pub struct List { size: Int; }
+			pub fn of(n: Int) -> List { return List { size: pad.width(n) }; }
+		`,
+		"vendor/std/text/pad.lum": `
+			pub fn left(s: String, n: Int) -> String { return s; }
+			pub fn width(n: Int) -> Int { return n; }
+		`,
+		"../shared/shapes/circle.lum": `pub fn area(r: Int) -> Int { return 3 * r * r; }`,
+
+		// A folder of the program named like a package is never looked at
+		"std/list.lum": `pub fn of(n: Int) -> Int { return n; }`,
+	}
+
+	prog, errs, read := loadWith(fs, "main.lum", opts)
+	for _, d := range errs.Diagnostics {
+		t.Fatalf("unexpected diagnostic:\n%s", d.String())
+	}
+	want := "vendor/std.lum vendor/std/list.lum vendor/std/text/pad.lum ../shared/shapes/circle.lum util.lum"
+	if got := strings.Join(read, " "); got != want {
+		t.Errorf("expected the files\n  %s\ngot\n  %s", want, got)
+	}
+
+	// Names carry the package's name, not its folder
+	for _, name := range []string{"std.Version", "std.version", "std.list.List", "std.list.of", "std.text.pad.left", "shapes.circle.area", "util.helper"} {
+		decl(t, prog, name)
+	}
+	main := body(t, prog, "main")
+	for _, want := range []string{
+		"let l = std.list.of(1);",
+		"let s: std.Version = std.version();",
+		`println(std.text.pad.left("x", 3), shapes.circle.area(2), util.helper());`,
+	} {
+		if !strings.Contains(main, want) {
+			t.Errorf("expected main to contain %q, got:\n%s", want, main)
+		}
+	}
+	if got := body(t, prog, "std.list.of"); got != "{ return std.list.List { size: std.text.pad.width(n) }; }" {
+		t.Errorf("unexpected body of std.list.of: %s", got)
+	}
+
+	// A module missing from a package is looked for in the package's folder
+	fs["main.lum"] = "import std.maps;\nfn main() -> Int { return 0; }"
+	_, errs, _ = loadWith(fs, "main.lum", opts)
+	if len(errs.Diagnostics) == 0 {
+		t.Fatal("expected a diagnostic")
+	}
+	if d := errs.Diagnostics[0]; d.Code != ErrModuleNotFound ||
+		!strings.Contains(d.Suggestion, "Expected the file vendor/std/maps.lum: 'std' is a package in the folder vendor/std") {
+		t.Errorf("unexpected diagnostic: %s: %s (%s)", d.Code, d.Message, d.Suggestion)
+	}
+
+	// Without the package, the same import is an ordinary path from the root
+	_, errs, _ = loadWith(fs, "main.lum", Options{})
+	if d := errs.Diagnostics[0]; !strings.Contains(d.Suggestion, "Expected the file std/maps.lum") {
+		t.Errorf("expected a lookup under the root, got %s", d.Suggestion)
 	}
 }

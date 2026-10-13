@@ -61,11 +61,11 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Interactive debugger, showing Lumen source lines
 - ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`
 
-Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators, programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)).
+Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators, programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)).
 
 Not there yet:
 
-- ⚠️ Enums; packages and a standard library path (modules are found next to the entry file only)
+- ⚠️ Enums; a standard library and a way to install packages (`lumen.json` can point at folders of modules, nothing fetches them)
 - ⚠️ No standard library beyond `print`, `println`, `toString`, `push`
 - ⚠️ REPL (stub only)
 
@@ -154,6 +154,7 @@ Example programs in [examples/](examples/):
 - **stack.lum** - A generic struct with methods, optionals, casts
 - **dynamic.lum** - `Any`, `is`, `match` on types, null tests on fields
 - **modules.lum** - A program in several files: `import`, `pub`, with its modules in `zoo/`
+- **project/** - A program with a project file (`lumen.json`): entry, module root, a package. Run it with `lumen run examples/project`
 
 ## Working with Bytecode
 

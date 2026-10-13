@@ -14,7 +14,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Correctness | unused variables |
 | Types | inference from the expected type, richer `match` patterns, array literals of mixed structs |
 | Runtime | register allocation per call, method dispatch cost |
-| Program structure | a place for packages and a standard library, enums, global constants |
+| Program structure | a standard library, a way to install packages, enums, global constants |
 
 ---
 
@@ -50,11 +50,11 @@ There is no standard library beyond `print`, `println`, `toString` and `push`. C
 
 Adding one means a host function in `internal/vm/vm.go` and a declaration in `internal/resolve/builtins.go`.
 
-### Packages and a standard library path — M
+### A standard library, and getting packages — M / L
 
-**Today**: a program can be split into modules ([modules.md](modules.md)), but modules are found next to the entry file only. Code cannot be shared between programs except by copying it, and there is nowhere for a standard library to live.
+**Today**: a program can be split into modules ([modules.md](modules.md)), and [`lumen.json`](project.md) can name folders of modules kept elsewhere (`"packages"`). That is all: no library ships with `lumen`, nothing downloads or versions a package, and a package cannot name its own dependencies; the program lists them all.
 
-**Notes**: Needs a second root to look in (per package, plus one shipped with `lumen`), and a decision on how a package is named in an import. The loader takes a `read` function and a single root today; both are in `internal/modules`.
+**Notes**: A standard library is a package whose folder `lumen` knows without being told (M, once there is something to put in it). Installing and versioning is a tool of its own (L).
 
 ### Gaps in modules — S each
 
@@ -213,6 +213,6 @@ A sequence that keeps each step small and makes the language noticeably more com
 2.  **Everyday syntax**: ranges, `array(n, value)`, a first batch of string and array builtins, `toInt`/`toFloat`.
 3.  **Native functions declared in source** (`extern fn`), then a standard library as ordinary modules.
 4.  **Types**: inference from the expected result type, `match` as an expression with bindings and guards.
-5.  **Program structure**: global constants, then packages, then enums with pattern matching.
+5.  **Program structure**: global constants, then enums with pattern matching.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

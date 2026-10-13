@@ -112,6 +112,7 @@ Full description: [modules.md](modules.md).
 - Modules may import each other. Nothing runs when a module is loaded.
 - A local variable hides a module of the same name.
 - The program starts in the `main` of the entry file, which cannot itself be imported.
+- A project file, [`lumen.json`](project.md), can name the entry file, move the folder paths start at (`root`), and name folders of modules outside it (`packages`). It is not part of the language: a program means the same with or without it, given the same files at the same module paths.
 
 ## 7. Type Rules (grab bag)
 - `if`/`while` conditions must be `Bool`.
@@ -265,7 +266,7 @@ known defects are inventoried in [missing.md](missing.md).
 | `match` on literals, `default` | Supported | |
 | `match` on types (`case Int:`), `value is Type` | Supported | Narrows the tested variable or field |
 | Enums | Not yet | Parsed, rejected with `E7001` |
-| Modules: `import`, `pub`, several files | Supported | Found next to the entry file only; no packages or standard library path yet |
+| Modules: `import`, `pub`, several files | Supported | Packages are folders named in `lumen.json`; no standard library, no installer |
 | Generic structs and their methods | Supported | `impl<T> Box<T> { ... }`; methods may add their own: `fn map<U>(...)` |
 | "All paths return" check, unreachable code | Supported | Unreachable code is a warning |
 

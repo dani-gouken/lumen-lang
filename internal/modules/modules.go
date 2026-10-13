@@ -1,9 +1,10 @@
 // Package modules turns a program written as several files into the single
 // program the rest of the compiler works on.
 //
-// A module is one file. Its name is its path from the folder of the entry
-// file, with dots: physics/body.lum is the module physics.body. Folders
-// only group modules; they are not modules themselves.
+// A module is one file. Its name is its path from the root of the program,
+// with dots: physics/body.lum is the module physics.body. Folders only
+// group modules; they are not modules themselves. The root is the folder
+// of the entry file unless Options says otherwise.
 //
 // Loading has three steps:
 //
@@ -47,6 +48,21 @@ const Extension = ".lum"
 // ReadFile returns the text of a source file.
 type ReadFile func(path string) (string, error)
 
+// Options says where the modules of a program are.
+type Options struct {
+	// Read returns the text of an imported file.
+	Read ReadFile
+
+	// Root is the folder module paths start at. Empty: the folder of the
+	// entry file.
+	Root string
+
+	// Packages maps the first part of a module path to a folder outside
+	// the root: with "std" in "vendor/std", the module std.list is the
+	// file vendor/std/list.lum and the module std is vendor/std.lum.
+	Packages map[string]string
+}
+
 // item is a top-level declaration of a module.
 type item struct {
 	name      string // As written
@@ -87,9 +103,11 @@ func (m *module) display() string {
 }
 
 type loader struct {
-	errs    *errors.Handler
-	read    ReadFile
-	rootDir string
+	errs     *errors.Handler
+	read     ReadFile
+	rootDir  string
+	rootSet  bool // The root was given, not taken from the entry file
+	packages map[string]string
 
 	root    *module
 	modules map[string]*module // By dotted path; nil for one that failed to load
@@ -97,15 +115,20 @@ type loader struct {
 }
 
 // Load parses the entry file and every module it imports, directly or not,
-// and returns them as one program. read is used for the imported files.
+// and returns them as one program.
 // When an error was reported the returned program is not fit for the next
 // stages.
-func Load(src, file string, read ReadFile, errs *errors.Handler) *ast.Program {
+func Load(src, file string, opts Options, errs *errors.Handler) *ast.Program {
 	l := &loader{
-		errs:    errs,
-		read:    read,
-		rootDir: filepath.Dir(file),
-		modules: make(map[string]*module),
+		errs:     errs,
+		read:     opts.Read,
+		rootDir:  opts.Root,
+		rootSet:  opts.Root != "",
+		packages: opts.Packages,
+		modules:  make(map[string]*module),
+	}
+	if !l.rootSet {
+		l.rootDir = filepath.Dir(file)
 	}
 
 	l.root = l.parse("", file, src)
@@ -188,10 +211,28 @@ func (m *module) qualify(name string) string {
 	return m.name + "." + name
 }
 
-// path returns the file of a module given by its dotted path.
+// path returns the file of a module given by its dotted path. A path
+// whose first part names a package is looked up in the package's folder.
 func (l *loader) path(dotted string) string {
-	parts := append([]string{l.rootDir}, strings.Split(dotted, ".")...)
+	base, rest := l.rootDir, dotted
+	if first, after, _ := strings.Cut(dotted, "."); l.packages[first] != "" {
+		if after == "" {
+			return l.packages[first] + Extension
+		}
+		base, rest = l.packages[first], after
+	}
+	parts := append([]string{base}, strings.Split(rest, ".")...)
 	return filepath.Join(parts...) + Extension
+}
+
+// sameFile reports whether two paths name one file.
+func sameFile(a, b string) bool {
+	absA, errA := filepath.Abs(a)
+	absB, errB := filepath.Abs(b)
+	if errA != nil || errB != nil {
+		return filepath.Clean(a) == filepath.Clean(b)
+	}
+	return absA == absB
 }
 
 // loadImports reads the modules a module imports that are not loaded yet.
@@ -202,7 +243,7 @@ func (l *loader) loadImports(m *module) {
 		}
 
 		file := l.path(imp.Path)
-		if filepath.Clean(file) == filepath.Clean(l.root.file) {
+		if sameFile(file, l.root.file) {
 			l.modules[imp.Path] = nil
 			l.report(imp.Token(), ErrInvalidImport,
 				"Move what other modules need into a module of its own",
@@ -231,6 +272,13 @@ func (l *loader) notFoundSuggestion(imp *ast.ImportDecl, file string) string {
 			return fmt.Sprintf("There is no file %s. To import '%s' from the module '%s', write: import %s.{%s};",
 				file, name, parent, parent, name)
 		}
+	}
+	first, _, _ := strings.Cut(imp.Path, ".")
+	switch {
+	case l.packages[first] != "":
+		return fmt.Sprintf("Expected the file %s: '%s' is a package in the folder %s", file, first, l.packages[first])
+	case l.rootSet:
+		return fmt.Sprintf("Expected the file %s. Module paths start at the root of the project, %s", file, l.rootDir)
 	}
 	return fmt.Sprintf("Expected the file %s. Module paths start at the folder of the program's entry file", file)
 }

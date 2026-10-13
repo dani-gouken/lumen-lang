@@ -51,6 +51,8 @@ lumen run --heap-mb=1024 big.lum
 lumen exec program.lc --max-depth=100000
 ```
 
+`run`, `build`, `ir` and `lumdbg` also take the folder of a [project](#projects), or no file at all inside one.
+
 A `.lasm` file produced by `build` is a listing for reading. It is not accepted back by `lumen asm`, because the disassembler prints long jumps in an annotated form.
 
 ## A Tour of the Language
@@ -308,6 +310,27 @@ fn upper(s: String) -> String { return s; }     // no 'pub': only this file can 
 *   `lumen run shop/main.lum` is all it takes; imported files are found and compiled automatically.
 
 The details, including how a file can pass names on with `pub import`, are in [modules.md](modules.md).
+
+### Projects
+
+A `lumen.json` at the top of a program's folder says where it starts, so it can be run without naming a file, and where its modules are:
+
+```json
+{
+    "entry": "src/main.lum",
+    "root": "src",
+    "packages": { "textkit": "../libs/textkit" },
+    "max_depth": 20000
+}
+```
+
+```bash
+lumen run            # in the folder, or anywhere below it
+lumen run path/to/project
+lumen build app.lc
+```
+
+`root` is where import paths start (default: the folder of `lumen.json`). `packages` gives a name to a folder of modules kept elsewhere: `import textkit.format.pad;` reads `../libs/textkit/format/pad.lum`. `heap_mb` and `max_depth` set the limits described under [Commands](#commands). All keys are optional. See [project.md](project.md).
 
 ### Builtin functions
 

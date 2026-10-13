@@ -81,6 +81,12 @@ func runLumen(t *testing.T, args ...string) result {
 // runLumenWithInput is runLumen with text supplied on standard input.
 func runLumenWithInput(t *testing.T, input string, args ...string) result {
 	t.Helper()
+	return runLumenIn(t, repoRoot, input, args...)
+}
+
+// runLumenIn runs the binary with dir as the current directory.
+func runLumenIn(t *testing.T, dir, input string, args ...string) result {
+	t.Helper()
 
 	// No test program needs more than a moment. A run that takes this long
 	// has stopped making progress, or has become slow enough to count as
@@ -90,7 +96,7 @@ func runLumenWithInput(t *testing.T, input string, args ...string) result {
 
 	var stdout, stderr bytes.Buffer
 	cmd := exec.CommandContext(ctx, lumen, args...)
-	cmd.Dir = repoRoot
+	cmd.Dir = dir
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	if input != "" {
@@ -557,4 +563,201 @@ func TestModulesAreFoundNextToTheEntryFile(t *testing.T) {
 			t.Errorf("expected stderr to contain %q, got:\n%s", want, res.stderr)
 		}
 	}
+}
+
+// project writes the files of a program into a new folder and returns it.
+func project(t *testing.T, files map[string]string) string {
+	t.Helper()
+	dir := t.TempDir()
+	for path, content := range files {
+		full := filepath.Join(dir, path)
+		if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(content), 0644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return dir
+}
+
+// TestExampleProject runs the example that has a project file, the ways a
+// project can be run.
+func TestExampleProject(t *testing.T) {
+	want := "  1 * ada *\n  2 * grace *\n  3 * linus *\n------------\n    3 guests\n"
+	example := filepath.Join(repoRoot, "examples", "project")
+
+	runs := []struct {
+		name string
+		dir  string
+		args []string
+	}{
+		{"the project folder", repoRoot, []string{"run", "examples/project"}},
+		{"its entry file", repoRoot, []string{"run", "examples/project/src/main.lum"}},
+		{"no argument, in the folder", example, []string{"run"}},
+		{"no argument, deep inside it", filepath.Join(example, "src", "app"), []string{"run"}},
+		{"the entry file, from inside", filepath.Join(example, "src"), []string{"run", "main.lum"}},
+		{"a dot", example, []string{"run", "."}},
+	}
+	for _, r := range runs {
+		t.Run(r.name, func(t *testing.T) {
+			res := runLumenIn(t, r.dir, "", r.args...)
+			if res.exit != 0 || res.stdout != want || res.stderr != "" {
+				t.Errorf("expected the guest list, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+			}
+		})
+	}
+
+	// The other commands take a project the same way
+	if res := runLumenIn(t, example, "", "ir"); !strings.Contains(res.stdout, "fn textkit.format.pad.left(") || !strings.Contains(res.stdout, "fn app.guests.invited(") {
+		t.Errorf("expected the IR of the project, got:\n%s%s", res.stdout, res.stderr)
+	}
+	bytecode := filepath.Join(t.TempDir(), "greeter.lc")
+	if res := runLumenIn(t, example, "", "build", bytecode); res.exit != 0 {
+		t.Fatalf("build failed:\n%s", res.stderr)
+	}
+	if res := runLumen(t, "exec", bytecode); !strings.HasPrefix(res.stdout, want) {
+		t.Errorf("expected the built project to run, got %q\n%s", res.stdout, res.stderr)
+	}
+	if res := runLumen(t, "build", "examples/project", bytecode); res.exit != 0 {
+		t.Errorf("expected build to take a project folder:\n%s", res.stderr)
+	}
+	if res := runLumenWithInput(t, "c\n", "lumdbg", "examples/project"); res.exit != 0 || !strings.Contains(res.stdout, "3 guests") {
+		t.Errorf("expected the debugger to run the project, got exit %d:\n%s%s", res.exit, res.stdout, res.stderr)
+	}
+
+	// The project sets max_depth to 2000; the command line wins over it
+	res := runLumen(t, "run", "--max-depth=5", "examples/project")
+	if res.exit != 1 || !strings.Contains(res.stderr, "max call depth 5 exceeded") || !strings.Contains(res.stderr, "examples/project/packages/textkit/format/pad.lum") {
+		t.Errorf("expected a stack overflow in the package, got exit %d:\n%s", res.exit, res.stderr)
+	}
+}
+
+func TestProjectFile(t *testing.T) {
+	deep := "fn down(n: Int) -> Int { if n == 0 { return 0; } return 1 + down(n - 1); }\n"
+
+	t.Run("limits", func(t *testing.T) {
+		dir := project(t, map[string]string{
+			"lumen.json": `{"entry": "main.lum", "max_depth": 50, "heap_mb": 1}`,
+			"main.lum":   deep + "fn main() -> Int { println(down(30)); println(down(100)); return 0; }\n",
+			"big.lum":    "fn main() -> Int { let xs: [Int] = []; let i = 0; while i < 2000000 { push(xs, i); i++; } return 0; }\n",
+		})
+		res := runLumenIn(t, dir, "", "run")
+		if res.exit != 1 || res.stdout != "30\n" || !strings.Contains(res.stderr, "max call depth 50 exceeded") {
+			t.Errorf("expected the project's depth limit, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+		}
+		// Limits apply to any file of the project, not only the entry
+		res = runLumenIn(t, dir, "", "run", "big.lum")
+		if res.exit != 1 || !strings.Contains(res.stderr, "out of memory") || !strings.Contains(res.stderr, "limit 1048576") {
+			t.Errorf("expected the project's memory limit, got exit %d:\n%s", res.exit, res.stderr)
+		}
+		// Options on the command line come first
+		res = runLumenIn(t, dir, "", "run", "--max-depth=500", "--heap-mb=128", "big.lum")
+		if res.exit != 0 {
+			t.Errorf("expected the command line to lift the limits, got exit %d:\n%s", res.exit, res.stderr)
+		}
+		if res := runLumenIn(t, dir, "", "run", "--max-depth=500"); res.exit != 0 || res.stdout != "30\n100\n" {
+			t.Errorf("expected the command line to lift the depth limit, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+		}
+	})
+
+	t.Run("root", func(t *testing.T) {
+		files := map[string]string{
+			"lumen.json":             `{"entry": "code/bin/start.lum", "root": "code"}`,
+			"code/bin/start.lum":     "import lib.greet;\nfn main() -> Int { println(greet.hello()); return 0; }\n",
+			"code/lib/greet.lum":     "pub fn hello() -> String { return \"from the root\"; }\n",
+			"code/bin/lib/greet.lum": "pub fn hello() -> String { return \"from next to the entry\"; }\n",
+		}
+		dir := project(t, files)
+		if res := runLumenIn(t, dir, "", "run"); res.exit != 0 || res.stdout != "from the root\n" {
+			t.Errorf("expected module paths to start at the root, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+		}
+
+		// Without "root" they start at the folder of the project file
+		files["lumen.json"] = `{"entry": "code/bin/start.lum"}`
+		files["code/bin/start.lum"] = "import code.lib.greet;\nfn main() -> Int { println(greet.hello()); return 0; }\n"
+		dir = project(t, files)
+		if res := runLumenIn(t, dir, "", "run"); res.exit != 0 || res.stdout != "from the root\n" {
+			t.Errorf("expected module paths to start at the project file, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+		}
+
+		// Without a project file they start next to the file that is run
+		delete(files, "lumen.json")
+		files["code/bin/start.lum"] = "import lib.greet;\nfn main() -> Int { println(greet.hello()); return 0; }\n"
+		dir = project(t, files)
+		if res := runLumenIn(t, dir, "", "run", "code/bin/start.lum"); res.exit != 0 || res.stdout != "from next to the entry\n" {
+			t.Errorf("expected module paths to start at the entry file, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+		}
+	})
+
+	t.Run("packages", func(t *testing.T) {
+		dir := project(t, map[string]string{
+			"app/lumen.json":      `{"entry": "main.lum", "packages": {"kit": "../shared/kit"}}`,
+			"app/main.lum":        "import kit;\nimport kit.math.{double};\nfn main() -> Int { println(kit.name(), double(21)); return 0; }\n",
+			"shared/kit.lum":      "import kit.math;\npub fn name() -> String { return \"kit\" + toString(math.double(1)); }\n",
+			"shared/kit/math.lum": "pub fn double(n: Int) -> Int { return n * 2; }\n",
+		})
+		app := filepath.Join(dir, "app")
+		if res := runLumenIn(t, app, "", "run"); res.exit != 0 || res.stdout != "kit2 42\n" {
+			t.Errorf("expected the package to be found, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+		}
+
+		// A module the package does not have: the message names its folder
+		if err := os.WriteFile(filepath.Join(app, "main.lum"), []byte("import kit.text;\nfn main() -> Int { return 0; }\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+		res := runLumenIn(t, app, "", "run")
+		if res.exit != 1 || !strings.Contains(res.stderr, "E8001") || !strings.Contains(res.stderr, "'kit' is a package in the folder") {
+			t.Errorf("expected a missing module of the package, got exit %d:\n%s", res.exit, res.stderr)
+		}
+	})
+
+	t.Run("mistakes", func(t *testing.T) {
+		tests := []struct {
+			name   string
+			config string
+			args   []string
+			want   string
+		}{
+			{"unknown key", `{"main": "main.lum"}`, []string{"run"}, `lumen.json: unknown key "main"; the keys are name, entry, root, packages, heap_mb, max_depth`},
+			{"not JSON", "{\n  entry: \"main.lum\"\n}", []string{"run"}, "lumen.json: line 2, column 3: not valid JSON"},
+			{"no entry", `{"name": "x"}`, []string{"run"}, `does not say where the program starts; add "entry": "main.lum"`},
+			{"no entry, for build", `{}`, []string{"build", "out.lc"}, `does not say where the program starts`},
+			{"entry that does not exist", `{"entry": "start.lum"}`, []string{"run"}, "cannot read start.lum"},
+			// A broken project file is reported even when a file is named
+			{"broken, with a file", `{"heap_mb": "lots"}`, []string{"run", "main.lum"}, `"heap_mb" must be a whole number`},
+		}
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				dir := project(t, map[string]string{
+					"lumen.json": tt.config,
+					"main.lum":   "fn main() -> Int { return 0; }\n",
+				})
+				res := runLumenIn(t, dir, "", tt.args...)
+				if res.exit != 1 || !strings.Contains(res.stderr, tt.want) {
+					t.Errorf("expected exit 1 and %q, got exit %d:\n%s%s", tt.want, res.exit, res.stdout, res.stderr)
+				}
+				if res.stdout != "" {
+					t.Errorf("expected nothing on stdout, got %q", res.stdout)
+				}
+			})
+		}
+	})
+
+	t.Run("no project", func(t *testing.T) {
+		dir := project(t, map[string]string{"sub/main.lum": "fn main() -> Int { println(\"plain\"); return 0; }\n"})
+
+		// Nothing to run: the usage, as before
+		if res := runLumenIn(t, dir, "", "run"); res.exit != 1 || !strings.Contains(res.stdout, "Usage: lumen run") {
+			t.Errorf("expected the usage, got exit %d: %q %q", res.exit, res.stdout, res.stderr)
+		}
+		// A folder that is not a project
+		if res := runLumenIn(t, dir, "", "run", "sub"); res.exit != 1 || !strings.Contains(res.stderr, "sub is a folder without a lumen.json") {
+			t.Errorf("expected a message about the folder, got exit %d: %q", res.exit, res.stderr)
+		}
+		// A file runs without one
+		if res := runLumenIn(t, dir, "", "run", "sub/main.lum"); res.exit != 0 || res.stdout != "plain\n" {
+			t.Errorf("expected a single file to run, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+		}
+	})
 }

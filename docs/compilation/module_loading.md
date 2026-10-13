@@ -26,16 +26,24 @@ After this the resolver, the type checker, monomorphization, desugaring, IR gene
 ## Entry Point
 
 ```go
-prog := modules.Load(src, "game/main.lum", read, errs)
+prog := modules.Load(src, "game/main.lum", opts, errs)
 ```
 
-`read` is a `func(path string) (string, error)`. The compiler passes one that reads from disk (`compiler.Compile`); tests pass one backed by a map (`compiler.CompileWith`), so multi-file programs can be tested without touching the file system.
+```go
+type Options struct {
+    Read     ReadFile            // func(path string) (string, error)
+    Root     string              // where module paths start; default: the entry file's folder
+    Packages map[string]string   // first part of a module path -> folder
+}
+```
+
+The compiler passes a `Read` that reads from disk (`compiler.Compile`); tests pass one backed by a map (`compiler.CompileWith`), so multi-file programs can be tested without touching the file system. `Root` and `Packages` come from the project file, [`lumen.json`](../project.md), which the command line reads; the loader itself knows nothing about that file.
 
 ## Steps
 
 ### 1. Load
 
-The entry file is parsed, then every file its imports name, then theirs, until nothing new turns up. A module path maps to a file by replacing dots with path separators under the folder of the entry file and adding `.lum`.
+The entry file is parsed, then every file its imports name, then theirs, until nothing new turns up. A module path maps to a file by replacing dots with path separators under the root and adding `.lum`. If the first part of the path names a package, the rest is looked up under the package's folder instead, and the package name alone is the file next to that folder (`vendor/std.lum` for a package `std` in `vendor/std`). Either way the module keeps the name it was imported by, so declarations of a package are named after the package, not after where it is on disk.
 
 Each file is read and parsed once, however many modules import it, which is also what makes modules that import each other terminate. The source lines of every file are registered with the error handler (see [Diagnostics](#diagnostics)).
 

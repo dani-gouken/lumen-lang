@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -11,14 +12,82 @@ import (
 	"github.com/dani-gouken/lumen/internal/compiler"
 	"github.com/dani-gouken/lumen/internal/debugger"
 	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/project"
 	"github.com/dani-gouken/lumen/internal/vm"
 )
 
-// Limits of the virtual machine, settable from the command line.
+// Limits of the virtual machine, settable from the command line and from
+// the project file; the command line wins.
 var (
 	heapMB   = 0 // 0: the VM's default
 	maxDepth = 0
 )
+
+// fatal prints an error and ends the process.
+func fatal(err error) {
+	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	os.Exit(1)
+}
+
+// sourceFile returns the .lum file a command should compile. arg is what
+// was given on the command line: a file, a project folder, or nothing, in
+// which case the project of the current directory is used. usage is
+// printed when there is nothing to go by.
+func sourceFile(arg, usage string) string {
+	dir := "."
+	if arg != "" {
+		info, err := os.Stat(arg)
+		if err != nil || !info.IsDir() {
+			return arg // A file; a missing one is reported when it is read
+		}
+		dir = arg
+	}
+
+	cfg, err := project.Find(dir)
+	if err != nil {
+		fatal(err)
+	}
+	if cfg == nil {
+		if arg == "" {
+			fmt.Println(usage)
+			os.Exit(1)
+		}
+		fatal(fmt.Errorf("%s is a folder without a %s; name a .lum file, or add a project file with an \"entry\"", arg, project.FileName))
+	}
+	entry, err := cfg.EntryFile()
+	if err != nil {
+		fatal(err)
+	}
+	return entry
+}
+
+// projectOptions returns where the modules of a source file are found,
+// from the project file in its folder or above, and applies the limits the
+// project sets unless the command line already did.
+func projectOptions(inputFile string) compiler.Options {
+	cfg, err := project.Find(filepath.Dir(inputFile))
+	if err != nil {
+		fatal(err)
+	}
+	if cfg == nil {
+		return compiler.Options{}
+	}
+	if heapMB == 0 {
+		heapMB = cfg.HeapMB
+	}
+	if maxDepth == 0 {
+		maxDepth = cfg.MaxDepth
+	}
+	return compiler.Options{Root: cfg.RootDir(), Packages: cfg.PackageDirs()}
+}
+
+// argument returns the i-th command line argument, or "".
+func argument(i int) string {
+	if i < len(os.Args) {
+		return os.Args[i]
+	}
+	return ""
+}
 
 // parseOptions removes the --name=value options from the arguments and
 // applies them. They may appear anywhere after the command.
@@ -49,7 +118,8 @@ func parseOptions(args []string) []string {
 	return rest
 }
 
-// newVM creates a virtual machine with the limits from the command line.
+// newVM creates a virtual machine with the limits from the command line
+// and the project file.
 func newVM() *vm.VM {
 	machine := vm.NewVM()
 	if heapMB > 0 {
@@ -72,25 +142,23 @@ func main() {
 
 	switch command {
 	case "run":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: lumen run <file>")
-			os.Exit(1)
-		}
-		cmdRun(os.Args[2])
+		cmdRun(sourceFile(argument(2), "Usage: lumen run [file.lum | project folder]"))
 
 	case "build":
-		if len(os.Args) < 4 {
-			fmt.Println("Usage: lumen build <input.lum> <output.lc|output.lasm>")
+		// With one argument it is the output, and the input is the project's entry
+		usage := "Usage: lumen build [input.lum | project folder] <output.lc|output.lasm>"
+		switch len(os.Args) {
+		case 3:
+			cmdBuild(sourceFile("", usage), os.Args[2])
+		case 4:
+			cmdBuild(sourceFile(os.Args[2], usage), os.Args[3])
+		default:
+			fmt.Println(usage)
 			os.Exit(1)
 		}
-		cmdBuild(os.Args[2], os.Args[3])
 
 	case "ir":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: lumen ir <file.lum>")
-			os.Exit(1)
-		}
-		cmdIR(os.Args[2])
+		cmdIR(sourceFile(argument(2), "Usage: lumen ir [file.lum | project folder]"))
 
 	case "repl":
 		fmt.Println("[stub] Starting REPL...")
@@ -124,11 +192,7 @@ func main() {
 		cmdRunAsm(os.Args[2])
 
 	case "lumdbg":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: lumen lumdbg <file.lum|file.lasm|file.lc>")
-			os.Exit(1)
-		}
-		cmdDebug(os.Args[2])
+		cmdDebug(sourceFile(argument(2), "Usage: lumen lumdbg [file.lum | file.lasm | file.lc | project folder]"))
 
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
@@ -154,13 +218,22 @@ func printHelp() {
 	fmt.Println("Options for commands that execute a program:")
 	fmt.Println("  --heap-mb=N                Memory the program may use, in MB (default 256)")
 	fmt.Println("  --max-depth=N              How deep calls may nest (default 10000)")
+	fmt.Println()
+	fmt.Println("Projects:")
+	fmt.Println("  A lumen.json in the program's folder, or above it, says where the program")
+	fmt.Println("  starts (\"entry\"), where module paths start (\"root\"), which packages it")
+	fmt.Println("  uses (\"packages\") and its limits (\"heap_mb\", \"max_depth\"). With one,")
+	fmt.Println("  run, build, ir and lumdbg take a project folder, or nothing at all:")
+	fmt.Println("    lumen run                  Run the project of the current folder")
+	fmt.Println("    lumen run path/to/project  Run the project in that folder")
+	fmt.Println("    lumen build out.lc         Compile the project of the current folder")
 }
 
 // compileSource runs the compilation pipeline on a .lum file. Diagnostics
 // are printed to stderr; the process exits if the program does not compile.
 func compileSource(inputFile string) *compiler.Result {
 	errs := errors.NewHandler()
-	result, err := compiler.CompileFile(inputFile, errs)
+	result, err := compiler.CompileFileOptions(inputFile, projectOptions(inputFile), errs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)

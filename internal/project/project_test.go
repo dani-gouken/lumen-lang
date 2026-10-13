@@ -1,0 +1,212 @@
+package project
+
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestParse(t *testing.T) {
+	cfg, err := Parse([]byte(`{
+		"name": "game",
+		"entry": "src/main.lum",
+		"root": "src",
+		"packages": { "std": "vendor/std", "ui_kit2": "/opt/lumen/ui" },
+		"heap_mb": 512,
+		"max_depth": 20000
+	}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Name != "game" || cfg.Entry != "src/main.lum" || cfg.Root != "src" || cfg.HeapMB != 512 || cfg.MaxDepth != 20000 {
+		t.Errorf("unexpected config: %+v", cfg)
+	}
+	if len(cfg.Packages) != 2 || cfg.Packages["std"] != "vendor/std" {
+		t.Errorf("unexpected packages: %v", cfg.Packages)
+	}
+
+	// Every key is optional
+	empty, err := Parse([]byte(`{}`))
+	if err != nil {
+		t.Fatalf("expected {} to be a valid project file, got %v", err)
+	}
+	if empty.Entry != "" || empty.Root != "" || len(empty.Packages) != 0 || empty.HeapMB != 0 || empty.MaxDepth != 0 {
+		t.Errorf("expected an empty config, got %+v", empty)
+	}
+}
+
+func TestParseErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{"empty file", ``, "the file is empty or ends too early"},
+		{"cut short", `{"name": "a"`, "ends too early"},
+		{"not JSON", "{\n  \"name\": \"a\",\n  entry: \"main.lum\"\n}", "line 3, column 3: not valid JSON"},
+		{"trailing comma", "{\n  \"name\": \"a\",\n}", "line 3, column 1: not valid JSON"},
+		{"text after the object", `{} {}`, "unexpected text after the closing '}'"},
+		{"unknown key", `{"main": "main.lum"}`, `unknown key "main"; the keys are name, entry, root, packages, heap_mb, max_depth`},
+		{"misspelled key", `{"heap-mb": 5}`, `unknown key "heap-mb"`},
+		{"number as text", "{\n\"heap_mb\": \"512\"}", `line 2: "heap_mb" must be a whole number`},
+		{"fraction", `{"max_depth": 1.5}`, `"max_depth" must be a whole number`},
+		{"entry as a number", `{"entry": 3}`, `"entry" must be a string`},
+		{"packages as a list", `{"packages": ["std"]}`, `"packages" must be an object of names and folders`},
+		{"package folder as a number", `{"packages": {"std": 1}}`, `must be an object of names and folders`},
+		{"entry that is not source", `{"entry": "main.txt"}`, `"entry" must be a .lum file, got "main.txt"`},
+		{"negative heap", `{"heap_mb": -1}`, `"heap_mb" must be positive`},
+		{"negative depth", `{"max_depth": -5}`, `"max_depth" must be positive`},
+		{"package with a dot", `{"packages": {"std.io": "x"}}`, `package name "std.io" is not a name that can be imported`},
+		{"package with a dash", `{"packages": {"my-lib": "x"}}`, `package name "my-lib" is not a name`},
+		{"package starting with a digit", `{"packages": {"2d": "x"}}`, `package name "2d" is not a name`},
+		{"package without a name", `{"packages": {"": "x"}}`, `package name "" is not a name`},
+		{"package without a folder", `{"packages": {"std": ""}}`, `package "std" has no folder`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := Parse([]byte(tt.src))
+			if err == nil {
+				t.Fatal("expected an error, got none")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Errorf("expected an error containing %q, got %q", tt.want, err.Error())
+			}
+		})
+	}
+}
+
+// write creates a file under dir, with its folders.
+func write(t *testing.T, dir, path, content string) string {
+	t.Helper()
+	full := filepath.Join(dir, path)
+	if err := os.MkdirAll(filepath.Dir(full), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	return full
+}
+
+func TestLoadResolvesPathsFromTheProjectFile(t *testing.T) {
+	dir := t.TempDir()
+	path := write(t, dir, "game/lumen.json", `{
+		"entry": "src/main.lum",
+		"root": "src",
+		"packages": { "std": "../shared/std", "abs": "/opt/lumen/abs" }
+	}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	game := filepath.Join(dir, "game")
+	if cfg.Path != path || cfg.Dir != game {
+		t.Errorf("expected the config to know its place, got %s in %s", cfg.Path, cfg.Dir)
+	}
+	if got := cfg.RootDir(); got != filepath.Join(game, "src") {
+		t.Errorf("unexpected root %s", got)
+	}
+	if got, err := cfg.EntryFile(); err != nil || got != filepath.Join(game, "src", "main.lum") {
+		t.Errorf("unexpected entry %s, %v", got, err)
+	}
+	dirs := cfg.PackageDirs()
+	if dirs["std"] != filepath.Join(dir, "shared", "std") {
+		t.Errorf("expected a relative package folder to start at the project file, got %s", dirs["std"])
+	}
+	if dirs["abs"] != "/opt/lumen/abs" {
+		t.Errorf("expected an absolute package folder to be kept, got %s", dirs["abs"])
+	}
+}
+
+func TestLoadDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cfg, err := Load(write(t, dir, "lumen.json", `{}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Without "root", module paths start where the project file is
+	if got := cfg.RootDir(); got != dir {
+		t.Errorf("expected the root to be the project's folder, got %s", got)
+	}
+	if len(cfg.PackageDirs()) != 0 {
+		t.Errorf("expected no packages, got %v", cfg.PackageDirs())
+	}
+	// Without "entry" there is nothing to run by default, and the message says what to add
+	if _, err := cfg.EntryFile(); err == nil || !strings.Contains(err.Error(), `add "entry": "main.lum"`) {
+		t.Errorf("expected a message about the missing entry, got %v", err)
+	}
+}
+
+func TestLoadErrorsNameTheFile(t *testing.T) {
+	dir := t.TempDir()
+	path := write(t, dir, "lumen.json", `{"entri": "main.lum"}`)
+	if _, err := Load(path); err == nil || !strings.HasPrefix(err.Error(), path+": unknown key") {
+		t.Errorf("expected the error to start with the file, got %v", err)
+	}
+	if _, err := Load(filepath.Join(dir, "missing.json")); err == nil || !strings.Contains(err.Error(), "cannot read") {
+		t.Errorf("expected a read error, got %v", err)
+	}
+}
+
+func TestFind(t *testing.T) {
+	dir := t.TempDir()
+	outer := write(t, dir, "lumen.json", `{"name": "outer"}`)
+	inner := write(t, dir, "tools/gen/lumen.json", `{"name": "inner"}`)
+	write(t, dir, "src/app/deep/file.lum", "")
+	write(t, dir, "tools/gen/src/file.lum", "")
+
+	find := func(rel string) *Config {
+		t.Helper()
+		cfg, err := Find(filepath.Join(dir, rel))
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return cfg
+	}
+	same := func(a, b string) bool {
+		ra, _ := filepath.EvalSymlinks(a)
+		rb, _ := filepath.EvalSymlinks(b)
+		return ra == rb
+	}
+
+	// In the folder itself, and from any depth below it
+	for _, rel := range []string{".", "src", "src/app/deep"} {
+		if cfg := find(rel); cfg == nil || cfg.Name != "outer" || !same(cfg.Path, outer) {
+			t.Errorf("from %s: expected the outer project, got %+v", rel, cfg)
+		}
+	}
+	// The nearest one wins
+	for _, rel := range []string{"tools/gen", "tools/gen/src"} {
+		if cfg := find(rel); cfg == nil || cfg.Name != "inner" || !same(cfg.Path, inner) {
+			t.Errorf("from %s: expected the inner project, got %+v", rel, cfg)
+		}
+	}
+	// A folder between the two belongs to the outer one
+	if cfg := find("tools"); cfg == nil || cfg.Name != "outer" {
+		t.Errorf("expected the outer project from tools/, got %+v", cfg)
+	}
+
+	// None at all is not an error
+	bare := t.TempDir()
+	if cfg, err := Find(bare); err != nil || cfg != nil {
+		t.Errorf("expected no project in an empty folder, got %+v, %v", cfg, err)
+	}
+	// A folder called lumen.json is not a project file
+	if err := os.Mkdir(filepath.Join(bare, FileName), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if cfg, err := Find(bare); err != nil || cfg != nil {
+		t.Errorf("expected a folder named %s to be ignored, got %+v, %v", FileName, cfg, err)
+	}
+
+	// A broken project file is an error, not a missing project
+	broken := t.TempDir()
+	write(t, broken, "lumen.json", `{"entry": }`)
+	if _, err := Find(filepath.Join(broken)); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
+		t.Errorf("expected the broken file to be reported, got %v", err)
+	}
+}

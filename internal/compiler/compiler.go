@@ -46,11 +46,16 @@ type Result struct {
 
 // CompileFile reads and compiles a Lumen source file.
 func CompileFile(path string, errs *errors.Handler) (*Result, error) {
+	return CompileFileOptions(path, Options{}, errs)
+}
+
+// CompileFileOptions is CompileFile with options.
+func CompileFileOptions(path string, opts Options, errs *errors.Handler) (*Result, error) {
 	src, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read %s: %w", path, err)
 	}
-	return Compile(string(src), path, errs), nil
+	return CompileOptions(string(src), path, opts, errs), nil
 }
 
 // Compile runs the pipeline on the source text of a program's entry file:
@@ -63,7 +68,22 @@ func CompileFile(path string, errs *errors.Handler) (*Result, error) {
 // Diagnostics go to errs. The pipeline stops after the first stage that
 // reports an error, so later stages never see a broken program.
 func Compile(src, file string, errs *errors.Handler) *Result {
-	return CompileWith(src, file, readSourceFile, errs)
+	return CompileOptions(src, file, Options{}, errs)
+}
+
+// Options says where the modules of a program are found. The zero value
+// reads them from disk, next to the entry file.
+type Options struct {
+	// Read returns the text of an imported file. Default: from disk.
+	Read modules.ReadFile
+
+	// Root is the folder module paths start at. Default: the folder of
+	// the entry file.
+	Root string
+
+	// Packages maps the first part of a module path to the folder holding
+	// that package's modules.
+	Packages map[string]string
 }
 
 func readSourceFile(path string) (string, error) {
@@ -74,6 +94,15 @@ func readSourceFile(path string) (string, error) {
 // CompileWith is Compile with the files of imported modules supplied by
 // read instead of taken from disk.
 func CompileWith(src, file string, read modules.ReadFile, errs *errors.Handler) *Result {
+	return CompileOptions(src, file, Options{Read: read}, errs)
+}
+
+// CompileOptions is Compile for a program whose modules are not simply
+// next to the entry file: see Options.
+func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Result {
+	if opts.Read == nil {
+		opts.Read = readSourceFile
+	}
 	result := &Result{}
 	lines := parser.SourceLines(src)
 	failed := errs.HasErrors
@@ -81,7 +110,7 @@ func CompileWith(src, file string, read modules.ReadFile, errs *errors.Handler) 
 	// 1. Parsing, of the entry file and of the modules it imports. They
 	// come back as one program in which every declaration has a unique
 	// name, so the stages below know nothing about modules.
-	prog := modules.Load(src, file, read, errs)
+	prog := modules.Load(src, file, modules.Options{Read: opts.Read, Root: opts.Root, Packages: opts.Packages}, errs)
 	result.AST = prog
 	if failed() {
 		return result
