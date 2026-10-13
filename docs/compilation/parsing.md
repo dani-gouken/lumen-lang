@@ -130,6 +130,19 @@ Binary expressions use precedence climbing. All binary operators are left-associ
 
 `value is Type` sits at the same level and produces a `TypeTestExpr`. `is` is not a reserved word: after a complete expression an identifier cannot follow, so in that position it can only be this operator, and `is` remains usable as a name elsewhere.
 
+`value is Pattern` is the same operator with the pattern of a variant after it, and produces a `PatternTestExpr` holding the `ast.VariantPattern` a `case` would (`parseIsTest` in `patterns.go`). What follows `is` is decided by its first token:
+
+| After `is` | Read as |
+|------------|---------|
+| `Int`, `[T]`, `fn(...)`, a bare `Name`, `Name<T>`, `m.Name<T>`, `m.Name?` | a type: these cannot be a pattern |
+| `Name.Name` and nothing more | a pattern; [module loading](module_loading.md) makes it the type test when the first name is a module |
+| `Name.Name(...)`, `m.Name.Name`, `Name<T>.Name(...)` | a pattern |
+| `(a, b)` | the pattern of a tuple when it parses as one, else the tuple type: `(Int, [String])`. A tuple of names that are all types is turned back into the type by module loading, which knows the types of every module |
+| `Name(...)` | an error that says the variant goes with its enum |
+| a literal | an error that says to compare with `==` |
+
+The pattern is parsed as a postfix expression with struct literals switched off, whatever the context, and converted as the pattern of a case is. So it ends where its name or its parentheses end: in `if shape is Shape.Empty { }` the brace is the block, and the struct literal ambiguity below is no wider than before.
+
 A cast produces a `CastExpr`. Its type is parsed without unions, so `v as Int | String` is not a cast to a union; `v as Int?` is fine. `as` is also the keyword of `import a.b as name`, where it is handled by the import rule.
 
 Primary expressions: literals, identifiers (optionally with type arguments), parenthesized expressions, array literals `[a, b]`, struct literals `Name { field: value }` and function expressions `fn(params) -> Type { body }`.

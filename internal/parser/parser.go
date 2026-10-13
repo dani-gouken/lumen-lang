@@ -1261,9 +1261,10 @@ func (p *Parser) parseUnary() ast.Expr {
 		return &ast.UnaryExpr{BaseNode: base(tok), Op: tok.Literal, Expr: p.parseUnary()}
 	}
 
-	// `value as Type` and `value is Type` bind tighter than any binary
-	// operator. `is` is not a reserved word: after a complete expression an
-	// identifier cannot follow, so there it can only be this operator.
+	// `value as Type`, `value is Type` and `value is Pattern` bind tighter
+	// than any binary operator. `is` is not a reserved word: after a
+	// complete expression an identifier cannot follow, so there it can only
+	// be this operator.
 	expr := p.parsePostfix()
 	for {
 		tok := p.cur()
@@ -1273,7 +1274,7 @@ func (p *Parser) parseUnary() ast.Expr {
 			expr = &ast.CastExpr{BaseNode: base(tok), Expr: expr, Type: p.parsePostfixType()}
 		case tok.Type == token.IDENT && tok.Literal == "is":
 			p.next()
-			expr = &ast.TypeTestExpr{BaseNode: base(tok), Expr: expr, Type: p.parsePostfixType()}
+			expr = p.parseIsTest(tok, expr)
 		default:
 			return expr
 		}

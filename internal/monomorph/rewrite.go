@@ -89,6 +89,8 @@ func (m *Monomorphizer) rewriteExprCallSites(expr ast.Expr) {
 		m.rewriteExprCallSites(e.Expr)
 	case *ast.TypeTestExpr:
 		m.rewriteExprCallSites(e.Expr)
+	case *ast.PatternTestExpr:
+		m.rewriteExprCallSites(e.Expr)
 	case *ast.FnExpr:
 		if e.Body != nil {
 			m.rewriteStmtCallSites(e.Body)

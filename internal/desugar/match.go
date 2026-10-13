@@ -89,7 +89,7 @@ func (d *Desugarer) matchSubject(match *ast.MatchStmt) (subject ast.Expr, tmpIni
 	}
 
 	subject = d.desugarExpr(match.Cond)
-	if !d.isComplexExpr(subject) {
+	if !d.isComplexExpr(subject) && !d.rebinds(match, subject) {
 		return subject, nil
 	}
 
@@ -106,6 +106,31 @@ func (d *Desugarer) matchSubject(match *ast.MatchStmt) (subject ast.Expr, tmpIni
 		d.typeInfo.Types[tmp] = exprType
 	}
 	return tmp, tmpInit
+}
+
+// rebinds reports whether a pattern of the match names a value as the
+// variable being matched is named: `match pair { case (pair, rest): ... }`.
+// The values of the pattern are then read from a copy, since the name
+// stops meaning the matched value as soon as the first of them is declared.
+func (d *Desugarer) rebinds(match *ast.MatchStmt, subject ast.Expr) bool {
+	ident, ok := subject.(*ast.Ident)
+	if !ok {
+		return false
+	}
+	for _, caseStmt := range match.Cases {
+		for _, pattern := range caseStmt.Patterns() {
+			variant, ok := pattern.(*ast.VariantPattern)
+			if !ok {
+				continue
+			}
+			for _, binding := range variant.Bindings() {
+				if binding.Name == ident.Name {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // runsForSure reports whether the last case of a match needs no test:

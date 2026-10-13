@@ -110,7 +110,11 @@ func (c *Checker) variantFields(decl *ast.EnumDecl, variant *ast.EnumVariant, ty
 }
 
 // describeVariant writes a variant the way it is declared: Rect(Float, Float).
+// The one variant of the enum behind tuples is named as what was written.
 func describeVariant(decl *ast.EnumDecl, variant *ast.EnumVariant) string {
+	if ast.IsTupleName(decl.Name) {
+		return fmt.Sprintf("tuple of %d values", len(variant.Values))
+	}
 	return decl.Name + "." + variant.String()
 }
 
@@ -440,6 +444,36 @@ func (c *Checker) checkVariantPattern(p *ast.VariantPattern, subject Type) (vari
 		}
 	}
 	return v.Name, covers
+}
+
+// checkPatternTest checks `value is Pattern`, a Bool: the pattern against
+// the type of the value, as for a case of a match on it. A pattern every
+// value fits is not an error, but nothing is being asked: a warning.
+func (c *Checker) checkPatternTest(e *ast.PatternTestExpr) Type {
+	subject := c.checkExpr(e.Expr)
+	_, covers := c.checkVariantPattern(e.Pattern, subject)
+
+	decl := c.patternEnumDecl(e.Pattern)
+	if !covers || decl == nil || len(decl.Variants) != 1 || subject == nil {
+		return Bool
+	}
+	if subjectDecl, _ := c.enumOfType(subject); subjectDecl == decl {
+		c.errs.ReportWarningFromToken(ErrUnreachableCode,
+			fmt.Sprintf("this test always holds: every value of type %s fits the pattern", describe(subject)),
+			e.Pattern.Token(), c.sourceLines)
+	}
+	return Bool
+}
+
+// patternEnumDecl returns the enum a pattern names a variant of, or nil
+// when it names none.
+func (c *Checker) patternEnumDecl(p *ast.VariantPattern) *ast.EnumDecl {
+	member, ok := p.Target.(*ast.MemberExpr)
+	if !ok {
+		return nil
+	}
+	decl, _ := c.enumOf(member.Expr)
+	return decl
 }
 
 func withoutNullOrNil(t Type) Type {

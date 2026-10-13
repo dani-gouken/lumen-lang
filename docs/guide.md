@@ -273,7 +273,7 @@ let lookup = ages.get;                                      // a method as a val
 
 The traits of `std.ops` give a struct the syntax of the builtin types: `==` and `<`, `+ - * /`, `for item in it`, `it[key]`, and how it reads in `println` and `"${...}"`.
 
-Inside the header of `if`, `while`, `for` and `match`, wrap a struct literal in parentheses: `if (Point { x: 1, y: 2 }).area() > 0 { ... }`.
+Inside the header of `if`, `while`, `for` and `match`, wrap a struct literal in parentheses: `if (Point { x: 1, y: 2 }).area() > 0 { ... }`. A pattern after `is` is never one: in `if shape is Shape.Empty { ... }` the brace opens the block.
 
 ### Enums
 
@@ -329,6 +329,22 @@ match divide(10, 0) {
     case Result.Err(message): { println("failed:", message); }
 }
 ```
+
+When only one variant matters, `is` asks for it without a whole `match`, and names what it holds for the block that follows:
+
+```rust
+if shape is Shape.Circle(r) {
+    println("a circle of radius", r);
+} else if shape is Shape.Rect(w, h) && w == h {       // the names serve the rest of the condition
+    println("a square of side", w);
+}
+
+while queue.take() is Option.Some(job) { run(job); }  // until there is none
+
+let round = shape is Shape.Circle;                    // a Bool like any other
+```
+
+What follows `is` is what follows `case`: a variant, with a name, `_`, a literal or another pattern for each of its values, or a tuple of those. The names exist where the test is known to have held: in the rest of an `&&`, and in the block of the `if` or `while`. Not in the `else`, and not after `!` or `||` (`E1003`): write `_` there. More in [enums.md](enums.md#one-variant-is).
 
 Values of an enum are equal when they are the same variant holding equal values. More in [enums.md](enums.md).
 
@@ -387,7 +403,7 @@ fn side(shape: Shape) -> Int {
 }
 ```
 
-`value is Type` asks the same question without failing, and inside the branch the value has that type:
+`value is Type` asks the same question without failing, and inside the branch the value has that type. (With the variant of an enum after it, `value is Shape.Circle(r)`, it takes the value apart as well: see [Enums](#enums).)
 
 ```rust
 fn describe(value: Any) -> String {

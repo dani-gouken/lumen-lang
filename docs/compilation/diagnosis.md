@@ -80,6 +80,7 @@ that detects the problem.
 |------|---------|
 | `E1001` | Undefined identifier, type or trait. Suggests the closest known name |
 | `E1002` | Name already declared in the same scope (includes redeclaring a builtin) |
+| `E1003` | A pattern after `is` names a value where nothing runs only when the test held: under `!`, on a side of `\|\|`, in a test that is just a value. The suggestion is `_` |
 
 ### E2xxx — Type checking (`internal/types`)
 
@@ -107,7 +108,7 @@ that detects the problem.
 | `E2020` | `let x = [];` with nothing to tell the element type |
 | `E2021` | Cast or type test that can never succeed (`1 as String`, `1 is String`, `case String:` on an Int), or for a type that cannot be verified |
 | `E2022` | Assignment to a name declared with `const` |
-| `E2023` | **Warning**: unreachable code after a statement that always leaves the block. Reported once per block |
+| `E2023` | **Warning**: unreachable code after a statement that always leaves the block (reported once per block); a case that is never reached; a test `value is Pattern` that always holds |
 | `E2024` | Type arguments of a method call that cannot be inferred, are superfluous or of the wrong number |
 | `E2025` | Integer literal outside the 48-bit range of an `Int` |
 | `E2026` | Assignment to the index or the element variable of a `for` loop. The suggestion names what works instead |

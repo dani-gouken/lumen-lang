@@ -336,6 +336,68 @@ The type checker gives a `CondExpr` the type its two sides share when the progra
 
 `defer` is not desugared: its body is, and the statement goes on to IR generation, which knows the ways out of a block ([ir_generation.md](ir_generation.md)).
 
+### 2c. Pattern tests: `value is Pattern`
+
+A pattern test is a case of a match written as a condition, and is lowered with the same pieces: the tests of `lowerPattern` joined by `&&`, and a `let` for each name (`is.go`).
+
+```rust
+if shape is Shape.Rect(w, 0.0) { body } else { other }
+```
+```
+if shape is Shape.Rect && shape.Rect#1 == 0.0 { let w = shape.Rect#0; { body } } else { other }
+```
+
+The block stays a block of its own under the names, so it may declare a variable called as one of them.
+
+**Names in the condition.** In a chain of `&&`, what follows a test sees its names. The chain is regrouped to the right (`a && (b && c)` evaluates exactly as `(a && b) && c` does) so that everything after a test stands in one `BlockExpr` that declares them; they are declared again in front of the block:
+
+```rust
+if shape is Shape.Circle(r) && r > 1.0 && ready { body }
+```
+```
+{
+    let __is_0 = shape;
+    if __is_0 is Shape.Circle && { let r = __is_0.Circle#0; r > 1.0 && ready } {
+        let r = __is_0.Circle#0;
+        { body }
+    }
+}
+```
+
+The second declaration is a different variable to the type checker that runs after this stage, so what the condition established about the name (`next != null`) would be lost on it. The first check records it (`types.Info.NarrowedNames`) and the second `let` is declared with that type. Facts about other variables pass through a `BlockExpr`: the checker looks at its value.
+
+**The value** is read where it stands when it is a plain variable and nothing runs between the test and the reading of its names. Otherwise it is kept in a temporary `__is_N`: when it is computed, when more of the condition follows a test that names something (that code could assign the variable), and when the pattern reuses the name of the variable. The temporary is declared before the statement, which is also where a value that comes first in the condition is evaluated. Behind an `&&` a value must only be evaluated when its turn comes, so its temporary starts as `null` and is filled in the condition:
+
+```rust
+if ready && next() is Option.Some(item) { body } else { other }
+```
+```
+{
+    let __is_0: Option<Int>? = null;
+    if ready && { __is_0 = next(); __is_0 is Option.Some } { let item = __is_0.Some#0; { body } } else { other }
+}
+```
+
+An `else if` is an `if` in the `else`, so its temporaries are declared, and its values evaluated, only when the conditions before it failed.
+
+**`while`.** With no temporary the loop keeps its shape: `while x is P(n) { body }` tests `x` and declares `n` in front of the body. With one, the value has to be evaluated on every turn:
+
+```rust
+while queue.take() is Option.Some(job) { body }
+```
+```
+while true {
+    let __is_0 = queue.take();
+    if __is_0 is Option.Some { let job = __is_0.Some#0; { body } } else { break; }
+}
+```
+
+`continue` in the body goes to the top of this loop, which evaluates the value again, as the condition of a `while` is.
+
+**As a value** (`let round = shape is Shape.Circle(_);`, an operand of `||`, under `!`) a test is its tests, in a `BlockExpr` that declares the temporary if one is needed. Name resolution has made sure it names nothing there, or only for the rest of its own `&&` chain.
+
+Nothing below this stage knows the form exists: IR generation sees `if`, `while`, `&&`, `VariantTestExpr`, `VariantFieldExpr` and `BlockExpr`, all of which a `match` already produced.
+
 ### 3. Optional Chaining (Future)
 
 **Goal**: Transform optional chaining into explicit null checks.

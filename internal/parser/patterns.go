@@ -1,6 +1,11 @@
 package parser
 
-import "github.com/dani-gouken/lumen/internal/ast"
+import (
+	"strings"
+
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/token"
+)
 
 // classifyPatterns turns a match pattern that is the bare name of a struct,
 // an enum or a trait into a type pattern. While parsing, `case Point:` cannot be told
@@ -113,6 +118,9 @@ func (p *Parser) subPattern(expr ast.Expr) ast.Node {
 		}
 	}
 
+	if p.speculating {
+		panic(bailout{})
+	}
 	p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
 		"this cannot be matched against a value of a variant",
 		"Use a name to give the value a name, '_' to ignore it, a literal, or the pattern of another variant",
@@ -152,4 +160,151 @@ func pathBase(e *ast.MemberExpr) ast.BaseNode {
 	tok.EndPos = e.Tok.EndPos
 	tok.EndPos.Col += len(e.Name)
 	return ast.BaseNode{Pos: tok.Pos, Tok: tok}
+}
+
+// parseIsTest parses what follows `value is`: a type, or the pattern of a
+// variant of an enum, which is whatever a `case` takes for one.
+//
+//	value is Int                    a type
+//	value is geo.Shape              a type of another module
+//	shape is Shape.Empty            a variant, whatever it holds
+//	shape is Shape.Rect(w, 0.0)     its values named or compared
+//	pair is (true, count)           a tuple
+//
+// A name with a dot reads the same for a type of a module and for a
+// variant; it is kept as a pattern, and the module loader, which knows the
+// modules, makes it the type test when it is one.
+//
+// The pattern ends where its name or its parentheses end, so in
+// `if shape is Shape.Empty { ... }` the brace opens the block: it is never
+// read as a struct literal.
+func (p *Parser) parseIsTest(is token.Token, value ast.Expr) ast.Expr {
+	tok := p.cur()
+	switch {
+	case tok.Type == token.LPAREN:
+		// (a, b) names the values of a tuple; (Int, String) can only be
+		// the type of one
+		if pattern := p.tryTuplePattern(); pattern != nil {
+			return &ast.PatternTestExpr{BaseNode: base(is), Expr: value, Pattern: pattern}
+		}
+
+	case tok.Type == token.IDENT:
+		if p.typeFollows() {
+			break
+		}
+		start := p.pos
+		saved := p.noStructLit
+		p.noStructLit = true
+		written := p.parsePostfix()
+		p.noStructLit = saved
+
+		pattern, ok := p.variantPattern(written, true).(*ast.VariantPattern)
+		if !ok {
+			p.pos = start
+			p.failWith(ErrUnexpectedToken,
+				"Write a type (value is Int), or a variant with a pattern for each of its values: value is Shape.Rect(w, h)",
+				"'is' takes a type or the pattern of a variant, and this is neither")
+		}
+		return &ast.PatternTestExpr{BaseNode: base(is), Expr: value, Pattern: pattern}
+
+	case tok.Type == token.INT, tok.Type == token.FLOAT, tok.Type == token.STRING, tok.Type == token.MINUS,
+		tok.Type == token.TRUE, tok.Type == token.FALSE, tok.Type == token.NULL:
+		p.failWith(ErrUnexpectedToken, "Compare values with ==",
+			"'is' takes a type or the pattern of a variant, found %s", describe(tok))
+	}
+
+	return &ast.TypeTestExpr{BaseNode: base(is), Expr: value, Type: p.parsePostfixType()}
+}
+
+// typeFollows reports whether the name at the cursor starts what can only
+// be a type, and not the pattern of a variant: `Point`, `Box<Int>`,
+// `geo.Shape?`. A name with one dot and nothing more may be either, and
+// what goes on with a dot or with parentheses is a pattern:
+// `Option<Int>.Some(n)`. Nothing is consumed.
+//
+// A name alone with parentheses, `value is Circle(r)`, is neither; that
+// is said here, where the mistake is plain.
+func (p *Parser) typeFollows() bool {
+	start := p.pos
+	parsed, ok := p.speculateType()
+	end := p.pos
+	p.pos = start
+	if !ok {
+		// Not a type after all; reading it as one says what is wrong
+		return true
+	}
+
+	plain := parsed.Kind == ast.TypeBasic && len(parsed.Generics) == 0
+	dotted := strings.Contains(parsed.Name, ".")
+	switch p.toks[end].Type {
+	case token.LPAREN:
+		if plain && !dotted {
+			p.failWith(ErrUnexpectedToken,
+				"Write the variant with its enum: value is Shape."+parsed.Name+"(...)",
+				"'%s' alone is a type, and a type holds no values to name", parsed.Name)
+		}
+		return false
+	case token.DOT:
+		return false
+	}
+	return !(plain && dotted)
+}
+
+// speculateType parses a type at the cursor without reporting anything,
+// and says whether there was one.
+func (p *Parser) speculateType() (parsed *ast.Type, ok bool) {
+	wasSpeculating := p.speculating
+	p.speculating = true
+	defer func() {
+		p.speculating = wasSpeculating
+		if r := recover(); r != nil {
+			if _, bailed := r.(bailout); !bailed {
+				panic(r)
+			}
+			parsed, ok = nil, false
+		}
+	}()
+	return p.parsePostfixType(), true
+}
+
+// tryTuplePattern parses the `(a, b)` after `is` as the pattern of a
+// tuple, when it reads as one. It gives nil, with nothing consumed, for
+// what is not: a tuple type written with types no value is written with
+// (`(Int, [String])`), or a type in parentheses.
+func (p *Parser) tryTuplePattern() (pattern *ast.VariantPattern) {
+	start := p.pos
+	wasSpeculating := p.speculating
+	p.speculating = true
+	defer func() {
+		p.speculating = wasSpeculating
+		if r := recover(); r != nil {
+			if _, ok := r.(bailout); !ok {
+				panic(r)
+			}
+			p.pos = start
+			pattern = nil
+		}
+	}()
+
+	saved := p.noStructLit
+	p.noStructLit = true
+	defer func() { p.noStructLit = saved }()
+
+	written := p.parsePrimary()
+	call, ok := written.(*ast.CallExpr)
+	if !ok {
+		p.fail("not a tuple")
+	}
+	target, ok := call.Func.(*ast.MemberExpr)
+	if !ok || target.Name != ast.TupleVariant {
+		p.fail("not a tuple")
+	}
+	if enum, ok := target.Expr.(*ast.Ident); !ok || !ast.IsTupleName(enum.Name) {
+		p.fail("not a tuple")
+	}
+	found, ok := p.variantPattern(written, true).(*ast.VariantPattern)
+	if !ok {
+		p.fail("not a tuple")
+	}
+	return found
 }

@@ -316,14 +316,20 @@ func (r *rewriter) stmt(stmt ast.Stmt) {
 			s.Value = r.expr(s.Value)
 		}
 	case *ast.IfStmt:
-		s.Cond = r.expr(s.Cond)
-		r.block(s.Then)
+		// The names of `if value is Shape.Circle(r)` are variables of the
+		// block that follows, not of the `else`
+		r.scoped(func() {
+			s.Cond = r.condition(s.Cond)
+			r.block(s.Then)
+		})
 		if s.Else != nil {
 			r.stmt(s.Else)
 		}
 	case *ast.WhileStmt:
-		s.Cond = r.expr(s.Cond)
-		r.block(s.Body)
+		r.scoped(func() {
+			s.Cond = r.condition(s.Cond)
+			r.block(s.Body)
+		})
 	case *ast.ForStmt:
 		s.Iterable = r.expr(s.Iterable)
 		r.scoped(func() {
@@ -415,6 +421,69 @@ func (r *rewriter) pattern(pattern ast.Node) ast.Node {
 	return pattern
 }
 
+// condition rewrites what an `if` or a `while` tests, or a chain of `&&`.
+// The names of its pattern tests are declared in the scope the caller
+// opened, where what the condition guards is rewritten next.
+func (r *rewriter) condition(cond ast.Expr) ast.Expr {
+	switch e := cond.(type) {
+	case *ast.BinaryExpr:
+		if e.Op == "&&" {
+			e.Left = r.condition(e.Left)
+			e.Right = r.condition(e.Right)
+			return e
+		}
+	case *ast.PatternTestExpr:
+		return r.patternTest(e)
+	}
+	return r.expr(cond)
+}
+
+// patternTest rewrites `value is Pattern`. Two things written as patterns
+// turn out here to be tests for a type, as they were before `is` took
+// patterns: `value is geo.Shape`, a type of another module, and
+// `value is (Point, Label)`, a tuple of types that read like names.
+func (r *rewriter) patternTest(e *ast.PatternTestExpr) ast.Expr {
+	e.Expr = r.expr(e.Expr)
+
+	if tuple := r.tupleOfTypes(e.Pattern); tuple != nil {
+		r.typ(tuple)
+		return &ast.TypeTestExpr{BaseNode: e.BaseNode, Expr: e.Expr, Type: tuple}
+	}
+	switch pattern := r.pattern(e.Pattern).(type) {
+	case *ast.Type:
+		return &ast.TypeTestExpr{BaseNode: e.BaseNode, Expr: e.Expr, Type: pattern}
+	case *ast.VariantPattern:
+		e.Pattern = pattern
+	}
+	return e
+}
+
+// tupleOfTypes gives the tuple type a pattern stands for when it is a
+// tuple of names that are all types, and nil otherwise.
+func (r *rewriter) tupleOfTypes(p *ast.VariantPattern) *ast.Type {
+	target, ok := p.Target.(*ast.MemberExpr)
+	if !ok || len(p.Args) == 0 {
+		return nil
+	}
+	enum, ok := target.Expr.(*ast.Ident)
+	if !ok || !ast.IsTupleName(enum.Name) {
+		return nil
+	}
+
+	tuple := &ast.Type{BaseNode: p.BaseNode, Kind: ast.TypeBasic, Name: enum.Name}
+	for _, arg := range p.Args {
+		name, ok := arg.(*ast.BindingPattern)
+		if !ok || name.Ignored() || r.isLocal(name.Name) || r.value(name.Name) != nil {
+			return nil
+		}
+		if !r.isTypeParam(name.Name) && r.typeItem(name.Name) == nil {
+			return nil
+		}
+		tuple.Generics = append(tuple.Generics, &ast.Type{BaseNode: name.BaseNode, Kind: ast.TypeBasic, Name: name.Name})
+	}
+	return tuple
+}
+
 // memberToken spans `module.name`, so a diagnostic underlines all of it.
 func memberToken(e *ast.MemberExpr) token.Token {
 	tok := e.Expr.Token()
@@ -466,8 +535,16 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 		e.Func = r.expr(e.Func)
 		r.exprs(e.Args)
 	case *ast.BinaryExpr:
+		if e.Op == "&&" {
+			// What a pattern test on the left names is seen on the right
+			r.scoped(func() { expr = r.condition(e) })
+			return expr
+		}
 		e.Left = r.expr(e.Left)
 		e.Right = r.expr(e.Right)
+	case *ast.PatternTestExpr:
+		r.scoped(func() { expr = r.patternTest(e) })
+		return expr
 	case *ast.UnaryExpr:
 		e.Expr = r.expr(e.Expr)
 	case *ast.CastExpr:

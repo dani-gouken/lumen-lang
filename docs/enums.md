@@ -202,6 +202,70 @@ match shape {
 
 A case on a number can be a range: `case 0..10:` (10 left out), `case 90..=100:`, with `Int` or `Float` ends.
 
+## One Variant: `is`
+
+A `match` asks which variant a value is. Often the question is smaller: is it *this* one? `value is Pattern` asks that, and gives a `Bool`:
+
+```rust
+if right is Value.Number(number) {
+    return Result.Ok(Value.Number(-number));
+}
+return Result.Err(failed(operator, "Operand must be a number."));
+```
+
+The pattern is whatever a `case` takes for a variant: a name, `_`, a literal or another pattern for each value, to any depth; no parentheses to take the variant whatever it holds; a tuple.
+
+```rust
+if shape is Shape.Empty { ... }
+if event is Event.Withdraw(amount) && amount > balance { ... }
+if e is Expr.Add(Expr.Num(0), right) { return right; }
+if (left, right) is (Value.Number(a), Value.Number(b)) { return a + b; }
+if stock.take(label, 1) is Result.Err(reason) { log(reason); }
+```
+
+**Where the names exist.** A name of the pattern is a variable of the code that runs only when the test held:
+
+*   the rest of a chain of `&&`: `shape is Shape.Rect(w, h) && w == h`, and a test further on may look into it: `next() is Option.Some(shape) && shape is Shape.Circle(r)`;
+*   the block of the `if` or the `while` whose condition the test is, alone or in such a chain.
+
+They do not exist in the `else`, in the next `else if`, or after the statement. Each branch of an `else if` chain has its own:
+
+```rust
+if shape is Shape.Circle(r) {
+    return r * r * 3.14;
+} else if shape is Shape.Rect(w, h) {
+    return w * h;
+}
+return 0.0;
+```
+
+Under `!`, on a side of `||`, or where the test is simply a value (`let round = shape is Shape.Circle(r);`), nothing runs only when it held, so a name there is an error (`E1003`) and `_` is what to write:
+
+```rust
+if !(shape is Shape.Circle(_)) { return; }
+let flat = shape is Shape.Empty || shape is Shape.Rect(_, 0.0);
+let big = shape is Shape.Circle(r) && r > 10.0;        // fine: the && uses r
+```
+
+There is no form that names values for the code *after* an `if` that left (`if !(shape is Shape.Circle(r)) { return; }` and then `r`): put the code in the block, or use a `match`.
+
+**In a loop.** `while` asks again on every turn, `continue` included, which makes it the loop over something that hands out values until it has none:
+
+```rust
+while queue.take() is Option.Some(job) {
+    if job.done { continue; }
+    run(job);
+}
+```
+
+**The value** is worked out once, before its names are read, and only when its turn in the condition comes: in `ready && load() is Result.Ok(text)`, nothing is loaded unless `ready`. A name keeps the value it was given, whatever the rest of the condition or the block does to the variable that was tested.
+
+**What can be tested** is what a `match` with that case accepts. A value that may be null fits no pattern when it is, and is not null where the test held. An `Any`, a trait or a union is tested for the enum as well, and is of that enum in the block. A pattern the value can never fit is an error (`E2029`); one it always fits (the one variant of an enum, a tuple of names) is a warning (`E2023`), since nothing is being asked: `let (a, b) = pair;` names the values of a tuple.
+
+`is` binds tighter than every operator with two sides, as it does with a type: `a is A.X && b`, `!v is A.X` is `!(v is A.X)`. After it, `Name.Name` is a variant, or a type of another module (`value is geo.Shape`); a tuple of names that are all types is the tuple type, as before: `value is (Point, Label)`.
+
+What `is` does not take is the rest of what a `case` takes: several patterns (`is A.X | A.Y`), a range, a literal by itself (`n is 3`). Those are `||`, a comparison and `==`.
+
 ## Generic Enums
 
 ```rust
@@ -301,7 +365,7 @@ What tuples add is reading a value by its position, `pair.0`, and being printed 
 
 ## What an Enum Value Is Not
 
-*   It has no fields: `shape.radius` is an error. A `match` is the only way in.
+*   It has no fields: `shape.radius` is an error. A `match`, or `is` for one variant, is the way in.
 *   The enum is not a value: `let s = Shape;` is an error.
 *   It is not a struct: `Shape { ... }` is an error.
 
@@ -312,14 +376,16 @@ What tuples add is reading a value by its position, `pair.0`, and being printed 
 | `E2028` | A `match` on an enum leaves values out | no case for `Light.Amber` |
 | `E2029` | A pattern that cannot match: unknown variant, wrong number of values, the variant of another enum, a literal of the wrong type | `case Shape.Rect(w):` |
 | `E2030` | An enum used wrongly: unknown variant, wrong number of values, a type argument nothing determines, the enum itself as a value | `Shape.Square(1.0)` |
-| `E2023` (warning) | A case that is never reached | a second `case Shape.Circle(r):` |
+| `E2023` (warning) | A case that is never reached, or a test with `is` that always holds | a second `case Shape.Circle(r):`; `pair is (a, b)` |
+| `E1003` | A name in a pattern after `is` where nothing could use it | `!(shape is Shape.Circle(r))` |
 
 ## What Is Not There
 
 *   **Named values** in a variant (`Rect { width: Float, height: Float }`): values are told apart by position.
 *   **Names in a case with several patterns** (`case Shape.Circle(r) | Shape.Square(r):`): write `_`, or give each pattern its case.
 *   **Patterns on structs, arrays and optionals**: only enums are taken apart; a struct inside a variant is bound to a name and used as usual.
-*   **`value is Shape.Circle`**: `is` tests for a type; use a `match` to test for a variant.
+*   **Names from a test that failed**: `if !(shape is Shape.Circle(r)) { return; }` does not leave `r` for what follows. The block of the `if` is where the names are.
+*   **Several patterns, ranges and literals after `is`**: `value is A.X | A.Y`, `n is 1..10`, `n is 3`. Write `||`, comparisons, `==`.
 *   **A variant by itself**: `Circle(2.0)` has to be written `Shape.Circle(2.0)`; there is no way to import the variants of an enum as bare names.
 
 ## How It Is Compiled
@@ -336,6 +402,7 @@ What tuples add is reading a value by its position, `pair.0`, and being printed 
 | `Shape.Circle` not called | a lambda that makes one |
 | `case Shape.Rect(w, 0.0): body` | `if value is Shape.Rect && value.Rect#1 == 0.0 { let w = value.Rect#0; body }` |
 | the last case of a complete match | the final `else`, without a test |
+| `if value is Shape.Rect(w, 0.0) { body }` | the same test, and `let w = value.Rect#0;` in front of the body ([desugaring.md](compilation/desugaring.md#2c-pattern-tests-value-is-pattern)) |
 
 A value of a variant is only read after the test that the value is that variant, which `&&` guarantees.
 

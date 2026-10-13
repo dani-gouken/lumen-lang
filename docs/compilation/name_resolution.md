@@ -104,6 +104,7 @@ Traverse the AST again to resolve function bodies and variable initializers.
     *   Enter a new scope when entering a `FnDecl` (add parameters to this scope).
     *   Enter a new scope when entering a `BlockStmt`.
     *   Enter a new scope for `ForStmt` (loop variable) and `MatchCase` (pattern variables).
+    *   Enter a new scope for an `IfStmt` and a `WhileStmt`, around the condition and the block it guards, not the `else`. A pattern test (`value is Shape.Circle(r)`) that is the condition, or an operand of the `&&` chain that is, declares its names there: the operands to its right and the block see them. A chain of `&&` with pattern tests anywhere else gets a scope of its own. A pattern test in any other place (under `!`, `||`, as a value) declares nothing, and each name it writes is `E1003`.
     *   Enter a new scope when entering a `FnExpr` (anonymous function); its parameters are added to it. The enclosing scopes stay visible, which is what lets a lambda refer to the variables it captures.
     *   Each method of an `ImplDecl` is resolved inside a scope that declares `self`. Outside of methods `self` is an undefined identifier.
 *   **Declarations**:
@@ -154,7 +155,7 @@ Errors should be reported using the `internal/errors` package, ensuring rich dia
     *   *Suggestion*: "Did you mean 'y'?" (if close match found).
 *   **E1002 Redeclaration**: "Variable 'x' is already declared in this scope."
     *   *Context*: Point to the previous declaration.
-*   **E1003 Invalid Shadowing**: If we decide to disallow certain shadowing (e.g. global).
+*   **E1003 Unusable name**: a pattern after `is` names a value where no code could use the name. *Suggestion*: write `_`.
 
 The `Resolver` should continue processing after an error to report as many issues as possible (error recovery).
 

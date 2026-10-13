@@ -132,13 +132,8 @@ impl Resolver {
         self.define(name);
 
         if superclass != null {
-            match superclass {
-                case Expr.Variable(parent, number): {
-                    if parent.lexeme == name.lexeme {
-                        self.reporter.atToken(parent, "A class can't inherit from itself.");
-                    }
-                }
-                default: { }
+            if superclass is Expr.Variable(parent, _) && parent.lexeme == name.lexeme {
+                self.reporter.atToken(parent, "A class can't inherit from itself.");
             }
             self.class = InsideClass.Subclass;
             self.expression(superclass);

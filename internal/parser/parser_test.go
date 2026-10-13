@@ -514,6 +514,14 @@ func TestParseErrors(t *testing.T) {
 		{"pattern that is an operation", "fn f(s: S) -> Int {\n  match s {\n    case S.A(x + 1): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
 		{"pattern that is an array", "fn f(s: S) -> Int {\n  match s {\n    case S.A([1]): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
 		{"pattern that is a generic call", "fn f(s: S) -> Int {\n  match s {\n    case S.A(g<Int>()): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
+		{"is with a number", "fn f(n: Int) -> Bool {\n  return n is 3;\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant, found '3'", 2},
+		{"is with null", "fn f(n: Int?) -> Bool {\n  return n is null;\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant", 2},
+		{"is with a text", "fn f(s: String) -> Bool {\n  return s is \"a\";\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant", 2},
+		{"is with a variant without its enum", "fn f(s: Shape) -> Bool {\n  if s is Circle(r) { return true; }\n  return false;\n}", ErrUnexpectedToken, "'Circle' alone is a type, and a type holds no values to name", 2},
+		{"is with a call", "fn f(s: Shape) -> Bool {\n  return s is shapes.make().kind;\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant, and this is neither", 2},
+		{"is with an index", "fn f(s: Shape) -> Bool {\n  return s is all.shapes[0];\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant, and this is neither", 2},
+		{"is pattern with an operation", "fn f(s: S) -> Bool {\n  return s is S.A(x + 1);\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 2},
+		{"is with an unfinished type", "fn f(s: S) -> Bool {\n  return s is Box<Int;\n}", ErrUnexpectedToken, "expected '>'", 2},
 		{"enum without a name", "enum { A }", ErrUnexpectedToken, "expected enum name", 1},
 		{"variant that is a number", "enum E { 1 }", ErrUnexpectedToken, "expected variant name", 1},
 		{"unclosed variant", "enum E { A(Int }", ErrUnexpectedToken, "expected ')'", 1},
@@ -1122,5 +1130,164 @@ func TestParseRangesAndDefer(t *testing.T) {
 		if got := stmts[i+1].String(); got != want {
 			t.Errorf("got %s, want %s", got, want)
 		}
+	}
+}
+
+func TestParseIsPatterns(t *testing.T) {
+	// What follows `is` is a pattern when it names a variant, and a type
+	// when it can only be one
+	patterns := []struct {
+		src  string
+		want string
+	}{
+		{"s is Shape.Empty", "(s is Shape.Empty)"},
+		{"s is Shape.Circle(r)", "(s is Shape.Circle(r))"},
+		{"s is Shape.Rect(w, _)", "(s is Shape.Rect(w, _))"},
+		{"s is geo.Shape.Rect(1.5, -2)", "(s is geo.Shape.Rect(1.5, (-2)))"},
+		{"e is Expr.Add(Expr.Num(0), Expr.Neg(inner))", "(e is Expr.Add(Expr.Num(0), Expr.Neg(inner)))"},
+		{"o is Option<Int>.Some(n)", "(o is Option<Int>.Some(n))"},
+		{"r is Result.Ok(_)", "(r is Result.Ok(_))"},
+		{"pair is (a, b)", "(pair is __Tuple2.Of(a, b))"},
+		{"pair is (true, Shape.Circle(r))", "(pair is __Tuple2.Of(true, Shape.Circle(r)))"},
+		{"triple is (1, \"a\", _)", "(triple is __Tuple3.Of(1, \"a\", _))"},
+		{"next() is Option.Some(v)", "(next() is Option.Some(v))"},
+		{"self.items[0].shape is Shape.Empty", "(self.items[0].shape is Shape.Empty)"},
+		{"load()? is Flow.Return(v)", "((load()?) is Flow.Return(v))"},
+		// A type of a module reads the same; the module loader tells them apart
+		{"s is geo.Shape", "(s is geo.Shape)"},
+	}
+	for _, tt := range patterns {
+		stmts := parseBody(t, "let v = "+tt.src+";")
+		value := stmts[0].(*ast.LetStmt).Value
+		test, ok := value.(*ast.PatternTestExpr)
+		if !ok {
+			t.Errorf("%s: expected a pattern test, got %T", tt.src, value)
+			continue
+		}
+		if got := test.String(); got != tt.want {
+			t.Errorf("%s: got %s, want %s", tt.src, got, tt.want)
+		}
+	}
+
+	typeTests := []struct {
+		src  string
+		want string
+	}{
+		{"v is Int", "(v is Int)"},
+		{"v is Point", "(v is Point)"},
+		{"v is Point?", "(v is Point?)"},
+		{"v is [Shape]", "(v is [Shape])"},
+		{"v is Box<Int>", "(v is Box<Int>)"},
+		{"v is geo.Box<Int>", "(v is geo.Box<Int>)"},
+		{"v is geo.Shape?", "(v is geo.Shape?)"},
+		{"v is fn(Int) -> Int", "(v is fn(Int) -> Int)"},
+		{"v is (Int, String)", "(v is __Tuple2<Int, String>)"},
+		{"v is (Point, [Int])", "(v is __Tuple2<Point, [Int]>)"},
+		{"v is (Point)", "(v is Point)"},
+	}
+	for _, tt := range typeTests {
+		stmts := parseBody(t, "let v = "+tt.src+";")
+		value := stmts[0].(*ast.LetStmt).Value
+		test, ok := value.(*ast.TypeTestExpr)
+		if !ok {
+			t.Errorf("%s: expected a type test, got %T", tt.src, value)
+			continue
+		}
+		if got := test.String(); got != tt.want {
+			t.Errorf("%s: got %s, want %s", tt.src, got, tt.want)
+		}
+	}
+
+	// It binds as `is` always did: tighter than any operator with two sides
+	grouping := []struct {
+		src  string
+		want string
+	}{
+		{"a is S.A(x) && x > 1", "((a is S.A(x)) && (x > 1))"},
+		{"ready && a is S.A(x) && b is S.B(y)", "((ready && (a is S.A(x))) && (b is S.B(y)))"},
+		{"a is S.A || b is S.B(_)", "((a is S.A) || (b is S.B(_)))"},
+		{"!a is S.A", "(!(a is S.A))"},
+		{"a is S.A == b is S.B", "((a is S.A) == (b is S.B))"},
+		{"a is S.A(_) ?? false", "((a is S.A(_)) ?? false)"},
+	}
+	for _, tt := range grouping {
+		if got := parseExprString(t, tt.src); got != tt.want {
+			t.Errorf("%s: got %s, want %s", tt.src, got, tt.want)
+		}
+	}
+}
+
+func TestParseIsPatternsInHeaders(t *testing.T) {
+	// The brace after a pattern opens the block: a variant without values
+	// is not the start of a struct literal, though `Name { }` is one elsewhere
+	stmts := parseBody(t, `
+		if shape is Shape.Empty { }
+		if (shape is Shape.Empty) { }
+		if shape is geo.Shape.Empty { } else if shape is Shape.Circle(r) && r > 1.0 { } else { }
+		while queue.take() is Option.Some(job) { }
+		while node is Node.Next(_, rest) && depth < 10 { }
+		for i in 0..10 { if grid[i] is Cell.Wall { continue; } }
+		match shape { case Shape.Circle(r) if r is Size.Big(_): { } default: { } }
+		let round = shape is Shape.Circle;
+		return shape is Shape.Circle(_);
+	`)
+
+	conditions := []string{
+		"(shape is Shape.Empty)",
+		"(shape is Shape.Empty)",
+		"(shape is geo.Shape.Empty)",
+	}
+	for i, want := range conditions {
+		if got := stmts[i].(*ast.IfStmt).Cond.String(); got != want {
+			t.Errorf("statement %d: got %s, want %s", i, got, want)
+		}
+	}
+	for i := 0; i < 3; i++ {
+		if body := stmts[i].(*ast.IfStmt).Then; body == nil || len(body.Stmts) != 0 {
+			t.Errorf("statement %d: expected an empty block, got %v", i, body)
+		}
+	}
+
+	chain := stmts[2].(*ast.IfStmt).Else.(*ast.IfStmt)
+	if got, want := chain.Cond.String(), "((shape is Shape.Circle(r)) && (r > 1.0))"; got != want {
+		t.Errorf("got %s, want %s", got, want)
+	}
+	if _, ok := chain.Else.(*ast.BlockStmt); !ok {
+		t.Errorf("expected a final else block, got %T", chain.Else)
+	}
+
+	loops := []string{"(queue.take() is Option.Some(job))", "((node is Node.Next(_, rest)) && (depth < 10))"}
+	for i, want := range loops {
+		if got := stmts[3+i].(*ast.WhileStmt).Cond.String(); got != want {
+			t.Errorf("got %s, want %s", got, want)
+		}
+	}
+
+	guard := stmts[6].(*ast.MatchStmt).Cases[0].Guard
+	if _, ok := guard.(*ast.PatternTestExpr); !ok {
+		t.Errorf("expected a pattern test in the condition of the case, got %T", guard)
+	}
+	if _, ok := stmts[8].(*ast.ReturnStmt).Value.(*ast.PatternTestExpr); !ok {
+		t.Errorf("expected a pattern test to return, got %T", stmts[8].(*ast.ReturnStmt).Value)
+	}
+
+	// The names a test would give: those of the patterns inside it too
+	test := parseBody(t, "let v = e is Expr.Add(Expr.Num(a), Expr.Mul(_, Expr.Num(b)));")[0].(*ast.LetStmt).Value.(*ast.PatternTestExpr)
+	var names []string
+	for _, binding := range test.Pattern.Bindings() {
+		names = append(names, binding.Name)
+	}
+	if got := strings.Join(names, " "); got != "a b" {
+		t.Errorf("expected the names a b, got %s", got)
+	}
+
+	// The tests whose names reach the block: those every way to the
+	// block goes through
+	cond := parseBody(t, "if a is S.A(x) && (b is S.B(y) || c) && d is S.D(z) { }")[0].(*ast.IfStmt).Cond
+	if got := len(ast.PatternTests(cond)); got != 2 {
+		t.Errorf("expected 2 tests to reach the block, got %d", got)
+	}
+	if got := len(ast.Conjuncts(cond)); got != 3 {
+		t.Errorf("expected a chain of 3, got %d", got)
 	}
 }

@@ -73,12 +73,10 @@ fn truthy(value: Value) -> Bool {
 // Two values are equal if they are the same number, text or truth, or the
 // very same function, class or instance. A number equals no text.
 fn equal(a: Value, b: Value) -> Bool {
-    match (a, b) {
-        // Asked of the numbers themselves: a number that is not one (0/0)
-        // equals nothing, the very value it is included
-        case (Value.Number(x), Value.Number(y)): { return x == y; }
-        default: { return a == b; }
-    }
+    // Asked of the numbers themselves: a number that is not one (0/0)
+    // equals nothing, the very value it is included
+    if a is Value.Number(x) && b is Value.Number(y) { return x == y; }
+    return a == b;
 }
 
 // --- Failures ---
@@ -156,10 +154,7 @@ impl Interpreter {
     pub fn run(statements: [Stmt], distances: [Int]) -> RuntimeError? {
         self.distances = distances;
         for statement in statements {
-            match self.execute(statement) {
-                case Result.Err(error): { return error; }
-                case Result.Ok(flow): { }
-            }
+            if self.execute(statement) is Result.Err(error) { return error; }
         }
         return null;
     }
@@ -202,10 +197,7 @@ impl Interpreter {
             }
             case Stmt.While(condition, body): {
                 while truthy(self.evaluate(condition)?) {
-                    match self.execute(body)? {
-                        case Flow.Return(value): { return Result.Ok(Flow.Return(value)); }
-                        case Flow.Next: { }
-                    }
+                    if self.execute(body)? is Flow.Return(value) { return Result.Ok(Flow.Return(value)); }
                 }
             }
         }
@@ -220,10 +212,7 @@ impl Interpreter {
         defer { self.environment = previous; }
 
         for statement in statements {
-            match self.execute(statement)? {
-                case Flow.Return(value): { return Result.Ok(Flow.Return(value)); }
-                case Flow.Next: { }
-            }
+            if self.execute(statement)? is Flow.Return(value) { return Result.Ok(Flow.Return(value)); }
         }
         return Result.Ok(Flow.Next);
     }
@@ -231,14 +220,12 @@ impl Interpreter {
     fn declareClass(name: Token, superclassExpr: Expr?, methods: [Function]) -> Result<Flow, RuntimeError> {
         let superclass: Class? = null;
         if superclassExpr != null {
-            match self.evaluate(superclassExpr)? {
-                case Value.Class(parent): { superclass = parent; }
-                default: {
-                    match superclassExpr {
-                        case Expr.Variable(parentName, number): { return Result.Err(failed(parentName, "Superclass must be a class.")); }
-                        default: { return Result.Err(failed(name, "Superclass must be a class.")); }
-                    }
-                }
+            if self.evaluate(superclassExpr)? is Value.Class(parent) {
+                superclass = parent;
+            } else if superclassExpr is Expr.Variable(parentName, _) {
+                return Result.Err(failed(parentName, "Superclass must be a class."));
+            } else {
+                return Result.Err(failed(name, "Superclass must be a class."));
             }
         }
 
@@ -296,10 +283,8 @@ impl Interpreter {
             case Expr.Unary(operator, rightExpr): {
                 let right = self.evaluate(rightExpr)?;
                 if operator.kind == Kind.Bang { return Result.Ok(Value.Bool(!truthy(right))); }
-                match right {
-                    case Value.Number(number): { return Result.Ok(Value.Number(-number)); }
-                    default: { return Result.Err(failed(operator, "Operand must be a number.")); }
-                }
+                if right is Value.Number(number) { return Result.Ok(Value.Number(-number)); }
+                return Result.Err(failed(operator, "Operand must be a number."));
             }
             case Expr.Logical(leftExpr, operator, rightExpr): {
                 let left = self.evaluate(leftExpr)?;
@@ -323,20 +308,16 @@ impl Interpreter {
                 return self.call(callee, paren, arguments);
             }
             case Expr.Get(objectExpr, name): {
-                match self.evaluate(objectExpr)? {
-                    case Value.Instance(instance): { return property(instance, name); }
-                    default: { return Result.Err(failed(name, "Only instances have properties.")); }
-                }
+                if self.evaluate(objectExpr)? is Value.Instance(instance) { return property(instance, name); }
+                return Result.Err(failed(name, "Only instances have properties."));
             }
             case Expr.Set(objectExpr, name, valueExpr): {
-                match self.evaluate(objectExpr)? {
-                    case Value.Instance(instance): {
-                        let value = self.evaluate(valueExpr)?;
-                        instance.fields.set(name.lexeme, value);
-                        return Result.Ok(value);
-                    }
-                    default: { return Result.Err(failed(name, "Only instances have fields.")); }
+                if self.evaluate(objectExpr)? is Value.Instance(instance) {
+                    let value = self.evaluate(valueExpr)?;
+                    instance.fields.set(name.lexeme, value);
+                    return Result.Ok(value);
                 }
+                return Result.Err(failed(name, "Only instances have fields."));
             }
             case Expr.Super(keyword, methodName, number): {
                 // `super` is one scope out of `this`, where the resolver found it
@@ -445,24 +426,21 @@ fn binary(left: Value, operator: Token, right: Value) -> Result<Value, RuntimeEr
     if operator.kind == Kind.EqualEqual { return Result.Ok(Value.Bool(equal(left, right))); }
     if operator.kind == Kind.BangEqual { return Result.Ok(Value.Bool(!equal(left, right))); }
 
-    match (left, right) {
-        case (Value.Number(a), Value.Number(b)): {
-            return Result.Ok(match operator.kind {
-                case Kind.Plus: Value.Number(a + b);
-                case Kind.Minus: Value.Number(a - b);
-                case Kind.Star: Value.Number(a * b);
-                case Kind.Slash: Value.Number(a / b);
-                case Kind.Greater: Value.Bool(a > b);
-                case Kind.GreaterEqual: Value.Bool(a >= b);
-                case Kind.Less: Value.Bool(a < b);
-                case Kind.LessEqual: Value.Bool(a <= b);
-                default: { panic("'${operator.lexeme}' is not an operator on two values"); }
-            });
-        }
-        case (Value.Text(a), Value.Text(b)): {
-            if operator.kind == Kind.Plus { return Result.Ok(Value.Text(a + b)); }
-        }
-        default: { }
+    if left is Value.Number(a) && right is Value.Number(b) {
+        return Result.Ok(match operator.kind {
+            case Kind.Plus: Value.Number(a + b);
+            case Kind.Minus: Value.Number(a - b);
+            case Kind.Star: Value.Number(a * b);
+            case Kind.Slash: Value.Number(a / b);
+            case Kind.Greater: Value.Bool(a > b);
+            case Kind.GreaterEqual: Value.Bool(a >= b);
+            case Kind.Less: Value.Bool(a < b);
+            case Kind.LessEqual: Value.Bool(a <= b);
+            default: { panic("'${operator.lexeme}' is not an operator on two values"); }
+        });
+    }
+    if left is Value.Text(a) && right is Value.Text(b) && operator.kind == Kind.Plus {
+        return Result.Ok(Value.Text(a + b));
     }
     if operator.kind == Kind.Plus {
         return Result.Err(failed(operator, "Operands must be two numbers or two strings."));

@@ -230,6 +230,9 @@ func (d *Desugarer) desugarReturnStmt(ret *ast.ReturnStmt) *ast.ReturnStmt {
 // desugarIfStmt desugars an if statement
 func (d *Desugarer) desugarIfStmt(ifStmt *ast.IfStmt) ast.Stmt {
 	d.checkShortCircuitComplexity(ifStmt.Cond)
+	if hasPatternTest(ifStmt.Cond) {
+		return d.desugarIfPattern(ifStmt)
+	}
 	newCond := d.desugarExpr(ifStmt.Cond)
 	newThen := d.desugarStmt(ifStmt.Then).(*ast.BlockStmt)
 
@@ -249,6 +252,9 @@ func (d *Desugarer) desugarIfStmt(ifStmt *ast.IfStmt) ast.Stmt {
 // desugarWhileStmt desugars a while statement
 func (d *Desugarer) desugarWhileStmt(while *ast.WhileStmt) ast.Stmt {
 	d.checkShortCircuitComplexity(while.Cond)
+	if hasPatternTest(while.Cond) {
+		return d.desugarWhilePattern(while)
+	}
 
 	return &ast.WhileStmt{
 		BaseNode: while.BaseNode,
@@ -271,7 +277,12 @@ func (d *Desugarer) desugarExprStmt(expr *ast.ExprStmt) *ast.ExprStmt {
 func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
 	switch expr := expr.(type) {
 	case *ast.BinaryExpr:
+		if expr.Op == "&&" && hasPatternTest(expr) {
+			return d.desugarPatternValue(expr)
+		}
 		return d.desugarBinaryExpr(expr)
+	case *ast.PatternTestExpr:
+		return d.desugarPatternValue(expr)
 	case *ast.UnaryExpr:
 		return d.desugarUnaryExpr(expr)
 	case *ast.CallExpr:

@@ -97,7 +97,7 @@ Most of this list has since been added, and the library and the examples rewritt
 
 ### More from `match` — S to M each
 
-Patterns on literals, ranges, types and the variants of an enum (with names, literals and nested patterns) work, with conditions and several patterns per case; a match gives a value where one is expected, and a match on an enum is checked for completeness ([enums.md](enums.md)). Not there:
+Patterns on literals, ranges, types and the variants of an enum (with names, literals and nested patterns) work, with conditions and several patterns per case; a match gives a value where one is expected, and a match on an enum is checked for completeness ([enums.md](enums.md)). One variant is taken apart without a match by `if value is Shape.Circle(r) { ... }`. Not there:
 
 | Missing | Today |
 |---------|-------|
@@ -112,7 +112,9 @@ Patterns on literals, ranges, types and the variants of an enum (with names, lit
 | Missing | Today |
 |---------|-------|
 | Named values in a variant: `Rect { width: Float, height: Float }` | By position only |
-| `value is Shape.Circle` | Use a `match` |
+| Names from a test with `is` for the code after it: `if !(v is Shape.Circle(r)) { return; }` then `r` | `E1003`. The names of `value is Pattern` exist in the block of the `if` or `while` and in the rest of an `&&`; put the code there, or use a `match` |
+| Several patterns, a range or a literal after `is`: `v is A.X \| A.Y`, `n is 1..10`, `n is 3` | A syntax error. Write `\|\|`, comparisons, `==` |
+| Names of a test with `is` in the condition of a case, for its body: `case A(x) if x is B(y):` then `y` in the body | `E1003`; the names live in the condition only (`x is B(y) && y > 0`) |
 | Variants as bare names (`Circle(2.0)`), or imported one by one | Always `Shape.Circle(2.0)` |
 | Equality by content for arrays and structs inside a value | They are only equal to themselves |
 | A check of what a generic enum holds when casting: `any as Option<Int>` | Only the variant is checked; a wrong payload type shows later |
@@ -197,7 +199,7 @@ A test narrows a **local variable, parameter or field path** (`node.next`) insid
 *   **inside a lambda**, only what is known about variables that are never assigned after their declaration carries over. For one that is assigned anywhere in the function, before or after, nothing does: the lambda may run later. What is known about fields never carries over;
 *   **fields are forgotten after anything that may assign a field**: a field assignment, or a call of a function that assigns one, directly or through what it calls. Calls that cannot (builtins, functions that only read) change nothing. A call whose target is not known counts as one that may: a function value, a function stored in a field, and a method if *any* method of that name assigns a field (the receiver's type is not used). Copy the field into a local to keep it across such calls;
 *   **elements are not narrowed**: `if xs[0] != null` says nothing about the next `xs[0]`;
-*   **the false branch of a type test** learns nothing: after `if v is Int { ... } else { ... }`, `v` is not "anything but Int";
+*   **the false branch of a type test** learns nothing: after `if v is Int { ... } else { ... }`, `v` is not "anything but Int". The same goes for a test of a variant: after `if s is Shape.Circle(_) { ... } else { ... }` the `else` does not know which variants are left, and a chain of `else if` over every variant does not count as returning without a final `else`;
 *   **after a loop**: `while x == null { ... }` does not make `x` non-null afterwards;
 *   **a variable assigned in a loop** is not narrowed inside that loop by a test made before it, even when everything assigned to it is non-null. Walking a linked structure needs a second variable of the non-optional type: `let node: Node = root;` after `root` was tested.
 

@@ -40,6 +40,9 @@ func Walk(node Node, visitExpr func(Expr), visitStmt func(Stmt)) {
 			walkExpr(e.Expr)
 		case *TypeTestExpr:
 			walkExpr(e.Expr)
+		case *PatternTestExpr:
+			walkExpr(e.Expr)
+			walkPattern(e.Pattern)
 		case *VariantExpr:
 			for _, arg := range e.Args {
 				walkExpr(arg)

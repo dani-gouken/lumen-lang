@@ -115,6 +115,8 @@ func FuzzSource(f *testing.F) {
 		`fn main() -> Int { let xs = [1, 2, 3]; for x in xs { println(x); } return xs[5]; }`,
 		`struct P { x: Int; } fn main() -> Int { let p = P { x: 1 }; p.x += 1; println(p); return p.x; }`,
 		`enum E { A, B(Int) } fn main() -> Int { match E.B(2) { case E.A: { return 0; } case E.B(n): { return n; } } }`,
+		`enum E { A, B(Int) } fn f() -> E { return E.B(2); } fn main() -> Int { if f() is E.B(n) && n > 1 { return n; } else if f() is E.A { return 0; } return 1; }`,
+		`enum E { A, B(Int, E) } fn main() -> Int { let e = E.B(1, E.B(2, E.A)); let s = 0; while e is E.B(n, rest) { s += n; e = rest; } let p = (s, e is E.A); if p is (3, true) { return 0; } return 1; }`,
 		`fn f(n: Int) -> Int { return f(n + 1); } fn main() -> Int { return f(0); }`,
 		`fn main() -> Int { let s = "aé日"; let t = ""; for i in 0..3 { t = t + s[i]; } println(t); return 0; }`,
 		`fn main() -> Int { let f = fn(n: Int) -> Int { return n * 2; }; defer println("done"); return f(21) / 0; }`,

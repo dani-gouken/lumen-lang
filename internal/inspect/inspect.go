@@ -500,7 +500,8 @@ func fieldKeyAt(prog *ast.Program, file string, lines []string, line, column int
 }
 
 // eachPattern calls visit with every pattern that takes a variant apart
-// under a node, `case Shape.Rect(w, h)`, those inside others included.
+// under a node, `case Shape.Rect(w, h)` and `value is Shape.Rect(w, h)`,
+// those inside others included.
 func eachPattern(node ast.Node, visit func(*ast.VariantPattern)) {
 	var walk func(pattern ast.Node)
 	walk = func(pattern ast.Node) {
@@ -520,6 +521,12 @@ func eachPattern(node ast.Node, visit func(*ast.VariantPattern)) {
 					walk(pattern)
 				}
 			}
+		}
+	})
+	// And the patterns of tests: value is Shape.Rect(w, h)
+	types.WalkExprs(node, func(expr ast.Expr) {
+		if test, ok := expr.(*ast.PatternTestExpr); ok {
+			walk(test.Pattern)
 		}
 	})
 }

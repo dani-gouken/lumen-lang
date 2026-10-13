@@ -76,6 +76,8 @@ The `rewriter` walks every declaration of every module and replaces names:
 | type `T` | a type of this module, or imported by name | its program-wide name |
 | type `m.T`, struct literal `m.T { ... }` | `m` is an imported module | the same, with the program-wide name |
 | match pattern `T` or `m.T` | it names a type | a type pattern |
+| `value is m.T`, `value is (T, U)` | every name is a type | a type test; the parser had read a pattern, which is what `value is Shape.Empty` and `value is (a, b)` are |
+| a name in a pattern after `is` (`r` in `value is Shape.Circle(r)`) | always | a variable of the rest of the `&&` chain and of the block the test guards |
 | identifier `C`, `m.C` | a constant | its program-wide name |
 | identifier `E` in `E.Variant`, `m.E` | an enum | the enum's program-wide name; the variant is left as written |
 | a name in a variant pattern (`w` in `Shape.Rect(w, h)`) | always | a variable of the case, which hides functions, constants and modules of that name |

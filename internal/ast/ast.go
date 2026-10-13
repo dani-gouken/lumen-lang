@@ -1057,6 +1057,64 @@ func (p *BindingPattern) String() string { return p.Name }
 // Ignored reports whether the pattern is `_`.
 func (p *BindingPattern) Ignored() bool { return p.Name == "_" }
 
+// PatternTestExpr asks whether a value fits a pattern, and names what the
+// pattern names: `shape is Shape.Circle(r)`. It is a Bool like any other,
+// and its names are variables of the code that only runs when it held:
+// the rest of an `&&` it stands in, and the block of the `if` or `while`
+// whose condition it is. Desugaring writes it as the tests and variables
+// of a match case.
+type PatternTestExpr struct {
+	BaseNode
+	Expr    Expr
+	Pattern *VariantPattern
+}
+
+func (e *PatternTestExpr) exprNode() {}
+func (e *PatternTestExpr) String() string {
+	return fmt.Sprintf("(%s is %s)", e.Expr.String(), e.Pattern.String())
+}
+
+// Conjuncts lists what a condition is made of when it is a chain of `&&`,
+// in the order it is evaluated: a, b and c for `a && b && c`, however the
+// chain is grouped. Anything else is the one thing it is.
+func Conjuncts(cond Expr) []Expr {
+	if binary, ok := cond.(*BinaryExpr); ok && binary.Op == "&&" {
+		return append(Conjuncts(binary.Left), Conjuncts(binary.Right)...)
+	}
+	return []Expr{cond}
+}
+
+// PatternTests lists the pattern tests whose names reach what a condition
+// guards: the ones that have to hold for the whole condition to hold.
+// One under `||` or `!` is not among them, since the condition can hold
+// without it.
+func PatternTests(cond Expr) []*PatternTestExpr {
+	var tests []*PatternTestExpr
+	for _, part := range Conjuncts(cond) {
+		if test, ok := part.(*PatternTestExpr); ok {
+			tests = append(tests, test)
+		}
+	}
+	return tests
+}
+
+// Bindings lists the names a pattern gives to values, those of the
+// patterns inside it included, in the order they are written.
+func (p *VariantPattern) Bindings() []*BindingPattern {
+	var names []*BindingPattern
+	for _, arg := range p.Args {
+		switch a := arg.(type) {
+		case *BindingPattern:
+			if !a.Ignored() {
+				names = append(names, a)
+			}
+		case *VariantPattern:
+			names = append(names, a.Bindings()...)
+		}
+	}
+	return names
+}
+
 // --- Enum values after desugaring ---
 //
 // The parser cannot tell `Shape.Circle(2.0)` from a method call, so it is

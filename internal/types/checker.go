@@ -749,6 +749,7 @@ func (c *Checker) checkIfStmt(s *ast.IfStmt) {
 
 	whenTrue := c.factsFrom(s.Cond, true)
 	whenFalse := c.factsFrom(s.Cond, false)
+	c.recordNarrowedNames(whenTrue)
 	before := c.flowSnapshot()
 
 	branches := 1
@@ -792,7 +793,9 @@ func (c *Checker) checkWhileStmt(s *ast.WhileStmt) {
 	// which is tested before every iteration, can be relied on
 	c.forgetAssignedIn(s.Body)
 	c.loopsInDefer++
-	c.withNarrowing(c.factsFrom(s.Cond, true), func() { c.checkBlockStmt(s.Body) })
+	whenTrue := c.factsFrom(s.Cond, true)
+	c.recordNarrowedNames(whenTrue)
+	c.withNarrowing(whenTrue, func() { c.checkBlockStmt(s.Body) })
 	c.loopsInDefer--
 }
 
@@ -871,6 +874,8 @@ func (c *Checker) checkExpr(expr ast.Expr) Type {
 		t = c.checkTypeTest(e)
 	case *ast.VariantExpr:
 		t = c.checkVariantExpr(e)
+	case *ast.PatternTestExpr:
+		t = c.checkPatternTest(e)
 	case *ast.VariantTestExpr:
 		c.checkExpr(e.Expr)
 		t = Bool

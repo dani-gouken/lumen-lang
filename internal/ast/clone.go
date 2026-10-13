@@ -233,6 +233,11 @@ func (c *Cloner) Expr(expr Expr) Expr {
 		copy.Expr = c.Expr(e.Expr)
 		copy.Type = c.Type(e.Type)
 		return &copy
+	case *PatternTestExpr:
+		copy := *e
+		copy.Expr = c.Expr(e.Expr)
+		copy.Pattern = c.node(e.Pattern).(*VariantPattern)
+		return &copy
 	case *CallExpr:
 		copy := *e
 		copy.Func = c.Expr(e.Func)

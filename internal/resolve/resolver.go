@@ -11,6 +11,7 @@ import (
 const (
 	ErrUndefined     = "E1001" // Undefined identifier, type, or trait
 	ErrRedeclaration = "E1002" // Redeclaration of a name in the same scope
+	ErrUnusableName  = "E1003" // A pattern names a value where nothing could use the name
 )
 
 type Resolver struct {
@@ -286,14 +287,20 @@ func (r *Resolver) visitStmt(stmt ast.Stmt) {
 			r.visitExpr(s.Value)
 		}
 	case *ast.IfStmt:
-		r.visitExpr(s.Cond)
+		// What `if value is Shape.Circle(r)` names is a variable of the
+		// block that runs when the test held; the `else` does not see it
+		r.pushScope(s)
+		r.visitCondition(s.Cond, true)
 		r.visitBlockStmt(s.Then)
+		r.popScope()
 		if s.Else != nil {
 			r.visitStmt(s.Else)
 		}
 	case *ast.WhileStmt:
-		r.visitExpr(s.Cond)
+		r.pushScope(s)
+		r.visitCondition(s.Cond, true)
 		r.visitBlockStmt(s.Body)
+		r.popScope()
 	case *ast.ForStmt:
 		r.visitForStmt(s)
 	case *ast.MatchStmt:
@@ -432,9 +439,63 @@ func (r *Resolver) visitPattern(pattern ast.Node) {
 	}
 }
 
+// visitCondition resolves what an `if` or a `while` tests, or a chain of
+// `&&`. A pattern test that has to hold for the whole to hold declares its
+// names in the scope the caller opened: they are seen by what stands to
+// its right in the chain, and by what the caller resolves next in that
+// scope, the block the condition guards.
+//
+// guards says whether there is such a block. Without one, in a chain that
+// is only a value, the names of its last test have nothing to be seen by.
+func (r *Resolver) visitCondition(cond ast.Expr, guards bool) {
+	switch e := cond.(type) {
+	case *ast.BinaryExpr:
+		if e.Op == "&&" {
+			r.visitCondition(e.Left, true)
+			r.visitCondition(e.Right, guards)
+			return
+		}
+	case *ast.PatternTestExpr:
+		if !guards {
+			r.rejectNames(e)
+			return
+		}
+		r.visitExpr(e.Expr)
+		r.visitPattern(e.Pattern)
+		return
+	}
+	r.visitExpr(cond)
+}
+
+// rejectNames reports the names of a pattern test that stands where
+// nothing runs only when it held: under `||` or `!`, or as a value by
+// itself. Its variant is still looked up.
+func (r *Resolver) rejectNames(e *ast.PatternTestExpr) {
+	r.visitExpr(e.Expr)
+	for _, name := range e.Pattern.Bindings() {
+		r.errs.ReportErrorWithSuggestion(ErrUnusableName,
+			fmt.Sprintf("'%s' cannot be named here: nothing runs only when this test holds", name.Name),
+			"Write '_' to test without naming. A name can be used when the test is the condition of an 'if' or a 'while', or stands before an '&&'",
+			name.Token(), r.sourceLines)
+	}
+	r.namesNothing = true
+	r.visitPattern(e.Pattern)
+	r.namesNothing = false
+}
+
 func (r *Resolver) visitExpr(expr ast.Expr) {
 	switch e := expr.(type) {
+	case *ast.PatternTestExpr:
+		r.rejectNames(e)
 	case *ast.BinaryExpr:
+		if e.Op == "&&" && len(ast.PatternTests(e)) > 0 {
+			// `shape is Shape.Circle(r) && r > 1.0` as a value: the names
+			// live as long as the chain
+			r.pushScope(e)
+			r.visitCondition(e, false)
+			r.popScope()
+			return
+		}
 		r.visitExpr(e.Left)
 		if holder := ast.SafeHolder(e); holder != nil {
 			// value?.member: the right side names the value by a name of

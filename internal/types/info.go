@@ -37,6 +37,12 @@ type Info struct {
 	// a call, to the type of the function it stands for.
 	MethodValues map[*ast.MemberExpr]*FunctionType
 
+	// NarrowedNames maps a name of a pattern test, the `r` of
+	// `if shape is Shape.Circle(r) && r != null`, to the type the rest of
+	// the condition established for it where the guarded block starts,
+	// when that is more than the type of the value it names.
+	NarrowedNames map[*ast.BindingPattern]Type
+
 	implements func(t Type, trait string) bool
 
 	// Signatures maps each function declaration and function expression to
@@ -60,5 +66,6 @@ func NewInfo() *Info {
 		IndexReads:      make(map[*ast.IndexExpr]bool),
 		IndexWrites:     make(map[*ast.BinaryExpr]bool),
 		MethodValues:    make(map[*ast.MemberExpr]*FunctionType),
+		NarrowedNames:   make(map[*ast.BindingPattern]Type),
 	}
 }

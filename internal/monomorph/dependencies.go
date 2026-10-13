@@ -148,6 +148,8 @@ func (m *Monomorphizer) findDepsInExpr(expr ast.Expr, typeArgs []types.Type, typ
 		deps = append(deps, m.findDepsInExpr(e.Expr, typeArgs, typeParams)...)
 	case *ast.TypeTestExpr:
 		deps = append(deps, m.findDepsInExpr(e.Expr, typeArgs, typeParams)...)
+	case *ast.PatternTestExpr:
+		deps = append(deps, m.findDepsInExpr(e.Expr, typeArgs, typeParams)...)
 	case *ast.MemberExpr:
 		deps = append(deps, m.findDepsInExpr(e.Expr, typeArgs, typeParams)...)
 	case *ast.IndexExpr:

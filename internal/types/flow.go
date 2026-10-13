@@ -414,6 +414,25 @@ func (c *Checker) collectFacts(cond ast.Expr, outcome bool, known facts) {
 			c.learn(e.Expr, c.info.TestedTypes[e], known)
 		}
 
+	case *ast.PatternTestExpr:
+		// `x is Shape.Circle(r)` being true makes x a Shape
+		if outcome {
+			c.learnEnum(e.Expr, c.patternEnumDecl(e.Pattern), known)
+		}
+
+	case *ast.VariantTestExpr:
+		// The same test once desugaring wrote it out
+		if outcome {
+			c.learnEnum(e.Expr, c.enums[e.Enum], known)
+		}
+
+	case *ast.BlockExpr:
+		// Statements, then the condition that decides: what it says holds
+		// once the whole was evaluated
+		if e.Value != nil {
+			c.collectFacts(e.Value, outcome, known)
+		}
+
 	case *ast.BinaryExpr:
 		switch e.Op {
 		case "&&":
@@ -456,6 +475,36 @@ func (c *Checker) learn(expr ast.Expr, typ Type, known facts) {
 	}
 	if key, root, ok := c.fieldPath(expr); ok {
 		known.paths[key] = pathFact{root: root, typ: typ}
+	}
+}
+
+// learnEnum records that a value which passed the test for a variant is
+// of the enum: not null if it could be, and of that enum if it was an Any
+// or a trait. For a generic enum reached from an Any nothing says what its
+// type arguments are, and nothing is learned.
+func (c *Checker) learnEnum(expr ast.Expr, decl *ast.EnumDecl, known facts) {
+	subject := c.info.Types[expr]
+	if decl == nil || subject == nil || isUnknown(subject) {
+		return
+	}
+	var tested Type
+	if subjectDecl, _ := c.enumOfType(withoutNull(subject)); subjectDecl == decl {
+		tested = withoutNull(subject)
+	} else if len(decl.TypeParams) == 0 {
+		tested = enumType(decl, nil)
+	}
+	if tested != nil && !tested.Equals(subject) {
+		c.learn(expr, tested, known)
+	}
+}
+
+// recordNarrowedNames keeps, for desugaring, what a condition established
+// about the names of its own pattern tests.
+func (c *Checker) recordNarrowedNames(known facts) {
+	for sym, typ := range known.vars {
+		if name, ok := sym.Decl.(*ast.BindingPattern); ok {
+			c.info.NarrowedNames[name] = typ
+		}
 	}
 }
 

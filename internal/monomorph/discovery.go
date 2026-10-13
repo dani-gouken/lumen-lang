@@ -89,6 +89,8 @@ func (m *Monomorphizer) visitExprForDiscovery(expr ast.Expr) {
 		m.visitExprForDiscovery(e.Expr)
 	case *ast.TypeTestExpr:
 		m.visitExprForDiscovery(e.Expr)
+	case *ast.PatternTestExpr:
+		m.visitExprForDiscovery(e.Expr)
 	case *ast.FnExpr:
 		if e.Body != nil {
 			m.visitStmtForDiscovery(e.Body)
