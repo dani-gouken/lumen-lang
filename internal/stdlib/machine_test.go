@@ -970,3 +970,101 @@ func TestLengthIsOnlyAName(t *testing.T) {
 	}
 	expectLines(t, out, "5 2", "100", "3", "[1, 3, 0]", "[1, 0, 2]", "5")
 }
+
+// The pipe, in programs: chains over the library, generic functions that
+// take their types from what is piped, failures that leave by ?, and the
+// mistakes of a piped call said as those of the call it is.
+func TestPipe(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+		import std.math;
+		import std.strings;
+		import std.dict;
+		import std.dict.{Dict};
+		import std.result.{Result};
+
+		struct Order { customer: String; total: Int; paid: Bool; }
+
+		enum Shape { Circle(Int), Square(Int) }
+		impl Shape {
+			fn area() -> Int {
+				return match self {
+					case Shape.Circle(r): 3 * r * r;
+					case Shape.Square(side): side * side;
+				};
+			}
+		}
+
+		fn orders() -> [Order] {
+			return [
+				Order { customer: "ada", total: 120, paid: true },
+				Order { customer: "bob", total: 80, paid: false },
+				Order { customer: "ada", total: 30, paid: true },
+				Order { customer: "cy", total: 200, paid: true },
+			];
+		}
+
+		fn parse(text: String) -> Result<Int, String> {
+			let n = strings.parseInt(text);
+			if n == null { return Result.Err("not a number: '${text}'"); }
+			return Result.Ok(n);
+		}
+
+		// Leaves with the first failure
+		fn sum(line: String) -> Result<Int, String> {
+			let total = 0;
+			for part in line |> strings.split(",") {
+				total += part |> strings.trim() |> parse()?;
+			}
+			return Result.Ok(total);
+		}
+
+		fn twice<T>(value: T, f: fn(T) -> T) -> T { return value |> f |> f; }
+		fn area(shape: Shape) -> Int { return shape.area(); }
+
+		fn main() {
+			// A chain over the library, each step with what the one before gave
+			let paid = orders()
+				|> arrays.filter(o -> o.paid)
+				|> arrays.map(o -> o.total)
+				|> arrays.fold(0, (sum, n) -> sum + n);
+			println(paid);
+
+			let names = orders()
+				|> arrays.map(o -> o.customer)
+				|> arrays.unique()
+				|> arrays.map(strings.upper)
+				|> strings.join(", ");
+			println(names);
+
+			// Looser than arithmetic, tighter than comparisons
+			println(2 + 3 |> math.abs);
+			println(0 - 7 |> math.abs |> math.max(3) * 2);
+			if orders() |> arrays.len == 4 && paid |> math.min(1000) > 300 { println("four orders"); }
+
+			// Failures
+			println("1, 2, 39" |> sum);
+			println("1, two, 3" |> sum);
+
+			// Generic functions, functions kept in variables, methods
+			let shout = fn(text: String) -> String { return text + "!"; };
+			println("hey" |> twice(shout));
+			println(3 |> twice(n -> n * n));
+			println("go" |> shout |> shout);
+			println([Shape.Circle(2), Shape.Square(3)] |> arrays.map(area) |> arrays.sum());
+
+			let seen: Dict<Int> = dict.empty();
+			for order in orders() { order.customer |> seen.set((seen.get(order.customer) ?? 0) + order.total); }
+			println(seen.get("ada"), seen.get("cy"), seen.get("nobody"));
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	expectLines(t, out,
+		"350", "ADA, BOB, CY",
+		"5", "14", "four orders",
+		"Ok(42)", "Err(\"not a number: 'two'\")",
+		"hey!!", "81", "go!!", "21",
+		"150 200 null")
+}

@@ -1393,3 +1393,76 @@ func TestCTypesAreOnlyForForeignDeclarations(t *testing.T) {
 		t.Errorf("expected the names as written in a function of the runtime, got %s", g)
 	}
 }
+
+// value |> f(a) is f(value, a): the parser writes the call, and nothing
+// after it knows of the pipe.
+func TestParsePipe(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"into a call", `xs |> map(f)`, `map(xs, f)`},
+		{"into a call of a module", `xs |> arrays.map(f)`, `arrays.map(xs, f)`},
+		{"into a call without arguments", `text |> trim()`, `trim(text)`},
+		{"into a function by its name", `xs |> sum`, `sum(xs)`},
+		{"into a function of a module", `xs |> arrays.sum`, `arrays.sum(xs)`},
+		{"one after the other", `xs |> filter(even) |> map(double) |> sum`, `sum(map(filter(xs, even), double))`},
+		{"over several lines", "xs\n\t\t|> filter(even)\n\t\t|> sum()", `sum(filter(xs, even))`},
+		{"into a call with type arguments", `xs |> convert<String>(f)`, `convert<String>(xs, f)`},
+		{"into a method", `item |> basket.add(2)`, `basket.add(item, 2)`},
+		{"the value is all that was added", `a + b |> f`, `f((a + b))`},
+		{"and multiplied", `a * b - c |> f(d)`, `f(((a * b) - c), d)`},
+		{"what follows the call is not part of it", `n |> f(1) + 2`, `(f(n, 1) + 2)`},
+		{"nor what multiplies it", `n |> f * 2 |> g`, `g((f(n) * 2))`},
+		{"tighter than a comparison", `xs |> len == 3`, `(len(xs) == 3)`},
+		{"on both sides of one", `a |> f < b |> g`, `(f(a) < g(b))`},
+		{"tighter than and, or", `a |> ok && b |> ok || c`, `((ok(a) && ok(b)) || c)`},
+		{"tighter than ??", `a |> find ?? b |> find`, `(find(a) ?? find(b))`},
+		{"a negative value", `-n |> abs`, `abs((-n))`},
+		{"a call as the value", `load(path) |> parse(strict)`, `parse(load(path), strict)`},
+		{"in brackets", `(a |> f) |> g((b |> h))`, `g(f(a), h(b))`},
+		{"as an argument", `show(xs |> sum, ys |> sum)`, `show(sum(xs), sum(ys))`},
+		{"a short function as an argument", `xs |> map(x -> x |> double)`, `map(xs, fn(x) { return double(x); })`},
+		{"the failure of the call", `text |> parse()?`, `(parse(text)?)`},
+		{"the failure of each call", `text |> trim |> parse()? |> double`, `double((parse(trim(text))?))`},
+		{"an index of the result", `xs |> sorted()[0]`, `sorted()[0]`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if c.name == "an index of the result" {
+				// Not a call: said so, instead of calling what the index gives
+				errs := errors.NewHandler()
+				Parse("fn main() { let v = "+c.src+"; }", "test.lum", errs)
+				if len(errs.Diagnostics) == 0 || !strings.Contains(errs.Diagnostics[0].Message, "what follows '|>' has to be a call or a function") {
+					t.Errorf("expected to be told what follows |>, got %v", errs.Diagnostics)
+				}
+				return
+			}
+			prog := parseOK(t, "fn main() { let v = "+c.src+"; }")
+			let := prog.Decls[0].(*ast.FnDecl).Body.Stmts[0].(*ast.LetStmt)
+			if got := let.Value.String(); got != c.want {
+				t.Errorf("expected %s, got %s", c.want, got)
+			}
+		})
+	}
+}
+
+func TestParsePipeRefused(t *testing.T) {
+	cases := []struct{ name, src, msg string }{
+		{"into a number", `let v = xs |> 3;`, "what follows '|>' has to be a call or a function"},
+		{"into a text", `let v = xs |> "name";`, "what follows '|>' has to be a call or a function"},
+		{"into an array", `let v = xs |> [f];`, "what follows '|>' has to be a call or a function"},
+		{"into a negation", `let v = xs |> -f(1);`, "what follows '|>' has to be a call or a function"},
+		{"into nothing", `let v = xs |> ;`, "expected expression"},
+		{"with nothing before", `let v = |> f;`, "expected expression"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			errs := errors.NewHandler()
+			Parse("fn main() { "+c.src+" }", "test.lum", errs)
+			if len(errs.Diagnostics) == 0 {
+				t.Fatal("expected a diagnostic, got none")
+			}
+			if d := errs.Diagnostics[0]; !strings.Contains(d.Message, c.msg) {
+				t.Errorf("expected a message containing %q, got %q", c.msg, d.Message)
+			}
+		})
+	}
+}

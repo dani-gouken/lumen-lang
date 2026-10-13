@@ -93,7 +93,7 @@ Full description: [enums.md](enums.md).
 - Primary: literals, identifiers, grouping `(expr)`, tuples `(a, b)`.
 - Text over several lines: `"""` ... `"""`. The line end after the opening quotes and the one before the closing quotes are dropped, and the indentation of the closing quotes is removed from every line. `"` needs no escape inside; escapes and `${...}` work.
 - Unary: `-` on `Int`/`Float`, `!` on `Bool`.
-- Binary precedence (high → low): `* / %`, `+ -`, `< <= > >=`, `== !=`, `&&`, `||`, `??`.
+- Binary precedence (high → low): `* / %`, `+ -`, `|>`, `< <= > >=`, `== !=`, `??`, `&&`, `||`.
   - Arithmetic: `Int`/`Float`; result matches operands (no implicit int↔float coercion).
   - Comparison: numbers or strings → `Bool`.
   - Equality: any type → `Bool`.
@@ -105,6 +105,7 @@ Full description: [enums.md](enums.md).
 - Match as a value: `match x { case p: expr; ... }` where an expression is expected. The cases are expressions of one type (`null` among them makes it optional; the type expected at that place may take them all), or blocks that always leave. Without a `default` it must be complete over an enum (`E2028`); a case that gives nothing is `E2040`.
 - Tuples: `(a, b)` of type `(A, B)`, two to six values. `pair.0`, `pair.1` read by position; `let (a, b) = pair;` and `for (a, b) in pairs` name the values, `_` skipping one. Compared by content, immutable, matched with `case (a, b):` and checked for completeness like an enum (which is what a tuple is: see [enums.md](enums.md#tuples)).
 - Calls: `callee(args...)` with arity/type check. Method calls: `value.method(args...)`.
+- Pipe: `value |> f(args...)` is `f(value, args...)`, and `value |> f` is `f(value)`. What follows `|>` is one call, or a function (a name, a member, a function expression); a `?` after the call applies to its result. Left to right: `a |> f |> g(x)` is `g(f(a), x)`. The parser writes the call, so every rule that applies to a call applies to it.
 - Array literals: `[1, 2, 3]`, `[]`. All elements have the same type.
 - Struct literals: `Point { x: 1, y: 2 }`. In the header of `if`, `while`, `for` and `match`, a `{` after a name starts the body, so a struct literal there needs parentheses: `if (Point { x: 1 }).x == 1 { ... }`.
 - Short functions: `x -> x + 1`, `(a, b) -> a + b`, `() -> now()`, `x -> { ...; return y; }`. No types are written: the parameters take theirs from the function type expected where the expression stands (a parameter, a declared variable or field, a return type), and the result is that type's, or the type of the body when it is a type parameter still open. The body is one expression, one assignment, or a block. Without an expected function type it is `E2037`, except for one without parameters.
@@ -267,7 +268,8 @@ OrExpr       = AndExpr { "||" AndExpr } ;
 AndExpr      = NullCoalesceExpr { "&&" NullCoalesceExpr } ;
 NullCoalesceExpr = EqExpr { "??" EqExpr } ;
 EqExpr       = RelExpr { ("==" | "!=") RelExpr } ;
-RelExpr      = AddExpr { ("<" | "<=" | ">" | ">=") AddExpr } ;
+RelExpr      = PipeExpr { ("<" | "<=" | ">" | ">=") PipeExpr } ;
+PipeExpr     = AddExpr { "|>" UnaryExpr } ;   (* what a pipe gives can be added to: n |> f + 1 *)
 AddExpr      = MulExpr { ("+" | "-") MulExpr } ;
 MulExpr      = UnaryExpr { ("*" | "/" | "%") UnaryExpr } ;
 UnaryExpr    = ( "-" | "!" ) UnaryExpr | CastExpr ;

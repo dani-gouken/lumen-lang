@@ -433,6 +433,7 @@ var multiCharOps = []struct {
 	{">=", token.GTE},
 	{"&&", token.AND},
 	{"||", token.OR},
+	{"|>", token.PIPE_INTO},
 	{"??", token.QUESTION_QUESTION},
 	{"?.", token.QUESTION_DOT},
 	{"+=", token.PLUS_ASSIGN},

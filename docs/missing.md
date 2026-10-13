@@ -10,7 +10,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | a pipe operator for chaining, ranges as values |
+| Everyday syntax | ranges as values |
 | Failures | one shape for all errors |
 | Types | patterns on structs and arrays, names in a case with several patterns, traits for arrays |
 | Correctness | unused variables |
@@ -31,19 +31,9 @@ for i in (0..10).step(2) { ... }
 
 **Today**: `for i in 0..10`, `0..=10` and `case 0..10:` work, and count without making an array. Anywhere else a range is refused (`E2038`): it has no type of its own, no step, and cannot be kept in a variable or passed to a function. `arrays.range(0, 10)` makes the array.
 
-### Chaining calls — S
-
-```rust
-numbers |> arrays.filter(isEven) |> arrays.map(double) |> arrays.sum()
-```
-
-**Today**: calls nest, and read inside out: `arrays.sum(arrays.map(arrays.filter(numbers, isEven), double))`. The same goes for steps on optionals with `std.option`.
-
-**Notes**: `x |> f(a)` meaning `f(x, a)` is one rewrite in the desugarer. It was preferred over giving optionals and arrays methods of their own, which would make the dot mean something other than "a field or method of a struct or enum you declared".
-
 ### Members on arrays and texts — by design
 
-Arrays and texts have no members. `items.length` is an error (`E2033`); the length is `arrays.len(items)` or `strings.len(text)`, and everything else done to them is likewise a function of the standard library. A dot reaches a field or a method of a struct or an enum, and nothing else.
+Arrays and texts have no members: what is done to them is a function of the library, and calls are chained with `|>` (`items |> arrays.filter(isEven) |> arrays.len`), which was preferred over methods so that a dot keeps meaning one thing. `items.length` is an error (`E2033`); the length is `arrays.len(items)` or `strings.len(text)`, and everything else done to them is likewise a function of the standard library. A dot reaches a field or a method of a struct or an enum, and nothing else.
 
 The cost is an `import std.arrays;` in almost every program. Calls of the two functions are compiled to a single instruction, so there is none at runtime. Nothing in the compiler or the library is written with `.length` any more: the two functions are made of a builtin, `__len`, that no program writes, and a struct is free to have a field called `length`.
 
@@ -288,7 +278,5 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 ## 5. Suggested Order
 
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
-
-1.  **Chaining**: the pipe operator. Small, and it changes how nested calls read.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

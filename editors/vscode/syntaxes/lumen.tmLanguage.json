@@ -155,6 +155,7 @@
         { "name": "keyword.operator.arrow.lumen", "match": "->" },
         { "name": "keyword.operator.optional.lumen", "match": "\\?\\?|\\?\\.|\\?" },
         { "name": "keyword.operator.comparison.lumen", "match": "==|!=|<=|>=|<|>" },
+        { "name": "keyword.operator.pipe.lumen", "match": "\\|>" },
         { "name": "keyword.operator.logical.lumen", "match": "&&|\\|\\||!" },
         { "name": "keyword.operator.assignment.lumen", "match": "\\+=|-=|\\*=|/=|%=|=" },
         { "name": "keyword.operator.arithmetic.lumen", "match": "\\+\\+|--|\\+|-|\\*|/|%" },

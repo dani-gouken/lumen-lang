@@ -104,6 +104,8 @@ const (
 	// Bitwise (reserved for future)
 	AMPERSAND // &
 	PIPE      // |
+
+	PIPE_INTO // |>: what is on its left becomes the first argument of the call on its right
 	operator_end
 
 	// Delimiters - start
@@ -333,6 +335,8 @@ func (typ TokenType) String() string {
 		return "AMPERSAND"
 	case PIPE:
 		return "PIPE"
+	case PIPE_INTO:
+		return "PIPE_INTO"
 
 	// Delimiters
 	case LPAREN:
@@ -436,14 +440,18 @@ func (typ TokenType) Precedence() int {
 		return 4
 	case LT, LTE, GT, GTE:
 		return 5
-	case PLUS, MINUS:
+	case PIPE_INTO:
+		// Looser than arithmetic, so that a + b |> f is f(a + b); tighter
+		// than comparisons, so that xs |> count == 3 compares the count
 		return 6
-	case STAR, SLASH, PERCENT:
+	case PLUS, MINUS:
 		return 7
-	case PIPE:
+	case STAR, SLASH, PERCENT:
 		return 8
-	case AMPERSAND:
+	case PIPE:
 		return 9
+	case AMPERSAND:
+		return 10
 	}
 	return 0
 }

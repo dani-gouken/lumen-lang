@@ -211,6 +211,35 @@ first<Int>([7, 8]);          // and can always be written out
 
 Functions are values: they can be stored in variables, passed and returned.
 
+### Chains of calls
+
+`value |> f(a, b)` is `f(value, a, b)`: what is on the left of `|>` becomes the first argument of the call on its right. Calls that would nest, and read inside out, read in the order they happen:
+
+```rust
+import std.arrays;
+import std.strings;
+
+let shouted = "the quick brown fox"
+    |> strings.split(" ")
+    |> arrays.filter(word -> strings.len(word) > 3)
+    |> arrays.map(strings.upper)
+    |> strings.join("-");            // "QUICK-BROWN"
+
+// the same, nested
+strings.join(arrays.map(arrays.filter(strings.split("the quick brown fox", " "), word -> strings.len(word) > 3), strings.upper), "-")
+```
+
+A function of one argument needs no parentheses: `numbers |> arrays.sum`. A `?` after the call is asked of what the call returns: `text |> strings.trim() |> parse()?`.
+
+It binds looser than arithmetic and tighter than comparisons, so both of these read as they look:
+
+```rust
+a + b |> math.abs                 // math.abs(a + b)
+if items |> arrays.len == 3 { }   // arrays.len(items) == 3
+```
+
+It is only another way to write the call: the types are checked, and mistakes are reported, as for the call it stands for.
+
 ### Arrays
 
 ```rust

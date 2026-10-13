@@ -1259,6 +1259,46 @@ func (p *Parser) parseNestedExpr() ast.Expr {
 	return expr
 }
 
+// pipeInto is `value |> target`: a call of target with the value first.
+//
+//	xs |> arrays.map(f)     arrays.map(xs, f)
+//	xs |> arrays.sum        arrays.sum(xs)
+//	n |> (x -> x + 1)       (x -> x + 1)(n)
+//	text |> parse()?        parse(text)?
+//
+// It binds looser than arithmetic and tighter than comparisons:
+//
+//	a + b |> f              f(a + b)
+//	xs |> arrays.len == 3   arrays.len(xs) == 3
+//	n |> f(1) + 2           f(n, 1) + 2
+//
+// It is the call it stands for from here on: no stage after this one
+// knows the program wrote it another way.
+func (p *Parser) pipeInto(value, target ast.Expr, pipe token.Token) ast.Expr {
+	switch t := target.(type) {
+	case *ast.CallExpr:
+		t.Args = append([]ast.Expr{value}, t.Args...)
+		return t
+	case *ast.UnaryExpr:
+		if t.Op == ast.TryOp {
+			// The ? is asked of what the call returns, not of the function
+			t.Expr = p.pipeInto(value, t.Expr, pipe)
+			return t
+		}
+	case *ast.Ident, *ast.MemberExpr, *ast.FnExpr:
+		// A function by its name, or written there: called with the value
+		return &ast.CallExpr{BaseNode: base(target.Token()), Func: target, Args: []ast.Expr{value}}
+	case nil:
+		return value
+	}
+	if !p.speculating {
+		p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+			"what follows '|>' has to be a call or a function: the value before it becomes its first argument",
+			"Write value |> f(other, arguments), or value |> f for a function of one argument", pipe, p.sourceLines)
+	}
+	return value
+}
+
 func (p *Parser) parseExpr() ast.Expr {
 	left := p.parseBinary(1)
 
@@ -1275,7 +1315,7 @@ func binaryPrecedence(typ token.TokenType) int {
 	switch typ {
 	case token.OR, token.AND, token.QUESTION_QUESTION,
 		token.EQ, token.NEQ, token.LT, token.LTE, token.GT, token.GTE,
-		token.PLUS, token.MINUS, token.STAR, token.SLASH, token.PERCENT:
+		token.PLUS, token.MINUS, token.STAR, token.SLASH, token.PERCENT, token.PIPE_INTO:
 		return typ.Precedence()
 	}
 	return 0
@@ -1290,6 +1330,12 @@ func (p *Parser) parseBinary(minPrec int) ast.Expr {
 			return left
 		}
 		p.next()
+		if tok.Type == token.PIPE_INTO {
+			// What follows is the call the value goes into, and no more:
+			// in value |> f(a) + 1 the 1 is added to what f returns
+			left = p.pipeInto(left, p.parseUnary(), tok)
+			continue
+		}
 		right := p.parseBinary(prec + 1)
 		left = &ast.BinaryExpr{BaseNode: base(tok), Left: left, Op: tok.Literal, Right: right}
 	}

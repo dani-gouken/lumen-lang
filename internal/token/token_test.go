@@ -262,13 +262,14 @@ func TestPrecedence(t *testing.T) {
 		{NEQ, 4},
 		{LT, 5},
 		{GTE, 5},
-		{PLUS, 6},
-		{MINUS, 6},
-		{STAR, 7},
-		{SLASH, 7},
-		{PERCENT, 7},
-		{PIPE, 8},
-		{AMPERSAND, 9},
+		{PIPE_INTO, 6},
+		{PLUS, 7},
+		{MINUS, 7},
+		{STAR, 8},
+		{SLASH, 8},
+		{PERCENT, 8},
+		{PIPE, 9},
+		{AMPERSAND, 10},
 		{IF, 0},     // Non-operator
 		{LPAREN, 0}, // Non-operator
 	}
