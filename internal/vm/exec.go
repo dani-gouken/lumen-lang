@@ -15,6 +15,10 @@ type fieldCache struct {
 	shape *Shape // The shape the object had
 	next  *Shape // For a field that was added: the shape the object got
 	slot  int32  // Where the field is; -1 if objects of that shape have none
+
+	// For an instruction that finds a method (see methodOf): the number
+	// the chunk gave the method's name, plus one
+	other int32
 }
 
 // chunkCache is what the VM keeps for a chunk whose code it runs, so as
@@ -38,6 +42,99 @@ type chunkCache struct {
 	// ObjectIsConstant), by the instruction that makes them. Not there
 	// until a first one is made.
 	constants []Value
+
+	// The functions of the chunk by their name, and the number given to
+	// each method name a call has asked for (see method). Not there until
+	// a first method is looked for.
+	byName      map[string]int
+	methodNames map[uint16]int32
+}
+
+// noMethod is what is remembered of a type that has no method of a name.
+const noMethod = -1
+
+// methodNumber gives the name of a method, known by its constant, a small
+// number of its own: the methods a type has are kept by it.
+func (kept *chunkCache) methodNumber(chunk *Chunk, nameConst uint16) int32 {
+	if number, ok := kept.methodNames[nameConst]; ok {
+		return number
+	}
+	if kept.byName == nil {
+		kept.byName = make(map[string]int, len(chunk.Prototypes))
+		kept.methodNames = make(map[uint16]int32)
+		for i := range chunk.Prototypes {
+			kept.byName[chunk.Prototypes[i].Name] = i
+		}
+	}
+	number := int32(len(kept.methodNames))
+	kept.methodNames[nameConst] = number
+	return number
+}
+
+// method returns the number of the function that is a method for the
+// values that start with a shape, or noMethod. The method is known by the
+// number its name was given.
+//
+// A method is a function of the program like any other, named after its
+// type: "Point.moved", or "Shape.area" for every variant of the enum
+// Shape. Nothing is kept on the values: a value says what it is a value
+// of, and that is enough to find the function. What is found is kept with
+// the type, so that the names are put together once per type and method.
+func (kept *chunkCache) method(chunk *Chunk, root *Shape, number int32, nameConst uint16) int32 {
+	if root.methodsOf != kept {
+		// Another program's methods, or none yet
+		root.methods, root.methodsOf = nil, kept
+	}
+	if int(number) < len(root.methods) {
+		if found := root.methods[number]; found != 0 {
+			return found - 2
+		}
+	} else {
+		root.methods = append(root.methods, make([]int32, int(number)+1-len(root.methods))...)
+	}
+
+	owner := root.typeName
+	if root.variant {
+		// "Enum.Variant": the methods are the enum's
+		if dot := strings.LastIndex(owner, "."); dot >= 0 {
+			owner = owner[:dot]
+		}
+	}
+	index := int32(noMethod)
+	name := chunk.StringPool[intOf(chunk.Constants[nameConst])]
+	if found, ok := kept.byName[owner+"."+name]; ok && owner != "" && chunk.Prototypes[found].UpvalueCount == 0 {
+		index = int32(found)
+	}
+	root.methods[number] = index + 2
+	return index
+}
+
+// methodOf finds the method of a name on a value: the function object to
+// call. The instruction that asks remembers the last type it met.
+func (vm *VM) methodOf(v Value, chunk *Chunk, kept *chunkCache, known *fieldCache, nameConst uint16) (Value, error) {
+	h := header(v)
+	if h == nil || h.Type != ObjTypeObject {
+		return NewNull(), vm.noSuchMethod(v, chunk, nameConst)
+	}
+	root := (*ObjectObj)(unsafe.Pointer(h)).shape.root
+	if known.shape != root {
+		// Another type than last time: its methods are kept with it
+		if known.other == 0 {
+			known.other = kept.methodNumber(chunk, nameConst) + 1
+		}
+		known.shape, known.slot = root, kept.method(chunk, root, known.other-1, nameConst)
+	}
+	if known.slot == noMethod {
+		return NewNull(), vm.noSuchMethod(v, chunk, nameConst)
+	}
+	if callee := kept.funcs[known.slot]; callee != 0 {
+		return callee, nil
+	}
+	return vm.functionObject(chunk, kept.funcs, int(known.slot))
+}
+
+func (vm *VM) noSuchMethod(v Value, chunk *Chunk, nameConst uint16) error {
+	return vm.runtimeError(fmt.Sprintf("%s has no method '%s'", typeName(v), chunk.StringPool[intOf(chunk.Constants[nameConst])]))
 }
 
 // cacheFor returns what is kept for a chunk.
@@ -942,6 +1039,37 @@ func (vm *VM) execute(base int) (Value, error) {
 				return NewNull(), vm.runtimeError("integer overflow")
 			}
 			regs[instr.A] = NewInt(diff)
+
+		case OpGETMETHOD:
+			method, err := vm.methodOf(regs[instr.B], chunk, kept, &cache[ip], instr.C)
+			if err != nil {
+				return NewNull(), err
+			}
+			regs[instr.A] = method
+			vm.collectIfNeeded()
+
+		case OpCALLM:
+			// A call of a method found on its first argument: A = the
+			// register before the arguments, B = nargs, C = the name
+			first := int(instr.A) + 1
+			last := first + int(instr.B)
+			callee, err := vm.methodOf(regs[first], chunk, kept, &cache[ip], instr.C)
+			if err != nil {
+				return NewNull(), err
+			}
+			funcObj := (*FunctionObj)(unsafe.Pointer(header(callee)))
+			if int(instr.B) != funcObj.proto.ArgCount {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("function %s expects %d arguments, got %d", funcObj.proto.Name, funcObj.proto.ArgCount, instr.B))
+			}
+			if vm.interrupted.Load() || vm.outOfSteps() {
+				return NewNull(), vm.stopped()
+			}
+			if err := vm.enter(funcObj, regs[first:last:last]); err != nil {
+				return NewNull(), err
+			}
+			regs = vm.regs
+			ip = vm.ip
+			continue
 
 		case OpISTYPE:
 			regs[instr.A] = NewBool(isOfType(regs[instr.B], &cache[ip], chunk.StringPool[intOf(consts[instr.C])]))

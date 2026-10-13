@@ -188,6 +188,13 @@ type Shape struct {
 	// The shape of a value of that type without fields yet: where every
 	// one of them starts, and where taking a field away starts again from
 	root *Shape
+
+	// On a root, the methods of the type found so far, for the chunk that
+	// is asking (see chunkCache.method): the function of each method by
+	// the number the chunk gave its name, plus one, and 0 for a method
+	// not looked for yet.
+	methods   []int32
+	methodsOf *chunkCache
 }
 
 // newRootShape makes the shape of the values of a type before they are

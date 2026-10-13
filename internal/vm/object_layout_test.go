@@ -281,3 +281,147 @@ func TestTypeTestsRun(t *testing.T) {
 		}
 	}
 }
+
+// methodsChunk is a program with the methods of two types: "Circle.area",
+// "Square.area", "Shape.name" for the variants of the enum Shape, and a
+// function that is not a method of anything.
+func methodsChunk(main ...Instr) *Chunk {
+	chunk := NewChunk()
+	chunk.StringPool = []string{"area", "name", "missing", "Circle", "Square", "Shape.Dot", "0"}
+	chunk.Constants = []Value{NewInt(0), NewInt(1), NewInt(2), NewInt(3), NewInt(4), NewInt(5), NewInt(6)}
+	chunk.Code = append(main,
+		NewInstr(OpLOADI, 0, 11, 0), NewInstr(OpRET, 0, 0, 0), // Circle.area
+		NewInstr(OpLOADI, 0, 22, 0), NewInstr(OpRET, 0, 0, 0), // Square.area
+		NewInstr(OpADDI, 0, 1, 33), NewInstr(OpRET, 0, 0, 0), // Shape.name(self, n)
+		NewInstr(OpLDCAP, 0, 0, 0), NewInstr(OpRET, 0, 0, 0), // Circle.captured: not callable by name
+	)
+	at := len(main)
+	chunk.Prototypes = []FunctionPrototype{
+		{Name: "main", CodeStart: 0, CodeSize: at, RegisterCount: 8},
+		{Name: "Circle.area", CodeStart: at, CodeSize: 2, RegisterCount: 1, ArgCount: 1},
+		{Name: "Square.area", CodeStart: at + 2, CodeSize: 2, RegisterCount: 1, ArgCount: 1},
+		{Name: "Shape.name", CodeStart: at + 4, CodeSize: 2, RegisterCount: 2, ArgCount: 2},
+		{Name: "Circle.captured", CodeStart: at + 6, CodeSize: 2, RegisterCount: 1, ArgCount: 1, UpvalueCount: 1},
+	}
+	return chunk
+}
+
+// A method is found on the value it is called on, by the name of the type
+// the value carries: nothing is kept on the value for it.
+func TestMethodsAreFoundByTheTypeOfTheValue(t *testing.T) {
+	// r1 = Circle{}, r2 = Square{}, r3 = Shape.Dot; calls area on each of
+	// the first two, twice over, and name on the third; returns the sum
+	chunk := methodsChunk(
+		NewInstr(OpNEWOBJ, 1, 3, ObjectIsNamed),   // 0
+		NewInstr(OpNEWOBJ, 2, 4, ObjectIsNamed),   // 1
+		NewInstr(OpNEWOBJ, 3, 5, ObjectIsVariant), // 2
+		NewInstr(OpLOADI, 4, 0, 0),                // 3: sum
+		NewInstr(OpLOADI, 5, 2, 0),                // 4: rounds
+		NewInstr(OpMOV, 7, 1, 0),                  // 5
+		NewInstr(OpCALLM, 6, 1, 0),                // 6: r1.area()
+		NewInstr(OpADD, 4, 4, 0),                  // 7
+		NewInstr(OpMOV, 7, 2, 0),                  // 8
+		NewInstr(OpCALLM, 6, 1, 0),                // 9: r2.area(), another instruction
+		NewInstr(OpADD, 4, 4, 0),                  // 10
+		NewInstr(OpSUBI, 5, 5, 1),                 // 11
+		NewInstr(OpJNEQI, 5, 0, 5),                // 12
+		NewInstr(OpGETMETHOD, 6, 3, 1),            // 13: the method name of r3, as a value
+		NewInstr(OpMOV, 7, 3, 0),                  // 14
+		NewInstr(OpCALL, 6, 1, 0),                 // 15: called with one argument too few
+		NewInstr(OpRET, 4, 0, 0),                  // 16
+	)
+	if err := Verify(chunk); err != nil {
+		t.Fatal(err)
+	}
+	_, err := NewVM().Exec(chunk)
+	if err == nil || !strings.Contains(err.Error(), "Shape.name expects 2 arguments, got 1") {
+		t.Fatalf("expected the method of the enum to be found and to refuse one argument, got %v", err)
+	}
+
+	// With the right number of arguments, through the same instruction
+	// for values of two types in turn
+	chunk = methodsChunk(
+		NewInstr(OpNEWOBJ, 1, 3, ObjectIsNamed),   // 0
+		NewInstr(OpNEWOBJ, 2, 4, ObjectIsNamed),   // 1
+		NewInstr(OpNEWOBJ, 3, 5, ObjectIsVariant), // 2
+		NewInstr(OpLOADI, 4, 0, 0),                // 3: sum
+		NewInstr(OpLOADI, 5, 6, 0),                // 4: turns
+		NewInstr(OpMOV, 7, 1, 0),                  // 5: a Circle...
+		NewInstr(OpJNLTI, 5, 4, 8),                // 6: ...for the last three turns
+		NewInstr(OpMOV, 7, 2, 0),                  // 7: a Square before
+		NewInstr(OpCALLM, 6, 1, 0),                // 8: area() of whichever it is
+		NewInstr(OpADD, 4, 4, 0),                  // 9
+		NewInstr(OpSUBI, 5, 5, 1),                 // 10
+		NewInstr(OpJNEQI, 5, 0, 5),                // 11
+		NewInstr(OpMOV, 6, 3, 0),                  // 12
+		NewInstr(OpLOADI, 7, 100, 0),              // 13
+		NewInstr(OpCALLM, 5, 2, 1),                // 14: name(dot, 100) = 133
+		NewInstr(OpADD, 4, 4, 0),                  // 15
+		NewInstr(OpRET, 4, 0, 0),                  // 16
+	)
+	machine := NewVM()
+	for round := 0; round < 3; round++ {
+		result, err := machine.Exec(chunk)
+		// Turns 6, 5, 4 are Squares (22 each), 3, 2, 1 Circles (11 each)
+		if err != nil || !result.IsInt() || result.AsInt() != 3*22+3*11+133 {
+			t.Fatalf("round %d: %v, %v", round, result, err)
+		}
+	}
+
+	// The values hold nothing but what they were given: no method
+	heap := NewHeap(0)
+	obj, _, _ := heap.AllocObjectOf(heap.RootShape("Circle", false), 0)
+	if obj.Len() != 0 {
+		t.Errorf("a value of a type with methods holds %d fields", obj.Len())
+	}
+}
+
+func TestAMethodThatIsNotThere(t *testing.T) {
+	cases := []struct {
+		name string
+		make []Instr
+		want string
+	}{
+		{"a type without that method", []Instr{NewInstr(OpNEWOBJ, 1, 4, ObjectIsNamed)}, "Square has no method 'name'"},
+		{"a method no type has", []Instr{NewInstr(OpNEWOBJ, 1, 3, ObjectIsNamed), NewInstr(OpNOP, 0, 0, 0)}, "Circle has no method 'missing'"},
+		{"a plain object", []Instr{NewInstr(OpNEWOBJ, 1, 0, 0)}, "struct has no method 'name'"},
+		{"a number", []Instr{NewInstr(OpLOADI, 1, 5, 0)}, "Int has no method 'name'"},
+		{"null", []Instr{NewInstr(OpLOADNULL, 1, 0, 0)}, "null has no method 'name'"},
+		{"a text", []Instr{NewInstr(OpNEWSTR, 1, 0, 0)}, "String has no method 'name'"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			name := uint16(1)
+			if len(c.make) == 2 {
+				name = 2
+			}
+			for _, call := range []Instr{NewInstr(OpCALLM, 0, 1, name), NewInstr(OpGETMETHOD, 2, 1, name)} {
+				main := append(append([]Instr{}, c.make[0]), call, NewInstr(OpRET, 0, 0, 0))
+				_, err := NewVM().Exec(methodsChunk(main...))
+				if err == nil || !strings.Contains(err.Error(), c.want) {
+					t.Errorf("expected %q, got %v", c.want, err)
+				}
+			}
+		})
+	}
+
+	// A function that captures variables is not a method, whatever its name
+	_, err := NewVM().Exec(methodsChunk(
+		NewInstr(OpNEWOBJ, 1, 3, ObjectIsNamed),
+		NewInstr(OpCALLM, 0, 1, 2),
+		NewInstr(OpRET, 0, 0, 0)))
+	if err == nil || !strings.Contains(err.Error(), "has no method") {
+		t.Errorf("expected no method to be found, got %v", err)
+	}
+
+	for name, damaged := range map[string]Instr{
+		"a method without a value": NewInstr(OpCALLM, 0, 0, 0),
+		"a name that is not there": NewInstr(OpCALLM, 0, 1, 99),
+		"a value past the end":     NewInstr(OpGETMETHOD, 0, 9, 0),
+	} {
+		chunk := methodsChunk(NewInstr(OpNEWOBJ, 1, 3, ObjectIsNamed), damaged, NewInstr(OpRET, 0, 0, 0))
+		if err := Verify(chunk); err == nil {
+			t.Errorf("%s: the chunk was accepted", name)
+		}
+	}
+}

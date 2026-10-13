@@ -1,6 +1,7 @@
 package codegen
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/dani-gouken/lumen/internal/errors"
@@ -527,4 +528,66 @@ func TestTypeTestsAskTheValue(t *testing.T) {
 	}
 	expectCount(t, kept, "main", 1, vm.OpISTYPE)
 	expectCount(t, kept, "main", 0, vm.OpCALLX)
+}
+
+// A call through a trait finds its method on the value: one instruction
+// when the value is the first argument, which it is when a method is
+// called; and every method of that name is kept, since any may be the one.
+func TestMethodsFoundOnTheValue(t *testing.T) {
+	method := func(name string, result int64) *ir.Function {
+		b := ir.NewBuilder(name)
+		b.AddParam()
+		b.CreateRet(b.CreateMov(intConst(result)))
+		return b.Func
+	}
+
+	main := ir.NewBuilder("main")
+	circle := main.NewRegister()
+	main.Emit(ir.OpNewStruct, circle, stringConst("Circle"))
+	square := main.NewRegister()
+	main.Emit(ir.OpNewStruct, square, stringConst("Square"))
+	// circle.area() + square.area(), and the method of square kept as a value
+	first := main.CreateCall(main.CreateGetMethod(circle, "area"), circle)
+	second := main.CreateCall(main.CreateGetMethod(square, "area"), square)
+	held := main.CreateGetMethod(square, "area")
+	third := main.CreateCall(held, circle) // Found on one value, called on another
+	main.CreateRet(main.CreateAdd(main.CreateAdd(first, second), third))
+
+	prog := &ir.Program{
+		Functions: []*ir.Function{
+			main.Func,
+			method("Circle.area", 1), method("Square.area", 20), method("Circle.name", 7),
+			method("Triangle.area", 300), // Of a type no value is made of: kept all the same
+		},
+		Methods: []ir.Method{
+			{Type: "Circle", Name: "area", Func: "Circle.area"},
+			{Type: "Square", Name: "area", Func: "Square.area"},
+			{Type: "Circle", Name: "name", Func: "Circle.name"},
+			{Type: "Triangle", Name: "area", Func: "Triangle.area"},
+		},
+	}
+	errs := errors.NewHandler()
+	chunk := NewGenerator(prog, nil, errs).Generate()
+	if errs.HasErrors() {
+		t.Fatalf("%v", errs.Diagnostics)
+	}
+	if err := vm.Verify(chunk); err != nil {
+		t.Fatal(err)
+	}
+	expectInt(t, run(t, chunk), 1+20+20)
+
+	expectCount(t, chunk, "main", 2, vm.OpCALLM)
+	expectCount(t, chunk, "main", 1, vm.OpGETMETHOD)
+	expectCount(t, chunk, "main", 1, vm.OpCALL)
+	// No value is given its methods when it is made
+	expectCount(t, chunk, "main", 0, vm.OpSETFIELD, vm.OpNEWFUNC)
+
+	var kept []string
+	for _, p := range chunk.Prototypes {
+		kept = append(kept, p.Name)
+	}
+	// name is a method nothing asks for
+	if got := strings.Join(kept, " "); got != "main Circle.area Square.area Triangle.area" {
+		t.Errorf("functions kept: %s", got)
+	}
 }

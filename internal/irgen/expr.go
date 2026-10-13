@@ -474,8 +474,8 @@ func isLengthFunction(name string) bool {
 
 // compileMethodCall compiles `receiver.method(args)`. The receiver is passed
 // as `self`. When the receiver's struct is known the method's function is
-// called directly; when only a trait is known, the function is read from
-// the value, where struct literals store the methods a trait can reach.
+// called directly; when only a trait is known, the value is asked: it
+// carries the name of its type, and the method is that type's.
 func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.MemberExpr, how dispatch, structName string) *ir.Register {
 	receiver := fc.compileExpr(member.Expr)
 	fc.setPos(member)
@@ -496,14 +496,14 @@ func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.Me
 }
 
 // lookUpMethod finds a method on a value whose type is only known when
-// the program runs. A struct or an enum value carries the methods traits
-// can reach, so it is asked. A number or a text carries nothing: when one
-// of those types has a method of that name, the value is tested for being
-// of that type first.
+// the program runs. A struct or an enum value carries the name of its
+// type, so it is asked (see ir.OpGetMethod). A number or a text carries
+// nothing: when one of those types has a method of that name, the value is
+// tested for being of that type first.
 func (fc *FunctionCompiler) lookUpMethod(receiver *ir.Register, name string) *ir.Register {
 	builtins := fc.gen.builtinOwners(name)
 	if len(builtins) == 0 {
-		return fc.builder.CreateGetField(receiver, methodSlot(name))
+		return fc.builder.CreateGetMethod(receiver, name)
 	}
 
 	fn := fc.builder.NewRegister()
@@ -523,7 +523,7 @@ func (fc *FunctionCompiler) lookUpMethod(receiver *ir.Register, name string) *ir
 
 		fc.builder.SetBlock(nextBlock)
 	}
-	fc.builder.Emit(ir.OpMov, fn, fc.builder.CreateGetField(receiver, methodSlot(name)))
+	fc.builder.Emit(ir.OpMov, fn, fc.builder.CreateGetMethod(receiver, name))
 	fc.builder.CreateJmp(endBlock)
 
 	fc.builder.SetBlock(endBlock)
@@ -648,14 +648,6 @@ func (fc *FunctionCompiler) compileStructInit(expr *ast.StructInitExpr) *ir.Regi
 		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: name, Type: "String"}, values[i])
 	}
 
-	for _, m := range fc.gen.structMethods[expr.Name] {
-		if !fc.gen.storedOnValue(m) {
-			continue
-		}
-		fn := fc.builder.CreateMov(ir.Constant{Val: m.irName, Type: "FuncRef"})
-		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: methodSlot(m.name), Type: "String"}, fn)
-	}
-
 	return dest
 }
 
@@ -680,14 +672,6 @@ func (fc *FunctionCompiler) compileVariant(expr *ast.VariantExpr) *ir.Register {
 		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: variantField(i), Type: "String"}, value)
 	}
 
-	// Methods that are looked up on the value, as for a struct
-	for _, m := range fc.gen.structMethods[expr.Enum] {
-		if !fc.gen.storedOnValue(m) {
-			continue
-		}
-		fn := fc.builder.CreateMov(ir.Constant{Val: m.irName, Type: "FuncRef"})
-		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: methodSlot(m.name), Type: "String"}, fn)
-	}
 	return dest
 }
 

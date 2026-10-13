@@ -874,6 +874,7 @@ A listing made from a Lumen program (`lumen build program.lum program.lasm`) sho
 | `JNLT ra rb target`, `JNLE`, `JNEQ`, `JNNE` | Goes on at `target` unless `ra < rb` (`<=`, `==`, `!=`) |
 | `JNLTI ra k target`, `JNLEI`, `JNGTI`, `JNGEI`, `JNEQI`, `JNNEI` | The same against the number `k` (0 to 65535) |
 | `ADDI rd ra k`, `SUBI rd ra k` | `rd = ra + k`, `rd = ra - k` |
+| `CALLM rW n name`, `GETMETHOD rd ra name` | Calls the method `name` of the value in `rW+1`, found by the type the value carries; the second gives the method as a value |
 | `ISTYPE rd ra name`, `JNTYPE ra name target` | Whether the value in `ra` is of the struct or variant `name` (a constant); the second goes on at `target` unless it is |
 
 In assembly, write the instructions they stand for: `NEWFUNC` and `CALL`, a comparison and `JMPIFNOT`, `LOADI` and `ADD`, a call of `__is`.

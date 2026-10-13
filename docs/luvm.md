@@ -220,6 +220,7 @@ See [assembly.md](assembly.md) for the exact rules of each instruction.
 - `CALL r_func nargs` - Call a function object in `r_func` with `nargs` arguments.
 - `CALLK r_window nargs function` - Call a function of the chunk by its number, with the arguments in the registers after `r_window`. The function must capture nothing; that, and the number of arguments, are checked when the chunk is verified, not at each call.
 - `CALLX r_window nargs host_function` - The same for a host function.
+- `CALLM r_window nargs name` - Call the method `name` of the first argument, found by the type that value carries; `GETMETHOD r_dest r_value name` gives the method as a value.
 - `RET r_val` - Return from function with value.
 - `CAPLOCAL r_func upval_idx local_reg` - Capture a local variable into a closure's upvalue slot.
 - `CAPUPVAL r_func upval_idx parent_upval_idx` - Capture an existing upvalue into a closure's upvalue slot.
@@ -431,6 +432,13 @@ Asking what a value is, as every case of a `match` on an enum does, is
 `JNTYPE value name target` (or `ISTYPE dest value name`): it compares the
 name the value's shape carries. The instruction remembers the shapes it
 answered yes and no for, so the names themselves are compared once each.
+
+A call through a trait finds its method the same way (`CALLM window nargs
+name`, or `GETMETHOD dest value name`): the method `area` of a value of
+`Square` is the function `Square.area` of the program, and of a value of
+the variant `Shape.Circle` the function `Shape.area`. The functions found
+are kept with the type, and each instruction remembers the type it met
+last. No value holds its methods.
 
 An instruction that reads or writes a field remembers the shape of the last
 object it met and where the field was. While it keeps meeting values of the

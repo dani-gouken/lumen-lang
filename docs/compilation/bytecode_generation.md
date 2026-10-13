@@ -150,6 +150,7 @@ Before a function's instructions are written, `shorten` (in `function.go`) decid
 |---|---|---|
 | A call of a function named on the spot, which captures nothing | `CALLK window nargs function` | `NEWFUNC`, `MOV`, `CALL` |
 | The same of a host function | `CALLX window nargs host-function` | `NEWEXFUNC`, `MOV`, `CALL` |
+| A method found on a value (`GET_METHOD`) and called on that same value | `CALLM window nargs name` | `GETMETHOD`, `MOV`, `CALL` |
 | A value made only to be an argument, with no other call before the one it is for | made in the window | made elsewhere, then `MOV` |
 | The result of a call, read once before the next call | read from `r0` | `MOV dest r0` first |
 | The result of a call nothing reads | nothing | `MOV dest r0` |
@@ -187,6 +188,7 @@ JMP   head
 | `NEW_STRUCT` | `NEWOBJ` with the struct's name as a string constant, which casts check. The third operand is 1 in its two lowest bits and, from the fourth up, the number of `SET_FIELD` on the value that follow in the block: the room it is made with |
 | `NEW_VARIANT` | `NEWOBJ` with the name `Enum.Variant` and 2 in the lowest bits of the third operand, which marks a value of an enum; the number of fields as for a struct. With no field set anywhere in the function, the third bit is set too: the value holds nothing, and is made once |
 | `GET_FIELD` / `SET_FIELD` | `GETFIELD` / `SETFIELD` with the field name as a string constant |
+| `GET_METHOD` | `GETMETHOD` with the method name as a string constant |
 | `NEW_ARRAY` | `NEWARRAY` (capacity capped at 65535; it is only a hint) |
 | `GET_INDEX` / `LEN` / `PUSH` | `GETINDEX` / `ARRLEN` / `ARRPUSH` |
 | `SET_INDEX` | `SETELEM`, which refuses an index at or past the length (`SETINDEX` would grow the array up to its capacity) |

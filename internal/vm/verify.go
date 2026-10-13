@@ -173,8 +173,17 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 		case OpADDI, OpSUBI:
 			err = v.registers(instr.A, instr.B)
 
-		case OpISTYPE:
+		case OpISTYPE, OpGETMETHOD:
 			if err = v.registers(instr.A, instr.B); err == nil {
+				err = v.pooledString(instr.C)
+			}
+
+		case OpCALLM:
+			// The value the method is found on is the first argument
+			if err = v.call(instr); err == nil && instr.B == 0 {
+				err = fmt.Errorf("a call of a method without the value it is a method of")
+			}
+			if err == nil {
 				err = v.pooledString(instr.C)
 			}
 

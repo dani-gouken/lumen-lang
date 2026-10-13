@@ -78,4 +78,17 @@ type Function struct {
 // Program represents the complete compilation unit
 type Program struct {
 	Functions []*Function
+
+	// The methods a value can be asked for when the program runs
+	// (OpGetMethod): which function is the method of which type. A
+	// function listed here may be reached without any instruction naming
+	// it, through a value of its type.
+	Methods []Method
+}
+
+// Method says that a function is the method Name of the struct or enum Type.
+type Method struct {
+	Type string
+	Name string
+	Func string
 }

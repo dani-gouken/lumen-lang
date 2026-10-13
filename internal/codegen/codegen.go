@@ -111,10 +111,11 @@ func (g *Generator) Generate() *vm.Chunk {
 // that imports a module of the library for one function carries that
 // function and what it needs, not the module.
 //
-// A function is only ever reached through an instruction that names it,
-// to call it or to make a value of it (a method attached to a struct, a
-// closure, the function a task runs): nothing finds one by its name while
-// the program runs. Following the names from main is therefore exact.
+// A function is reached through an instruction that names it, to call it
+// or to make a value of it (a closure, the function a task runs), or as a
+// method found on a value when the program runs (OpGetMethod): a call of
+// `area` on a value of some type may reach the method `area` of any type,
+// and all of them are kept. Nothing else finds a function by its name.
 //
 // Without a main there is nowhere to start from; everything is kept, and
 // the missing entry point is reported.
@@ -128,18 +129,39 @@ func (g *Generator) reachableFunctions() []*ir.Function {
 		return g.prog.Functions
 	}
 
+	// The methods of each name: a call that finds its method on a value
+	// may reach any of them
+	methods := make(map[string][]*ir.Function)
+	for _, m := range g.prog.Methods {
+		if fn, ok := byName[m.Func]; ok {
+			methods[m.Name] = append(methods[m.Name], fn)
+		}
+	}
+
 	reached := map[*ir.Function]bool{entry: true}
 	work := []*ir.Function{entry}
+	reach := func(target *ir.Function) {
+		if !reached[target] {
+			reached[target] = true
+			work = append(work, target)
+		}
+	}
 	for len(work) > 0 {
 		fn := work[len(work)-1]
 		work = work[:len(work)-1]
 		for _, bb := range reachableBlocks(fn) {
 			for _, instr := range body(bb) {
 				for _, operand := range instr.Operands {
-					target, ok := byName[functionNamed(operand)]
-					if ok && !reached[target] {
-						reached[target] = true
-						work = append(work, target)
+					if target, ok := byName[functionNamed(operand)]; ok {
+						reach(target)
+					}
+				}
+				if instr.Op == ir.OpGetMethod && len(instr.Operands) == 2 {
+					if c, ok := instr.Operands[1].(ir.Constant); ok {
+						name, _ := c.Val.(string)
+						for _, target := range methods[name] {
+							reach(target)
+						}
 					}
 				}
 			}

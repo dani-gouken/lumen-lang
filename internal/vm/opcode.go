@@ -132,10 +132,16 @@ const (
 	// its values carry: what a case of a match on an enum asks.
 	OpISTYPE // A = dest (a Bool), B = the value, C = the constant of the name
 	OpJNTYPE // A = the value, B = the constant of the name, C = where to go on unless it is
+
+	// A method found on the value it is called on: the function named
+	// "Type.method" of the chunk, Type being what the value says it is a
+	// value of. This is what a call through a trait is.
+	OpGETMETHOD // A = dest, B = the value, C = the constant of the method's name
+	OpCALLM     // A = register before the arguments, the first of which is the value; B = nargs; C = the constant of the method's name
 )
 
 // LastOp is the highest opcode there is.
-const LastOp = OpJNTYPE
+const LastOp = OpCALLM
 
 // MaxOperand is the largest value an instruction operand can hold. It bounds
 // what one operand can index: registers per function, constants, functions
@@ -277,7 +283,7 @@ func (i Instr) String() string {
 		return formatInstr("CALLK", i.A, i.B, i.C)
 	case OpCALLX:
 		return formatInstr("CALLX", i.A, i.B, i.C)
-	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI, OpISTYPE, OpJNTYPE:
+	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI, OpISTYPE, OpJNTYPE, OpGETMETHOD, OpCALLM:
 		return formatInstr(shortNames[i.Op], i.A, i.B, i.C)
 	case OpGC:
 		return "GC"
@@ -315,6 +321,7 @@ var shortNames = map[OpCode]string{
 	OpJNLTI: "JNLTI", OpJNLEI: "JNLEI", OpJNGTI: "JNGTI", OpJNGEI: "JNGEI", OpJNEQI: "JNEQI", OpJNNEI: "JNNEI",
 	OpADDI: "ADDI", OpSUBI: "SUBI",
 	OpISTYPE: "ISTYPE", OpJNTYPE: "JNTYPE",
+	OpGETMETHOD: "GETMETHOD", OpCALLM: "CALLM",
 }
 
 // ShortName returns the name of one of those instructions, and whether op

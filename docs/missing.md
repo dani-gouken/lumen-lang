@@ -238,9 +238,9 @@ A cast to a function type is checked against the signature recorded when the fun
 
 ### Method dispatch cost — M
 
-Calls on a value whose struct is known are direct. Calls through a trait look the method up on the value, so each value of a struct that implements traits carries one function object per trait method, created with the value (see [ir_generation.md](compilation/ir_generation.md#structs-and-methods)). A method table shared per struct type would remove that; it needs VM support.
+Calls on a value whose struct is known are direct. Calls through a trait ask the value for the method: the value carries the name of its type and the machine finds the function, remembering at each call the type it met last (see [ir_generation.md](compilation/ir_generation.md#methods-found-on-values)). Nothing is kept on the values for it.
 
-The same lookup is used when IR generation does not know the receiver's struct, which happens more than it should: the types it works from are computed again after generics are instantiated, and that second computation loses the type arguments of generic structs. For `outer.get().get()` with `outer` a `Box<Box<Int>>`, the inner receiver is only known as "some value". The call still goes to the right method, by name when one struct has it, on the value otherwise; it is slower than it needs to be, and a method name shared by several generic structs (`get` of `List` and of `Dict`) is stored on each of their values for this reason. Keeping the first type information through the later stages would fix both.
+The same lookup is used when IR generation does not know the receiver's struct, which happens more than it should: the types it works from are computed again after generics are instantiated, and that second computation loses the type arguments of generic structs. For `outer.get().get()` with `outer` a `Box<Box<Int>>`, the inner receiver is only known as "some value". The call still goes to the right method, by name when one struct has it, by asking the value otherwise; it is slower than it needs to be. Keeping the first type information through the later stages would fix both.
 
 ### Tasks on several processors — L
 
@@ -264,7 +264,6 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 | A value compared with itself | Equal without being looked into, so a value of an enum that holds NaN equals itself, though NaN does not. Compare the numbers themselves where that matters |
 | Limits of a built program | A `.lc` file does not carry the `max_depth` and `heap_mb` of its project: `lumen run program.lc` needs them given again (`--max-depth=N`) |
 | `match` on an enum | Tries the variants one after the other, in the order of the cases: the last of twelve costs twelve tests |
-| Methods kept on values | A method is kept on every value of its type when a trait can reach it, or when another type has a method of that name. Naming a method `map` or `expect` anywhere in a program makes every `Result` it creates carry both of its own |
 
 ---
 

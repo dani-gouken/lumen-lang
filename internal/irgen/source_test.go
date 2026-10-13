@@ -148,13 +148,17 @@ func TestMethodCallThroughTraitIsLookedUpOnValue(t *testing.T) {
 		fn main() -> Int { return measure(Sq { side: 3 }); }`
 
 	// Only the trait is known in measure: read the method from the value
-	// Only the trait is known in measure: read the method from the value.
-	// It is kept there under a name no field can have, "area()": a struct
-	// may have a field called area as well
-	expectLines(t, dumpFunction(t, src, "measure"), `%v2 = GET_FIELD, %v1, "area()"`, `%v3 = CALL, %v2, %v1`)
+	// Only the trait is known in measure: the value is asked for the
+	// method, by the name of the type it carries
+	expectLines(t, dumpFunction(t, src, "measure"), `%v2 = GET_METHOD, %v1, "area"`, `%v3 = CALL, %v2, %v1`)
 
-	// ...which is why a struct literal stores the methods a trait can reach
-	expectLines(t, dumpFunction(t, src, "main"), `MOV, "Sq.area"`, `, "area()", %v`)
+	// ...and nothing is kept on the value for that: making one sets its
+	// fields and no more
+	main := dumpFunction(t, src, "main")
+	expectLines(t, main, `NEW_STRUCT, "Sq"`, `"side", %v`)
+	if strings.Contains(main, "Sq.area") || strings.Count(main, "SET_FIELD") != 1 {
+		t.Errorf("a method is stored on the value:\n%s", main)
+	}
 }
 
 func TestFieldAndMethodMayShareAName(t *testing.T) {

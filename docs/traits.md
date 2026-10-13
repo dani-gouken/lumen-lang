@@ -228,7 +228,7 @@ The standard library uses them itself: a `List` and a `Dict` take brackets and l
 **A requirement** is checked by the type checker, at every place type arguments are given or worked out. What it changes afterwards depends on where the type parameter is:
 
 *   A generic *function* is compiled once for each choice of types (see [monomorphization](compilation/monomorphization.md)). In the copy for `Int`, `item > best` is the comparison of two numbers; in the copy for `Version`, it is a call of `Version.compare`. Nothing is looked up when the program runs.
-*   The methods of a generic *struct* or *enum* are compiled once for all type arguments. There, a call on a `T` finds the method on the value: a struct or an enum value carries the functions a trait can reach, as it does for a call through the trait itself.
+*   The methods of a generic *struct* or *enum* are compiled once for all type arguments. There, a call on a `T` asks the value for the method: a struct or an enum value carries the name of its type, which is what a call through the trait itself goes by too.
 
 **A number or a text carries nothing**, so a call that is decided when the program runs first tests the value for being of a builtin type that has a method of that name, and calls that type's function directly. The test is only made for method names that some builtin type has.
 

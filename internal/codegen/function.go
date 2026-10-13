@@ -654,6 +654,21 @@ func (f *funcGen) shortenCall(call *ir.Instruction, idx int, instrs []*ir.Instru
 		return
 	}
 
+	// A method looked for on the value it is called on, which is the first
+	// argument: the looking and the calling are one instruction. The
+	// value is then asked once the arguments are worked out; what it is a
+	// value of does not change meanwhile.
+	if u := once(call.Operands[0]); u != nil && u.defInstr.Op == ir.OpGetMethod && len(call.Operands) >= 2 && len(u.defInstr.Operands) == 2 {
+		receiver, isReg := regID(u.defInstr.Operands[0])
+		first, isFirst := regID(call.Operands[1])
+		if c, ok := u.defInstr.Operands[1].(ir.Constant); ok && isReg && isFirst && receiver == first {
+			if name, ok := c.Val.(string); ok {
+				f.direct[call] = directCall{op: vm.OpCALLM, index: f.g.stringConstant(name, call.Pos)}
+				f.folded[u.defInstr] = true
+			}
+		}
+	}
+
 	// A function named where it is called
 	if u := once(call.Operands[0]); u != nil && u.defInstr.Op == ir.OpMov && len(u.defInstr.Operands) == 1 {
 		if c, ok := u.defInstr.Operands[0].(ir.Constant); ok && c.Type == "FuncRef" {
@@ -918,6 +933,10 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 			f.emit(vm.OpNEWOBJ, f.dest(instr), f.g.stringConstant(name, f.pos), what)
 		}
 
+	case ir.OpGetMethod:
+		if name, ok := f.nameOperand(instr, 1); ok {
+			f.emit(vm.OpGETMETHOD, f.dest(instr), f.reg(instr.Operands[0]), f.g.stringConstant(name, f.pos))
+		}
 	case ir.OpGetField:
 		if name, ok := f.nameOperand(instr, 1); ok {
 			f.emit(vm.OpGETFIELD, f.dest(instr), f.reg(instr.Operands[0]), f.g.stringConstant(name, f.pos))

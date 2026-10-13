@@ -45,6 +45,7 @@ const (
 	OpNewVariant // Dest = NewVariant "Enum.Variant": a value of an enum; its values are set as fields "0", "1", ...
 	OpGetField   // Dest = Src1.Field
 	OpSetField   // Src1.Field = Src2
+	OpGetMethod  // Dest = the method of that name of the type Src1 is a value of, found when the program runs
 
 	// Arrays
 	OpNewArray // Dest = NewArray Type, Size
@@ -122,6 +123,8 @@ func (op OpType) String() string {
 		return "GET_FIELD"
 	case OpSetField:
 		return "SET_FIELD"
+	case OpGetMethod:
+		return "GET_METHOD"
 	case OpNewArray:
 		return "NEW_ARRAY"
 	case OpGetIndex:

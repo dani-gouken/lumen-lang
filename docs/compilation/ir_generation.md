@@ -216,7 +216,7 @@ How `receiver.name(args)` is compiled depends on the **static type of the receiv
 |---------------|---------|-----------|
 | a struct that has the method | the target is known | direct call of `Struct.name` |
 | a struct without such a method | `name` is a field holding a function | read the field, call it |
-| a trait | any implementing struct may be behind it | look the method up on the value |
+| a trait | any implementing struct may be behind it | ask the value for the method |
 
 ```rust
 p.sum()                 // p: Point
@@ -230,7 +230,7 @@ p.sum()                 // p: Point
 fn measure(s: Shape) -> Int { return s.area(); }
 ```
 ```
-%v2 = GET_FIELD, %v1, "area"    ; which area() depends on the value
+%v2 = GET_METHOD, %v1, "area"   ; which area() depends on the value
 %v3 = CALL, %v2, %v1
 ```
 
@@ -238,22 +238,17 @@ Because the decision uses the receiver's type, a field and a method may have the
 
 Type arguments of a method call (`stack.map<String>(f)`) only matter to the type checker. They leave no trace in the IR: like the struct's own parameters, they are erased, and one compiled `Stack.map` serves every call.
 
-### Methods stored on values
+### Methods found on values
 
-The runtime lookup needs the function to be reachable from the value. A struct literal therefore stores a method on the new value, as a function-valued field under the method's name, when that method **can be reached through a trait** (it comes from an `impl Trait for Struct` block):
+A value of a struct or of an enum carries the name of its type, and the methods of a type are functions named after it: `Square.area`, or `Shape.area` for every variant of the enum `Shape`. `GET_METHOD value, "area"` is therefore all a call through a trait needs: when the program runs, the value says what it is a value of and the machine finds the function of that name ([luvm.md](../luvm.md#fields)). Nothing is kept on the value for it: making one sets its fields and no more, and a struct may have a field and a method of the same name.
 
-```
-%v4 = MOV, "Square.area"
-SET_FIELD %v3, "area", %v4
-```
+The program's table of methods (`ir.Program.Methods`: type, method, function) tells bytecode generation which functions such a call may reach. A function no instruction names is otherwise left out of the program; the methods of a name a `GET_METHOD` asks for are all kept, whichever types the program makes values of.
 
-Methods from a plain `impl Struct` block are only ever called directly and are not stored, so a struct without trait implementations carries nothing but its fields.
-
-The same lookup is the fallback when a receiver's type is not available to IR generation: if exactly one struct defines the method it is called directly; if several do, they all store it on their values and the lookup picks the right one.
+The same lookup is the fallback when a receiver's type is not available to IR generation: if exactly one struct defines the method it is called directly; if several do, the value is asked.
 
 "Not available" includes a receiver whose type names no struct of the program. That happens for the result of a generic method called on a value whose type arguments were lost when types were computed again after desugaring: in `outer.get().get()` with `outer` a `Box<Box<Int>>`, the inner receiver's type comes out as the bare parameter name `V`. It is treated as unknown, not as a struct without that method.
 
-This is a simple form of dynamic dispatch with a known cost: a value of a struct implementing traits holds one function object per trait method, created with the value. A method table shared by all values of a struct would remove that; it needs VM support and is left for later.
+Earlier, the methods a trait could reach were stored on every value, as function-valued fields set when the value was made. That made every such value larger and slower to make, and a method whose name another type happened to have was stored too: a program with a method called `map` anywhere made every `Result` carry two functions.
 
 ### Generic structs
 

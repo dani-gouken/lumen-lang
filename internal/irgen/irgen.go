@@ -150,19 +150,23 @@ func (g *IRGenerator) collectDecls() {
 	for _, methods := range g.structMethods {
 		sort.Slice(methods, func(i, j int) bool { return methods[i].name < methods[j].name })
 	}
+
+	// Which function is which method of which type, for the calls that
+	// only find out when the program runs what they are calling
+	owners := make([]string, 0, len(g.structMethods))
+	for owner := range g.structMethods {
+		owners = append(owners, owner)
+	}
+	sort.Strings(owners)
+	for _, owner := range owners {
+		for _, m := range g.structMethods[owner] {
+			g.irProg.Methods = append(g.irProg.Methods, ir.Method{Type: owner, Name: m.name, Func: m.irName})
+		}
+	}
 }
 
 func methodIRName(structName, methodName string) string {
 	return structName + "." + methodName
-}
-
-// methodSlot is the name a method is stored under on a value that carries
-// it (see storedOnValue). It is not the name of the method itself, which
-// a field of the struct may have too: a struct with a field `count` and a
-// method `count()` holds both, and `self.count` reads the field. No field
-// can be named like this.
-func methodSlot(methodName string) string {
-	return methodName + "()"
 }
 
 // hasMethod reports whether a struct has an impl method of that name.
@@ -268,14 +272,6 @@ func (g *IRGenerator) builtinOwners(name string) []string {
 		}
 	}
 	return owners
-}
-
-// storedOnValue reports whether a method has to be stored on each value of
-// its struct: when it can be called through a trait, or when several
-// structs share the name and a call with an unknown receiver type has to
-// find the right one at runtime.
-func (g *IRGenerator) storedOnValue(m method) bool {
-	return m.fromTrait || len(g.methodOwners[m.name]) > 1
 }
 
 // errorAt reports an IR generation error at the given node.

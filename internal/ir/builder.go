@@ -121,6 +121,14 @@ func (b *Builder) CreateGetField(structVal Value, fieldName string) *Register {
 	return dest
 }
 
+// CreateGetMethod finds a method on a value whose type is only known when
+// the program runs
+func (b *Builder) CreateGetMethod(value Value, methodName string) *Register {
+	dest := b.NewRegister()
+	b.Emit(OpGetMethod, dest, value, Constant{Val: methodName, Type: "String"})
+	return dest
+}
+
 // CreateJmp creates an unconditional jump
 func (b *Builder) CreateJmp(target *BasicBlock) {
 	b.Emit(OpJmp, nil, target)
