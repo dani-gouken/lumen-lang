@@ -71,6 +71,10 @@ func (c *Checker) inferMethodTypeArgs(recv Type, member *ast.MemberExpr, e *ast.
 		if structType, ok := recv.(*StructType); ok {
 			args = structType.TypeArgs
 		}
+		if array, ok := recv.(*ArrayType); ok {
+			// In `impl<T> [T]`, T is what the array holds
+			args = []Type{array.ElementType}
+		}
 		for i, name := range impl.TypeParams {
 			bindings[name] = Unknown
 			if i < len(args) {

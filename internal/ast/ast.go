@@ -421,6 +421,24 @@ func (d *TraitDecl) String() string {
 	return sb.String()
 }
 
+// ArrayImpl is what an impl for arrays has as the name of its struct:
+// impl<T> [T] { ... } gives every array the methods it declares, T being
+// what the array holds. Not a name a program can write for a struct.
+const ArrayImpl = "[]"
+
+// ArrayImplOf is the name of the struct of an impl for the arrays of one
+// type, impl [Int] { ... }: methods only those arrays have.
+func ArrayImplOf(item string) string { return "[" + item + "]" }
+
+// IsArrayImpl reports whether the struct of an impl names arrays, and
+// which: "" for every array, or the type of the items.
+func IsArrayImpl(structName string) (item string, ok bool) {
+	if len(structName) < 2 || structName[0] != '[' || structName[len(structName)-1] != ']' {
+		return "", false
+	}
+	return structName[1 : len(structName)-1], true
+}
+
 type ImplDecl struct {
 	BaseNode
 	TypeParams []string           // impl<T> Box<T>: the struct's type parameters, by position

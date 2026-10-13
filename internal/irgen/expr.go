@@ -527,7 +527,11 @@ func (fc *FunctionCompiler) lookUpMethod(receiver *ir.Register, name string) *ir
 	endBlock := fc.builder.NewBlock()
 	for _, builtin := range builtins {
 		test := fc.builder.CreateMov(ir.Constant{Val: TypeTestIntrinsic, Type: "FuncRef"})
-		desc := fc.builder.CreateMov(ir.Constant{Val: strings.ToLower(builtin), Type: "String"})
+		described := strings.ToLower(builtin)
+		if builtin == ast.ArrayImpl {
+			described = "[any]" // An array, whatever it holds
+		}
+		desc := fc.builder.CreateMov(ir.Constant{Val: described, Type: "String"})
 		isIt := fc.builder.CreateCall(test, receiver, desc)
 
 		foundBlock := fc.builder.NewBlock()

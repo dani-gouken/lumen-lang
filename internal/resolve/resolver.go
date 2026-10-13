@@ -660,8 +660,11 @@ func (r *Resolver) popScope() {
 }
 
 func isBuiltinType(name string) bool {
+	if _, arrays := ast.IsArrayImpl(name); arrays {
+		return true
+	}
 	switch name {
-	case "Int", "Float", "String", "Bool", "Void", "Any", "Self":
+	case "Int", "Float", "String", "Bool", "Void", "Any", "Self", ast.ArrayImpl:
 		return true
 	}
 	return false

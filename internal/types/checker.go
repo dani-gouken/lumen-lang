@@ -299,12 +299,12 @@ func (c *Checker) checkImplDecl(d *ast.ImplDecl) {
 	defer c.bindTypeParams(d.TypeParams)()
 	defer c.bindBounds(d.Bounds)()
 
-	if d.TraitName == "" && IsBuiltinTypeName(d.StructName) {
-		// A number or a text gets methods through a trait, so that the
-		// dot on one only ever reaches something a trait names
+	if item, arrays := ast.IsArrayImpl(d.StructName); arrays && item != "" && d.TraitName != "" {
+		// What an array holds is not known when the program runs, and a
+		// value seen through a trait finds its method then
 		c.errorfWithSuggestion(d.Token(), ErrUnknownMethod,
-			fmt.Sprintf("Declare a trait with the methods and implement it: impl Trait for %s { ... }; or write functions that take a %s", d.StructName, d.StructName),
-			"%s is a builtin type: it can implement a trait, not be given methods of its own", d.StructName)
+			fmt.Sprintf("Implement the trait for every array, impl<T> %s for [T] { ... }, or give these arrays methods of their own: impl [%s] { ... }", displayName(d.TraitName), item),
+			"a trait is implemented for every array, not for the arrays of one type")
 		return
 	}
 
@@ -331,6 +331,17 @@ func (c *Checker) implSelfType(d *ast.ImplDecl) Type {
 	self := &StructType{Name: d.StructName, BaseName: d.StructName}
 	for _, name := range d.TypeParams {
 		self.TypeArgs = append(self.TypeArgs, c.resolveType(&ast.Type{Kind: ast.TypeBasic, Name: name}))
+	}
+	if item, arrays := ast.IsArrayImpl(d.StructName); arrays {
+		switch {
+		case item != "":
+			// impl [Int]: the arrays of one type
+			return NewArray(c.resolveType(&ast.Type{BaseNode: d.BaseNode, Kind: ast.TypeBasic, Name: item}))
+		case len(self.TypeArgs) == 1:
+			// impl<T> [T]: an array of what the type parameter stands for
+			return NewArray(self.TypeArgs[0])
+		}
+		return NewArray(Unknown)
 	}
 	if _, isStruct := c.structs[d.StructName]; !isStruct && c.enums[d.StructName] == nil {
 		// impl for a builtin type

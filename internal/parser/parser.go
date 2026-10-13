@@ -614,6 +614,12 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	decl := &ast.ImplDecl{BaseNode: base(tok)}
 	decl.TypeParams, decl.Bounds = p.parseBoundedTypeParams(true)
 
+	if p.at(token.LBRACKET) {
+		// impl<T> [T] { ... }: methods for every array
+		decl.StructName = p.arrayImplTarget(decl)
+		return p.parseImplBody(decl)
+	}
+
 	first := p.expectTypeName("trait or struct name")
 	// impl Source<Int> for Counter: the type arguments of a trait are
 	// types, where those of the struct can only repeat the parameters of
@@ -628,12 +634,49 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	}
 	if p.accept(token.FOR) {
 		decl.TraitName = first
+		if p.at(token.LBRACKET) {
+			// impl<T> Sized for [T] { ... }
+			decl.StructName = p.arrayImplTarget(decl)
+			return p.parseImplBody(decl)
+		}
 		decl.StructName = p.expectTypeName("struct name")
 	} else {
 		decl.StructName = first
 	}
 	p.expectImplTypeArgs(decl)
+	return p.parseImplBody(decl)
+}
 
+// arrayImplTarget reads the `[T]` of an impl for arrays. What the arrays
+// hold is the one type parameter of the impl: the methods are those of
+// every array, whatever it holds.
+func (p *Parser) arrayImplTarget(decl *ast.ImplDecl) string {
+	open := p.expect(token.LBRACKET, "'['")
+	wrong := func() {
+		p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+			"an impl for arrays is for every array, or for the arrays of one type",
+			"Write: impl<T> [T] { ... }, where T is the type of the items; or impl [Int] { ... }", open, p.sourceLines)
+	}
+	if p.at(token.IDENT) && len(decl.TypeParams) == 1 && p.cur().Literal == decl.TypeParams[0] {
+		p.next()
+	} else if len(decl.TypeParams) == 0 && (p.at(token.IDENT) || isBuiltinTypeToken(p.cur().Type)) {
+		// impl [Int] { ... }: methods for the arrays of one type
+		item := p.expectTypeName("the type of the items")
+		p.expect(token.RBRACKET, "']'")
+		return ast.ArrayImplOf(item)
+	} else {
+		if !p.speculating {
+			wrong()
+		}
+		for !p.at(token.RBRACKET) && !p.at(token.LBRACE) && !p.at(token.EOF) {
+			p.next()
+		}
+	}
+	p.expect(token.RBRACKET, "']'")
+	return ast.ArrayImpl
+}
+
+func (p *Parser) parseImplBody(decl *ast.ImplDecl) *ast.ImplDecl {
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
 		pub := p.accept(token.PUB)

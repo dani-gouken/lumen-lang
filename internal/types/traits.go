@@ -57,6 +57,10 @@ var Operators = map[string]OperatorMethod{
 // typeKey names a type the way an impl does: the name of a struct or an
 // enum, or of a builtin type. It is "" for a type nothing can be
 // implemented for.
+// ImplKey is the name impls are kept under for a type: that of its struct
+// or enum, of the builtin type, "[]" for an array; "" for anything else.
+func ImplKey(t Type) string { return typeKey(t) }
+
 func typeKey(t Type) string {
 	switch t := t.(type) {
 	case *StructType:
@@ -64,6 +68,8 @@ func typeKey(t Type) string {
 			return t.BaseName
 		}
 		return t.Name
+	case *ArrayType:
+		return ast.ArrayImpl
 	case *PrimitiveType:
 		switch t.Name {
 		case PrimitiveInt:
@@ -82,6 +88,9 @@ func typeKey(t Type) string {
 // IsBuiltinTypeName reports whether an impl of that name is for a builtin
 // type rather than for a struct or an enum.
 func IsBuiltinTypeName(name string) bool {
+	if _, arrays := ast.IsArrayImpl(name); arrays {
+		return true
+	}
 	return name == "Int" || name == "Float" || name == "String" || name == "Bool"
 }
 
@@ -257,6 +266,14 @@ func (c *Checker) methodOn(recv Type, name string) (*ast.FnDecl, map[string]Type
 		if key := typeKey(t); key != "" {
 			return c.methods[key][name], nil
 		}
+	case *ArrayType:
+		// What the arrays of its items have, then what every array has
+		if item := typeKey(t.ElementType); item != "" && item != ast.ArrayImpl {
+			if decl := c.methods[ast.ArrayImplOf(item)][name]; decl != nil {
+				return decl, nil
+			}
+		}
+		return c.methods[ast.ArrayImpl][name], nil
 	case *BehaviorType:
 		return fromTrait(t)
 	case *TypeParam:
@@ -332,6 +349,8 @@ func typeKeyOrParam(t Type) string {
 		return t.Name
 	case *PrimitiveType:
 		return "" // Operators on numbers and texts are the machine's own
+	case *ArrayType:
+		return "" // And so are brackets and loops on arrays
 	}
 	return typeKey(t)
 }

@@ -74,7 +74,12 @@ func (r *rewriter) rewrite() {
 			})
 
 		case *ast.ImplDecl:
-			d.StructName = r.typeName(d.StructName, d.Token())
+			if item, arrays := ast.IsArrayImpl(d.StructName); !arrays {
+				d.StructName = r.typeName(d.StructName, d.Token())
+			} else if item != "" && r.typeItem(item) != nil {
+				// impl [Point]: the items are named in full, like any type
+				d.StructName = ast.ArrayImplOf(r.typeName(item, d.Token()))
+			}
 			if d.TraitName != "" {
 				d.TraitName = r.typeName(d.TraitName, d.Token())
 			}

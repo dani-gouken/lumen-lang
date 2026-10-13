@@ -21,11 +21,15 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 ## 1. Syntax and Language Features
 
-### Members on arrays and texts — by design
+### Methods on builtin types — what is left
 
-Arrays and texts have no members: what is done to them is a function of the library, and calls are chained with `|>` (`items |> arrays.filter(isEven) |> arrays.len`), which was preferred over methods so that a dot keeps meaning one thing. `items.length` is an error (`E2033`); the length is `arrays.len(items)` or `strings.len(text)`, and everything else done to them is likewise a function of the standard library. A dot reaches a field or a method of a struct or an enum, and nothing else.
+Arrays, texts and numbers have methods: those of the library (`items.filter(isEven).len()`, `name.trim().lower()`) and any a program gives them with `impl` ([guide](guide.md#methods-on-arrays-texts-and-numbers)). What is not there:
 
-The cost is an `import std.arrays;` in almost every program. Calls of the two functions are compiled to a single instruction, so there is none at runtime. Nothing in the compiler or the library is written with `.length` any more: the two functions are made of a builtin, `__len`, that no program writes, and a struct is free to have a field called `length`.
+*   **Without the module, no methods.** The methods of arrays come with `import std.arrays;`, those of texts with `std.strings`, those of numbers with `std.math`. A call without the import is an error that names it.
+*   **An impl for arrays of arrays, or of optionals**: `impl<T> [[T]]`. An impl is for every array, or for the arrays of one named type.
+*   **A trait for the arrays of one type** (`impl Sized for [Int]`): what an array holds is not known when the program runs, which is when a value seen through a trait finds its method. A trait is implemented for every array.
+*   **Methods on tuples, optionals and functions.**
+*   **`.length`** is still not a field: it is `items.len()`, and writing it is an error (`E2033`) that says so.
 
 ### More for failures — S to M each
 
@@ -114,7 +118,7 @@ Requirements on type parameters, traits with type parameters, methods with a bod
 | Two impls of one trait for one type: `impl Source<Int>` and `impl Source<String>` for the same struct | `E2019`. A type implements a trait once |
 | Types a trait leaves to its impls: `type Item;` | Type parameters of the trait: `Iterable<T>` |
 | Functions of a type rather than of a value: `Point.origin()` | A function next to the struct |
-| Traits for arrays, tuples, optionals and functions | Only structs, enums and the four builtin types |
+| Traits for tuples, optionals and functions | Structs, enums, the four builtin types and arrays |
 | `%` and unary `-` on a struct; `a[k] += v` on a struct | Not operators a trait gives; the last has to be written out |
 | Equality by content inside other values | Two tuples, enum values or arrays holding structs are compared by the machine, which does not ask the structs for `equals` |
 | `Show` inside other values | `println([money])` writes the struct as any value; `ops.join` writes each with its `show` |
@@ -153,7 +157,6 @@ Requirements on type parameters, traits with type parameters, methods with a bod
 | `x!`, to insist a value is not null | Not parsed. `x ?? panic(...)` does not type either: test against `null`, or use `?` |
 | Several processors at once | Tasks and channels are there ([tasks.md](tasks.md)), taking turns on one processor. Not there: `select`, waits that give up after some time, stopping a task from outside |
 | Type aliases | Not parsed |
-| Methods on builtin types without a trait (`"abc".upper()`) | By design: `impl Trait for String` gives texts the methods of a trait, and nothing else puts a method on one |
 | Tuples of more than six values, or of one | A struct |
 | Taking a tuple apart in a parameter (`fn(key, value)` for a function of a pair) or a struct apart at all | `let (key, value) = pair;` as the first line |
 | `?.` followed by an index: `items?[0]` | `arrays.at`, or a test against `null` |

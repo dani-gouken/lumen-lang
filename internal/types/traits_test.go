@@ -95,7 +95,7 @@ func TestTraitRequirementsAreTyped(t *testing.T) {
 		{"...for a type parameter without it", `fn f<T>(items: [T]) -> Sorted<T> { return Sorted<T> { items: items }; }`, "T does not implement Ordered"},
 		{"a method only some have", `fn f(b: Box<Point>) -> String { return b.label(); }`, "Point does not implement Show, which method 'label' requires of T"},
 		{"a struct as a trait it does not implement", `fn f(o: Ordered) -> Int { return 1; } fn g() -> Int { return f(Point { x: 1 }); }`, "cannot use type Point as argument of type Ordered"},
-		{"a method no trait gives a number", `fn f() -> String { return 5.show(); }`, "type int has no method 'show'"},
+		{"a method no trait gives a number", `fn f() -> String { return 5.show(); }`, "a number has no method 'show'"},
 
 		{"the wrong argument of a trait", `fn f(s: Source<String>) -> Int { return 0; } fn g() -> Int { return f(Counter { n: 1 }); }`, "cannot use type Counter as argument of type Source<string>"},
 		{"...of a generic struct", `fn f(s: Source<String>) -> Int { return 0; } fn g() -> Int { return f(Repeat<Int> { item: 1 }); }`, "as argument of type Source<string>"},
@@ -132,7 +132,8 @@ func TestTypeKeyNamesWhatAnImplIsFor(t *testing.T) {
 		Int: "Int", Float: "Float", String: "String", Bool: "Bool", Void: "", Any: "", Null: "",
 		&StructType{Name: "Point", BaseName: "Point"}:            "Point",
 		&StructType{Name: "Box", BaseName: "Box", TypeArgs: nil}: "Box",
-		NewArray(Int):                 "",
+		NewArray(Int):                 "[]",
+		NewArray(NewArray(String)):    "[]",
 		NewTypeParam("T"):             "",
 		NewBehavior("Ordered", nil):   "",
 		NewFunction([]Type{Int}, Int): "",
@@ -146,7 +147,8 @@ func TestTypeKeyNamesWhatAnImplIsFor(t *testing.T) {
 	if a.Equals(b) || !a.Equals(a) || a.Equals(NewBehavior("Source", nil)) || describe(a) != "Source<int>" {
 		t.Errorf("expected a trait to be told apart by its type arguments, got %s and %s", describe(a), describe(b))
 	}
-	if !IsBuiltinTypeName("Int") || IsBuiltinTypeName("Point") || IsBuiltinTypeName("Any") {
-		t.Error("IsBuiltinTypeName must name the four types an impl can be for")
+	if !IsBuiltinTypeName("Int") || IsBuiltinTypeName("Point") || IsBuiltinTypeName("Any") ||
+		!IsBuiltinTypeName("[]") || !IsBuiltinTypeName("[Int]") || !IsBuiltinTypeName("[Point]") {
+		t.Error("IsBuiltinTypeName must name the builtin types an impl can be for, arrays among them")
 	}
 }

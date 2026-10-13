@@ -93,7 +93,7 @@ func TestDescribe(t *testing.T) {
 		{23, 26, "fn Point.sum() -> Int", "Both coordinates added.", "main.lum", [2]int{11, 8}, [2]int{26, 29}},
 		// A function of the library, named through its module: one name
 		{23, 40, "fn math.abs(n: Int) -> Int", "", "<std>/math.lum", [2]int{24, 8}, [2]int{35, 43}},
-		{24, 24, "fn arrays.map<T, U>(items: [T], convert: fn(T) -> U) -> [U]", "What the function makes of each item, in the same order.", "<std>/arrays.lum", [2]int{173, 8}, [2]int{17, 27}},
+		{24, 24, "fn arrays.map<T, U>(items: [T], convert: fn(T) -> U) -> [U]", "What the function makes of each item, in the same order.", "<std>/arrays.lum", [2]int{244, 8}, [2]int{17, 27}},
 		// A struct where a value of it is made
 		{22, 14, "struct Point {\n    x: Int;\n    y: Int;\n}", "A place on the grid.", "main.lum", [2]int{7, 8}, [2]int{13, 18}},
 		// Variables: a let, a parameter of a short function, a constant
@@ -105,7 +105,7 @@ func TestDescribe(t *testing.T) {
 		{26, 15, "(field) Point.x: Int", "A place on the grid.", "main.lum", [2]int{7, 16}, [2]int{15, 16}},
 		{26, 37, "enum Shape {\n    Circle(Float),\n    Dot,\n}", "", "main.lum", [2]int{14, 6}, [2]int{37, 42}},
 		{26, 43, "(variant) Shape.Dot", "", "main.lum", [2]int{14, 29}, [2]int{43, 46}},
-		{26, 29, "fn task.Task.wait() -> Result<T, Failure>", "Waits for the task to end. Gives what its function returned, or the\nfailure that stopped it. A task can be waited for any number of\ntimes, by any number of tasks.", "<std>/task.lum", [2]int{75, 12}, [2]int{29, 33}},
+		{26, 29, "fn task.Task.wait() -> Result<T, Failure>", "Waits for the task to end. Gives what its function returned, or the\nfailure that stopped it. A task can be waited for any number of\ntimes, by any number of tasks.", "<std>/task.lum", [2]int{82, 12}, [2]int{29, 33}},
 		// A builtin has no place
 		{26, 5, "fn println(args: ...Any)", "", "", [2]int{0, 0}, [2]int{5, 12}},
 	}
@@ -174,8 +174,10 @@ func TestComplete(t *testing.T) {
 	if !has(tasks, "start", "function", "") || !has(tasks, "Channel", "struct", "") || has(tasks, "Outcome", "", "") || has(tasks, "spawn", "", "") {
 		t.Errorf("after std.task: %s", labels(tasks))
 	}
-	if got := Complete("main.lum", edit(26, "    names."), 26, 11); len(got) != 0 {
-		t.Errorf("an array has no members, got %s", labels(got))
+	// An array has the methods the library gives arrays
+	names := Complete("main.lum", edit(26, "    names."), 26, 11)
+	if !has(names, "len", "method", "fn len() -> Int") || !has(names, "map", "method", "") || !has(names, "filter", "method", "") || has(names, "trim", "", "") {
+		t.Errorf("after an array: %s", labels(names))
 	}
 
 	// Anywhere else: what is in reach
@@ -531,7 +533,7 @@ fn main() -> Int {
 		{2, 14, "module std.task", "Doing several things at once.", "<std>/task.lum:1"},
 		{2, 19, "struct task.Task<T> {", "A function that is running, or has run, on its own.", "<std>/task.lum:46"},
 		{2, 25, "fn task.start<T>(work: fn() -> T) -> Task<T>", "Runs a function on its own and returns at once. The task starts when", "<std>/task.lum:53"},
-		{3, 22, "enum result.Result<T, E> {", "The value a function produced, or the reason it could not.", "<std>/result.lum:25"},
+		{3, 22, "enum result.Result<T, E> {", "The value a function produced, or the reason it could not.", "<std>/result.lum:26"},
 		// The struct and the trait of an impl
 		{9, 7, "trait Named {", "", "main.lum:8"},
 		{9, 18, "struct Price {", "", "main.lum:6"},
@@ -540,7 +542,7 @@ fn main() -> Int {
 		{15, 22, "(variant) Shape.Circle(Float)", "", "main.lum:5"},
 		{15, 27, "(variable) r: Float", "", "main.lum:15"},
 		{16, 25, "(variable) w: Float", "", "main.lum:16"},
-		{25, 14, "enum result.Result<T, E> {", "The value a function produced, or the reason it could not.", "<std>/result.lum:25"},
+		{25, 14, "enum result.Result<T, E> {", "The value a function produced, or the reason it could not.", "<std>/result.lum:26"},
 		{25, 24, "(variable) value: ", "", "main.lum:25"},
 		// Loops and short functions
 		{22, 9, "(variable) i: Int", "", "main.lum:22"},

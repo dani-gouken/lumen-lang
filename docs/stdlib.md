@@ -55,6 +55,8 @@ The modules are imported and used like any other ([modules.md](modules.md)): `im
 
 ## Conventions
 
+**A function, or a method.** What a function of `std.arrays`, `std.strings` or `std.math` does to an array, a text or a number, a method of the same name does too: `arrays.filter(items, wanted)` is `items.filter(wanted)`, `strings.trim(name)` is `name.trim()`, `math.sqrt(x)` is `x.sqrt()`. The tables below list the functions; the method takes the same arguments without the first. Methods follow one another (`line.trim().split(",").map(parse)`); the function form is what is passed to another function (`names.map(strings.upper)`). A few methods have the name the type makes natural where the function has another: on a `Float`, `abs`, `min`, `max` and `pow` are `fabs`, `fmin`, `fmax` and `powf`; arrays have `push`, and arrays of texts `join`.
+
 **Nothing instead of failure.** A function that may have no answer returns an optional, and `null` means "none": the position of something not found, the first item of an empty array, a text that is not a number. Where there is a reason worth knowing, as for a file that cannot be read, it returns a [`Result`](#stdresult) with the reason in it. The type checker then makes sure the program deals with it:
 
 ```rust

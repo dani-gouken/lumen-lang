@@ -1671,3 +1671,56 @@ func TestParseIfExprRefused(t *testing.T) {
 		})
 	}
 }
+
+// An impl for arrays: every array, or the arrays of one type.
+func TestParseImplForArrays(t *testing.T) {
+	prog := parseOK(t, `
+		impl<T> [T] { fn second() -> T? { return null; } }
+		impl [Int] { fn sum() -> Int { return 0; } }
+		impl [geometry.Point] { fn widest() -> Int { return 0; } }
+		impl<T> Sized for [T] { fn size() -> Int { return 0; } }
+		impl<T: Show> [T] { fn shown() -> String { return ""; } }
+		impl String { fn shout() -> String { return self; } }
+		impl Point { fn size() -> Int { return 2; } }
+	`)
+	wants := []struct {
+		structName, trait string
+		params            []string
+	}{
+		{"[]", "", []string{"T"}},
+		{"[Int]", "", nil},
+		{"[geometry.Point]", "", nil},
+		{"[]", "Sized", []string{"T"}},
+		{"[]", "", []string{"T"}},
+		{"String", "", nil},
+		{"Point", "", nil},
+	}
+	for i, w := range wants {
+		impl := prog.Decls[i].(*ast.ImplDecl)
+		if impl.StructName != w.structName || impl.TraitName != w.trait || strings.Join(impl.TypeParams, ",") != strings.Join(w.params, ",") || len(impl.Methods) != 1 {
+			t.Errorf("impl %d: expected %+v, got %s for %q with %v", i, w, impl.StructName, impl.TraitName, impl.TypeParams)
+		}
+	}
+	if item, arrays := ast.IsArrayImpl("[Int]"); !arrays || item != "Int" {
+		t.Errorf("expected [Int] to be the arrays of Int, got %q %v", item, arrays)
+	}
+	if item, arrays := ast.IsArrayImpl("[]"); !arrays || item != "" {
+		t.Errorf("expected [] to be every array, got %q %v", item, arrays)
+	}
+	if _, arrays := ast.IsArrayImpl("Point"); arrays {
+		t.Errorf("expected Point not to be arrays")
+	}
+
+	for name, src := range map[string]string{
+		"a parameter that is not the impl's": `impl<T> [U] { }`,
+		"two parameters":                     `impl<A, B> [A] { }`,
+		"an array of arrays":                 `impl<T> [[T]] { }`,
+		"nothing in the brackets":            `impl<T> [] { }`,
+	} {
+		errs := errors.NewHandler()
+		Parse(src, "test.lum", errs)
+		if len(errs.Diagnostics) == 0 || !strings.Contains(errs.Diagnostics[0].Message, "an impl for arrays is for every array, or for the arrays of one type") {
+			t.Errorf("%s: expected to be told what an impl for arrays is, got %v", name, errs.Diagnostics)
+		}
+	}
+}

@@ -21,6 +21,7 @@
 
 import std.strings;
 import std.arrays;
+
 // The value a function produced, or the reason it could not.
 pub enum Result<T, E> {
     Ok(T),
@@ -35,7 +36,9 @@ impl<T, E> Result<T, E> {
         };
     }
 
-    pub fn isErr() -> Bool { return !self.isOk(); }
+    pub fn isErr() -> Bool {
+        return !self.isOk();
+    }
 
     // The value, or null if there is none.
     pub fn value() -> T? {
@@ -90,8 +93,13 @@ impl<T, E> Result<T, E> {
     // where a failure would be a mistake in the program.
     pub fn expect(message: String) -> T {
         match self {
-            case Result.Ok(value): { return value; }
-            case Result.Err(reason): { panic(message + ":", reason); }
+            case Result.Ok(value): {
+                return value;
+            }
+
+            case Result.Err(reason): {
+                panic(message + ":", reason);
+            }
         }
     }
 }
@@ -100,13 +108,13 @@ impl<T, E> Result<T, E> {
 
 // What sort of failure stopped a function.
 pub enum Kind {
-    Panic,          // the program called panic
-    Bounds,         // an index outside an array or a text
-    Cast,           // `value as Type` on a value of another type
-    Arithmetic,     // a division by zero, a number too large for an Int
-    Depth,          // calls nested deeper than the limit
-    Memory,         // more memory than the limit
-    Library,        // a function of the standard library refused its arguments
+    Panic,       // the program called panic
+    Bounds,      // an index outside an array or a text
+    Cast,        // `value as Type` on a value of another type
+    Arithmetic,  // a division by zero, a number too large for an Int
+    Depth,       // calls nested deeper than the limit
+    Memory,      // more memory than the limit
+    Library,     // a function of the standard library refused its arguments
     Other,
 }
 
@@ -145,6 +153,7 @@ pub fn stack(skip: Int) -> [Location] {
 // there. For an error type of your own that keeps a stack.
 pub fn trace(message: String, stack: [Location]) -> String {
     let lines = [message];
+
     for i, call in stack {
         if i == 0 {
             push(lines, "  at " + call.describe());
@@ -152,6 +161,7 @@ pub fn trace(message: String, stack: [Location]) -> String {
             push(lines, "  called from " + call.describe());
         }
     }
+
     return strings.join(lines, "\n");
 }
 
@@ -160,6 +170,7 @@ pub fn trace(message: String, stack: [Location]) -> String {
 fn locations(parts: [String], from: Int) -> [Location] {
     let out: [Location] = [];
     let i = from;
+
     while i + 3 < arrays.len(parts) {
         push(out, Location {
             function: parts[i],
@@ -167,8 +178,10 @@ fn locations(parts: [String], from: Int) -> [Location] {
             line: strings.parseInt(parts[i + 2]) ?? 0,
             column: strings.parseInt(parts[i + 3]) ?? 0,
         });
+
         i += 4;
     }
+
     return out;
 }
 
@@ -176,8 +189,8 @@ fn locations(parts: [String], from: Int) -> [Location] {
 pub struct Failure {
     kind: Kind;
     message: String;
-    at: Location;           // where it happened
-    stack: [Location];      // the calls in progress, innermost first; stack[0] is `at`
+    at: Location;       // where it happened
+    stack: [Location];  // the calls in progress, innermost first; stack[0] is `at`
 }
 
 impl Failure {
@@ -207,6 +220,7 @@ pub fn attempt<T>(action: fn() -> T) -> Result<T, Failure> {
     if protect(action) {
         return Result.Ok(outcome() as T);
     }
+
     return Result.Err(caught());
 }
 
@@ -216,6 +230,7 @@ pub fn guard(action: fn() -> Void) -> Failure? {
     if protect(action) {
         return null;
     }
+
     return caught();
 }
 
@@ -229,7 +244,11 @@ fn caught() -> Failure {
 pub fn failureOf(parts: [String]) -> Failure {
     let stack = locations(parts, 2);
     let at = Location { function: "", file: "", line: 0, column: 0 };
-    if arrays.len(stack) > 0 { at = stack[0]; }
+
+    if arrays.len(stack) > 0 {
+        at = stack[0];
+    }
+
     return Failure { kind: kindOf(parts[0]), message: parts[1], at: at, stack: stack };
 }
 

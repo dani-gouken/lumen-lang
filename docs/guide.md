@@ -264,9 +264,54 @@ flags &= ~READ;
 let red = color >> 16 & 0xFF;
 ```
 
+### Methods on arrays, texts and numbers
+
+The library gives the builtin types the methods one expects, and calls follow one another:
+
+```rust
+import std.arrays;
+import std.strings;
+import std.math;
+
+let revenue = orders.filter(o -> o.paid).map(o -> o.total).sum();
+let slug = title.trim().lower().split(" ").filter(w -> w.len() > 2).join("-");
+let side = area.sqrt().round();
+```
+
+Every function of `std.arrays`, `std.strings` and `std.math` that works on an array, a text or a number is also a method of it, with the same name: `arrays.take(xs, 3)` is `xs.take(3)`, `strings.upper(s)` is `s.upper()`, `math.abs(n)` is `n.abs()`. The methods come with the module: without `import std.arrays;` an array has none, and the error says which import is missing.
+
+A program gives them methods of its own with `impl`, as it does for a struct:
+
+```rust
+impl String {
+    fn shout() -> String { return self.upper() + "!"; }
+}
+
+impl Int {
+    fn squared() -> Int { return self * self; }
+}
+
+impl<T> [T] {                         // every array; T is what it holds
+    fn second() -> T? { return self.at(1); }
+}
+
+impl [Order] {                        // the arrays of one type
+    fn revenue() -> Int { return self.filter(o -> o.paid).sumOf(o -> o.total); }
+}
+
+"hello".shout()         // "HELLO!"
+7.squared()             // 49
+[1, 2, 3].second()      // 2
+orders.revenue()
+```
+
+A method of the arrays of one type comes before one of the same name for every array. In another module the methods have to be `pub`, like those of a struct. A trait can be implemented for the builtin types and for every array (`impl<T> Sized for [T]`), and a value seen through the trait finds the right method when the program runs.
+
+One thing to know about a number written out: `-7.abs()` is `-(7.abs())`, as `-x.abs()` would be.
+
 ### Chains of calls
 
-`value |> f(a, b)` is `f(value, a, b)`: what is on the left of `|>` becomes the first argument of the call on its right. Calls that would nest, and read inside out, read in the order they happen:
+Methods chain by themselves. For functions that are not methods (yours, or those of another module), `value |> f(a, b)` is `f(value, a, b)`: what is on the left of `|>` becomes the first argument of the call on its right. Calls that would nest, and read inside out, read in the order they happen:
 
 ```rust
 import std.arrays;
@@ -300,12 +345,12 @@ It is only another way to write the call: the types are checked, and mistakes ar
 let xs = [10, 20, 30];
 xs[0] = 11;                 // replace an element
 push(xs, 40);               // grow
-arrays.len(xs)              // 4, with: import std.arrays;
+xs.len()                    // 4, with: import std.arrays;
 ```
 
-Arrays and texts have no members of their own: a dot reaches into a struct or an enum, nothing else. Their length, and everything else done to them, is a function of the standard library.
+What is done to an array is a method of it, or the function of `std.arrays` of the same name: `xs.len()` and `arrays.len(xs)` are the same thing. See [Methods on arrays, texts and numbers](#methods-on-arrays-texts-and-numbers).
 
-All elements have the same type. Reading or writing an index that does not exist is a runtime error; `xs[i] = v` replaces an element and never grows the array, `push` does. `arrays.pop(xs)`, `arrays.removeAt(xs, i)`, `arrays.insertAt(xs, i, v)` and `arrays.clear(xs)` take items out of the array itself, or put one in the middle: see [`std.arrays`](stdlib.md#stdarrays).
+All elements have the same type. Reading or writing an index that does not exist is a runtime error; `xs[i] = v` replaces an element and never grows the array, `push` does. `xs.pop()`, `xs.removeAt(i)`, `xs.insertAt(i, v)` and `xs.clear()` take items out of the array itself, or put one in the middle: see [`std.arrays`](stdlib.md#stdarrays).
 
 ### Structs, traits and methods
 

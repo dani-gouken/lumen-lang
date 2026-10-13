@@ -419,7 +419,7 @@ func TestCheckRejectsInvalidPrograms(t *testing.T) {
 		{"unknown method", `struct P { x: Int; } fn main() -> Int { let p = P { x: 1 }; return p.nope(); }`, "P has no method 'nope'"},
 		{"misspelled method", `struct P { x: Int; } impl P { fn total() -> Int { return self.x; } }
 			fn main() -> Int { let p = P { x: 1 }; return p.totl(); }`, "P has no method 'totl'"},
-		{"method on a number", `fn main() -> Int { let n = 1; return n.abs(); }`, "type int has no method 'abs'"},
+		{"method on a number", `fn main() -> Int { let n = 1; return n.abs(); }`, "a number has no method 'abs'"},
 		{"method argument count", `struct P { x: Int; } impl P { fn get() -> Int { return self.x; } }
 			fn main() -> Int { let p = P { x: 1 }; return p.get(1); }`, "expected 0 arguments, got 1"},
 		{"method result type", `struct P { x: Int; } impl P { fn name() -> String { return "p"; } }

@@ -81,7 +81,7 @@ trait Entrant {
 *   The methods of a trait impl are always visible from other modules; the trait itself needs `pub` to be named there.
 *   A type implements a given trait once.
 
-Traits can be implemented for structs, for enums, and for the builtin types `Int`, `Float`, `String` and `Bool`:
+Traits can be implemented for structs, for enums, for the builtin types `Int`, `Float`, `String` and `Bool`, and for every array (`impl<T> Sized for [T] { ... }`):
 
 ```rust
 impl Entrant for Int {
@@ -212,7 +212,7 @@ The standard library uses them itself: a `List` and a `Dict` take brackets and l
 
 ## What Is Not There
 
-*   **Methods on a builtin type without a trait** (`impl String { ... }`), and traits for arrays, tuples, optionals or functions.
+*   **Traits for tuples, optionals or functions**, and a trait for the arrays of one type only (`impl Sized for [Int]`): what an array holds is not known when the program runs. Methods without a trait are there for all of them: `impl String { ... }`, `impl<T> [T] { ... }`, `impl [Int] { ... }`.
 *   **Two impls of one trait for one type**: `impl Source<Int>` and `impl Source<String>` for the same struct.
 *   **Types a trait leaves to its impls** (`type Item;`): a trait says them as type parameters, `Iterable<T>`.
 *   **Functions of a type rather than of a value** (`Point.origin()`): write a function next to the struct.

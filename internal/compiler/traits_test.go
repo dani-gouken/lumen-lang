@@ -635,9 +635,19 @@ fn both<T: Ordered + Show>(item: T) -> String { return item.show(); }
 			"a method can be used as a value on a variable or a field", "Put the value in a variable first"},
 		{"a method with type parameters, as a value", "fn main() -> Int { let b = Box<Version> { item: Version { n: 1 } }; let f = b.pick; return 0; }", "E2014",
 			"method 'pick' has type parameters of its own", ""},
-		{"a method that does not exist on a number", "fn main() -> Int { return 5.nope(); }", "E2015", "type int has no method 'nope'", ""},
-		{"methods for a builtin type without a trait", "impl Int { fn double() -> Int { return self * 2; } }\nfn main() -> Int { return 0; }", "E2015",
-			"Int is a builtin type: it can implement a trait, not be given methods of its own", "impl Trait for Int { ... }"},
+		{"a method that does not exist on a number", "fn main() -> Int { return 5.nope(); }", "E2015", "a number has no method 'nope'", ""},
+		{"a trait for the arrays of one type", "trait Sized { fn size() -> Int; }\nimpl Sized for [Int] { fn size() -> Int { return 0; } }\nfn main() -> Int { return 0; }", "E2015",
+			"a trait is implemented for every array, not for the arrays of one type", "impl<T> Sized for [T] { ... }"},
+		{"an impl for arrays of something that is not its parameter", "impl<T> [U] { fn size() -> Int { return 0; } }\nfn main() -> Int { return 0; }", "E0001",
+			"an impl for arrays is for every array, or for the arrays of one type", "impl<T> [T] { ... }"},
+		{"a method an array does not have at all", "import std.arrays;\nfn main() -> Int { return [1, 2].nothingLikeIt(); }", "E2015",
+			"an array has no method 'nothingLikeIt'", "impl<T> [T] { fn nothingLikeIt(...) { ... } }"},
+		{"a method of an array misspelt", "import std.arrays;\nfn main() -> Int { return [1, 2].lenn(); }", "E2015",
+			"an array has no method 'lenn'", "Did you mean 'len'?"},
+		{"a method of a text misspelt", "import std.strings;\nfn main() -> String { return \"a\".Trim(); }", "E2015",
+			"a text has no method 'Trim'", "Did you mean 'trim'?"},
+		{"a method only arrays of numbers have", "import std.arrays;\nfn main() -> Int { return [\"a\"].sum(); }", "E2015",
+			"an array has no method 'sum'", ""},
 		{"a requirement where there can be none", "trait T<A: Show> { }\nfn main() -> Int { return 0; }", "E0001", "a type parameter cannot be given a requirement here", ""},
 	}
 	for _, tt := range tests {
@@ -734,4 +744,28 @@ Dune 12.50 costs 12.50 true
 Emma 7.05 costs 7.05 false
 [{cents: 100}, {cents: 300}] 2.00 0.00
 `)
+}
+
+// The usual methods of arrays, texts and numbers come with modules of the
+// library. A program that calls one without the module is told which.
+func TestMethodsOfBuiltinTypesNeedTheirModule(t *testing.T) {
+	cases := []struct{ name, src, msg, suggestion string }{
+		{"an array", "fn main() -> Int { return [1, 2].len(); }", "an array has no method 'len'", "import std.arrays;"},
+		{"a text", "fn main() -> String { return \"a\".trim(); }", "a text has no method 'trim'", "import std.strings;"},
+		{"a whole number", "fn main() -> Int { return 5.abs(); }", "a number has no method 'abs'", "import std.math;"},
+		{"a Float", "fn main() -> Float { return 2.5.sqrt(); }", "a number has no method 'sqrt'", "import std.math;"},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := errors.NewHandler()
+			Compile(tt.src, "test.lum", errs)
+			if !errs.HasErrors() {
+				t.Fatal("expected a diagnostic, got none")
+			}
+			d := errs.Diagnostics[0]
+			if d.Code != "E2015" || !strings.Contains(d.Message, tt.msg) || !strings.Contains(d.Suggestion, tt.suggestion) {
+				t.Errorf("expected E2015 %q suggesting %q, got %s: %s (%s)", tt.msg, tt.suggestion, d.Code, d.Message, d.Suggestion)
+			}
+		})
+	}
 }

@@ -1817,3 +1817,120 @@ func TestConstantsAreMadeOnce(t *testing.T) {
 	}
 	expectLines(t, out, "17000000", "true true true", "true")
 }
+
+// Methods on the builtin types: those the library gives arrays, texts and
+// numbers, called one after the other, and those a program adds.
+func TestMethodsOnBuiltinTypes(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+		import std.math;
+		import std.strings;
+		import std.result;
+		import std.result.{Result};
+
+		struct Order { customer: String; total: Int; paid: Bool; }
+		struct Point { x: Int; y: Int; }
+		trait Sized { fn size() -> Int; }
+		trait Described { fn describe() -> String; }
+
+		// A program's own methods, on every kind of builtin type
+		impl String {
+			fn shout() -> String { return self.upper() + "!"; }
+			fn initials() -> String { return self.words().map(w -> w.first(1)).join(""); }
+		}
+		impl Int {
+			fn times(action: fn(Int) -> Void) { for i in 0..self { action(i); } }
+			fn squared() -> Int { return self * self; }
+		}
+		impl Float { fn percent() -> String { return "${(self * 100).round()}%"; } }
+		impl Bool { fn yesNo() -> String { return if self { "yes" } else { "no" }; } }
+		impl<T> [T] {
+			fn second() -> T? { return self.at(1); }
+			fn pairs() -> [(T, T)] { return self.zip(self.drop(1)); }
+		}
+		impl [Point] { fn widest() -> Int { return self.map(p -> p.x).largest() ?? 0; } }
+		impl [Order] { fn revenue() -> Int { return self.filter(o -> o.paid).sumOf(o -> o.total); } }
+
+		// Traits, for every array and for the others
+		impl<T> Sized for [T] { fn size() -> Int { return self.len(); } }
+		impl Sized for String { fn size() -> Int { return self.len(); } }
+		impl Sized for Point { fn size() -> Int { return 2; } }
+		impl<T> Described for [T] { fn describe() -> String { return "${self.len()} items"; } }
+		impl Described for Int { fn describe() -> String { return "the number ${self}"; } }
+
+		fn larger(a: Sized, b: Sized) -> Bool { return a.size() > b.size(); }
+		fn sizes(things: [Sized]) -> [Int] { return things.map(thing -> thing.size()); }
+		fn tell<T: Described>(thing: T) -> String { return thing.describe(); }
+
+		fn orders() -> [Order] {
+			return [
+				Order { customer: "ada", total: 120, paid: true },
+				Order { customer: "bob", total: 80, paid: false },
+				Order { customer: "ada", total: 30, paid: true },
+				Order { customer: "cy", total: 200, paid: true },
+			];
+		}
+
+		fn main() {
+			// What the library gives, one call after the other
+			println(orders().filter(o -> o.paid).map(o -> o.total).sum(), orders().revenue());
+			println(orders().map(o -> o.customer).unique().map(strings.upper).join(", "));
+			println("  The Quick brown fox ".trim().lower().split(" ").filter(w -> w.len() > 3).map(w -> w.capitalize()).join("-"));
+			println([3, 1, 2].sortedNumbers().reversed(), [1, 2, 3].first(), [1, 2, 3].contains(2), [1, 2, 3].fold(0, (a, b) -> a + b));
+			println(orders().groupBy(o -> o.customer).keys(), orders().maxBy(o -> o.total)?.customer, orders().any(o -> o.total > 150));
+			println([1, 2, 3, 4, 5].take(3).drop(1), [1, 2, 3, 4, 5].chunks(2), [1, 2].concat([3]).len(), [[1], [2, 3]].map(row -> row.len()));
+			println("a,b,,c".split(",").filter(part -> !part.isEmpty()).len(), "abc".reverse().upper().startsWith("C"), "12".parseInt() ?? 0, "x".repeat(3).padLeft(5));
+			println((0 - 7).abs(), 7.isOdd(), 3.max(9), 2.pow(10), 9.0.sqrt(), 2.5.round(), 7.toFloat() / 2, 42.toString().len(), 1.5.toString(), 2.clamp(5, 9));
+
+			// Arrays that change
+			let xs: [Int] = [];
+			xs.push(4);
+			xs.push(5);
+			xs.insertAt(0, 3);
+			let last = xs.pop();
+			println(xs, last, xs.isEmpty());
+			xs.clear();
+			println(xs.len(), xs.first());
+
+			// The program's own
+			println("ada lovelace".shout(), "grace brewster hopper".initials(), 7.squared(), 0.256.percent(), true.yesNo(), (1 > 2).yesNo());
+			let seen: [Int] = [];
+			3.times(i -> push(seen, i * i));
+			println(seen, seen.second(), [1, 2, 3].pairs(), ["a"].second());
+			println([Point { x: 3, y: 0 }, Point { x: 9, y: 1 }].widest(), [Point { x: 1, y: 1 }].size(), "abc".size());
+
+			// Through a trait, where the type is only known when the program runs
+			println(larger([1, 2, 3], "ab"), larger("a", [1, 2]), larger(Point { x: 0, y: 0 }, [1]));
+			let things: [Sized] = [[1, 2], "three", Point { x: 0, y: 0 }, ["a"]];
+			println(sizes(things), tell([1, 2]), tell(5), tell(["x"]));
+
+			// With the pipe, the functions of the library and failures
+			println([1, 2, 3].map(n -> n * 2) |> arrays.sum, arrays.len([1, 2].concat([3])), "a b".words().len() |> math.max(1));
+			match result.attempt(() -> ([1, 2].at(5) ?? 0) + ([3].first() ?? 0)) {
+				case Result.Ok(n): println("got", n);
+				case Result.Err(failure): println(failure.message);
+			}
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out,
+		"350 350",
+		"ADA, BOB, CY",
+		"Quick-Brown",
+		"[3, 2, 1] 1 true 6",
+		`["ada", "bob", "cy"] cy true`,
+		"[2, 3] [[1, 2], [3, 4], [5]] 3 [1, 2]",
+		"3 true 12   xxx",
+		"7 true 9 1024 3 3 3.5 2 1.5 5",
+		"[3, 4] 5 false",
+		"0 null",
+		"ADA LOVELACE! gbh 49 26% yes no",
+		`[0, 1, 4] 1 [(1, 2), (2, 3)] null`,
+		"9 1 3",
+		"true false true",
+		"[2, 5, 2, 1] 2 items the number 5 1 items",
+		"12 3 2",
+		"got 3")
+}

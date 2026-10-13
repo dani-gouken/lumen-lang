@@ -160,6 +160,10 @@ func (c *Checker) methodType(recv Type, name string, typeArgs []Type) (*Function
 		if structType, ok := recv.(*StructType); ok {
 			args = structType.TypeArgs
 		}
+		if array, ok := recv.(*ArrayType); ok {
+			// In `impl<T> [T]`, T is what the array holds
+			args = []Type{array.ElementType}
+		}
 		for i, param := range impl.TypeParams {
 			bindings[param] = Unknown
 			if i < len(args) {
@@ -272,11 +276,21 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 			c.checkArgsOnly(e)
 			return Unknown
 		}
-		// A method a trait gives numbers or texts
+		// A method an impl gives numbers or texts
 		if ft, ok := c.methodType(t, member.Name, c.methodTypeArgs(t, member, e, expected)); ok {
+			c.checkMethodVisible(t, member)
 			c.info.Types[member] = ft
 			return c.checkArgs(e, ft)
 		}
+
+	case *ArrayType:
+		// A method an impl gives arrays: impl<T> [T] { ... }
+		if ft, ok := c.methodType(t, member.Name, c.methodTypeArgs(t, member, e, expected)); ok {
+			c.checkMethodVisible(t, member)
+			c.info.Types[member] = ft
+			return c.checkArgs(e, ft)
+		}
+		return c.noBuiltinMethod(e, member, "an array", ast.ArrayImpl, "len", "std.arrays")
 
 	case *TypeParam:
 		// What is required of the type parameter says what can be called
@@ -301,7 +315,46 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 		return Unknown
 	}
 
+	if recv.Equals(String) {
+		return c.noBuiltinMethod(e, member, "a text", "String", "trim", "std.strings")
+	}
+	if recv.Equals(Int) || recv.Equals(Float) {
+		return c.noBuiltinMethod(e, member, "a number", typeKey(recv), "abs", "std.math")
+	}
 	return fail("type %s has no method '%s'", recv, member.Name)
+}
+
+// noBuiltinMethod reports a method an array, a text or a number does not
+// have. Their usual methods come with a module of the library: when it is
+// not part of the program, that is most likely what is missing.
+func (c *Checker) noBuiltinMethod(e *ast.CallExpr, member *ast.MemberExpr, what, key, known, module string) Type {
+	c.checkArgsOnly(e)
+	if c.methods[key][known] == nil {
+		c.errorfWithSuggestion(member.Token(), ErrUnknownMethod,
+			fmt.Sprintf("The methods of %s come with %s: import %s;", what, module, module),
+			"%s has no method '%s'", what, member.Name)
+		return Unknown
+	}
+	var candidates []string
+	for method := range c.methods[key] {
+		candidates = append(candidates, method)
+	}
+	sort.Strings(candidates)
+	for _, candidate := range candidates {
+		if strings.EqualFold(candidate, member.Name) || editDistanceAtMostOne(candidate, member.Name) {
+			c.errorfWithSuggestion(member.Token(), ErrUnknownMethod, "Did you mean '"+candidate+"'?",
+				"%s has no method '%s'", what, member.Name)
+			return Unknown
+		}
+	}
+	impl := "impl " + key
+	if key == ast.ArrayImpl {
+		impl = "impl<T> [T]"
+	}
+	c.errorfWithSuggestion(member.Token(), ErrUnknownMethod,
+		fmt.Sprintf("Give %s a method of your own: %s { fn %s(...) { ... } }", what, impl, member.Name),
+		"%s has no method '%s'", what, member.Name)
+	return Unknown
 }
 
 // similarMember suggests a field or method of a struct close to name.

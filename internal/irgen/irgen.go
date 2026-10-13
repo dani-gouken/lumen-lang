@@ -229,6 +229,14 @@ func (g *IRGenerator) resolveMethod(receiver ast.Expr, name string) (dispatch, s
 		if key := builtinTypeName(t); key != "" && g.hasMethod(key, name) {
 			return dispatchStatic, key
 		}
+	case *types.ArrayType:
+		// A method an impl gives arrays: those of its items first
+		if item := types.ImplKey(t.ElementType); item != "" && item != ast.ArrayImpl && g.hasMethod(ast.ArrayImplOf(item), name) {
+			return dispatchStatic, ast.ArrayImplOf(item)
+		}
+		if g.hasMethod(ast.ArrayImpl, name) {
+			return dispatchStatic, ast.ArrayImpl
+		}
 	}
 
 	// The receiver's type is not known (its elements came from an untyped
@@ -266,7 +274,7 @@ func builtinTypeName(t *types.PrimitiveType) string {
 // in a fixed order.
 func (g *IRGenerator) builtinOwners(name string) []string {
 	var owners []string
-	for _, builtin := range []string{"Int", "Float", "String", "Bool"} {
+	for _, builtin := range []string{"Int", "Float", "String", "Bool", ast.ArrayImpl} {
 		if g.hasMethod(builtin, name) {
 			owners = append(owners, builtin)
 		}

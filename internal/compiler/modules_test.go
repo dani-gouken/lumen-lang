@@ -876,3 +876,59 @@ func TestRangesAsValuesInModules(t *testing.T) {
 		"main.lum": "fn main() { let r = 1..5; r.grow(); }",
 	}, "E2015", "main.lum", "Range has no method 'grow'")
 }
+
+// Methods a module gives a builtin type are the type's wherever the module
+// is part of the program: public ones for everyone, the others for the
+// module alone.
+func TestMethodsOnBuiltinTypesAcrossModules(t *testing.T) {
+	files := sources{
+		"main.lum": `
+			import geometry;
+			import geometry.{Point};
+			import text;
+
+			fn main() {
+				let points = [Point { x: 3, y: 4 }, Point { x: 9, y: 1 }];
+				println(points.widest(), points.second()?.x, [1, 2, 3].second(), "ada lovelace".initials(), 5.doubled());
+				println(geometry.spread(points), text.tidy("  Hi  "));
+			}
+		`,
+		"geometry.lum": `
+			import std.arrays;
+
+			pub struct Point { x: Int; y: Int; }
+
+			impl [Point] {
+				pub fn widest() -> Int { return self.map(p -> p.x).largest() ?? 0; }
+				fn narrowest() -> Int { return self.map(p -> p.x).smallest() ?? 0; }
+			}
+			impl<T> [T] { pub fn second() -> T? { return self.at(1); } }
+
+			pub fn spread(points: [Point]) -> Int { return points.widest() - points.narrowest(); }
+		`,
+		"text.lum": `
+			import std.strings;
+
+			impl String {
+				pub fn initials() -> String { return self.words().map(w -> w.first(1)).join(""); }
+				fn squeezed() -> String { return self.trim().lower(); }
+			}
+			impl Int { pub fn doubled() -> Int { return self * 2; } }
+
+			pub fn tidy(s: String) -> String { return s.squeezed(); }
+		`,
+	}
+	expectModulesOutput(t, files, "9 9 2 al 10\n6 hi\n")
+
+	files["main.lum"] = `
+		import geometry;
+		import geometry.{Point};
+		fn main() { println([Point { x: 1, y: 1 }].narrowest()); }
+	`
+	expectModulesError(t, files, "E2027", "main.lum", "method 'narrowest'")
+	files["main.lum"] = `
+		import text;
+		fn main() { println("a".squeezed()); }
+	`
+	expectModulesError(t, files, "E2027", "main.lum", "method 'squeezed'")
+}

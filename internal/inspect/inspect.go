@@ -1060,11 +1060,14 @@ func member(prog *ast.Program, owner, name string) (ast.Node, string) {
 				}
 			}
 		case *ast.ImplDecl:
-			if d.StructName != owner {
+			if !owns(d.StructName, owner) {
 				continue
 			}
 			for _, method := range d.Methods {
 				if method.Name == name {
+					if _, arrays := ast.IsArrayImpl(d.StructName); arrays {
+						return method, signature(method, name)
+					}
 					return method, signature(method, shown+"."+name)
 				}
 			}
@@ -1819,9 +1822,9 @@ func members(prog *ast.Program, owner string, add func(label, kind, detail strin
 				}
 			}
 		case *ast.ImplDecl:
-			if is(d.StructName) {
+			if is(d.StructName) || owns(d.StructName, owner) {
 				for _, method := range d.Methods {
-					if strings.Contains(d.StructName, ".") && !method.Pub && d.TraitName == "" {
+					if (strings.Contains(d.StructName, ".") || types.IsBuiltinTypeName(d.StructName)) && method.Module != "" && !method.Pub && d.TraitName == "" {
 						continue // Private to its module
 					}
 					add(method.Name, "method", signature(method, method.Name))
@@ -2086,8 +2089,24 @@ func ownerName(t types.Type) string {
 				return name
 			}
 		}
+	case *types.ArrayType:
+		// The methods of the arrays of its items, and of every array
+		return ast.ArrayImplOf(types.ImplKey(t.ElementType))
+	case *types.PrimitiveType:
+		// A number or a text has the methods impls give it
+		return types.ImplKey(t)
 	}
 	return ""
+}
+
+// owns reports whether what an impl is for gives its methods to an owner:
+// the same type, or every array when the owner is an array.
+func owns(implFor, owner string) bool {
+	if implFor == owner {
+		return true
+	}
+	_, arrays := ast.IsArrayImpl(owner)
+	return arrays && implFor == ast.ArrayImpl
 }
 
 // displayName shortens a name the loader made unique in the program to
