@@ -61,5 +61,5 @@ pub fn withExtension(path: String, extension: String) -> String {
 // The names along the path: "a/b/c.txt" gives ["a", "b", "c.txt"].
 pub fn parts(path: String) -> [String] {
     let wanted = fn(part: String) -> Bool { return part != ""; };
-    return arrays.filter(strings.split(clean(path), separator()), wanted);
+    return clean(path) |> strings.split(separator()) |> arrays.filter(wanted);
 }

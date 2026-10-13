@@ -68,14 +68,14 @@ impl Book {
     pub fn search(text: String) -> [Note] {
         let wanted = strings.lower(text);
         return arrays.filter(self.notes, fn(note: Note) -> Bool {
-            return strings.contains(strings.lower(note.title + " " + note.body), wanted);
+            return note.title + " " + note.body |> strings.lower() |> strings.contains(wanted);
         });
     }
 
     // Every tag in use, each once, in alphabetical order.
     pub fn tags() -> [String] {
-        let all = set.of(arrays.flatMap(self.notes, note -> note.tags));
-        return arrays.sortedTexts(all.items());
+        let all = self.notes |> arrays.flatMap(note -> note.tags) |> set.of();
+        return all.items() |> arrays.sortedTexts();
     }
 
     // Adds the note a document describes.
@@ -122,7 +122,7 @@ impl Book {
         // Tags: texts only, tidied, without repeats
         let tags = set.texts();
         for tag in document.get("tags")?.items() ?? [] {
-            let name = strings.lower(strings.trim(tag.text() ?? ""));
+            let name = (tag.text() ?? "") |> strings.trim() |> strings.lower();
             if name != "" { tags.add(name); }
         }
         return Result.Ok(Note { id: 0, title: title, body: body, tags: tags.items() });

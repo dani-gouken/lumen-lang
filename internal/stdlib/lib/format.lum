@@ -38,7 +38,7 @@ pub fn groupedWith(n: Int, separator: String) -> String {
         end -= 3;
     }
     push(groups, strings.first(digits, end));
-    let text = strings.join(arrays.reversed(groups), separator);
+    let text = groups |> arrays.reversed() |> strings.join(separator);
     if n < 0 { return "-" + text; }
     return text;
 }
@@ -166,7 +166,7 @@ pub fn tableWith(titles: [String], aligns: [Align], rows: [[String]]) -> String 
             let value = arrays.at(values, column) ?? "";
             push(cells, pad(value, width, arrays.at(aligns, column) ?? Align.Left));
         }
-        return strings.trimEnd(strings.join(cells, "  "));
+        return cells |> strings.join("  ") |> strings.trimEnd();
     };
 
     let lines = [line(titles)];

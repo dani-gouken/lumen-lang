@@ -157,7 +157,7 @@ fn report(log: Log) {
     }
     let first = hits[0].at;
     let last = hits[count - 1].at;
-    let clients = set.of(arrays.map(hits, hit -> hit.client));
+    let clients = hits |> arrays.map(hit -> hit.client) |> set.of();
     let bytes = arrays.sumOf(hits, hit -> hit.bytes);
 
     heading("Access log, ${first.format("dddd D MMMM YYYY")}");
@@ -182,8 +182,10 @@ fn report(log: Log) {
     let numbers = regex.must("/\\d+");
     let routes = arrays.groupBy(hits, hit -> hit.route(numbers));
     let rows: [[String]] = [];
-    let ranked = arrays.sortedBy(routes.keys(), route -> -arrays.len(routes.get(route) ?? []));
-    for route in arrays.take(ranked, 5) {
+    let mostVisited = routes.keys()
+        |> arrays.sortedBy(route -> -arrays.len(routes.get(route) ?? []))
+        |> arrays.take(5);
+    for route in mostVisited {
         let there = routes.get(route) ?? [];
         let slowest = arrays.fold(there, 0.0, (worst, hit) -> math.fmax(worst, hit.seconds));
         let failed = arrays.count(there, hit -> hit.outcome() == Outcome.ServerError);
@@ -211,7 +213,7 @@ fn report(log: Log) {
         hit -> hit.client);
     suspects.each(fn(client: String, refused: [Hit]) {
         if arrays.len(refused) >= 3 {
-            let paths = strings.join(arrays.map(refused, hit -> hit.path), ", ");
+            let paths = refused |> arrays.map(hit -> hit.path) |> strings.join(", ");
             println("${client} was refused ${arrays.len(refused)} times in a row: ${paths}");
         }
     });

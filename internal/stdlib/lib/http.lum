@@ -284,11 +284,9 @@ impl Server {
     // returns. A handler that stops, by a panic or any other failure, does
     // not stop the server: its request is answered with status 500.
     pub fn handle(count: Int, handler: fn(Request) -> Response) {
-        let done = 0;
-        while done < count {
+        for served in 0..count {
             let request = self.next()?;
             self.reply(answerOf(request, handler));
-            done++;
         }
     }
 
@@ -423,7 +421,7 @@ fn fit(route: [String], path: [String]) -> Dict<String>? {
 
 fn partsOf(path: String) -> [String] {
     let named = fn(part: String) -> Bool { return part != ""; };
-    return arrays.filter(strings.split(path, "/"), named);
+    return path |> strings.split("/") |> arrays.filter(named);
 }
 
 // "a=1&b=x+y" as a dictionary, the values decoded.

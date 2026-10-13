@@ -603,7 +603,7 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
         let groups: [[[Value]]] = [];
         let places = dict.empty<Int>();
         for row in rows {
-            let lookup = strings.join(arrays.map(by, expression -> key(eval(expression, row, null))), "|");
+            let lookup = by |> arrays.map(expression -> key(eval(expression, row, null))) |> strings.join("|");
             let place = places.get(lookup);
             if place == null {
                 places.set(lookup, arrays.len(groups));
@@ -640,7 +640,7 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
         let seen = dict.empty<Bool>();
         let unique: [Entry] = [];
         for entry in entries {
-            let lookup = strings.join(arrays.map(entry.row, key), "|");
+            let lookup = entry.row |> arrays.map(key) |> strings.join("|");
             if !seen.has(lookup) {
                 seen.set(lookup, true);
                 push(unique, entry);
@@ -666,5 +666,6 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
     let to = arrays.len(entries);
     let limit = query.limit;
     if limit != null { to = math.min(from + limit, to); }
-    return Result.Ok(Answer { names: names, rows: arrays.map(arrays.slice(entries, from, to), entry -> entry.row) });
+    let kept = entries |> arrays.slice(from, to) |> arrays.map(entry -> entry.row);
+    return Result.Ok(Answer { names: names, rows: kept });
 }

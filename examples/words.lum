@@ -20,7 +20,7 @@ struct Count {
 // The words of a text in lower case, without the punctuation around them.
 fn wordsOf(text: String) -> [String] {
     let out: [String] = [];
-    for raw in strings.words(strings.lower(text)) {
+    for raw in text |> strings.lower() |> strings.words() {
         let word = raw;
         for mark in [",", ".", ";", ":", "!", "?", "\""] {
             word = strings.replace(word, mark, "");
@@ -45,7 +45,7 @@ fn main() -> Int {
 
     // As a list of structs, most frequent first; ties in alphabetical order
     let table = list.empty<Count>();
-    for word in arrays.sortedTexts(counts.keys()) {
+    for word in counts.keys() |> arrays.sortedTexts() {
         table.add(Count { word: word, times: counts.get(word) ?? 0 });
     }
     table.sort((a, b) -> a.times > b.times);
@@ -61,14 +61,15 @@ fn main() -> Int {
     let average = math.toFloat(arrays.sum(lengths)) / math.toFloat(arrays.len(lengths));
     println();
     println("average length:", math.toFloat(math.round(average * 100.0)) / 100.0);
-    println("longest:", arrays.sorted(counts.keys(), (a, b) -> strings.len(a) > strings.len(b))[0]);
+    let byLength = counts.keys() |> arrays.sorted((a, b) -> strings.len(a) > strings.len(b));
+    println("longest:", byLength[0]);
 
     let once = table.filter(row -> row.times == 1);
-    println("used once:", strings.join(once.map<String>(row -> row.word).toArray(), ", "));
+    println("used once:", once.map<String>(row -> row.word).toArray() |> strings.join(", "));
 
     // Taking a sentence apart and putting it back differently
     let first = strings.first(text, strings.indexOf(text, ",") ?? strings.len(text));
-    println(strings.join(arrays.reversed(strings.words(first)), " "));
-    println(strings.join(arrays.map(strings.words(first), strings.capitalize), " "));
+    println(first |> strings.words() |> arrays.reversed() |> strings.join(" "));
+    println(first |> strings.words() |> arrays.map(strings.capitalize) |> strings.join(" "));
     return 0;
 }

@@ -175,8 +175,7 @@ impl<V> Dict<V> {
     pub fn sortedKeys() -> [String] {
         let keys = self.keys();
         // Insertion sort: std.arrays builds on this module, not the reverse
-        let i = 1;
-        while i < arrays.len(keys) {
+        for i in 1..arrays.len(keys) {
             let key = keys[i];
             let j = i - 1;
             while j >= 0 && keys[j] > key {
@@ -184,7 +183,6 @@ impl<V> Dict<V> {
                 j--;
             }
             keys[j + 1] = key;
-            i++;
         }
         return keys;
     }

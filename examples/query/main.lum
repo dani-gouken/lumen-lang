@@ -27,7 +27,7 @@ import query.value.{show};
 // Answers a query: its rows, one per line, the values between bars.
 fn rows(text: String, folder: String) -> Result<[String], String> {
     let answer = engine.answer(parser.parse(text)?, folder)?;
-    return Result.Ok(arrays.map(answer.rows, row -> strings.join(arrays.map(row, show), "|")));
+    return Result.Ok(answer.rows |> arrays.map(row -> row |> arrays.map(show) |> strings.join("|")));
 }
 
 // A few queries that show what there is.

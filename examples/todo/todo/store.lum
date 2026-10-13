@@ -70,7 +70,7 @@ impl Store {
     // One more than the highest id in use: ids are never given twice,
     // even after a task is removed from the middle.
     pub fn nextId() -> Int {
-        return (arrays.largest(arrays.map(self.tasks, t -> t.id)) ?? 0) + 1;
+        return (self.tasks |> arrays.map(t -> t.id) |> arrays.largest() ?? 0) + 1;
     }
 
     pub fn find(id: Int) -> Task? {

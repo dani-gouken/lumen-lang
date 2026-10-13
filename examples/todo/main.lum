@@ -133,7 +133,7 @@ fn listing(list: Store, today: Date, all: Bool) -> [String] {
         if days < 0 { return days; }
         return t.priority.rank() * 10000 + days;
     };
-    let rows = arrays.map(arrays.sortedBy(shown, urgency), fn(t: Task) -> [String] {
+    let rows = shown |> arrays.sortedBy(urgency) |> arrays.map(fn(t: Task) -> [String] {
         let mark = " ";
         match t.state {
             case State.Open: { if t.isLate(today) { mark = "!"; } }
@@ -142,7 +142,7 @@ fn listing(list: Store, today: Date, all: Bool) -> [String] {
         return [toString(t.id), mark, t.title, t.priority.name(), t.deadline(today)];
     });
 
-    let lines = strings.lines(format.table(["#", "", "task", "priority", "due"], rows));
+    let lines = format.table(["#", "", "task", "priority", "due"], rows) |> strings.lines();
     let open = arrays.count(list.tasks, t -> t.isOpen());
     let late = arrays.count(list.tasks, t -> t.isLate(today));
     push(lines, "");

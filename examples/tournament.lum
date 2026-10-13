@@ -176,8 +176,10 @@ fn widest<T: Show>(items: [T]) -> Int {
 }
 
 fn podium<T: Entrant>(table: Table<T>) -> String {
-    let names = arrays.map(arrays.take(table.ranked(), 3), row -> row.name());
-    return strings.join(names, " > ");
+    return table.ranked()
+        |> arrays.take(3)
+        |> arrays.map(row -> row.name())
+        |> strings.join(" > ");
 }
 
 fn main() -> Int {
