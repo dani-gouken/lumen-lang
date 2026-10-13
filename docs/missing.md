@@ -93,7 +93,6 @@ Most of this list has since been added, and the library and the examples rewritt
 | Unused import warning | Silent |
 | Per-field privacy | A `pub struct` exposes every field |
 | `pub` signatures checked for private types | `pub fn f() -> Secret` compiles; the caller holds a value whose type it cannot name |
-| Dead code removal | Every imported module ends up in the bytecode whole, used or not |
 | Separate compilation | All modules are parsed and compiled on every run |
 
 ### More from `match` — S to M each
@@ -256,7 +255,7 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 
 | Item | Detail |
 |------|--------|
-| `.lc` compatibility | Bytecode files carry a version (4 today) that is raised by hand when the format changes; a new opcode alone does not raise it |
+| `.lc` compatibility | Bytecode files carry a version (5 today) that is raised by hand when the format changes; a new opcode alone does not raise it |
 | GC roots and Go's GC | Heap objects are held as integers in registers and stay alive only through the VM's object list; correct today, fragile if Go ever moves objects. Every such conversion goes through one function (`header` in `value.go`) |
 | Pauses | The collector stops the program for as long as it takes to mark what is alive: not incremental, not generational. Some tens of milliseconds with millions of objects alive |
 | Stopping a program that waits | `VM.Interrupt` and Ctrl-C stop a program that computes or sleeps where it is. One that waits for a line of input or an answer from the network stops when that wait is over; `lumen` ends the process after two seconds |

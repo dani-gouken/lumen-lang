@@ -272,6 +272,7 @@ func TestGenerateDebugInfo(t *testing.T) {
 func TestGenerateKeepsFunctionSignatures(t *testing.T) {
 	typed := ir.NewBuilder("main")
 	typed.Func.Signature = "fn()->int"
+	typed.CreateMov(funcRef("helper"))
 	typed.CreateRet(typed.CreateMov(intConst(1)))
 
 	untyped := ir.NewBuilder("helper")
@@ -467,4 +468,75 @@ func TestGenerateManyFunctions(t *testing.T) {
 		t.Errorf("expected %d functions, got %d", count+1, len(chunk.Prototypes))
 	}
 	expectInt(t, run(t, chunk), 5+count*(count-1)/2)
+}
+
+// Only what main can come to run is compiled: a function nothing refers
+// to is left out, and one reached through a closure or through a function
+// that is itself only reached from another is kept.
+func TestGenerateLeavesOutWhatIsNeverReached(t *testing.T) {
+	ret := func(name string, refs ...ir.Value) *ir.Function {
+		b := ir.NewBuilder(name)
+		for _, ref := range refs {
+			b.CreateMov(ref)
+		}
+		b.CreateRet(b.CreateMov(intConst(1)))
+		return b.Func
+	}
+
+	main := ir.NewBuilder("main")
+	main.CreateMov(funcRef("direct"))
+	main.CreateMakeClosure(funcRef("captured"))
+	// A text spelled like a function is not a reference to it
+	main.CreateMov(ir.Constant{Val: "spelled", Type: "String"})
+	main.CreateRet(main.CreateMov(intConst(0)))
+
+	// After a return nothing runs: what only that code names is not reached
+	early := ir.NewBuilder("direct")
+	early.CreateMov(funcRef("indirect"))
+	early.CreateRet(early.CreateMov(intConst(1)))
+	early.CreateMov(funcRef("afterReturn"))
+
+	chunk := generate(t,
+		ret("unused", funcRef("onlyFromUnused")),
+		main.Func,
+		ret("spelled"),
+		early.Func,
+		ret("indirect", funcRef("direct")), // A cycle ends
+		ret("captured"),
+		ret("onlyFromUnused"),
+		ret("afterReturn"),
+	)
+
+	var names []string
+	for _, p := range chunk.Prototypes {
+		names = append(names, p.Name)
+	}
+	if got := strings.Join(names, " "); got != "main direct indirect captured" {
+		t.Errorf("expected main and what it reaches, in their order, got: %s", got)
+	}
+	// What is kept still refers to the right functions by their new numbers
+	if err := vm.Verify(chunk); err != nil {
+		t.Errorf("the chunk does not verify: %v", err)
+	}
+	for _, instr := range chunk.Code {
+		if instr.Op == vm.OpNEWFUNC && int(instr.B) >= len(chunk.Prototypes) {
+			t.Errorf("a function is referred to by the number %d of %d", instr.B, len(chunk.Prototypes))
+		}
+	}
+}
+
+// Without a main there is nowhere to start from: the error says so, and
+// is the only one.
+func TestGenerateWithoutMainKeepsEverything(t *testing.T) {
+	b := ir.NewBuilder("helper")
+	b.CreateRet(b.CreateMov(intConst(1)))
+
+	errs := errors.NewHandler()
+	chunk := NewGenerator(&ir.Program{Functions: []*ir.Function{b.Func}}, nil, errs).Generate()
+	if len(errs.Diagnostics) != 1 || errs.Diagnostics[0].Code != ErrMissingMain {
+		t.Errorf("expected the missing entry point to be reported, got %v", errs.Diagnostics)
+	}
+	if len(chunk.Prototypes) != 1 {
+		t.Errorf("expected the function to be compiled all the same, got %d", len(chunk.Prototypes))
+	}
 }

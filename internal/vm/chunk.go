@@ -92,3 +92,13 @@ func (c *Chunk) FindPrototype(name string) int {
 	}
 	return -1
 }
+
+// Stripped returns the chunk without its debug information: the same
+// program, smaller, whose errors say what went wrong and at which
+// instruction but not at which line of the source.
+func (c *Chunk) Stripped() *Chunk {
+	stripped := *c
+	stripped.DebugInfo = make(map[int]*DebugInfo)
+	stripped.Breakpoints = nil
+	return &stripped
+}

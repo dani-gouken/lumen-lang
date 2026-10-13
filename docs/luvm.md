@@ -318,8 +318,10 @@ runtime, and exists so that `value as fn(Int) -> Int` and
 
 ### Bytecode file version
 
-`.lc` files start with a format version, currently **4** (1 predates the
-48-bit value payload, 2 the tag of null, 3 had one-byte operands). A file of
+`.lc` files start with a format version, currently **5** (1 predates the
+48-bit value payload, 2 the tag of null, 3 had one-byte operands, 4 wrote
+debug information once per instruction; see [debug-info.md](debug-info.md)).
+The same chunk is always written as the same bytes. A file of
 another version
 is refused with `unsupported bytecode version` rather than misread; rebuild it
 from source.

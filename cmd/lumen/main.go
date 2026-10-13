@@ -24,7 +24,8 @@ import (
 // Limits of the virtual machine, settable from the command line and from
 // the project file; the command line wins.
 var (
-	heapMB   = 0 // 0: the VM's default
+	strip    = false // Leave debug information out of what build writes
+	heapMB   = 0     // 0: the VM's default
 	maxDepth = 0
 )
 
@@ -108,9 +109,13 @@ func parseOptions(args []string) []string {
 		if arg == "--" && afterFile {
 			return append(rest, args[i+1:]...)
 		}
-		isOurs := name == "--heap-mb" || name == "--max-depth"
+		isOurs := name == "--heap-mb" || name == "--max-depth" || arg == "--strip"
 		if !strings.HasPrefix(arg, "--") || (afterFile && !isOurs) {
 			rest = append(rest, arg)
+			continue
+		}
+		if arg == "--strip" {
+			strip = true
 			continue
 		}
 
@@ -245,6 +250,10 @@ func printHelp() {
 	fmt.Println("  --heap-mb=N                Memory the program may use, in MB (default 256)")
 	fmt.Println("  --max-depth=N              How deep calls may nest (default 10000)")
 	fmt.Println()
+	fmt.Println("Option for build:")
+	fmt.Println("  --strip                    Leave out what errors use to name the source line:")
+	fmt.Println("                             a smaller file, whose errors name the instruction")
+	fmt.Println()
 	fmt.Println("Projects:")
 	fmt.Println("  A lumen.json in the program's folder, or above it, says where the program")
 	fmt.Println("  starts (\"entry\"), where module paths start (\"root\"), which packages it")
@@ -371,6 +380,9 @@ func cmdBuild(inputFile, outputFile string) {
 	if strings.HasSuffix(outputFile, ".lasm") {
 		output = []byte(asm.Disassemble(chunk))
 	} else {
+		if strip {
+			chunk = chunk.Stripped()
+		}
 		bytecode, err := vm.SerializeChunk(chunk)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Serialization error: %v\n", err)

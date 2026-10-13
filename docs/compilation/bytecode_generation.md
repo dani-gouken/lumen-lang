@@ -102,6 +102,12 @@ Only blocks reachable from the entry block are emitted. IR generation leaves emp
 
 Within a block, instructions after the first terminator are ignored for the same reason.
 
+The same is done one level up, for functions: only those `main` can come to run are compiled. Starting from `main`, every function an instruction names is followed, to call it or to make a value of it (a method attached to a struct, a closure, what a task runs), then the functions those name, and so on. Nothing finds a function by its name while a program runs, so following the names is exact, and what is left out can never be missed.
+
+This is what keeps a program small that imports a module of the library for one function: it carries that function and what it needs. The seven modules a small report imports compile to some 500 KB whole; the report itself to under 10 KB. Prototype numbers are given to the functions kept, in their original order.
+
+Without a `main` there is nowhere to start from: everything is compiled, and the missing entry point reported.
+
 ### Jumps
 
 Blocks are emitted in their IR order. A jump is always the three-word long form with a 32-bit relative offset:

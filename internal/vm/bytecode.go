@@ -13,186 +13,228 @@ const (
 	// 2: value tags moved to bits 48-51; prototypes carry a signature
 	// 3: null has its own tag, so float infinity is no longer read as null
 	// 4: instruction operands are 16 bits wide
-	bytecodeVersion uint32 = 4
+	// 5: debug information is written as tables, each text once
+	bytecodeVersion uint32 = 5
 
 	// Bytes per instruction in a file: opcode, then three 16-bit operands
 	instrSize = 1 + 3*2
 )
 
+// byteWriter writes the parts of a bytecode file in order.
+type byteWriter struct {
+	data []byte
+}
+
+func (w *byteWriter) uint32(n int) {
+	w.data = binary.LittleEndian.AppendUint32(w.data, uint32(n))
+}
+
+func (w *byteWriter) string(s string) {
+	w.uint32(len(s))
+	w.data = append(w.data, s...)
+}
+
 // SerializeChunk converts a Chunk to binary bytecode format.
-// Format: [Magic:4][Version:4][ConstCount:4][Constants...][CodeCount:4][Code...][ProtoCount:4][Prototypes...][ExternCount:4][ExternNames...][StringPoolCount:4][StringPool...][DebugInfoCount:4][DebugInfo...]
+//
+// Format, every number 4 bytes unless said otherwise:
+//
+//	magic, version
+//	constants:  count, then 8 bytes each
+//	code:       count, then 7 bytes each (opcode, three 16-bit operands)
+//	prototypes: count, then name, code start, code size, registers,
+//	            arguments, captured variables, signature
+//	externs:    count, then a name each
+//	strings:    count, then a text each
+//	debug info: see writeDebugInfo
+//
+// A text is its length in bytes followed by the bytes. The same chunk is
+// always written as the same bytes.
 func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	if chunk == nil {
 		return nil, fmt.Errorf("cannot serialize nil chunk")
 	}
+	w := &byteWriter{data: make([]byte, 0, 64+len(chunk.Constants)*8+len(chunk.Code)*(instrSize+4))}
 
-	// Calculate total size
-	headerSize := 4 + 4 // magic + version
-	constSize := 4 + (len(chunk.Constants) * 8)
-	codeSize := 4 + (len(chunk.Code) * instrSize)
+	w.uint32(int(bytecodeFileMagic))
+	w.uint32(int(bytecodeVersion))
 
-	// Calculate prototypes size
-	protoSize := 4 // count
-	for _, proto := range chunk.Prototypes {
-		// Each prototype: NameLen + Name + CodeStart + CodeSize + RegisterCount + ArgCount + UpvalueCount
-		// + SignatureLen + Signature
-		protoSize += 4 + len(proto.Name) + 4 + 4 + 4 + 4 + 4 + 4 + len(proto.Signature)
-	}
-
-	// Calculate extern names size
-	externSize := 4 // count
-	for _, name := range chunk.ExternNames {
-		externSize += 4 + len(name) // length + string data
-	}
-
-	// Calculate string pool size
-	stringPoolSize := 4 // count
-	for _, str := range chunk.StringPool {
-		stringPoolSize += 4 + len(str) // length + string data
-	}
-
-	// Calculate debug info size
-	debugSize := 4 // count
-	for _, debug := range chunk.DebugInfo {
-		if debug != nil {
-			// Each debug info: 4 (instr index) + 4 (file path len) + file path + 4 (line) + 4 (column) +
-			// 4 (source line len) + source line + 4 (func name len) + func name +
-			// 4 (description len) + description + 4 (notes len) + notes
-			debugSize += 4 + 4 + len(debug.FilePath) + 4 + 4 +
-				4 + len(debug.SourceLine) + 4 + len(debug.FuncName) +
-				4 + len(debug.Description) + 4 + len(debug.Notes)
-		}
-	}
-
-	totalSize := headerSize + constSize + codeSize + protoSize + externSize + stringPoolSize + debugSize
-
-	buf := make([]byte, totalSize)
-	offset := 0
-
-	// Write magic number
-	binary.LittleEndian.PutUint32(buf[offset:], bytecodeFileMagic)
-	offset += 4
-
-	// Write version
-	binary.LittleEndian.PutUint32(buf[offset:], bytecodeVersion)
-	offset += 4
-
-	// Write constant pool
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.Constants)))
-	offset += 4
+	w.uint32(len(chunk.Constants))
 	for _, val := range chunk.Constants {
-		binary.LittleEndian.PutUint64(buf[offset:], uint64(val))
-		offset += 8
+		w.data = binary.LittleEndian.AppendUint64(w.data, uint64(val))
 	}
 
-	// Write code
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.Code)))
-	offset += 4
+	w.uint32(len(chunk.Code))
 	for _, instr := range chunk.Code {
-		buf[offset] = byte(instr.Op)
-		binary.LittleEndian.PutUint16(buf[offset+1:], instr.A)
-		binary.LittleEndian.PutUint16(buf[offset+3:], instr.B)
-		binary.LittleEndian.PutUint16(buf[offset+5:], instr.C)
-		offset += instrSize
+		w.data = append(w.data, byte(instr.Op))
+		w.data = binary.LittleEndian.AppendUint16(w.data, instr.A)
+		w.data = binary.LittleEndian.AppendUint16(w.data, instr.B)
+		w.data = binary.LittleEndian.AppendUint16(w.data, instr.C)
 	}
 
-	// Write function prototypes
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.Prototypes)))
-	offset += 4
+	w.uint32(len(chunk.Prototypes))
 	for _, proto := range chunk.Prototypes {
-		// Write function name
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(proto.Name)))
-		offset += 4
-		copy(buf[offset:], []byte(proto.Name))
-		offset += len(proto.Name)
-
-		// Write metadata
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.CodeStart))
-		offset += 4
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.CodeSize))
-		offset += 4
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.RegisterCount))
-		offset += 4
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.ArgCount))
-		offset += 4
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(proto.UpvalueCount))
-		offset += 4
-
-		// Write signature
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(proto.Signature)))
-		offset += 4
-		copy(buf[offset:], []byte(proto.Signature))
-		offset += len(proto.Signature)
+		w.string(proto.Name)
+		w.uint32(proto.CodeStart)
+		w.uint32(proto.CodeSize)
+		w.uint32(proto.RegisterCount)
+		w.uint32(proto.ArgCount)
+		w.uint32(proto.UpvalueCount)
+		w.string(proto.Signature)
 	}
 
-	// Write extern names
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.ExternNames)))
-	offset += 4
+	w.uint32(len(chunk.ExternNames))
 	for _, name := range chunk.ExternNames {
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(name)))
-		offset += 4
-		copy(buf[offset:], []byte(name))
-		offset += len(name)
+		w.string(name)
 	}
 
-	// Write string pool
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.StringPool)))
-	offset += 4
+	w.uint32(len(chunk.StringPool))
 	for _, str := range chunk.StringPool {
-		binary.LittleEndian.PutUint32(buf[offset:], uint32(len(str)))
-		offset += 4
-		copy(buf[offset:], []byte(str))
-		offset += len(str)
+		w.string(str)
 	}
 
-	// Write debug info
-	binary.LittleEndian.PutUint32(buf[offset:], uint32(len(chunk.DebugInfo)))
-	offset += 4
-	for instrIdx, debug := range chunk.DebugInfo {
-		if debug != nil {
-			// Write instruction index
-			binary.LittleEndian.PutUint32(buf[offset:], uint32(instrIdx))
-			offset += 4
+	writeDebugInfo(w, chunk)
+	return w.data, nil
+}
 
-			// Write file path
-			binary.LittleEndian.PutUint32(buf[offset:], uint32(len(debug.FilePath)))
-			offset += 4
-			copy(buf[offset:], []byte(debug.FilePath))
-			offset += len(debug.FilePath)
+// Debug information says, for an instruction, where in the source it comes
+// from: what an error message shows. Most of it is the same from one
+// instruction to the next, a statement being several instructions and a
+// line several statements, so it is written as three tables, each thing
+// once:
+//
+//	texts:   count, then a text each: the file paths, the source lines,
+//	         the function names
+//	places:  count, then seven numbers each: file, line, column, source
+//	         line, function, description, notes (the texts by their number)
+//	runs:    count, then three numbers each: the first instruction, how
+//	         many instructions in a row, and the place they all come from
+//
+// Read back, it is what it was: every instruction has the place it had.
+func writeDebugInfo(w *byteWriter, chunk *Chunk) {
+	var texts []string
+	textIndex := map[string]int{}
+	text := func(s string) int {
+		idx, ok := textIndex[s]
+		if !ok {
+			idx = len(texts)
+			texts = append(texts, s)
+			textIndex[s] = idx
+		}
+		return idx
+	}
 
-			// Write line and column
-			binary.LittleEndian.PutUint32(buf[offset:], uint32(debug.Line))
-			offset += 4
-			binary.LittleEndian.PutUint32(buf[offset:], uint32(debug.Column))
-			offset += 4
+	type run struct{ start, length, place int }
+	var places []DebugInfo
+	placeIndex := map[DebugInfo]int{}
+	var runs []run
 
-			// Write source line
-			binary.LittleEndian.PutUint32(buf[offset:], uint32(len(debug.SourceLine)))
-			offset += 4
-			copy(buf[offset:], []byte(debug.SourceLine))
-			offset += len(debug.SourceLine)
+	for ip := range chunk.Code {
+		info := chunk.DebugInfo[ip]
+		if info == nil {
+			continue
+		}
+		place, ok := placeIndex[*info]
+		if !ok {
+			place = len(places)
+			places = append(places, *info)
+			placeIndex[*info] = place
+		}
+		if n := len(runs); n > 0 && runs[n-1].place == place && runs[n-1].start+runs[n-1].length == ip {
+			runs[n-1].length++
+			continue
+		}
+		runs = append(runs, run{start: ip, length: 1, place: place})
+	}
 
-			// Write function name
-			binary.LittleEndian.PutUint32(buf[offset:], uint32(len(debug.FuncName)))
-			offset += 4
-			copy(buf[offset:], []byte(debug.FuncName))
-			offset += len(debug.FuncName)
+	// The texts are numbered as the places name them, then written first:
+	// a reader has them all before it meets a number that refers to one
+	numbered := make([][7]int, len(places))
+	for i, info := range places {
+		numbered[i] = [7]int{text(info.FilePath), info.Line, info.Column, text(info.SourceLine), text(info.FuncName), text(info.Description), text(info.Notes)}
+	}
 
-			// Write description
-			binary.LittleEndian.PutUint32(buf[offset:], uint32(len(debug.Description)))
-			offset += 4
-			copy(buf[offset:], []byte(debug.Description))
-			offset += len(debug.Description)
-
-			// Write notes
-			binary.LittleEndian.PutUint32(buf[offset:], uint32(len(debug.Notes)))
-			offset += 4
-			copy(buf[offset:], []byte(debug.Notes))
-			offset += len(debug.Notes)
+	w.uint32(len(texts))
+	for _, s := range texts {
+		w.string(s)
+	}
+	w.uint32(len(numbered))
+	for _, fields := range numbered {
+		for _, field := range fields {
+			w.uint32(field)
 		}
 	}
+	w.uint32(len(runs))
+	for _, r := range runs {
+		w.uint32(r.start)
+		w.uint32(r.length)
+		w.uint32(r.place)
+	}
+}
 
-	return buf, nil
+// readDebugInfo reads what writeDebugInfo wrote.
+func readDebugInfo(r *byteReader, chunk *Chunk) error {
+	textCount, err := r.count("debug texts", 4)
+	if err != nil {
+		return err
+	}
+	texts := make([]string, textCount)
+	for i := range texts {
+		if texts[i], err = r.string("debug text"); err != nil {
+			return err
+		}
+	}
+	text := func(n uint32) (string, error) {
+		if int(n) >= len(texts) {
+			return "", fmt.Errorf("invalid bytecode: debug text %d of %d", n, len(texts))
+		}
+		return texts[n], nil
+	}
+
+	placeCount, err := r.count("debug places", 7*4)
+	if err != nil {
+		return err
+	}
+	places := make([]*DebugInfo, placeCount)
+	for i := range places {
+		var fields [7]uint32
+		for j := range fields {
+			fields[j], _ = r.uint32("debug place")
+		}
+		if fields[1] > math.MaxInt32 || fields[2] > math.MaxInt32 {
+			return fmt.Errorf("invalid bytecode: debug place %d is at line %d, column %d", i, fields[1], fields[2])
+		}
+		info := &DebugInfo{Line: int(fields[1]), Column: int(fields[2])}
+		for _, part := range []struct {
+			into *string
+			from uint32
+		}{{&info.FilePath, fields[0]}, {&info.SourceLine, fields[3]}, {&info.FuncName, fields[4]}, {&info.Description, fields[5]}, {&info.Notes, fields[6]}} {
+			if *part.into, err = text(part.from); err != nil {
+				return err
+			}
+		}
+		places[i] = info
+	}
+
+	runCount, err := r.count("debug runs", 3*4)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < runCount; i++ {
+		start, _ := r.uint32("debug run")
+		length, _ := r.uint32("debug run")
+		place, _ := r.uint32("debug run")
+		if int(place) >= len(places) {
+			return fmt.Errorf("invalid bytecode: debug place %d of %d", place, len(places))
+		}
+		if uint64(start)+uint64(length) > uint64(len(chunk.Code)) {
+			return fmt.Errorf("invalid bytecode: debug info for instructions %d to %d of %d", start, uint64(start)+uint64(length), len(chunk.Code))
+		}
+		// Instructions of one place share its record
+		for ip := int(start); ip < int(start)+int(length); ip++ {
+			chunk.DebugInfo[ip] = places[place]
+		}
+	}
+	return nil
 }
 
 // byteReader reads the parts of a bytecode file in order. Nothing in a
@@ -346,45 +388,11 @@ func DeserializeChunk(data []byte) (*Chunk, error) {
 		}
 	}
 
-	// Debug info: an instruction, a file, a line, a column, four texts
-	debugCount, err := r.count("debug info entries", 4+4+8+4*4)
-	if err != nil {
+	if err := readDebugInfo(r, chunk); err != nil {
 		return nil, err
 	}
-	for i := 0; i < debugCount; i++ {
-		debug := &DebugInfo{}
-		instrIdx, err := r.uint32("debug info instruction index")
-		if err != nil {
-			return nil, err
-		}
-		if debug.FilePath, err = r.string("file path"); err != nil {
-			return nil, err
-		}
-		line, err := r.uint32("line")
-		if err != nil {
-			return nil, err
-		}
-		column, err := r.uint32("column")
-		if err != nil {
-			return nil, err
-		}
-		debug.Line, debug.Column = int(line), int(column)
-		if debug.SourceLine, err = r.string("source line"); err != nil {
-			return nil, err
-		}
-		if debug.FuncName, err = r.string("function name"); err != nil {
-			return nil, err
-		}
-		if debug.Description, err = r.string("description"); err != nil {
-			return nil, err
-		}
-		if debug.Notes, err = r.string("notes"); err != nil {
-			return nil, err
-		}
-		if int(instrIdx) >= len(chunk.Code) {
-			return nil, fmt.Errorf("invalid bytecode: debug info for instruction %d of %d", instrIdx, len(chunk.Code))
-		}
-		chunk.DebugInfo[int(instrIdx)] = debug
+	if r.left() != 0 {
+		return nil, fmt.Errorf("invalid bytecode: %d bytes after the end of the program", r.left())
 	}
 
 	return chunk, nil

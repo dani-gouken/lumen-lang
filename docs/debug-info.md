@@ -110,24 +110,38 @@ Notes: "May trigger GC"
 
 ## Bytecode Serialization
 
-Debug information is serialized in the binary `.lc` format as follows:
+Most of what the instructions carry is the same from one to the next: a statement is several instructions, a line several statements. In a `.lc` file it is therefore written as three tables, each thing once:
 
 ```
-[DebugInfoCount:4]         Number of debug entries
-For each entry:
-  [InstrIndex:4]           Instruction index (0-based)
-  [FilePathLen:4]          Length of file path
-  [FilePath...]            UTF-8 encoded file path
-  [Line:4]                 Line number
-  [Column:4]               Column number
-  [SourceLineLen:4]        Length of source line
-  [SourceLine...]          UTF-8 encoded source line
-  [FuncNameLen:4]          Length of function name
-  [FuncName...]            UTF-8 encoded function name
-  [DescriptionLen:4]       Length of description
-  [Description...]         UTF-8 encoded description
-  [NotesLen:4]             Length of notes
-  [Notes...]               UTF-8 encoded notes
+[TextCount:4]              The texts: file paths, source lines, function names
+For each text:
+  [Length:4][Bytes...]
+
+[PlaceCount:4]             The places instructions come from
+For each place, seven numbers of 4 bytes:
+  [FilePath]               A text, by its number
+  [Line]
+  [Column]
+  [SourceLine]             A text
+  [FuncName]               A text
+  [Description]            A text
+  [Notes]                  A text
+
+[RunCount:4]               Which instructions come from which place
+For each run, three numbers of 4 bytes:
+  [First]                  The first instruction (0-based)
+  [Length]                 How many instructions in a row
+  [Place]                  The place they all come from, by its number
+```
+
+Read back, every instruction has the record it had. A source line is in the file once, however many instructions were compiled from it; a program of a few hundred instructions carries a few kilobytes of debug information, where it carried a copy of the line and the file path per instruction before (format version 4).
+
+Instructions from the same place share one record in memory too: a record got from `GetDebugInfo` is not to be changed.
+
+`lumen build --strip` writes a file without any of this. The program is the same; an error then names the instruction instead of the line:
+
+```
+[ERROR] R0002: index out of bounds: 2 (length 2) (at instruction 14)
 ```
 
 All multi-byte integers are little-endian. Strings are length-prefixed UTF-8.
