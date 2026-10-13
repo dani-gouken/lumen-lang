@@ -1,35 +1,129 @@
 # Lumen Programming Language
 
-Lumen is a prototype programming language with a focus on simplicity and efficiency.
-
-## What is Lumen?
-
-Lumen is a statically-typed programming language currently in early development. This repository contains the compiler, which turns `.lum` source files into bytecode, and the virtual machine that runs it.
+Lumen is a statically typed language that is small enough to learn in an afternoon and complete enough to write real programs: a web service, a build tool, its own language server. This repository holds all of it: the compiler, the virtual machine, the standard library, and the editor support.
 
 ```lumen
-struct Point { x: Int; y: Int; }
+import std.http;
+import std.task;
+import std.result.{Result};
 
-impl Point {
-    fn area() -> Int { return self.x * self.y; }
+enum Health { Up(Int), Down(String) }
+
+fn check(url: String) -> Health {
+    match http.get(url) {
+        case Result.Ok(response): { return Health.Up(response.status); }
+        case Result.Err(error): { return Health.Down(error.describe()); }
+    }
 }
 
 fn main() -> Int {
-    let points = [Point { x: 2, y: 3 }, Point { x: 4, y: 5 }];
-    let total = 0;
-    for p in points {
-        total = total + p.area();
+    let sites = ["https://example.com", "https://example.org", "https://example.net"];
+
+    // One task per site: all three are asked at the same moment
+    let results = task.map(sites, check).expect("the checks");
+
+    for i, health in results {
+        match health {
+            case Health.Up(status): { println(sites[i], "answered", status); }
+            case Health.Down(reason): { println(sites[i], "is down:", reason); }
+        }
     }
-    println("total area:", total);
     return 0;
 }
 ```
 
 ```bash
-go run ./cmd/lumen run program.lum
-# total area: 26
+make build
+./lumen run program.lum
 ```
 
+## What you get
+
+### A language that catches mistakes before the program runs
+
+- **Static types that stay out of the way.** Types are worked out where they can be: `let total = 0;`, `names.map(n -> strings.len(n))`.
+- **No null surprises.** A value that may be missing has a type that says so (`String?`), and the compiler makes you look before you use it. `?.`, `??` and `?` keep that short.
+- **Enums that hold values, and `match` checked for completeness.** Forget a case and the program does not compile.
+- **Failures as values.** A function that can fail returns a `Result`; `?` passes a failure on. A bug that stops the program can still be survived with `attempt`, where it matters.
+- **Generics and traits.** `fn largest<T: Ordered>(items: [T])`, traits with type parameters and default methods, and operators, `for` loops and brackets on your own types.
+- **Closures, tuples, string interpolation, modules** with `import` and `pub`, and an optional project file.
+
+A tour of all of it: [docs/guide.md](docs/guide.md).
+
+### Doing several things at once
+
+Tasks run functions at the same time, and channels carry values between them. There are no locks and no `async` to spread through the code: one task runs at a time and gives way only where it waits, so two tasks never see a value half changed.
+
+```lumen
+let lines = task.channel<String>(16);
+task.run(fn() {
+    for name in files { lines.send(io.readFile(name).orElse("")); }
+    lines.close();
+});
+lines.each(fn(text: String) { println(strings.len(text)); });
+```
+
+- A task that fails does not take the program down: whoever waits for it gets the failure as a `Result`.
+- Tasks that all wait for each other are reported as a deadlock, with the line, instead of hanging.
+- The HTTP server answers each request in a task of its own.
+
+More in [docs/tasks.md](docs/tasks.md).
+
+### A standard library with the everyday things in it
+
+Built into the `lumen` binary, nothing to install: text, arrays, lists, dictionaries and sets, files and folders, dates, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and a server with routes, random numbers, program arguments, running other programs, a test module, tasks and channels, reflection on values, and the compiler itself as a module.
+
+```lumen
+let app = http.router();
+app.get("/hello/:name", fn(request: Request) -> Response {
+    return http.text("hello, ${request.params.get("name") ?? "you"}");
+});
+http.serve(8080, app.handler()).expect("a free port");
+```
+
+All of it: [docs/stdlib.md](docs/stdlib.md).
+
+### An editor that understands the program
+
+`lumen lsp` is a language server, and it is written in Lumen. With the VS Code extension in [editors/vscode](editors/vscode), or any editor that speaks the protocol:
+
+- **Mistakes underlined as you type**, with what usually fixes them
+- **Hover**: how a name is declared and the comment above it, for variables, functions, methods, fields, types and modules
+- **Go to definition**, into your own files and into the standard library
+- **Suggestions**: the methods of whatever stands before the dot, the names of a module, the modules on an `import` line
+- **An outline** of what a file declares, and colours for `.lum` files
+
+Setting it up: [docs/editor.md](docs/editor.md).
+
+### Errors written for people
+
+The same form when compiling and when running: what went wrong, where, what usually fixes it, and the calls that led there.
+
+```text
+[ERROR] E1001: undefined identifier 'cuont'
+  --> main.lum:3:12
+   |
+ 3 |     return cuont + 1;
+   |            ^^^^^
+   |
+   = Suggestion: Did you mean 'count'?
+```
+
+### Programs that look at programs
+
+- **Reflection** ([`std.reflect`](docs/stdlib.md#stdreflect)): a value asked at run time for its type, its fields by name, the variant of its enum. Enough to write a serializer that was never told about your structs.
+- **The compiler as a module** ([`std.compiler`](docs/stdlib.md#stdcompiler)): the mistakes of a program, what it declares, what a name is and where it comes from. The language server is 350 lines on top of it.
+
+### The whole toolchain, in one binary
+
+`lumen run`, `build` to bytecode, a bytecode assembler and disassembler, a debugger that shows source lines, a look at the intermediate representation, limits on memory and call depth, and `lumen lsp`.
+
+## Where to read more
+
 - **Getting started and language tour**: [docs/guide.md](docs/guide.md)
+- **The standard library**: [docs/stdlib.md](docs/stdlib.md)
+- **Tasks and channels**: [docs/tasks.md](docs/tasks.md)
+- **Editor support**: [docs/editor.md](docs/editor.md)
 - **Syntax and semantics**: [docs/language-spec.md](docs/language-spec.md) (draft, with an implementation status table)
 - **How the compiler works**: [docs/compilation/pipeline.md](docs/compilation/pipeline.md)
 - **What is not there yet**: [docs/missing.md](docs/missing.md)
@@ -59,7 +153,9 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ luvm bytecode virtual machine with mark-sweep GC, bounded memory and call depth (`--heap-mb`, `--max-depth`)
 - ✅ Binary bytecode format (.lc files), assembler and disassembler
 - ✅ Interactive debugger, showing Lumen source lines
-- ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`
+- ✅ Tasks scheduled by the virtual machine, one goroutine each, taking turns
+- ✅ Language server (`lumen lsp`) and VS Code extension
+- ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
 
 Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics with requirements (`<T: Ordered>`), traits with type parameters and default methods, operators on structs, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators, `?.` and `?` for values that may be missing, tuples, string interpolation (`"total: ${n}"`) and texts over several lines, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library ([docs/stdlib.md](docs/stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, files and folders, dates, program arguments, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, tests, tasks with channels for doing several things at once ([docs/tasks.md](docs/tasks.md)), and reflection. An editor gets mistakes as you type, hover, go to definition, an outline and suggestions from `lumen lsp`, a language server written in Lumen ([docs/editor.md](docs/editor.md)).
 
@@ -67,6 +163,8 @@ Not there yet:
 
 - ⚠️ A way to install packages (`lumen.json` can point at folders of modules, nothing fetches them); native code from shared libraries
 - ⚠️ REPL (stub only)
+- ⚠️ Several processors at once: tasks take turns on one
+- ⚠️ A formatter; renaming and finding uses in the editor
 
 What works is listed in the [implementation status table](docs/language-spec.md#13-implementation-status); what does not, with the way it fails today, in [docs/missing.md](docs/missing.md).
 
@@ -77,6 +175,7 @@ lumen/
   cmd/lumen/       - CLI entry point
   docs/            - Documentation
     compilation/   - One document per compiler stage
+  editors/vscode/  - VS Code extension: colours and the language client
   examples/        - Example programs (.lum) and assembly files (.lasm)
   internal/
     token/         - Tokens and source positions
@@ -92,7 +191,12 @@ lumen/
     irgen/         - AST -> IR
     codegen/       - IR -> bytecode
     compiler/      - Pipeline driver
-    vm/            - Virtual machine implementation
+    modules/       - Loading the files of a program
+    project/       - The project file (lumen.json)
+    stdlib/        - The standard library, in Lumen (lib/*.lum)
+    inspect/       - Questions about a program's source: std.compiler
+    lsp/           - The language server, a Lumen program
+    vm/            - Virtual machine, tasks, native functions
     asm/           - Assembler and disassembler
     debugger/      - Debugger support
   test/
@@ -160,6 +264,7 @@ Example programs in [examples/](examples/):
 - **tree.lum** - A generic binary search tree: a struct that refers to itself, optional fields
 - **derivative.lum** - Symbolic differentiation: an enum that holds itself, the rules of calculus as `match` cases with nested patterns
 - **tournament.lum** - Traits in full: operators, loops and brackets on structs, traits with type parameters and default methods, requirements on type parameters (`<T: Ordered>`), field defaults, methods as values
+- **build.lum** - Tasks and channels: a build that works on several targets at once, with a fixed number of workers
 - **failures.lum** - `Result` for failures with a reason, an error type with a trace, `panic`, and `attempt` to survive what would stop the program
 - **words.lum** - Word counts of a text with the standard library: `std.strings`, `std.dict`, `std.arrays`, `std.list`, `std.math`
 - **modules.lum** - A program in several files: `import`, `pub`, with its modules in `zoo/`

@@ -1034,7 +1034,7 @@ for problem in compiler.check("main.lum", source) {
 | `compiler.check(path, source) -> [Problem]` | Errors and warnings: `severity`, `code`, `message`, `at`, `endColumn`, `suggestion` |
 | `compiler.symbols(path, source) -> [Symbol]` | What the file declares: `kind`, `name`, `detail`, `container`, `line`, `column` |
 | `compiler.describe(path, source, line, column) -> Description?` | The name at that place: its `signature`, the `doc` above its declaration, where it is `declared` |
-| `compiler.complete(path, source, line, column) -> [Suggestion]` | What could be written there; the line being typed need not make sense |
+| `compiler.complete(path, source, line, column) -> [Suggestion]` | What could be written there: after a dot, what the value before it has. The line being typed need not make sense |
 | `compiler.open(path, text)`, `close(path)` | A file being edited: importing it gives this text, not what is on disk |
 
 Lines and columns count from 1, columns in characters. `describe` answers `null` for a program with errors that keep it from being understood; `complete` then works from the file without the line being typed.

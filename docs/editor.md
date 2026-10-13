@@ -8,7 +8,7 @@
 | Pointing at a name | How it is declared and the comment above its declaration: variables, functions, methods, fields, variants, types, modules |
 | Go to definition | Jumps to where a name is declared: in the file, in another file of the program, or in the standard library |
 | Outline | What the file declares: functions, structs with their fields, enums with their variants, traits, methods |
-| Suggestions | After `name.`: the fields and methods of a value, the variants of an enum, the public names of a module. On an `import` line: the modules there are. Elsewhere: everything in reach |
+| Suggestions | After a dot: the fields and methods of the value before it, whether a name or a chain of calls (`json.object().text("a", "b").`); the variants of an enum; the public names of a module. On an `import` line: the modules there are. Elsewhere: everything in reach |
 
 ## VS Code
 

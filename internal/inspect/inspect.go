@@ -1030,6 +1030,10 @@ func Complete(path, src string, line, column int) []Completion {
 		return found
 	}
 	holder, afterDot := holderBefore(string(before))
+	// After a dot that follows more than a name, `json.object().text("a", "b").`,
+	// or a name that is not one of the cases below: what the expression
+	// before the dot is, asked of the checker
+	chain, chained := chainBefore(src, line, column)
 
 	// A line being typed seldom reads as a program. What it needs is
 	// around it: the same text without that line.
@@ -1065,6 +1069,15 @@ func Complete(path, src string, line, column int) []Completion {
 			owner = ownerName(typ)
 		}
 		members(prog, owner, add)
+		if len(out) > 0 {
+			return out
+		}
+	}
+	if chained {
+		if typ, read := probe(path, src, chain); typ != nil {
+			// The members belong to the program the expression was read in
+			members(read, ownerName(typ), add)
+		}
 		return out
 	}
 
@@ -1223,6 +1236,277 @@ func isName(text string) bool {
 		}
 	}
 	return text != ""
+}
+
+// --- The value before a dot ---
+
+// expression is a piece of a source text that reads as a value: what
+// stands before the dot the cursor is after.
+type expression struct {
+	text  string
+	start int // Where it starts in the text, in characters
+	line  int // The line the cursor is on, from 1
+}
+
+// chainBefore finds the expression before the dot the cursor follows:
+// names, calls, indexes and dots as far back as they go, over several
+// lines when a chain of calls is written one call per line. It reports
+// whether the cursor follows a dot at all.
+func chainBefore(src string, line, column int) (expression, bool) {
+	runes := []rune(src)
+	// Where the cursor is in the text
+	at, current := 0, 1
+	for at < len(runes) && current < line {
+		if runes[at] == '\n' {
+			current++
+		}
+		at++
+	}
+	at = min(at+max(column-1, 0), len(runes))
+
+	// Back over the name being typed, to the dot
+	end := at
+	for end > 0 && isNameRune(runes[end-1]) {
+		end--
+	}
+	if end == 0 || runes[end-1] != '.' {
+		return expression{}, false
+	}
+	end--
+	if end > 0 && runes[end-1] == '?' {
+		end-- // value?.name
+	}
+
+	i := end
+	afterDot := true // Whether what was read last, to the right, is a dot
+	for i > 0 {
+		r := runes[i-1]
+		switch {
+		case r == ' ' || r == '\t' || r == '\n' || r == '\r':
+			// A chain goes on over a line end only before a dot
+			if !afterDot {
+				goto done
+			}
+			j := i - 1
+			for j > 0 && (runes[j-1] == ' ' || runes[j-1] == '\t' || runes[j-1] == '\n' || runes[j-1] == '\r') {
+				j--
+			}
+			if j == 0 || !(runes[j-1] == ')' || runes[j-1] == ']' || isNameRune(runes[j-1])) {
+				goto done
+			}
+			i = j
+		case r == ')' || r == ']':
+			open := matching(runes, i-1)
+			if open < 0 {
+				goto done
+			}
+			i = open
+			afterDot = false
+			// The type arguments of a call: list.of<String>(...)
+			if r == ')' && i > 0 && runes[i-1] == '>' {
+				if less := typeArguments(runes, i-1); less >= 0 {
+					i = less
+				}
+			}
+		case isNameRune(r):
+			if !afterDot && i < end && isNameRune(runes[i]) {
+				goto done
+			}
+			for i > 0 && isNameRune(runes[i-1]) {
+				i--
+			}
+			afterDot = false
+		case r == '.':
+			if afterDot {
+				goto done
+			}
+			i--
+			if i > 0 && runes[i-1] == '?' {
+				i--
+			}
+			afterDot = true
+		default:
+			goto done
+		}
+	}
+done:
+	for i < end && (runes[i] == ' ' || runes[i] == '\t' || runes[i] == '\n' || runes[i] == '\r' || runes[i] == '.') {
+		i++
+	}
+	text := strings.TrimSpace(string(runes[i:end]))
+	if text == "" {
+		return expression{}, false
+	}
+	return expression{text: text, start: i, line: line}, true
+}
+
+// matching finds the bracket that opens the one closed at a position,
+// reading backwards past texts and nested brackets. -1 if there is none.
+func matching(runes []rune, closeAt int) int {
+	depth := 0
+	for i := closeAt; i >= 0; i-- {
+		switch runes[i] {
+		case '"':
+			// Back to the quote that opens the text
+			i--
+			for i >= 0 && !(runes[i] == '"' && (i == 0 || runes[i-1] != '\\')) {
+				i--
+			}
+		case ')', ']', '}':
+			depth++
+		case '(', '[', '{':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// typeArguments finds the `<` that opens the type arguments closed at a
+// position, if what lies between reads as types. -1 if it does not.
+func typeArguments(runes []rune, closeAt int) int {
+	depth := 0
+	for i := closeAt; i >= 0; i-- {
+		r := runes[i]
+		switch {
+		case r == '>':
+			depth++
+		case r == '<':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		case isNameRune(r) || r == ',' || r == ' ' || r == '.' || r == '[' || r == ']' || r == '?' || r == '(' || r == ')' || r == '-':
+		default:
+			return -1
+		}
+	}
+	return -1
+}
+
+// probe asks the checker what type an expression of a file has. The
+// statement being typed seldom reads as a program, and what follows it in
+// its function may hang on it. So the question is put to another text:
+// the file up to the statement the expression is in, the expression given
+// a name, the brackets open at that point closed, then the declarations
+// that follow the function. It gives the type and the program it was
+// read in; nil if that does not read either.
+func probe(path, src string, e expression) (types.Type, *ast.Program) {
+	runes := []rune(src)
+
+	// Where the statement the expression is part of starts: after the
+	// `;`, `{` or `}` before it that is not inside brackets of its own
+	start, depth := e.start, 0
+	for start > 0 {
+		r := runes[start-1]
+		if r == '"' {
+			start--
+			for start > 0 && !(runes[start-1] == '"' && (start < 2 || runes[start-2] != '\\')) {
+				start--
+			}
+			start = max(start-1, 0)
+			continue
+		}
+		if r == ')' || r == ']' {
+			depth++
+		} else if (r == '(' || r == '[') && depth > 0 {
+			depth--
+		} else if depth == 0 && (r == ';' || r == '{' || r == '}') {
+			break
+		}
+		start--
+	}
+	head := string(runes[:start])
+
+	// What follows the function: the next lines that start a declaration
+	tail := ""
+	lines := strings.Split(src, "\n")
+	for i := e.line; i < len(lines); i++ {
+		if first := []rune(lines[i]); len(first) > 0 && ((first[0] >= 'a' && first[0] <= 'z') || first[0] == '/') {
+			tail = strings.Join(lines[i:], "\n")
+			break
+		}
+	}
+
+	var text strings.Builder
+	text.WriteString(head)
+	text.WriteString("\nlet " + probeName + " = " + e.text + ";\n")
+	open := openBrackets(head)
+	for i := len(open) - 1; i >= 0; i-- {
+		switch open[i] {
+		case '{':
+			text.WriteString("}")
+		case '(':
+			text.WriteString(")")
+		case '[':
+			text.WriteString("]")
+		}
+		// A call or an index that held the statement ends its own
+		if open[i] != '{' && (i == 0 || open[i-1] == '{') {
+			text.WriteString(";")
+		}
+	}
+	text.WriteString("\n" + tail)
+
+	analysis := analyze(path, text.String())
+	if analysis.Info == nil || analysis.Program == nil {
+		return nil, nil
+	}
+	var found types.Type
+	eachBody(analysis.Program, func(node ast.Node) {
+		types.WalkStmts(node, func(stmt ast.Stmt) {
+			if let, ok := stmt.(*ast.LetStmt); ok && let.Name == probeName && let.Position().File == path {
+				found = analysis.Info.Types[let.Value]
+			}
+		})
+	})
+	return found, analysis.Program
+}
+
+// probeName is the variable the expression asked about is given to.
+const probeName = "__asked"
+
+// openBrackets lists the brackets a text opens and does not close, in
+// order, leaving aside what texts and comments hold.
+func openBrackets(text string) []rune {
+	var open []rune
+	runes := []rune(text)
+	for i := 0; i < len(runes); i++ {
+		switch r := runes[i]; r {
+		case '/':
+			if i+1 < len(runes) && runes[i+1] == '/' {
+				for i < len(runes) && runes[i] != '\n' {
+					i++
+				}
+			}
+		case '"':
+			long := i+2 < len(runes) && runes[i+1] == '"' && runes[i+2] == '"'
+			if long {
+				i += 3
+				for i+2 < len(runes) && !(runes[i] == '"' && runes[i+1] == '"' && runes[i+2] == '"') {
+					i++
+				}
+				i += 2
+				break
+			}
+			i++
+			for i < len(runes) && runes[i] != '"' && runes[i] != '\n' {
+				if runes[i] == '\\' {
+					i++
+				}
+				i++
+			}
+		case '(', '[', '{':
+			open = append(open, r)
+		case ')', ']', '}':
+			if len(open) > 0 {
+				open = open[:len(open)-1]
+			}
+		}
+	}
+	return open
 }
 
 // holderBefore looks at the text before the cursor: for `shape.ar` it

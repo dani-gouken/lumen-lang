@@ -543,3 +543,98 @@ fn main() -> Int {
 		}
 	}
 }
+
+// After a dot that follows a call, a chain of calls, an index or a
+// field: what the value there has, whatever is being typed around it.
+func TestCompleteAfterAnExpression(t *testing.T) {
+	src := `import std.list;
+import std.http;
+import std.json;
+import std.fs;
+import std.task;
+
+const PORT = 8094;
+
+struct Shelf { books: [Book]; }
+struct Book { title: String; pages: Int; }
+impl Book {
+    fn longer(than: Int) -> Bool { return self.pages > than; }
+}
+impl Shelf {
+    fn first() -> Book { return self.books[0]; }
+}
+
+fn shelf() -> Shelf { return Shelf { books: [] }; }
+
+fn main() -> Int {
+    let names = list.of<String>(["Nghokeng", "Daniel"]);
+    let api = http.router();
+    let tree = list.of(fs.list(".").orElse([])).map(entries -> entries.name);
+    api.get("/", fn(request: http.Request) -> http.Response {
+        return http.sendJson(
+            200,
+            json.object()
+                .text("hello", "world")
+                .set("files", json.texts(tree.toArray()))
+                .done()
+        );
+    });
+    println("Listening on ${PORT}");
+    http.serve(PORT, api.handler());
+    return 0;
+}
+
+fn after() -> Int { return shelf().first().pages; }
+`
+	// typed gives what is suggested once `text` has replaced a line and
+	// the cursor stands at its end
+	typed := func(line int, text string) string {
+		t.Helper()
+		lines := strings.Split(src, "\n")
+		lines[line-1] = text
+		var out []string
+		for _, c := range Complete("main.lum", strings.Join(lines, "\n"), line, len([]rune(text))+1) {
+			out = append(out, c.Label)
+		}
+		return " " + strings.Join(out, " ") + " "
+	}
+	expect := func(what, got string, has []string, hasNot ...string) {
+		t.Helper()
+		for _, label := range has {
+			if !strings.Contains(got, " "+label+" ") {
+				t.Errorf("%s: expected %s among%s", what, label, got)
+			}
+		}
+		for _, label := range hasNot {
+			if strings.Contains(got, " "+label+" ") {
+				t.Errorf("%s: did not expect %s among%s", what, label, got)
+			}
+		}
+	}
+	builder := []string{"text", "int", "set", "bool", "done"}
+
+	// In the middle of a chain written one call per line, inside the
+	// arguments of a call, inside a function passed to another
+	expect("after a call of a module", typed(28, "                ."), builder, "return", "println")
+	expect("further down the chain", typed(29, "                ."), builder, "return")
+	expect("with a name being typed", typed(29, "                .te"), builder)
+	expect("at the end of a chain", typed(30, `                .set("files", json.texts(tree.toArray())).`), builder)
+	// On one line, and as a statement of its own
+	expect("on one line", typed(22, `    json.object().text("a", "b").`), builder)
+	expect("a call on a variable", typed(22, "    names.filter(n -> true)."), []string{"add", "map", "size", "toArray"}, "done")
+	expect("a call with type arguments", typed(22, `    list.of<String>(["a"]).`), []string{"add", "size"})
+	expect("a method of the program", typed(22, "    shelf().first()."), []string{"title", "pages", "longer"}, "books")
+	expect("an index", typed(22, "    shelf().books[0]."), []string{"title", "pages", "longer"})
+	expect("a field of a field", typed(22, "    shelf().first().title."), nil, "title", "return")
+	expect("a value that may be missing", typed(22, "    let n = names.first()?."), nil, "return")
+	expect("a router", typed(34, "    api."), []string{"get", "post", "handler"})
+	expect("a task", typed(34, "    task.start(fn() -> Int { return 1; })."), []string{"wait", "isDone", "expect"})
+	// What needs the lines above: a variable of the function, used in a chain
+	expect("a variable declared above", typed(34, "    tree.toArray()."), nil, "return")
+	expect("a list declared above", typed(34, "    tree.filter(name -> true)."), []string{"add", "size"})
+	// The parameter of the function the cursor is in
+	expect("a parameter of a function expression", typed(26, "        request."), []string{"method", "path", "header", "json"})
+	// Where there is no dot before the cursor, the usual
+	expect("no dot", typed(34, "    "), []string{"return", "names", "api", "shelf"}, "text")
+	expect("a number", typed(34, "    let x = 3."), nil, "return", "text")
+}
