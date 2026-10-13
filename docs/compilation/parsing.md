@@ -50,6 +50,8 @@ A hand-written recursive descent parser over the full token list. Having all tok
 
 `Program = { Import | Decl }`. A declaration is selected by its first token: `fn`, `struct`, `enum`, `trait`, `impl`. `pub` may come first; it sets `Pub` on the declaration (on a method inside an `impl`, too) and is an error before `impl`.
 
+`extern fn name(params) -> Type;` is a function without a body: an `ast.FnDecl` with `Extern` set and a nil `Body`. Type parameters and a body are syntax errors with their own messages.
+
 An import is `import a.b.c;`, optionally followed by `as name` or by `.{X, y}`, and optionally preceded by `pub`. The `ImportDecl` carries the dotted path, and is positioned at the path so that diagnostics underline it.
 
 Where a type is expected, `m.T` names a type of an imported module; it is parsed into a single type whose name is `"m.T"`. The same goes for the struct of a literal (`m.T { ... }`) and the names of an `impl`. In expressions `m.f` is an ordinary member access: only [module loading](module_loading.md) knows whether `m` is a module.

@@ -51,6 +51,11 @@ func (r *Resolver) Resolve(prog *ast.Program) *Table {
 }
 
 func (r *Resolver) resolveTopLevel(prog *ast.Program) {
+	// Functions the runtime provides are names like any other function
+	for _, fn := range prog.Externs {
+		r.declare(fn.Name, SymbolFunc, fn)
+	}
+
 	for _, decl := range prog.Decls {
 		switch d := decl.(type) {
 		case *ast.FnDecl:

@@ -1,0 +1,50 @@
+// Input, files and the environment.
+//
+// Output goes through the builtins print and println. The functions here
+// that can fail for reasons outside the program (a file that is not there)
+// say so in what they return, and do not stop the program.
+
+// A line typed by the user, or the next line of the input when it comes
+// from a file or another program; without its line end. Null at the end
+// of the input.
+pub extern fn readLine() -> String?;
+
+// Prints a question, then reads the answer. Null at the end of the input.
+pub fn ask(question: String) -> String? {
+    print(question);
+    return readLine();
+}
+
+// Every remaining line of the input.
+pub fn readLines() -> [String] {
+    let out: [String] = [];
+    let line = readLine();
+    while line != null {
+        push(out, line);
+        line = readLine();
+    }
+    return out;
+}
+
+// The whole content of a file, or null if it cannot be read.
+pub extern fn readFile(path: String) -> String?;
+
+// Writes a text to a file, replacing what was in it. Returns whether it
+// worked.
+pub extern fn writeFile(path: String, text: String) -> Bool;
+
+// Adds a text to the end of a file, creating it if needed. Returns
+// whether it worked.
+pub extern fn appendFile(path: String, text: String) -> Bool;
+
+pub extern fn exists(path: String) -> Bool;
+
+// Deletes a file. Returns whether it worked.
+pub extern fn remove(path: String) -> Bool;
+
+// Writes a text to the error output, where messages go that are not part
+// of the program's result. No line end is added.
+pub extern fn printError(text: String);
+
+// The value of an environment variable, or null if it is not set.
+pub extern fn env(name: String) -> String?;

@@ -152,7 +152,15 @@ func Load(src, file string, opts Options, errs *errors.Handler) *ast.Program {
 	merged := &ast.Program{BaseNode: l.root.prog.BaseNode}
 	for _, m := range l.order {
 		(&rewriter{loader: l, m: m}).rewrite()
-		merged.Decls = append(merged.Decls, m.prog.Decls...)
+		for _, decl := range m.prog.Decls {
+			// A function the runtime provides has nothing to compile; it is
+			// kept apart, for its name and signature
+			if fn, ok := decl.(*ast.FnDecl); ok && fn.Extern {
+				merged.Externs = append(merged.Externs, fn)
+				continue
+			}
+			merged.Decls = append(merged.Decls, decl)
+		}
 	}
 	return merged
 }

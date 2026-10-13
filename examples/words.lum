@@ -1,0 +1,74 @@
+// Counting the words of a text, with the standard library.
+//
+// The library is built into lumen: `import std.strings;` works in any
+// program, nothing to install. See docs/stdlib.md for all of it.
+//
+// Shows: std.strings to take a text apart, std.map to count, std.arrays to
+// sort and summarize, std.math for the numbers, std.list for a table.
+
+import std.arrays;
+import std.list;
+import std.map;
+import std.math;
+import std.strings;
+
+struct Count {
+    word: String;
+    times: Int;
+}
+
+// The words of a text in lower case, without the punctuation around them.
+fn wordsOf(text: String) -> [String] {
+    let out: [String] = [];
+    for raw in strings.words(strings.lower(text)) {
+        let word = raw;
+        for mark in [",", ".", ";", ":", "!", "?", "\""] {
+            word = strings.replace(word, mark, "");
+        }
+        if !strings.isEmpty(word) {
+            push(out, word);
+        }
+    }
+    return out;
+}
+
+fn main() -> Int {
+    let text = "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness.";
+
+    let words = wordsOf(text);
+
+    // A map from each word to how often it occurs
+    let counts = map.empty<Int>();
+    for word in words {
+        counts.set(word, (counts.get(word) ?? 0) + 1);
+    }
+
+    // As a list of structs, most frequent first; ties in alphabetical order
+    let table = list.empty<Count>();
+    for word in arrays.sortedTexts(counts.keys()) {
+        table.add(Count { word: word, times: counts.get(word) ?? 0 });
+    }
+    table.sort(fn(a: Count, b: Count) -> Bool { return a.times > b.times; });
+
+    println(words.length, "words,", counts.size(), "different");
+    println();
+    for row in table.slice(0, 6).toArray() {
+        println(strings.padRight(row.word, 8), strings.padLeft(toString(row.times), 3), strings.repeat("#", row.times));
+    }
+
+    // Numbers about the words
+    let lengths = arrays.map(words, fn(w: String) -> Int { return w.length; });
+    let average = math.toFloat(arrays.sum(lengths)) / math.toFloat(lengths.length);
+    println();
+    println("average length:", math.toFloat(math.round(average * 100.0)) / 100.0);
+    println("longest:", arrays.sorted(counts.keys(), fn(a: String, b: String) -> Bool { return a.length > b.length; })[0]);
+
+    let once = table.filter(fn(row: Count) -> Bool { return row.times == 1; });
+    println("used once:", strings.join(once.map<String>(fn(row: Count) -> String { return row.word; }).toArray(), ", "));
+
+    // Taking a sentence apart and putting it back differently
+    let first = strings.first(text, strings.indexOf(text, ",") ?? text.length);
+    println(strings.join(arrays.reversed(strings.words(first)), " "));
+    println(strings.join(arrays.map(strings.words(first), strings.capitalize), " "));
+    return 0;
+}

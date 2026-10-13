@@ -1,9 +1,11 @@
 package vm
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"math"
+	"math/rand"
 	"os"
 	"strings"
 	"unsafe"
@@ -61,6 +63,11 @@ type VM struct {
 	// would allocate an object just to call it.
 	funcObjs   map[int]Value
 	externObjs map[string]Value
+
+	// State of the native functions (see native.go)
+	pinned []Value       // Values a running native keeps alive
+	in     *bufio.Reader // Input of std.io.readLine
+	rng    *rand.Rand    // Generator of std.random
 }
 
 // NewVM creates a new VM instance.
@@ -84,6 +91,7 @@ func NewVM() *VM {
 	}
 	vm.heap.collect = vm.CollectGarbage
 	vm.registerBuiltins()
+	vm.registerNativeFunctions()
 	return vm
 }
 
@@ -108,6 +116,7 @@ func NewVMWithHeapSize(heapSize uint64) *VM {
 	}
 	vm.heap.collect = vm.CollectGarbage
 	vm.registerBuiltins()
+	vm.registerNativeFunctions()
 	return vm
 }
 
@@ -885,6 +894,12 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				// Call the extern function
 				retVal, err := externObj.Function()(vm, args)
 				if err != nil {
+					vm.pinned = vm.pinned[:0]
+					if IsNative(externObj.Name()) && !strings.HasPrefix(err.Error(), "out of memory") {
+						// A function of the standard library: named as
+						// the program names it
+						return NewNull(), vm.runtimeError(externObj.Name() + ": " + err.Error())
+					}
 					if strings.HasPrefix(externObj.Name(), "__") || strings.HasPrefix(err.Error(), "out of memory") {
 						// Compiler intrinsic: the user wrote an operator,
 						// not a call, so the function name means nothing.
@@ -895,8 +910,10 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 					return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s failed: %v", externObj.Name(), err))
 				}
 
-				// Store return value in r0
+				// Store return value in r0. From here it is a root, and
+				// whatever the function kept alive no longer needs to be
 				vm.regs[0] = retVal
+				vm.pinned = vm.pinned[:0]
 
 				// Extern functions may allocate; collect now that the result is rooted
 				vm.collectIfNeeded()

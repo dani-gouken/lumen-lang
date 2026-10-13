@@ -507,6 +507,11 @@ func TestParseErrors(t *testing.T) {
 		{"alias after a list", "import a.b.{c} as d;", ErrUnexpectedToken, "'as' cannot follow a list", 1},
 		{"import without semicolon", "import a.b\nfn main() -> Int { return 0; }", ErrMissingSemicolon, "expected ';'", 1},
 		{"pub on an impl", "pub impl Point {\n}", ErrUnexpectedToken, "'pub' cannot be applied to an impl block", 1},
+		{"extern with a body", "extern fn f() -> Int { return 1; }", ErrUnexpectedToken, "an extern function has no body", 1},
+		{"extern with type parameters", "extern fn f<T>(v: T) -> T;", ErrUnexpectedToken, "an extern function cannot have type parameters", 1},
+		{"extern without fn", "extern struct P { x: Int; }", ErrUnexpectedToken, "expected 'fn' after 'extern'", 1},
+		{"extern without semicolon", "extern fn f() -> Int\nfn main() -> Int { return 0; }", ErrMissingSemicolon, "expected ';'", 1},
+		{"extern in an impl", "impl P {\n  extern fn f();\n}", ErrUnexpectedToken, "expected 'fn'", 2},
 		{"pub on nothing", "pub let x = 1;", ErrUnexpectedToken, "expected declaration", 1},
 		{"pub in a trait", "trait T {\n  pub fn m();\n}", ErrUnexpectedToken, "expected 'fn'", 2},
 	}
@@ -770,5 +775,52 @@ func TestParseQualifiedNames(t *testing.T) {
 	}
 	if _, ok := fn.Body.Stmts[8].(*ast.WhileStmt).Cond.(*ast.MemberExpr); !ok {
 		t.Errorf("expected the loop condition to be a field access")
+	}
+}
+
+func TestParseExtern(t *testing.T) {
+	prog := parseOK(t, `
+		extern fn now() -> Int;
+		pub extern fn substring(text: String, from: Int, to: Int) -> String;
+		extern fn log(message: String);
+		pub extern fn find(text: String, part: String) -> Int?;
+		extern fn total(numbers: ...Int) -> Int;
+		fn ordinary() -> Int { return now(); }
+	`)
+
+	type want struct {
+		name   string
+		params int
+		ret    string
+		pub    bool
+	}
+	wants := []want{
+		{"now", 0, "Int", false},
+		{"substring", 3, "String", true},
+		{"log", 1, "", false},
+		{"find", 2, "Int?", true},
+		{"total", 1, "Int", false},
+	}
+	for i, w := range wants {
+		fn := prog.Decls[i].(*ast.FnDecl)
+		ret := ""
+		if fn.ReturnType != nil {
+			ret = fn.ReturnType.String()
+		}
+		if !fn.Extern || fn.Body != nil || fn.Name != w.name || len(fn.Params) != w.params || ret != w.ret || fn.Pub != w.pub {
+			t.Errorf("extern %d: expected %+v, got %s (pub %v)", i, w, fn, fn.Pub)
+		}
+	}
+
+	// Positioned at its name, and printed back as written
+	sub := prog.Decls[1].(*ast.FnDecl)
+	if sub.Token().Literal != "substring" || sub.Position().Line != 3 {
+		t.Errorf("unexpected position of an extern function: %v", sub.Token())
+	}
+	if got := prog.Decls[0].String(); got != "extern fn now() -> Int;" {
+		t.Errorf("unexpected rendering: %s", got)
+	}
+	if ordinary := prog.Decls[5].(*ast.FnDecl); ordinary.Extern || ordinary.Body == nil {
+		t.Error("expected an ordinary function after the extern ones")
 	}
 }

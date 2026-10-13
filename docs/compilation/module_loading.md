@@ -90,6 +90,12 @@ The rewriter also fills in two fields of each function and method declaration: `
 
 The declarations of all modules are appended to one `ast.Program`, entry file first. Imports are dropped.
 
+Functions declared with `extern fn` are renamed like any other and then moved out of `Decls` into `Program.Externs`. They have nothing to compile, so the stages that walk declarations never meet a function without a body; the resolver puts them in scope by name, the type checker reads their signature when one is called, and the backend is told their names so that a reference becomes a host function (`NEWEXFUNC`) and not a compiled one.
+
+### The standard library
+
+The package `std` is added by the driver (`withStandardLibrary` in `internal/compiler`) with the folder `<std>`, which does not exist on disk: the `Read` function it installs serves paths under it from the sources embedded in the binary (`internal/stdlib`). To the loader it is a package like any other. A program that brings its own package named `std` keeps it.
+
 ## The One Thing Later Stages Know
 
 Whether a method may be called depends on the type of the receiver, which only the type checker knows. So method visibility is checked there (`checkMethodVisible`, `E2027`): a method that is not `pub` may only be called from a function whose `Module` is the method's. A lambda takes the module of the function it is written in.

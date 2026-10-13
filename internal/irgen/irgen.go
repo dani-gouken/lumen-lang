@@ -62,6 +62,7 @@ type IRGenerator struct {
 	// Methods of each struct, and for each method name the structs having it
 	structMethods map[string][]method
 	methodOwners  map[string][]string
+	structNames   map[string]bool // Every struct the program declares
 }
 
 // NewIRGenerator creates a new IR generator
@@ -84,6 +85,7 @@ func NewIRGenerator(
 		funcs:         make(map[string]*ast.FnDecl),
 		structMethods: make(map[string][]method),
 		methodOwners:  make(map[string][]string),
+		structNames:   make(map[string]bool),
 	}
 }
 
@@ -117,11 +119,16 @@ func (g *IRGenerator) collectDecls() {
 	for _, fn := range resolve.Builtins() {
 		g.funcs[fn.Name] = fn
 	}
+	for _, fn := range g.prog.Externs {
+		g.funcs[fn.Name] = fn
+	}
 
 	for _, decl := range g.prog.Decls {
 		switch d := decl.(type) {
 		case *ast.FnDecl:
 			g.funcs[d.Name] = d
+		case *ast.StructDecl:
+			g.structNames[d.Name] = true
 		case *ast.ImplDecl:
 			for _, m := range d.Methods {
 				if m.Body == nil {
@@ -189,7 +196,14 @@ func (g *IRGenerator) resolveMethod(receiver ast.Expr, name string) (dispatch, s
 		if g.hasMethod(t.Name, name) {
 			return dispatchStatic, t.Name
 		}
-		return dispatchField, ""
+		if g.structNames[t.Name] {
+			return dispatchField, ""
+		}
+		// Not a struct of the program: the name of a type parameter that
+		// was not replaced, as for the result of a generic method called
+		// on a value whose type arguments are no longer known here
+		// (`outer.get().get()` with outer a Box<Box<Int>>). Treated like
+		// any receiver of unknown type, below.
 	case *types.BehaviorType:
 		return dispatchDynamic, ""
 	}

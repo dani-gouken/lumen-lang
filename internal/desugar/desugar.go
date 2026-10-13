@@ -72,6 +72,7 @@ func (d *Desugarer) Desugar() (*ast.Program, *DesugarInfo) {
 		BaseNode: d.prog.BaseNode,
 		Imports:  d.prog.Imports,
 		Decls:    newDecls,
+		Externs:  d.prog.Externs,
 	}
 
 	return newProg, d.info

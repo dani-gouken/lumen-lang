@@ -622,3 +622,61 @@ func TestPackages(t *testing.T) {
 		t.Errorf("expected a lookup under the root, got %s", d.Suggestion)
 	}
 }
+
+func TestExternFunctionsAreSetApart(t *testing.T) {
+	prog := loadOK(t, files{
+		"main.lum": `
+			import sys.clock;
+			import sys.clock.{now};
+			extern fn beep();
+			fn main() -> Int {
+				beep();
+				let f = clock.now;
+				return now() + clock.elapsed() + f();
+			}
+		`,
+		"sys/clock.lum": `
+			pub extern fn now() -> Int;
+			extern fn raw(scale: Int) -> Int;
+			pub fn elapsed() -> Int { return raw(1000) - now(); }
+		`,
+	})
+
+	// Not among the declarations to compile...
+	for _, d := range prog.Decls {
+		if fn, ok := d.(*ast.FnDecl); ok && (fn.Extern || fn.Body == nil) {
+			t.Errorf("did not expect %s among the declarations", fn.Name)
+		}
+	}
+	// ...but kept, under the names the runtime will be asked for
+	var names []string
+	for _, fn := range prog.Externs {
+		names = append(names, fn.Name)
+		if !fn.Extern || fn.Body != nil {
+			t.Errorf("%s: expected an extern declaration", fn.Name)
+		}
+	}
+	if got := strings.Join(names, " "); got != "beep sys.clock.now sys.clock.raw" {
+		t.Errorf("unexpected extern functions: %s", got)
+	}
+	if clock := prog.Externs[1]; clock.Module != "sys.clock" || !clock.Pub {
+		t.Errorf("expected the extern to keep its module and visibility, got %q, pub %v", clock.Module, clock.Pub)
+	}
+
+	// References to them are rewritten like references to any function
+	if got := body(t, prog, "main"); got != "{ beep(); let f = sys.clock.now; return ((sys.clock.now() + sys.clock.elapsed()) + f()); }" {
+		t.Errorf("unexpected body of main: %s", got)
+	}
+	if got := body(t, prog, "sys.clock.elapsed"); got != "{ return (sys.clock.raw(1000) - sys.clock.now()); }" {
+		t.Errorf("unexpected body of elapsed: %s", got)
+	}
+
+	// An extern function is private unless pub, like any other
+	_, errs, _ := load(files{
+		"main.lum":      "import sys.clock;\nfn main() -> Int { return clock.raw(1); }",
+		"sys/clock.lum": "extern fn raw(scale: Int) -> Int;",
+	})
+	if len(errs.Diagnostics) != 1 || errs.Diagnostics[0].Code != ErrPrivate {
+		t.Errorf("expected the extern to be private, got %v", errs.Diagnostics)
+	}
+}

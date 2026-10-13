@@ -34,6 +34,7 @@ The whole pipeline is driven by one function, `compiler.Compile`, which is what
 | `internal/ast` | — | — | AST node types | |
 | `internal/errors` | — | — | `Diagnostic`, `Handler` | [diagnosis.md](diagnosis.md) |
 | `internal/parser` | 1. Parsing | source text of one file | `*ast.Program` | [parsing.md](parsing.md) |
+| `internal/stdlib` | — | — | The standard library's source, compiled into the binary | [../stdlib.md](../stdlib.md#how-it-is-built) |
 | `internal/modules` | 1. Module loading | entry file, file reader | one `*ast.Program` for all files | [module_loading.md](module_loading.md) |
 | `internal/resolve` | 2. Name resolution | AST | `*resolve.Table` | [name_resolution.md](name_resolution.md) |
 | `internal/types` | 3. Type checking | AST, table | `*types.Info` | |
@@ -116,6 +117,7 @@ internals the user never wrote:
 | Construct | Message |
 |-----------|---------|
 | `enum ...` | enums are not supported yet |
+| `extern fn` the runtime has no function for | the runtime has no function '...' (`E7002`, from `checkExterns`) |
 | match patterns other than literals, types and `default` | this kind of match pattern is not supported yet |
 
 When one of these gets implemented, remove its entry here.

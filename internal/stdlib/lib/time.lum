@@ -1,0 +1,33 @@
+// The clock.
+
+// The time now, in milliseconds since 1 January 1970.
+pub extern fn now() -> Int;
+
+// Microseconds since the program started. For measuring how long
+// something takes: unlike now, it never jumps when the clock is set.
+pub extern fn ticks() -> Int;
+
+// Waits that many milliseconds.
+pub extern fn sleep(milliseconds: Int);
+
+// The time now, in whole seconds since 1 January 1970.
+pub fn seconds() -> Int {
+    return now() / 1000;
+}
+
+// A stopwatch: start it, then ask how long ago that was.
+pub struct Stopwatch {
+    started: Int;
+}
+
+pub fn stopwatch() -> Stopwatch {
+    return Stopwatch { started: ticks() };
+}
+
+impl Stopwatch {
+    pub fn microseconds() -> Int { return ticks() - self.started; }
+
+    pub fn milliseconds() -> Int { return self.microseconds() / 1000; }
+
+    pub fn restart() { self.started = ticks(); }
+}

@@ -10,7 +10,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 ## 1. Lexical Structure
 - Source files: UTF-8 `.lum`, one file = one module (see [Modules & Imports](#6-modules--imports)).
 - Identifiers: `Letter {Letter | Digit | _}`, case-sensitive.
-- Keywords: `fn let const struct enum trait impl if else match case while for in break continue return true false null import as pub`, plus the type names `Int Float Bool String Any Void Self`.
+- Keywords: `fn let const struct enum trait impl if else match case while for in break continue return true false null import as pub extern`, plus the type names `Int Float Bool String Any Void Self`.
 - Literals: ints (`123`), floats (`1.0`, `10e3`), strings (`"hi"`), bools, `null`. No char literal in v0. A leading `-` is the unary operator, so `-42` is the negation of `42`.
 - String literals stay on one line and support the escapes `\n \t \r \0 \\ \"`.
 - Comments: `// line`, `/* block */` (non-nested).
@@ -111,6 +111,8 @@ Full description: [modules.md](modules.md).
 - `pub import physics.body.{Body};` exports an imported name again.
 - Modules may import each other. Nothing runs when a module is loaded.
 - A local variable hides a module of the same name.
+- `extern fn name(params) -> Type;` declares a function without a body, provided by the runtime under its full name (module path and name). Only the functions of the standard library exist there today.
+- The package `std` is the [standard library](stdlib.md), built into the compiler: `import std.strings;`.
 - The program starts in the `main` of the entry file, which cannot itself be imported.
 - A project file, [`lumen.json`](project.md), can name the entry file, move the folder paths start at (`root`), and name folders of modules outside it (`packages`). It is not part of the language: a program means the same with or without it, given the same files at the same module paths.
 
@@ -169,7 +171,8 @@ Values print as `42`, `2.5`, `true`, `null`, the text of a string, `[1, 2]` for 
 Program      = { Import | [ "pub" ] Decl } EOF ;
 Import       = [ "pub" ] "import" ModulePath [ "." "{" Ident { "," Ident } "}" | "as" Ident ] ";" ;
 ModulePath   = Ident { "." Ident } ;
-Decl         = FnDecl | StructDecl | TraitDecl | ImplDecl ;   (* "pub" not allowed before ImplDecl *)
+Decl         = FnDecl | ExternDecl | StructDecl | TraitDecl | ImplDecl ;   (* "pub" not allowed before ImplDecl *)
+ExternDecl   = "extern" "fn" Ident "(" [ParamList] ")" [ "->" Type ] ";" ;
 TypeName     = Ident [ "." Ident ] ;                          (* a type of an imported module *)
 
 TraitDecl    = "trait" Ident "{" { TraitMethod } "}" ;
@@ -266,7 +269,9 @@ known defects are inventoried in [missing.md](missing.md).
 | `match` on literals, `default` | Supported | |
 | `match` on types (`case Int:`), `value is Type` | Supported | Narrows the tested variable or field |
 | Enums | Not yet | Parsed, rejected with `E7001` |
-| Modules: `import`, `pub`, several files | Supported | Packages are folders named in `lumen.json`; no standard library, no installer |
+| Modules: `import`, `pub`, several files | Supported | Packages are folders named in `lumen.json`; no installer |
+| Standard library (`std.math`, `std.strings`, `std.arrays`, `std.list`, `std.map`, `std.option`, `std.io`, `std.time`, `std.random`) | Supported | Built into the compiler; see [stdlib.md](stdlib.md) |
+| `extern fn` | Supported | Only for functions built into the runtime; no loading of shared libraries |
 | Generic structs and their methods | Supported | `impl<T> Box<T> { ... }`; methods may add their own: `fn map<U>(...)` |
 | "All paths return" check, unreachable code | Supported | Unreachable code is a warning |
 

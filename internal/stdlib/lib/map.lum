@@ -1,0 +1,130 @@
+// A map: values found by a text key.
+//
+//     let ages = map.empty<Int>();
+//     ages.set("ada", 36);
+//     ages.get("ada") ?? 0
+//
+// It is a hash table, so finding a key takes about the same time however
+// many there are. Keys come back in the order they were first set.
+
+import std.strings;
+
+struct Entry<V> {
+    key: String;
+    value: V;
+    live: Bool;       // false once removed
+}
+
+pub struct Map<V> {
+    entries: [Entry<V>];    // in the order the keys were set
+    buckets: [[Int]];       // positions in entries, by hash of the key
+    count: Int;
+}
+
+// An empty map. Say what it holds: map.empty<Int>().
+pub fn empty<V>() -> Map<V> {
+    return Map<V> { entries: [], buckets: newBuckets(8), count: 0 };
+}
+
+fn newBuckets(size: Int) -> [[Int]] {
+    let buckets: [[Int]] = [];
+    let i = 0;
+    while i < size {
+        let bucket: [Int] = [];
+        push(buckets, bucket);
+        i++;
+    }
+    return buckets;
+}
+
+impl<V> Map<V> {
+    pub fn size() -> Int { return self.count; }
+
+    pub fn isEmpty() -> Bool { return self.count == 0; }
+
+    // Sets the value of a key, replacing the one it had.
+    pub fn set(key: String, value: V) {
+        let at = self.position(key);
+        if at != null {
+            self.entries[at].value = value;
+            return;
+        }
+        if self.entries.length >= self.buckets.length * 2 {
+            self.grow();
+        }
+        push(self.entries, Entry<V> { key: key, value: value, live: true });
+        push(self.bucket(key), self.entries.length - 1);
+        self.count++;
+    }
+
+    // The value of a key, or null if it has none.
+    pub fn get(key: String) -> V? {
+        let at = self.position(key);
+        if at == null { return null; }
+        return self.entries[at].value;
+    }
+
+    pub fn has(key: String) -> Bool {
+        return self.position(key) != null;
+    }
+
+    // Removes a key. Returns whether it was there.
+    pub fn remove(key: String) -> Bool {
+        let at = self.position(key);
+        if at == null { return false; }
+        self.entries[at].live = false;
+        self.count--;
+        return true;
+    }
+
+    // The keys, in the order they were first set.
+    pub fn keys() -> [String] {
+        let out: [String] = [];
+        for entry in self.entries {
+            if entry.live { push(out, entry.key); }
+        }
+        return out;
+    }
+
+    // The values, in the order of their keys.
+    pub fn values() -> [V] {
+        let out: [V] = [];
+        for entry in self.entries {
+            if entry.live { push(out, entry.value); }
+        }
+        return out;
+    }
+
+    // Calls the function with each key and its value.
+    pub fn each(action: fn(String, V) -> Void) {
+        for entry in self.entries {
+            if entry.live { action(entry.key, entry.value); }
+        }
+    }
+
+    // Where the key is in entries, or null.
+    fn position(key: String) -> Int? {
+        for at in self.bucket(key) {
+            let entry = self.entries[at];
+            if entry.live && entry.key == key { return at; }
+        }
+        return null;
+    }
+
+    fn bucket(key: String) -> [Int] {
+        return self.buckets[strings.hash(key) % self.buckets.length];
+    }
+
+    // Twice the buckets, and the removed entries dropped.
+    fn grow() {
+        let kept: [Entry<V>] = [];
+        for entry in self.entries {
+            if entry.live { push(kept, entry); }
+        }
+        self.entries = kept;
+        self.buckets = newBuckets(self.buckets.length * 2);
+        for at, entry in self.entries {
+            push(self.bucket(entry.key), at);
+        }
+    }
+}

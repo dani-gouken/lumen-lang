@@ -1,0 +1,3 @@
+Runtime error: std.strings.substring: range 0..5 is outside a text of 3 characters
+stdlib_error.lum:8:19 in function 'shorten'
+return strings.substring(name, 0, 5) + "...";

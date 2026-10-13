@@ -216,6 +216,8 @@ Methods from a plain `impl Struct` block are only ever called directly and are n
 
 The same lookup is the fallback when a receiver's type is not available to IR generation: if exactly one struct defines the method it is called directly; if several do, they all store it on their values and the lookup picks the right one.
 
+"Not available" includes a receiver whose type names no struct of the program. That happens for the result of a generic method called on a value whose type arguments were lost when types were computed again after desugaring: in `outer.get().get()` with `outer` a `Box<Box<Int>>`, the inner receiver's type comes out as the bare parameter name `V`. It is treated as unknown, not as a struct without that method.
+
 This is a simple form of dynamic dispatch with a known cost: a value of a struct implementing traits holds one function object per trait method, created with the value. A method table shared by all values of a struct would remove that; it needs VM support and is left for later.
 
 ### Generic structs

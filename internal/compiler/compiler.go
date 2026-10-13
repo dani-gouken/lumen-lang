@@ -17,6 +17,7 @@ import (
 	"github.com/dani-gouken/lumen/internal/monomorph"
 	"github.com/dani-gouken/lumen/internal/parser"
 	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/stdlib"
 	"github.com/dani-gouken/lumen/internal/types"
 	"github.com/dani-gouken/lumen/internal/vm"
 )
@@ -24,6 +25,7 @@ import (
 // Error codes for the compiler driver
 const (
 	ErrUnsupportedFeature = "E7001" // Language feature the pipeline cannot compile yet
+	ErrUnknownExtern      = "E7002" // extern fn that the runtime does not provide
 )
 
 // Result holds what each stage of a compilation produced. Stages that did
@@ -103,6 +105,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	if opts.Read == nil {
 		opts.Read = readSourceFile
 	}
+	opts = withStandardLibrary(opts)
 	result := &Result{}
 	lines := parser.SourceLines(src)
 	failed := errs.HasErrors
@@ -116,6 +119,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 		return result
 	}
 	checkSupported(prog, errs, lines)
+	checkExterns(prog, errs, lines)
 	if failed() {
 		return result
 	}
@@ -171,7 +175,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	}
 
 	// 8. Bytecode generation
-	backend := codegen.NewGenerator(result.IR, builtinNames(), errs)
+	backend := codegen.NewGenerator(result.IR, hostFunctions(prog), errs)
 	backend.SetSourceLines(lines)
 	chunk := backend.Generate()
 	if failed() {
@@ -193,11 +197,57 @@ func reanalyze(prog *ast.Program) (*resolve.Table, *types.Info) {
 	return table, typeInfo
 }
 
-func builtinNames() []string {
+// withStandardLibrary makes the package "std" the library built into the
+// compiler, unless the program brings a package of that name itself. Its
+// files are not on disk: reads under its root are served from the binary.
+func withStandardLibrary(opts Options) Options {
+	if _, own := opts.Packages[stdlib.Package]; own {
+		return opts
+	}
+
+	packages := map[string]string{stdlib.Package: stdlib.Root}
+	for name, dir := range opts.Packages {
+		packages[name] = dir
+	}
+	read := opts.Read
+	opts.Packages = packages
+	opts.Read = func(path string) (string, error) {
+		if stdlib.IsPath(path) {
+			return stdlib.Read(path)
+		}
+		return read(path)
+	}
+	return opts
+}
+
+// checkExterns reports `extern fn` declarations the runtime has nothing
+// for. An extern function is found by its program-wide name, so one
+// declared outside the standard library can only work in a build of lumen
+// that was given a native function of that name.
+func checkExterns(prog *ast.Program, errs *errors.Handler, lines map[int]string) {
+	for _, fn := range prog.Externs {
+		if vm.IsNative(fn.Name) {
+			continue
+		}
+		errs.ReportErrorWithSuggestion(ErrUnknownExtern,
+			fmt.Sprintf("the runtime has no function '%s'", fn.Name),
+			"An extern function is provided by lumen itself; write the function in Lumen, or use one of the standard library (import std.math; ...)",
+			fn.Token(), lines)
+	}
+}
+
+// hostFunctions lists the functions the virtual machine provides to this
+// program: the builtins, the compiler's intrinsics and the program's
+// extern functions.
+func hostFunctions(prog *ast.Program) []string {
 	var names []string
 	for _, fn := range resolve.Builtins() {
 		names = append(names, fn.Name)
 	}
 	// Intrinsics the compiler calls itself; they are not visible as names
-	return append(names, irgen.CastIntrinsic, irgen.TypeTestIntrinsic)
+	names = append(names, irgen.CastIntrinsic, irgen.TypeTestIntrinsic)
+	for _, fn := range prog.Externs {
+		names = append(names, fn.Name)
+	}
+	return names
 }

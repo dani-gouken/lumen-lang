@@ -31,6 +31,10 @@ type Heap struct {
 	// Runs a collection. Set by the VM, which knows the roots; called when
 	// an allocation would exceed maxBytes, before giving up.
 	collect func()
+
+	// onFree, when set, is told of every object the collector frees. Tests
+	// use it to spoil freed objects, so that using one shows.
+	onFree func(*ObjHeader)
 }
 
 // NewHeap creates a new heap with the given size limit.

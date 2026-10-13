@@ -39,6 +39,11 @@ func (vm *VM) markRoots() {
 		}
 	}
 
+	// Values a native function is still working with
+	for _, v := range vm.pinned {
+		vm.markValue(v)
+	}
+
 	// Function objects kept for reuse (see functionObject, NEWEXFUNC)
 	for _, cached := range vm.funcObjs {
 		vm.markValue(cached)
@@ -187,6 +192,10 @@ func (h *Heap) sweep() {
 
 // freeObject frees an individual object and updates stats.
 func (h *Heap) freeObject(header *ObjHeader) {
+	if h.onFree != nil {
+		// After the size has been taken off the count below
+		defer h.onFree(header)
+	}
 	var size uint64
 
 	switch header.Type {

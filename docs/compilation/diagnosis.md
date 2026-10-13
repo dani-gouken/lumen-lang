@@ -163,6 +163,8 @@ within them.
 |------|---------|
 | `E7001` | Language feature that parses but cannot be compiled yet (enums, match patterns other than literals and types) |
 
+| `E7002` | `extern fn` naming a function the runtime does not provide |
+
 ### E8xxx — Modules (`internal/modules`)
 
 | Code | Meaning |

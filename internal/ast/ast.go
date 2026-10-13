@@ -51,6 +51,12 @@ type Program struct {
 	BaseNode
 	Imports []*ImportDecl
 	Decls   []Decl
+
+	// Externs are the functions declared with `extern fn`: they have a
+	// signature and no body, the runtime provides them. The parser leaves
+	// them among Decls; module loading moves them here, so that later
+	// stages only see declarations with something to compile.
+	Externs []*FnDecl
 }
 
 func (p *Program) String() string {
@@ -189,11 +195,17 @@ type FnDecl struct {
 	// the declaration was written in, "" for the program's entry file.
 	Pub    bool
 	Module string
+
+	// Extern marks a function the runtime provides: `extern fn name(...);`
+	Extern bool
 }
 
 func (d *FnDecl) declNode() {}
 func (d *FnDecl) String() string {
 	var sb strings.Builder
+	if d.Extern {
+		sb.WriteString("extern ")
+	}
 	sb.WriteString("fn " + d.Name)
 	if len(d.TypeParams) > 0 {
 		sb.WriteString("<" + strings.Join(d.TypeParams, ", ") + ">")

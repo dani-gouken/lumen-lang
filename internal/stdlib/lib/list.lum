@@ -1,0 +1,129 @@
+// A list: an array wrapped in a struct, with what is done to arrays as
+// methods, so that calls read from left to right:
+//
+//     let names = list.of(["ada", "linus"]);
+//     names.add("grace");
+//     names.filter(fn(n: String) -> Bool { return n.length > 3; }).size()
+
+import std.arrays;
+
+pub struct List<T> {
+    items: [T];
+}
+
+// An empty list. Say what it holds: list.empty<Int>().
+pub fn empty<T>() -> List<T> {
+    return List<T> { items: [] };
+}
+
+// A list of the items of an array. The list has its own copy.
+pub fn of<T>(items: [T]) -> List<T> {
+    return List<T> { items: arrays.copy<T>(items) };
+}
+
+impl<T> List<T> {
+    pub fn size() -> Int { return self.items.length; }
+
+    pub fn isEmpty() -> Bool { return self.items.length == 0; }
+
+    // --- Changing the list ---
+
+    pub fn add(value: T) { push(self.items, value); }
+
+    pub fn addAll(values: [T]) {
+        for value in values { push(self.items, value); }
+    }
+
+    // Replaces the item at `index`. Fails if there is none there.
+    pub fn set(index: Int, value: T) { self.items[index] = value; }
+
+    // Puts `value` at `index`, moving the items from there on up.
+    pub fn insert(index: Int, value: T) {
+        self.items = arrays.inserted<T>(self.items, index, value);
+    }
+
+    // Takes out the item at `index` and returns it, or null if there is
+    // none there.
+    pub fn removeAt(index: Int) -> T? {
+        if index < 0 || index >= self.items.length { return null; }
+        let taken = self.items[index];
+        self.items = arrays.without<T>(self.items, index);
+        return taken;
+    }
+
+    // Takes out the last item and returns it, or null for an empty list.
+    pub fn pop() -> T? {
+        return self.removeAt(self.items.length - 1);
+    }
+
+    pub fn clear() {
+        let none: [T] = [];
+        self.items = none;
+    }
+
+    // Puts the list itself in order; see arrays.sorted.
+    pub fn sort(before: fn(T, T) -> Bool) {
+        self.items = arrays.sorted<T>(self.items, before);
+    }
+
+    // --- Reading ---
+
+    // The item at `index`, or null if there is none there.
+    pub fn get(index: Int) -> T? { return arrays.at<T>(self.items, index); }
+
+    pub fn first() -> T? { return arrays.first<T>(self.items); }
+
+    pub fn last() -> T? { return arrays.last<T>(self.items); }
+
+    pub fn find(wanted: fn(T) -> Bool) -> T? { return arrays.find<T>(self.items, wanted); }
+
+    pub fn findIndex(wanted: fn(T) -> Bool) -> Int? { return arrays.findIndex<T>(self.items, wanted); }
+
+    // Whether an item is equal to `value`; see arrays.indexOf.
+    pub fn contains(value: T) -> Bool { return arrays.contains<T>(self.items, value); }
+
+    pub fn indexOf(value: T) -> Int? { return arrays.indexOf<T>(self.items, value); }
+
+    pub fn any(wanted: fn(T) -> Bool) -> Bool { return arrays.any<T>(self.items, wanted); }
+
+    pub fn all(wanted: fn(T) -> Bool) -> Bool { return arrays.all<T>(self.items, wanted); }
+
+    pub fn count(wanted: fn(T) -> Bool) -> Int { return arrays.count<T>(self.items, wanted); }
+
+    // An array of the items; changing it does not change the list.
+    pub fn toArray() -> [T] { return arrays.copy<T>(self.items); }
+
+    // --- New lists from this one ---
+
+    pub fn map<U>(convert: fn(T) -> U) -> List<U> {
+        let out = empty<U>();
+        for item in self.items { out.add(convert(item)); }
+        return out;
+    }
+
+    pub fn filter(wanted: fn(T) -> Bool) -> List<T> {
+        return List<T> { items: arrays.filter<T>(self.items, wanted) };
+    }
+
+    pub fn sorted(before: fn(T, T) -> Bool) -> List<T> {
+        return List<T> { items: arrays.sorted<T>(self.items, before) };
+    }
+
+    pub fn reversed() -> List<T> {
+        return List<T> { items: arrays.reversed<T>(self.items) };
+    }
+
+    pub fn slice(from: Int, to: Int) -> List<T> {
+        return List<T> { items: arrays.slice<T>(self.items, from, to) };
+    }
+
+    pub fn fold<A>(start: A, combine: fn(A, T) -> A) -> A {
+        let result = start;
+        for item in self.items { result = combine(result, item); }
+        return result;
+    }
+
+    pub fn each(action: fn(T) -> Void) {
+        for item in self.items { action(item); }
+    }
+}

@@ -239,7 +239,7 @@ func (p *Parser) markPub(decl ast.Decl, pubTok token.Token) {
 func (p *Parser) synchronize() {
 	for {
 		switch p.cur().Type {
-		case token.EOF, token.STRUCT, token.ENUM, token.TRAIT, token.IMPL, token.IMPORT, token.PUB:
+		case token.EOF, token.STRUCT, token.ENUM, token.TRAIT, token.IMPL, token.IMPORT, token.PUB, token.EXTERN:
 			return
 		case token.FN:
 			// `fn name` starts a declaration; `fn(` is a function type or
@@ -301,6 +301,8 @@ func (p *Parser) parseImport() *ast.ImportDecl {
 
 func (p *Parser) parseDecl() ast.Decl {
 	switch p.cur().Type {
+	case token.EXTERN:
+		return p.parseExternDecl()
 	case token.FN:
 		return p.parseFnDecl(false)
 	case token.STRUCT:
@@ -314,6 +316,32 @@ func (p *Parser) parseDecl() ast.Decl {
 	}
 	p.fail("expected declaration (fn, struct, enum, trait, impl, import), found %s", describe(p.cur()))
 	return nil
+}
+
+// parseExternDecl parses `extern fn name(params) -> Type;`: a function the
+// runtime provides. It has a signature and no body.
+func (p *Parser) parseExternDecl() *ast.FnDecl {
+	p.expect(token.EXTERN, "'extern'")
+	tok := p.expect(token.FN, "'fn' after 'extern'")
+	decl := &ast.FnDecl{BaseNode: base(tok), Extern: true}
+
+	nameTok := p.expect(token.IDENT, "function name")
+	decl.Name = nameTok.Literal
+	decl.BaseNode = base(nameTok)
+	if p.at(token.LT) {
+		p.failWith(ErrUnexpectedToken, "Give the parameters concrete types, or 'Any'",
+			"an extern function cannot have type parameters")
+	}
+	decl.Params = p.parseParams()
+	if p.accept(token.ARROW) {
+		decl.ReturnType = p.parseType()
+	}
+	if p.at(token.LBRACE) {
+		p.failWith(ErrUnexpectedToken, "Remove 'extern' to write the function here, or end the declaration with ';'",
+			"an extern function has no body: the runtime provides it")
+	}
+	p.expectSemicolon()
+	return decl
 }
 
 func (p *Parser) parseTypeParams() []string {

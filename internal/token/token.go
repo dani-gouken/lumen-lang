@@ -45,6 +45,7 @@ const (
 	IMPORT
 	AS
 	PUB
+	EXTERN
 
 	// Literals (keywords)
 	TRUE
@@ -231,6 +232,8 @@ func (typ TokenType) String() string {
 		return "AS"
 	case PUB:
 		return "PUB"
+	case EXTERN:
+		return "EXTERN"
 
 	// Keywords - Literals
 	case TRUE:
@@ -378,6 +381,7 @@ var keywords = map[string]TokenType{
 	"import": IMPORT,
 	"as":     AS,
 	"pub":    PUB,
+	"extern": EXTERN,
 
 	// Literals
 	"true":  TRUE,

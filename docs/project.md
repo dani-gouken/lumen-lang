@@ -109,6 +109,8 @@ A package name wins over a folder of the same name under the root: with a packag
 
 A package name must be usable in an import: letters, digits and `_`, not starting with a digit.
 
+The [standard library](stdlib.md) is a package too, named `std`, whose folder is inside `lumen` itself. It does not have to be listed. Listing a package named `std` replaces it, whole, with the folder given: the program then gets none of the built-in modules.
+
 ### What packages are not
 
 There is no installer, no registry, no versions, and a package cannot declare packages of its own: the program's `lumen.json` names every package the program uses, including the ones its packages import. It is a way to say where code is, not a way to get it there.

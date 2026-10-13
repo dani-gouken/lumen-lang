@@ -10,11 +10,11 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | ranges, sized arrays, more builtins |
+| Everyday syntax | ranges, null operators |
 | Correctness | unused variables |
 | Types | inference from the expected type, richer `match` patterns, array literals of mixed structs |
 | Runtime | register allocation per call, method dispatch cost |
-| Program structure | a standard library, a way to install packages, enums, global constants |
+| Program structure | native code from outside (shared libraries), a way to install packages, enums, global constants |
 
 ---
 
@@ -28,33 +28,21 @@ for i in 0..10 { ... }
 
 **Today**: not parsed. Use `while` with a counter.
 
-### Arrays with a size — S / L
+### Arrays with a fixed size — L
 
-Creating an array of `n` elements, and fixed-size array types.
+**Today**: `arrays.fill(n, value)` from the [standard library](stdlib.md) makes an array of `n` items. What is missing is a type for it: `[Int; 10]`, checked at compile time.
 
-**Today**: arrays are created from a literal and grow with `push`. There is no way to write "ten zeros" except a loop.
+### The standard library has gaps — S to M each
 
-**Notes**: A builtin such as `array(n, value)` is small (S). A real fixed-size type `[Int; 10]` checked at compile time is a type system feature (L).
+There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, maps, files, time, random numbers. Its own list of [what is missing](stdlib.md#what-is-missing) covers dates, number formatting, maps with other keys, sets, folders, program arguments and networking.
 
-### More builtins — S each
+Adding a function written in Lumen means editing a file in `internal/stdlib/lib/`. Adding a native one means an `extern fn` there and a Go function in `internal/vm/native_*.go`; a test fails if the two do not match.
 
-There is no standard library beyond `print`, `println`, `toString` and `push`. Commonly needed and absent:
+### Getting packages, and native code from outside — L
 
-| Missing | Purpose |
-|---------|---------|
-| `pop`, `insert`, `remove`, `slice`, `contains` | Arrays |
-| `substring`, `split`, `join`, `indexOf`, `toUpper`, ... | Strings |
-| `toInt`, `toFloat`, `parseInt` | Conversions. The VM has `TOINT`/`TONUM`; the language does not expose them, so an `Int` and a `Float` cannot be combined at all |
-| `abs`, `min`, `max`, `sqrt`, ... | Math |
-| reading input, files, time | I/O |
+**Today**: [`lumen.json`](project.md) can name folders of modules kept elsewhere (`"packages"`). Nothing downloads or versions a package, and a package cannot name its own dependencies; the program lists them all.
 
-Adding one means a host function in `internal/vm/vm.go` and a declaration in `internal/resolve/builtins.go`.
-
-### A standard library, and getting packages — M / L
-
-**Today**: a program can be split into modules ([modules.md](modules.md)), and [`lumen.json`](project.md) can name folders of modules kept elsewhere (`"packages"`). That is all: no library ships with `lumen`, nothing downloads or versions a package, and a package cannot name its own dependencies; the program lists them all.
-
-**Notes**: A standard library is a package whose folder `lumen` knows without being told (M, once there is something to put in it). Installing and versioning is a tool of its own (L).
+`extern fn` declares a function the runtime provides, but the only functions the runtime has are the ones compiled into `lumen` for the standard library. A package cannot bring native code of its own: there is no loading of shared libraries, so no binding to a C library such as raylib or SQLite. That needs calling conventions for C types (`i32`, `f32`, structs passed by value) and a way to say which library a function is in.
 
 ### Gaps in modules — S each
 
@@ -65,7 +53,6 @@ Adding one means a host function in `internal/vm/vm.go` and a declaration in `in
 | `pub` signatures checked for private types | `pub fn f() -> Secret` compiles; the caller holds a value whose type it cannot name |
 | Dead code removal | Every imported module ends up in the bytecode whole, used or not |
 | Separate compilation | All modules are parsed and compiled on every run |
-| Native functions declared in source (`extern fn`) | Host functions are a fixed list in the compiler |
 
 ### Enums — L
 
@@ -162,6 +149,7 @@ A cast to a function type is checked against the signature recorded when the fun
 | Unused variables, parameters, functions | No warning |
 | Variadic function called through a variable | Arguments are not packed into an array; only direct calls by name are |
 | Shadowing a function with a local | Allowed silently |
+| A variable passed as an argument, changed by a later argument of the same call | The call receives the new value: in `f(count, bump())`, where `bump` is a closure that increments `count`, `f` sees the incremented count. Arguments that are plain variables are read when the call is made, not when their turn comes. Assign the variable to a `let` first if the order matters |
 
 ---
 
@@ -169,11 +157,13 @@ A cast to a function type is checked against the signature recorded when the fun
 
 ### Strings are not counted when they grow — S
 
-`a + b` and `text += part` create a new string each time, and each is counted. But building a long string in a loop makes garbage proportional to the square of its length (every step copies everything so far). There is no string builder yet.
+`a + b` and `text += part` create a new string each time, and each is counted. But building a long string in a loop makes garbage proportional to the square of its length (every step copies everything so far). Collecting the pieces in an array and calling `strings.join` once avoids it; there is no string builder that does this behind `+=`.
 
 ### Method dispatch cost — M
 
 Calls on a value whose struct is known are direct. Calls through a trait look the method up on the value, so each value of a struct that implements traits carries one function object per trait method, created with the value (see [ir_generation.md](compilation/ir_generation.md#structs-and-methods)). A method table shared per struct type would remove that; it needs VM support.
+
+The same lookup is used when IR generation does not know the receiver's struct, which happens more than it should: the types it works from are computed again after generics are instantiated, and that second computation loses the type arguments of generic structs. For `outer.get().get()` with `outer` a `Box<Box<Int>>`, the inner receiver is only known as "some value". The call still goes to the right method, by name when one struct has it, on the value otherwise; it is slower than it needs to be, and a method name shared by several generic structs (`get` of `List` and of `Map`) is stored on each of their values for this reason. Keeping the first type information through the later stages would fix both.
 
 ### Every call allocates its registers — M
 
@@ -211,9 +201,9 @@ Function objects are reused, so calling a function by name allocates nothing for
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
 1.  **Null operators**: `x!`, `a?.b`, and rejecting a value known to be null.
-2.  **Everyday syntax**: ranges, `array(n, value)`, a first batch of string and array builtins, `toInt`/`toFloat`.
-3.  **Native functions declared in source** (`extern fn`), then a standard library as ordinary modules.
-4.  **Types**: inference from the expected result type, `match` as an expression with bindings and guards.
-5.  **Program structure**: global constants, then enums with pattern matching.
+2.  **Everyday syntax**: ranges, global constants (`math.pi` instead of `math.pi()`).
+3.  **`for` over a struct**: an iteration trait, so that a `List` or a `Map` can be looped over directly.
+4.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
+5.  **Types**: `match` as an expression with bindings and guards, then enums with pattern matching.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

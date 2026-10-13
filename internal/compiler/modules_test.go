@@ -571,3 +571,148 @@ func TestModulesImplementationsAreGlobal(t *testing.T) {
 		"lib.lum": lib,
 	}, "4 6 8 point\n")
 }
+
+func TestExternFunctions(t *testing.T) {
+	// An extern function the runtime does not have is a compile error,
+	// wherever it is declared and whether or not it is called
+	expectModulesError(t, sources{
+		"main.lum": "extern fn launch(code: Int) -> Bool;\nfn main() -> Int { return 0; }",
+	}, "E7002", "main.lum", "the runtime has no function 'launch'")
+	expectModulesError(t, sources{
+		"main.lum":     "import hw.motor;\nfn main() -> Int { return 0; }",
+		"hw/motor.lum": "\npub extern fn spin(speed: Int);\n",
+	}, "E7002", "hw/motor.lum", "the runtime has no function 'hw.motor.spin'")
+	// Declaring a library function under another module's name does not reach it
+	expectModulesError(t, sources{
+		"main.lum": "extern fn sqrt(x: Float) -> Float;\nfn main() -> Int { return 0; }",
+	}, "E7002", "main.lum", "the runtime has no function 'sqrt'")
+
+	// Calls of extern functions are type checked against their declaration
+	lib := sources{"main.lum": ""}
+	check := func(body, code, msg string) {
+		t.Helper()
+		lib["main.lum"] = "import std.math;\nimport std.strings;\nfn main() -> Int {\n" + body + "\nreturn 0;\n}\n"
+		expectModulesError(t, lib, code, "main.lum", msg)
+	}
+	check(`let r = math.sqrt(4);`, "E2010", "cannot use type int as argument of type float")
+	check(`let r = math.sqrt(4.0, 2.0);`, "E2009", "expected 1 arguments, got 2")
+	check(`let r: Int = math.sqrt(4.0);`, "E2001", "float")
+	check(`let n: Int = strings.indexOf("abc", "b");`, "E2001", "int?")
+	check(`let n = strings.indexOf("abc", "b") + 1;`, "E2017", "the value may be null")
+	check(`let s: String = strings.split("a b", " ");`, "E2001", "[string]")
+	check(`let r = math.floor(2);`, "E2010", "cannot use type int as argument of type float")
+	check(`let r = math.nothing(2);`, "E8002", "module 'std.math' has no 'nothing'")
+
+	// An extern function is a value like any function
+	expectModulesOutput(t, sources{"main.lum": `
+		import std.math;
+		import std.strings.{upper, lower};
+
+		fn apply(f: fn(Float) -> Float, x: Float) -> Float { return f(x); }
+		fn each(words: [String], f: fn(String) -> String) -> [String] {
+			let out: [String] = [];
+			for w in words { push(out, f(w)); }
+			return out;
+		}
+		fn main() -> Int {
+			let root = math.sqrt;
+			println(apply(root, 49.0), apply(math.exp, 0.0), root(4.0));
+			println(each(["Ada", "Bob"], upper), each(["Ada", "Bob"], lower));
+			let table = [math.floor, math.ceil, math.round];
+			for f in table { print(f(2.5), ""); }
+			println();
+			return 0;
+		}
+	`}, "7 1 2\n[\"ADA\", \"BOB\"] [\"ada\", \"bob\"]\n2 3 3 \n")
+}
+
+func TestStandardLibraryIsAPackage(t *testing.T) {
+	// A folder named std in the program is not where std.* is looked for
+	expectModulesOutput(t, sources{
+		"main.lum":     "import std.math;\nfn main() -> Int { println(math.abs(-3)); return 0; }",
+		"std/math.lum": "pub fn abs(n: Int) -> Int { return 999; }",
+	}, "3\n")
+
+	// A module the library does not have
+	_, errs := compileModules(sources{"main.lum": "import std.network;\nfn main() -> Int { return 0; }"})
+	if len(errs.Diagnostics) != 1 || errs.Diagnostics[0].Code != "E8001" || !strings.Contains(errs.Diagnostics[0].Suggestion, "'std' is a package") {
+		t.Errorf("expected a missing module of the package std, got %v", errs.Diagnostics)
+	}
+
+	// A program can bring its own package std; then that one is used, whole
+	fs := sources{
+		"main.lum":      "import std.math;\nfn main() -> Int { println(math.abs(-3)); return 0; }",
+		"mine/math.lum": "pub fn abs(n: Int) -> Int { return 42; }",
+	}
+	errs = errors.NewHandler()
+	result := CompileOptions(fs["main.lum"], "main.lum", Options{Read: fs.read, Packages: map[string]string{"std": "mine"}}, errs)
+	if errs.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", errs.Diagnostics)
+	}
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	if _, err := machine.Exec(result.Chunk); err != nil || out.String() != "42\n" {
+		t.Errorf("expected the program's own std to be used, got %q, %v", out.String(), err)
+	}
+
+	// A type error in the library's own source would name its file; here,
+	// a misuse found inside the library's generic code after instantiation
+	// still points at the caller's line
+	expectModulesError(t, sources{
+		"main.lum": "import std.arrays;\nfn main() -> Int {\n    let n: String = arrays.sum([1, 2]);\n    return 0;\n}\n",
+	}, "E2001", "main.lum", "int")
+}
+
+func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
+	// The value a generic method returns is itself a generic struct, whose
+	// methods are called in turn. Several structs share the method names.
+	expectModulesOutput(t, sources{"main.lum": `
+		import std.list;
+		import std.map;
+		import std.map.{Map};
+		import std.list.{List};
+
+		struct Box<V> { value: V; }
+		impl<V> Box<V> {
+			fn get() -> V { return self.value; }
+			fn maybe() -> V? { return self.value; }
+		}
+
+		fn main() -> Int {
+			let inner = Box<Int> { value: 7 };
+			let outer = Box<Box<Int>> { value: inner };
+			let a = outer.get();
+			let b = outer.maybe();
+			if b != null { println(a.get(), b.get(), outer.get().get()); }
+
+			// A map of maps, a map of lists, a list of maps
+			let scores = map.empty<Map<Int>>();
+			let maths = map.empty<Int>();
+			maths.set("ada", 19);
+			scores.set("maths", maths);
+			let found = scores.get("maths");
+			if found != null {
+				found.set("bob", 12);
+				println(found.get("ada"), found.keys(), found.size());
+			}
+
+			let groups = map.empty<List<String>>();
+			groups.set("fruit", list.of(["fig"]));
+			let fruit = groups.get("fruit");
+			if fruit != null {
+				fruit.add("pear");
+				println(fruit.get(1), fruit.size(), fruit.toArray());
+			}
+
+			let rows = list.empty<Map<Int>>();
+			rows.add(maths);
+			let row = rows.get(0);
+			if row != null { println(row.get("bob"), row.has("zed")); }
+
+			let boxed = Box<List<Int>> { value: list.of([1, 2, 3]) };
+			println(boxed.get().size(), boxed.get().get(2), boxed.get().map<Int>(fn(n: Int) -> Int { return n * n; }).toArray());
+			return 0;
+		}
+	`}, "7 7 7\n19 [\"ada\", \"bob\"] 2\npear 2 [\"fig\", \"pear\"]\n12 false\n3 3 [1, 4, 9]\n")
+}

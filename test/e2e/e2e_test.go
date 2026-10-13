@@ -781,3 +781,100 @@ func TestProjectFile(t *testing.T) {
 		}
 	})
 }
+
+// TestStandardLibrary runs programs that use the library built into the
+// binary: nothing but the binary and the program's own file is needed.
+func TestStandardLibrary(t *testing.T) {
+	// A program in a folder with nothing else in it, run from elsewhere
+	dir := project(t, map[string]string{
+		"greet.lum": `
+import std.io;
+import std.strings;
+import std.arrays;
+
+fn main() -> Int {
+    let name = io.ask("Who are you? ");
+    if name == null {
+        println("nobody there");
+        return 1;
+    }
+    println("Hello, " + strings.capitalize(strings.trim(name)) + "!");
+
+    let numbers: [Int] = [];
+    for line in io.readLines() {
+        let n = strings.parseInt(line);
+        if n != null { push(numbers, n); }
+    }
+    println(numbers.length, "numbers, sum", arrays.sum(numbers), "largest", arrays.largest(numbers) ?? 0);
+    return 0;
+}
+`,
+	})
+	program := filepath.Join(dir, "greet.lum")
+
+	// Input comes from standard input
+	res := runLumenWithInput(t, "  ada \n4\nx\n10\n\n-3\n", "run", program)
+	if res.exit != 0 || res.stdout != "Who are you? Hello, Ada!\n3 numbers, sum 11 largest 10\n" || res.stderr != "" {
+		t.Errorf("unexpected run: exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+	}
+	// No input at all: readLine gives null at once
+	res = runLumenIn(t, dir, "", "run", "greet.lum")
+	if res.exit != 1 || res.stdout != "Who are you? nobody there\n" {
+		t.Errorf("expected the program to see the end of the input, got exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+	}
+
+	// Compiled bytecode carries the library's functions with it
+	bytecode := filepath.Join(dir, "greet.lc")
+	if res := runLumen(t, "build", program, bytecode); res.exit != 0 {
+		t.Fatalf("build failed:\n%s", res.stderr)
+	}
+	res = runLumenWithInput(t, "bob\n1\n2\n", "exec", bytecode)
+	if !strings.HasPrefix(res.stdout, "Who are you? Hello, Bob!\n2 numbers, sum 3 largest 2\n") {
+		t.Errorf("expected the bytecode to run with the library, got %q\n%s", res.stdout, res.stderr)
+	}
+
+	// The library's functions appear under their module's name
+	ir := runLumen(t, "ir", program)
+	for _, name := range []string{"fn std.strings.capitalize(", "fn std.arrays.sum(", "fn std.io.ask("} {
+		if !strings.Contains(ir.stdout, name) {
+			t.Errorf("expected the IR to contain %q", name)
+		}
+	}
+	// ...and the natives are host functions, not compiled code
+	if strings.Contains(ir.stdout, "fn std.strings.trim(") || strings.Contains(ir.stdout, "fn std.io.readLine(") {
+		t.Error("did not expect native functions among the compiled ones")
+	}
+	listing := filepath.Join(dir, "greet.lasm")
+	if res := runLumen(t, "build", program, listing); res.exit != 0 {
+		t.Fatalf("build of the listing failed:\n%s", res.stderr)
+	}
+	text, _ := os.ReadFile(listing)
+	if !regexp.MustCompile(`NEWEXFUNC r\d+ std\.io\.readLine`).Match(text) {
+		t.Error("expected the listing to load std.io.readLine as a host function")
+	}
+
+	// Files: written by one run, read by the next
+	notes := filepath.Join(dir, "notes.txt")
+	files := project(t, map[string]string{
+		"save.lum": "import std.io;\nfn main() -> Int {\n    if io.appendFile(\"" + notes + "\", \"a line\\n\") { return 0; }\n    return 1;\n}\n",
+		"load.lum": "import std.io;\nimport std.strings;\nfn main() -> Int {\n    println(strings.lines(io.readFile(\"" + notes + "\") ?? \"\").length);\n    return 0;\n}\n",
+	})
+	for i := 0; i < 3; i++ {
+		if res := runLumenIn(t, files, "", "run", "save.lum"); res.exit != 0 {
+			t.Fatalf("expected the file to be written, got exit %d:\n%s", res.exit, res.stderr)
+		}
+	}
+	if res := runLumenIn(t, files, "", "run", "load.lum"); res.stdout != "3\n" {
+		t.Errorf("expected three lines in the file, got %q\n%s", res.stdout, res.stderr)
+	}
+
+	// A project may replace the library with a package of its own
+	own := project(t, map[string]string{
+		"lumen.json":     `{"entry": "main.lum", "packages": {"std": "mystd"}}`,
+		"main.lum":       "import std.math;\nfn main() -> Int { println(math.abs(-5)); return 0; }\n",
+		"mystd/math.lum": "pub fn abs(n: Int) -> Int { return 0 - 1; }\n",
+	})
+	if res := runLumenIn(t, own, "", "run"); res.stdout != "-1\n" {
+		t.Errorf("expected the project's own std to be used, got %q\n%s", res.stdout, res.stderr)
+	}
+}

@@ -334,12 +334,53 @@ lumen build app.lc
 
 ### Builtin functions
 
+Available everywhere, without an import:
+
 | Function | Description |
 |----------|-------------|
 | `print(values...)` | Write the values separated by spaces |
 | `println(values...)` | Same, followed by a newline |
 | `toString(value)` | The text `print` would write, as a `String` |
 | `push(array, value)` | Append to an array |
+
+### The standard library
+
+Everything else comes from the library built into `lumen`, one `import` away:
+
+```lumen
+import std.strings;
+import std.arrays;
+import std.math;
+import std.io;
+
+fn main() -> Int {
+    let line = io.ask("Numbers, separated by spaces: ") ?? "";
+
+    let numbers: [Int] = [];
+    for word in strings.words(line) {
+        let n = strings.parseInt(word);       // Int?: null when the word is not a number
+        if n != null { push(numbers, n); }
+    }
+
+    println("sum", arrays.sum(numbers), "largest", arrays.largest(numbers) ?? 0);
+    println("root of the sum", math.sqrt(math.toFloat(arrays.sum(numbers))));
+    return 0;
+}
+```
+
+| Module | For |
+|--------|-----|
+| `std.math` | `abs`, `min`, `max`, `pow`, `sqrt`, `floor`, `round`, `toFloat`, ... |
+| `std.strings` | `split`, `join`, `substring`, `indexOf`, `replace`, `trim`, `upper`, `parseInt`, ... |
+| `std.arrays` | `range`, `fill`, `slice`, `map`, `filter`, `fold`, `sorted`, `contains`, `sum`, ... |
+| `std.list` | `List<T>`: an array with methods (`add`, `removeAt`, `sort`, `map`, ...) |
+| `std.map` | `Map<V>`: values by a text key (`set`, `get`, `has`, `keys`, ...) |
+| `std.option` | Chaining on values that may be `null`: `map`, `then`, `mapOr`, `orElse`, ... |
+| `std.io` | `readLine`, `readFile`, `writeFile`, `exists`, `env`, ... |
+| `std.time` | `now`, `sleep`, `stopwatch` |
+| `std.random` | `below`, `between`, `pick`, `shuffle`, `seed` |
+
+A function that may have no answer returns an optional, so the checker makes sure the program handles "none": `strings.indexOf` returns `Int?`, `list.first()` returns `T?`. All functions are described in [stdlib.md](stdlib.md).
 
 ## Reading Errors
 
@@ -391,4 +432,4 @@ Things to be aware of:
 *   **What is known about a field ends at a call that may change a field.** `println`, and functions that only read, are fine; after calling something that assigns a field, or a function value, the field has to be tested again or copied into a local first. A variable that a lambda assigns is not narrowed at all.
 *   **A type argument nothing determines has to be written**: `let xs = none();` gives no clue, so write `none<Int>()` or `let xs: [Int] = none();`.
 
-The status table in the [language spec](language-spec.md#13-implementation-status) lists what works; [missing.md](missing.md) is the full inventory of what does not, including `+=`/`++`, the index in `for` loops and arrays with a size.
+The status table in the [language spec](language-spec.md#13-implementation-status) lists what works; [missing.md](missing.md) is the full inventory of what does not.

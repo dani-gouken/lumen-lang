@@ -1,0 +1,41 @@
+// Random numbers.
+//
+// Without a seed the numbers differ on every run. After seed(n) they are
+// the same on every run, for the same n: useful to test, or to replay.
+
+pub extern fn seed(n: Int);
+
+// A whole number from 0 up to, not including, `limit`. Fails if the limit
+// is below 1.
+pub extern fn below(limit: Int) -> Int;
+
+// A number from 0.0 up to, not including, 1.0.
+pub extern fn float() -> Float;
+
+// A whole number from `low` to `high`, both included.
+pub fn between(low: Int, high: Int) -> Int {
+    return low + below(high - low + 1);
+}
+
+// True with the given probability: chance(0.25) is true one time in four.
+pub fn chance(probability: Float) -> Bool {
+    return float() < probability;
+}
+
+// One of the items, or null for an empty array.
+pub fn pick<T>(items: [T]) -> T? {
+    if items.length == 0 { return null; }
+    return items[below(items.length)];
+}
+
+// Changes the array itself: puts its items in a random order.
+pub fn shuffle<T>(items: [T]) {
+    let i = items.length - 1;
+    while i > 0 {
+        let j = below(i + 1);
+        let held = items[i];
+        items[i] = items[j];
+        items[j] = held;
+        i--;
+    }
+}

@@ -1,0 +1,14 @@
+// The standard library is type checked like the program's own code.
+
+import std.math;
+import std.strings;
+import std.map;
+
+fn main() -> Int {
+    let root = math.sqrt(16);
+    let at: Int = strings.indexOf("banana", "na");
+    let ages = map.empty<Int>();
+    ages.set("ada", "thirty-six");
+    let next = ages.get("ada") + 1;
+    return 0;
+}

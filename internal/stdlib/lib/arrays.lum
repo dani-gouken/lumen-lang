@@ -1,0 +1,273 @@
+// Arrays.
+//
+// The functions here return new arrays and leave the ones they are given
+// alone, unless their description says otherwise.
+
+// --- Making ---
+
+// The whole numbers from `from` up to, not including, `to`.
+pub fn range(from: Int, to: Int) -> [Int] {
+    let out: [Int] = [];
+    let n = from;
+    while n < to {
+        push(out, n);
+        n++;
+    }
+    return out;
+}
+
+// An array of `count` times the same value.
+pub fn fill<T>(count: Int, value: T) -> [T] {
+    let out: [T] = [];
+    let i = 0;
+    while i < count {
+        push(out, value);
+        i++;
+    }
+    return out;
+}
+
+pub fn copy<T>(items: [T]) -> [T] {
+    let out: [T] = [];
+    for item in items { push(out, item); }
+    return out;
+}
+
+// The items from position `from` up to, not including, `to`. Positions
+// outside the array are brought back to its ends.
+pub fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
+    let out: [T] = [];
+    let i = from;
+    if i < 0 { i = 0; }
+    while i < to && i < items.length {
+        push(out, items[i]);
+        i++;
+    }
+    return out;
+}
+
+// The items of `first` followed by those of `second`.
+pub fn concat<T>(first: [T], second: [T]) -> [T] {
+    let out: [T] = [];
+    for item in first { push(out, item); }
+    for item in second { push(out, item); }
+    return out;
+}
+
+pub fn reversed<T>(items: [T]) -> [T] {
+    let out: [T] = [];
+    let i = items.length - 1;
+    while i >= 0 {
+        push(out, items[i]);
+        i--;
+    }
+    return out;
+}
+
+// The array without the item at `index`. An index outside it changes nothing.
+pub fn without<T>(items: [T], index: Int) -> [T] {
+    let out: [T] = [];
+    for i, item in items {
+        if i != index { push(out, item); }
+    }
+    return out;
+}
+
+// The array with `value` put at `index`, the items from there on moved up.
+pub fn inserted<T>(items: [T], index: Int, value: T) -> [T] {
+    let out: [T] = [];
+    for i, item in items {
+        if i == index { push(out, value); }
+        push(out, item);
+    }
+    if index >= items.length { push(out, value); }
+    return out;
+}
+
+// --- One item ---
+
+// The first item, or null for an empty array.
+pub fn first<T>(items: [T]) -> T? {
+    if items.length == 0 { return null; }
+    return items[0];
+}
+
+// The last item, or null for an empty array.
+pub fn last<T>(items: [T]) -> T? {
+    if items.length == 0 { return null; }
+    return items[items.length - 1];
+}
+
+// The item at `index`, or null if there is none there.
+pub fn at<T>(items: [T], index: Int) -> T? {
+    if index < 0 || index >= items.length { return null; }
+    return items[index];
+}
+
+// The first item the function accepts, or null.
+pub fn find<T>(items: [T], wanted: fn(T) -> Bool) -> T? {
+    for item in items {
+        if wanted(item) { return item; }
+    }
+    return null;
+}
+
+// The position of the first item the function accepts, or null.
+pub fn findIndex<T>(items: [T], wanted: fn(T) -> Bool) -> Int? {
+    for i, item in items {
+        if wanted(item) { return i; }
+    }
+    return null;
+}
+
+// The position of the first item equal to `wanted`, or null. Numbers,
+// texts and booleans are equal when they have the same value; an array or
+// a struct is only equal to itself.
+pub fn indexOf<T>(items: [T], wanted: T) -> Int? {
+    for i, item in items {
+        if item == wanted { return i; }
+    }
+    return null;
+}
+
+// --- Asking ---
+
+pub fn isEmpty<T>(items: [T]) -> Bool { return items.length == 0; }
+
+// Whether an item is equal to `wanted`; see indexOf.
+pub fn contains<T>(items: [T], wanted: T) -> Bool {
+    for item in items {
+        if item == wanted { return true; }
+    }
+    return false;
+}
+
+// Whether the function accepts at least one item.
+pub fn any<T>(items: [T], wanted: fn(T) -> Bool) -> Bool {
+    for item in items {
+        if wanted(item) { return true; }
+    }
+    return false;
+}
+
+// Whether the function accepts every item. True for an empty array.
+pub fn all<T>(items: [T], wanted: fn(T) -> Bool) -> Bool {
+    for item in items {
+        if !wanted(item) { return false; }
+    }
+    return true;
+}
+
+// How many items the function accepts.
+pub fn count<T>(items: [T], wanted: fn(T) -> Bool) -> Int {
+    let n = 0;
+    for item in items {
+        if wanted(item) { n++; }
+    }
+    return n;
+}
+
+// --- Every item ---
+
+// What the function makes of each item, in the same order.
+pub fn map<T, U>(items: [T], convert: fn(T) -> U) -> [U] {
+    let out: [U] = [];
+    for item in items { push(out, convert(item)); }
+    return out;
+}
+
+// The items the function accepts.
+pub fn filter<T>(items: [T], wanted: fn(T) -> Bool) -> [T] {
+    let out: [T] = [];
+    for item in items {
+        if wanted(item) { push(out, item); }
+    }
+    return out;
+}
+
+// One value from all the items: starts with `start`, and for each item
+// replaces it by combine(value so far, item).
+pub fn fold<T, A>(items: [T], start: A, combine: fn(A, T) -> A) -> A {
+    let result = start;
+    for item in items { result = combine(result, item); }
+    return result;
+}
+
+// Calls the function with each item.
+pub fn each<T>(items: [T], action: fn(T) -> Void) {
+    for item in items { action(item); }
+}
+
+// --- Order ---
+
+// The items in order, given a function that says whether its first
+// argument must come before its second. Items that are equal in that
+// order stay in the order they were in.
+pub fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
+    if items.length < 2 { return copy<T>(items); }
+    let middle = items.length / 2;
+    let left = sorted<T>(slice<T>(items, 0, middle), before);
+    let right = sorted<T>(slice<T>(items, middle, items.length), before);
+
+    let out: [T] = [];
+    let l = 0;
+    let r = 0;
+    while l < left.length && r < right.length {
+        if before(right[r], left[l]) {
+            push(out, right[r]);
+            r++;
+        } else {
+            push(out, left[l]);
+            l++;
+        }
+    }
+    while l < left.length { push(out, left[l]); l++; }
+    while r < right.length { push(out, right[r]); r++; }
+    return out;
+}
+
+// Changes the array itself: the items at the two positions change places.
+pub fn swap<T>(items: [T], a: Int, b: Int) {
+    let held = items[a];
+    items[a] = items[b];
+    items[b] = held;
+}
+
+// --- Numbers and texts ---
+
+pub fn sum(numbers: [Int]) -> Int {
+    let total = 0;
+    for n in numbers { total += n; }
+    return total;
+}
+
+// The smallest number, or null for an empty array.
+pub fn smallest(numbers: [Int]) -> Int? {
+    if numbers.length == 0 { return null; }
+    let best = numbers[0];
+    for n in numbers {
+        if n < best { best = n; }
+    }
+    return best;
+}
+
+// The largest number, or null for an empty array.
+pub fn largest(numbers: [Int]) -> Int? {
+    if numbers.length == 0 { return null; }
+    let best = numbers[0];
+    for n in numbers {
+        if n > best { best = n; }
+    }
+    return best;
+}
+
+// The numbers from smallest to largest.
+pub fn sortedNumbers(numbers: [Int]) -> [Int] {
+    return sorted<Int>(numbers, fn(a: Int, b: Int) -> Bool { return a < b; });
+}
+
+// The texts in alphabetical order.
+pub fn sortedTexts(texts: [String]) -> [String] {
+    return sorted<String>(texts, fn(a: String, b: String) -> Bool { return a < b; });
+}
+

@@ -192,6 +192,32 @@ function. The VM registers these by default:
 | `__is`     | value, descriptor | Bool | Implements `value is Type`: whether the value matches the descriptor |
 | `__cast`   | value, descriptor | the value | Implements `value as Type`: fails unless the value matches the descriptor (`int`, `[int]`, `?string`, `{Circle|Square}`, `{Box:value=int}`, ...; the grammar is at the top of `internal/vm/cast.go`). Arrays are checked element by element. Emitted by the compiler; not callable from Lumen source |
 
+### Native functions of the standard library
+
+The part of the [standard library](stdlib.md) that is not written in Lumen is
+a set of host functions named after the library function they implement:
+`std.math.sqrt`, `std.strings.split`, `std.io.readFile`, and so on
+(`internal/vm/native_*.go`; `vm.NativeNames()` lists them). Every VM has them.
+A Lumen module reaches one by declaring it with `extern fn`; the compiler
+emits `NEWEXFUNC` with the function's full name.
+
+They differ from the functions above in three ways:
+
+- **Arguments are checked**: count and types, although the type checker has
+  already done so for calls from Lumen. Bytecode can be written by hand.
+- **Errors name the function as the program does**:
+  `std.strings.substring: range 2..9 is outside a text of 3 characters`.
+- **They may allocate more than once**, which the others never do. A second
+  allocation can collect garbage, and what the function has built so far is
+  held only in Go variables, where the collector cannot see it. Such a
+  function *pins* its intermediate values (`vm.pin`): pinned values are roots
+  until the function returns. `newStringArray` does this for the common case
+  of an array of strings.
+
+Per-VM state: the input `std.io.readLine` reads from (`VM.SetInput`, default
+standard input) and the generator behind `std.random`, so that seeding in one
+VM does not affect another.
+
 Values are written the way a program shows them: `42`, `2.5`, `true`, `null`,
 the text of a string, `[1, "a"]` for arrays and `{x: 1, y: 2}` for objects
 (fields sorted by name, function-valued fields omitted). This is
