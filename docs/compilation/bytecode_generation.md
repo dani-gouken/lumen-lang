@@ -92,6 +92,13 @@ MOV  dest r0        ; fetch the result
 
 Calls never nest at this level — arguments are already computed into registers before the sequence starts — so a single window is enough. Its size is one more than the largest argument count in the function.
 
+That is the general form. Most calls are written shorter, by the rules of [One instruction for several](#one-instruction-for-several) below: `fib(n - 1)` is
+
+```
+SUBI  rW+1 n 1      ; the argument, made in its place
+CALLK rW   1 fib    ; the function by its number: no value of it is made
+```
+
 The function's `RegisterCount` is `permanents + temporaries + window`. If it exceeds 65536 the function is rejected with `E6001`.
 
 ## Control Flow
@@ -110,7 +117,13 @@ Without a `main` there is nowhere to start from: everything is compiled, and the
 
 ### Jumps
 
-Blocks are emitted in their IR order. A jump is always the three-word long form with a 32-bit relative offset:
+Blocks are emitted in their IR order. A jump is one instruction holding the address of its target:
+
+```
+JMP target | JMPIFNOT r_cond target
+```
+
+An operand holds 16 bits, so that only reaches the first 65536 instructions of a chunk. A function that ends beyond them is generated a second time with every jump in the three-word long form, which holds a 32-bit offset instead:
 
 ```
 LONG
@@ -118,16 +131,45 @@ JMP32 | JMPIFNOT32 r_cond
 <offset word>
 ```
 
-The short `JMP`/`JMPIF` instructions hold an absolute address in one operand, which only reaches the first 65536 instructions of a chunk; using the long form everywhere avoids choosing per jump. Offsets are patched once all blocks of the function are placed.
+Targets are filled in once all blocks of the function are placed. Now that only the functions a program uses are compiled, it takes a very large program to need the long form.
 
 | IR | Bytecode |
 |----|----------|
 | `JMP target` | long jump, **omitted** when `target` is the next block |
-| `BR cond, then, else` | `JMPIFNOT32 cond → else`, then a jump to `then` unless it is the next block |
+| `BR cond, then, else` | `JMPIFNOT cond → else`, then a jump to `then` unless it is the next block. When `cond` is a test made just before and read nowhere else, the test and the jump are one instruction (below) |
 | `RET value` | `RET r` |
 | `RET` | `LOADNULL r0`, `RET r0` |
 
 A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, so execution can never run into whatever follows it.
+
+## One Instruction for Several
+
+Before a function's instructions are written, `shorten` (in `function.go`) decides where one can do the work of several. Each case concerns a *temporary read once*: a value written once and read once in the block it was made in, which nothing else can depend on.
+
+| What the IR says | Written as | Instead of |
+|---|---|---|
+| A call of a function named on the spot, which captures nothing | `CALLK window nargs function` | `NEWFUNC`, `MOV`, `CALL` |
+| The same of a host function | `CALLX window nargs host-function` | `NEWEXFUNC`, `MOV`, `CALL` |
+| A value made only to be an argument, with no other call before the one it is for | made in the window | made elsewhere, then `MOV` |
+| The result of a call, read once before the next call | read from `r0` | `MOV dest r0` first |
+| The result of a call nothing reads | nothing | `MOV dest r0` |
+| A test read only by the branch after it | `JNLT a b else`, `JNLE`, `JNEQ`, `JNNE` (go to `else` unless the test holds; greater-than swaps the registers) | the test, then `JMPIFNOT` |
+| The same against a number in 0..65535 | `JNLTI a k else`, `JNLEI`, `JNGTI`, `JNGEI`, `JNEQI`, `JNNEI` | `LOADI`, the test, `JMPIFNOT` |
+| Adding or subtracting a number in 0..65535 | `ADDI dest a k`, `SUBI dest a k` | `LOADI`, then `ADD` or `SUB` |
+| The first argument of a function that calls nothing | stays in `r0` | `MOV home r0` on entry |
+
+A function held in a variable, passed along or read twice is a value and is called with `CALL`. So is a closure, which is a new value each time it is made.
+
+The tests that jump hold an address, so they are not used in a function written with long jumps; everything else is.
+
+Each short instruction does exactly what the sequence it replaces did, for every kind of value, failures included: `internal/vm/short_ops_test.go` runs both and compares. A loop that counts to a limit and adds as it goes is three instructions per turn:
+
+```
+JNLTI i 100 done
+ADD   sum sum i
+ADDI  i i 1
+JMP   head
+```
 
 ## Instruction Selection
 

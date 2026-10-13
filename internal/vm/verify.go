@@ -120,9 +120,7 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 
 		case OpCALL:
 			// The function is in A, its arguments in the registers after
-			if err = v.registers(instr.A); err == nil && int(instr.A)+int(instr.B) >= proto.RegisterCount {
-				err = fmt.Errorf("a call with %d arguments from r%d reaches past the %d registers", instr.B, instr.A, proto.RegisterCount)
-			}
+			err = v.call(instr)
 
 		case OpNEWFUNC:
 			if err = v.registers(instr.A); err == nil && int(instr.B) >= len(chunk.Prototypes) {
@@ -151,6 +149,29 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 			if err = v.registers(instr.B); err == nil {
 				err = v.upvalue(instr.A)
 			}
+
+		case OpCALLK:
+			if err = v.call(instr); err == nil {
+				err = v.calledFunction(instr)
+			}
+
+		case OpCALLX:
+			if err = v.call(instr); err == nil && int(instr.C) >= len(chunk.ExternNames) {
+				err = fmt.Errorf("host function %d of %d", instr.C, len(chunk.ExternNames))
+			}
+
+		case OpJNLT, OpJNLE, OpJNEQ, OpJNNE:
+			if err = v.registers(instr.A, instr.B); err == nil {
+				err = jump(ip, int(instr.C))
+			}
+
+		case OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI:
+			if err = v.registers(instr.A); err == nil {
+				err = jump(ip, int(instr.C))
+			}
+
+		case OpADDI, OpSUBI:
+			err = v.registers(instr.A, instr.B)
 
 		case OpNEWSTR:
 			if err = v.registers(instr.A); err == nil {
@@ -210,6 +231,35 @@ func (v *verifier) registers(registers ...uint16) error {
 		if int(r) >= v.proto.RegisterCount {
 			return fmt.Errorf("register r%d of a function that has %d", r, v.proto.RegisterCount)
 		}
+	}
+	return nil
+}
+
+// call checks that the arguments of a call are registers of the function.
+func (v *verifier) call(instr Instr) error {
+	if err := v.registers(instr.A); err != nil {
+		return err
+	}
+	if int(instr.A)+int(instr.B) >= v.proto.RegisterCount {
+		return fmt.Errorf("a call with %d arguments from r%d reaches past the %d registers", instr.B, instr.A, v.proto.RegisterCount)
+	}
+	return nil
+}
+
+// calledFunction checks a call of a function by its number: there is such
+// a function, it captures nothing (one that does is a value of its own
+// each time it is made, and is called as a value), and it takes the
+// arguments it is given. The instruction loop does not look again.
+func (v *verifier) calledFunction(instr Instr) error {
+	if int(instr.C) >= len(v.chunk.Prototypes) {
+		return fmt.Errorf("function %d of %d", instr.C, len(v.chunk.Prototypes))
+	}
+	callee := &v.chunk.Prototypes[instr.C]
+	if callee.UpvalueCount != 0 {
+		return fmt.Errorf("function '%s' captures variables, and cannot be called by its number", callee.Name)
+	}
+	if callee.ArgCount != int(instr.B) {
+		return fmt.Errorf("function '%s' expects %d arguments, got %d", callee.Name, callee.ArgCount, instr.B)
 	}
 	return nil
 }

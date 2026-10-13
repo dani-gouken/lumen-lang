@@ -197,7 +197,7 @@ func TestObjectGrowthIsCounted(t *testing.T) {
 	before := machine.heap.BytesAllocated()
 	machine.regs = nil
 	machine.currentFunction = nil
-	machine.funcObjs = nil
+	machine.caches = map[*Chunk]*chunkCache{}
 	machine.CollectGarbage()
 
 	// What was counted while the object grew is exactly what is released

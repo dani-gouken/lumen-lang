@@ -340,6 +340,32 @@ func FormatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 	case vm.OpENDTRY:
 		return "ENDTRY"
 
+	case vm.OpCALLK:
+		funcName := "???"
+		if int(instr.C) < len(chunk.Prototypes) {
+			funcName = chunk.Prototypes[instr.C].Name
+		}
+		return fmt.Sprintf("CALLK r%d %d %s", instr.A, instr.B, funcName)
+
+	case vm.OpCALLX:
+		externName := "unknown"
+		if int(instr.C) < len(chunk.ExternNames) {
+			externName = chunk.ExternNames[instr.C]
+		}
+		return fmt.Sprintf("CALLX r%d %d %s", instr.A, instr.B, externName)
+
+	case vm.OpJNLT, vm.OpJNLE, vm.OpJNEQ, vm.OpJNNE:
+		name, _ := vm.ShortName(instr.Op)
+		return fmt.Sprintf("%s r%d r%d %d", name, instr.A, instr.B, instr.C)
+
+	case vm.OpJNLTI, vm.OpJNLEI, vm.OpJNGTI, vm.OpJNGEI, vm.OpJNEQI, vm.OpJNNEI:
+		name, _ := vm.ShortName(instr.Op)
+		return fmt.Sprintf("%s r%d %d %d", name, instr.A, instr.B, instr.C)
+
+	case vm.OpADDI, vm.OpSUBI:
+		name, _ := vm.ShortName(instr.Op)
+		return fmt.Sprintf("%s r%d r%d %d", name, instr.A, instr.B, instr.C)
+
 	case vm.OpRETHROW:
 		return "RETHROW"
 

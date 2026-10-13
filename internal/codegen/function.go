@@ -35,12 +35,40 @@ type funcGen struct {
 	fixups     []fixup
 	pos        token.Position // Position of the IR instruction being lowered
 	failed     bool
+
+	// long is set for a function that lies beyond what an operand can
+	// address: its jumps are then written in the long form, and nothing
+	// that needs an address in an operand is used.
+	long bool
+
+	// What was decided before any instruction was written (see shorten)
+	hasCalls bool
+	folded   map[*ir.Instruction]bool            // Instructions another one does the work of
+	direct   map[*ir.Instruction]directCall      // Calls of a function known by its number
+	fused    map[*ir.Instruction]*ir.Instruction // A branch -> the test it jumps on
+	small    map[*ir.Instruction]smallOperand    // An operation -> the small number it takes
+	window   map[int]int                         // A temporary made where a call wants it: its place there
+	unread   map[int]bool                        // Temporaries nothing reads
+	inReturn map[int]bool                        // Results of calls read where the call left them, in r0
 }
 
-// fixup is a jump whose offset word is patched once all blocks are placed.
+// fixup is a jump whose target is filled in once all blocks are placed.
 type fixup struct {
-	offsetIdx int // Index of the offset word in chunk.Code
-	target    *ir.BasicBlock
+	idx    int // Index in chunk.Code of the word to patch
+	target *ir.BasicBlock
+	field  byte // Which operand holds an address ('A', 'B', 'C'); 0 for the offset word of a long jump
+}
+
+// directCall is a call of a function that needs no function value.
+type directCall struct {
+	op    vm.OpCode // CALLK or CALLX
+	index uint16
+}
+
+// smallOperand is a number written in an instruction instead of a register.
+type smallOperand struct {
+	operand int // Which operand of the IR instruction it replaces
+	value   uint16
 }
 
 func newFuncGen(g *Generator, fn *ir.Function) *funcGen {
@@ -51,6 +79,20 @@ func newFuncGen(g *Generator, fn *ir.Function) *funcGen {
 		blockStart: make(map[*ir.BasicBlock]int),
 		pos:        firstPos(fn),
 	}
+}
+
+// reset forgets what an attempt at generating the function left behind.
+func (f *funcGen) reset(codeStart int) {
+	chunk := f.g.chunk
+	for ip := codeStart; ip < len(chunk.Code); ip++ {
+		delete(chunk.DebugInfo, ip)
+	}
+	chunk.Code = chunk.Code[:codeStart]
+	f.phys = make(map[int]int)
+	f.blockStart = make(map[*ir.BasicBlock]int)
+	f.fixups = nil
+	f.maxArgs = 0
+	f.pos = firstPos(f.fn)
 }
 
 func firstPos(fn *ir.Function) token.Position {
@@ -66,9 +108,40 @@ func firstPos(fn *ir.Function) token.Position {
 
 func (f *funcGen) generate() {
 	f.blocks = reachableBlocks(f.fn)
-	f.allocateRegisters()
-
 	codeStart := len(f.g.chunk.Code)
+
+	// The short forms hold an address in an operand. A function that turns
+	// out to reach past what an operand can say is generated again
+	// without them; that takes a program of tens of thousands of
+	// instructions before it.
+	f.build()
+	if len(f.g.chunk.Code) > vm.MaxOperand && !f.failed {
+		f.reset(codeStart)
+		f.long = true
+		f.build()
+	}
+
+	total := f.callBase + 1 + f.maxArgs
+	if total > maxRegisters && !f.failed {
+		f.fail(ErrTooManyRegisters,
+			fmt.Sprintf("function '%s' needs %d registers, the limit is %d", f.fn.Name, total, maxRegisters),
+			"Split the function into smaller ones")
+	}
+
+	f.g.chunk.Prototypes = append(f.g.chunk.Prototypes, vm.FunctionPrototype{
+		Name:          f.fn.Name,
+		CodeStart:     codeStart,
+		CodeSize:      len(f.g.chunk.Code) - codeStart,
+		RegisterCount: total,
+		ArgCount:      len(f.fn.Params),
+		UpvalueCount:  f.fn.UpvalueCount,
+		Signature:     f.fn.Signature,
+	})
+}
+
+// build writes the instructions of the function.
+func (f *funcGen) build() {
+	f.allocateRegisters()
 
 	// The first argument arrives in r0, which every call overwrites
 	if len(f.fn.Params) > 0 {
@@ -88,26 +161,19 @@ func (f *funcGen) generate() {
 	}
 
 	for _, fx := range f.fixups {
-		offset := f.blockStart[fx.target] - (fx.offsetIdx + 1)
-		f.g.chunk.Code[fx.offsetIdx] = vm.EncodeOffset32(int32(offset))
+		target := f.blockStart[fx.target]
+		word := &f.g.chunk.Code[fx.idx]
+		switch fx.field {
+		case 'A':
+			word.A = uint16(target)
+		case 'B':
+			word.B = uint16(target)
+		case 'C':
+			word.C = uint16(target)
+		default:
+			*word = vm.EncodeOffset32(int32(target - (fx.idx + 1)))
+		}
 	}
-
-	total := f.callBase + 1 + f.maxArgs
-	if total > maxRegisters && !f.failed {
-		f.fail(ErrTooManyRegisters,
-			fmt.Sprintf("function '%s' needs %d registers, the limit is %d", f.fn.Name, total, maxRegisters),
-			"Split the function into smaller ones")
-	}
-
-	f.g.chunk.Prototypes = append(f.g.chunk.Prototypes, vm.FunctionPrototype{
-		Name:          f.fn.Name,
-		CodeStart:     codeStart,
-		CodeSize:      len(f.g.chunk.Code) - codeStart,
-		RegisterCount: total,
-		ArgCount:      len(f.fn.Params),
-		UpvalueCount:  f.fn.UpvalueCount,
-		Signature:     f.fn.Signature,
-	})
 }
 
 // --- Control flow graph ---
@@ -196,8 +262,15 @@ type usage struct {
 	defs     int
 	defBlock *ir.BasicBlock
 	defIdx   int
+	defInstr *ir.Instruction
 	lastUse  int  // Index of the last use inside defBlock
 	escapes  bool // Used outside defBlock, before its definition, or captured
+
+	// How often it is read, and where it was read last
+	reads      int
+	useInstr   *ir.Instruction
+	useIdx     int // Index of that instruction in its block
+	useOperand int // Which operand of it
 }
 
 // allocateRegisters maps every virtual register to a physical one.
@@ -221,7 +294,7 @@ func (f *funcGen) allocateRegisters() {
 
 	for _, bb := range f.blocks {
 		for idx, instr := range body(bb) {
-			for _, operand := range instr.Operands {
+			for n, operand := range instr.Operands {
 				id, ok := regID(operand)
 				if !ok {
 					continue
@@ -231,16 +304,21 @@ func (f *funcGen) allocateRegisters() {
 					u.escapes = true
 				}
 				u.lastUse = idx
+				u.reads++
+				u.useInstr, u.useIdx, u.useOperand = instr, idx, n
 			}
 			if instr.Dest != nil {
 				u := get(instr.Dest.ID)
 				u.defs++
 				if u.defs == 1 {
-					u.defBlock, u.defIdx, u.lastUse = bb, idx, idx
+					u.defBlock, u.defIdx, u.lastUse, u.defInstr = bb, idx, idx, instr
 				}
 			}
-			if instr.Op == ir.OpCall && len(instr.Operands)-1 > f.maxArgs {
-				f.maxArgs = len(instr.Operands) - 1
+			if instr.Op == ir.OpCall {
+				f.hasCalls = true
+				if len(instr.Operands)-1 > f.maxArgs {
+					f.maxArgs = len(instr.Operands) - 1
+				}
 			}
 		}
 	}
@@ -255,6 +333,10 @@ func (f *funcGen) allocateRegisters() {
 		isParam[param.ID] = true
 		if i > 0 {
 			f.phys[param.ID] = i
+		} else if !f.hasCalls {
+			// Nothing overwrites r0 in a function that calls nothing: the
+			// first argument stays where it arrived
+			f.phys[param.ID] = returnReg
 		} else if _, used := uses[param.ID]; used {
 			f.phys[param.ID] = next
 			next++
@@ -266,6 +348,7 @@ func (f *funcGen) allocateRegisters() {
 		u := uses[id]
 		return u.defs == 1 && !u.escapes && !isParam[id]
 	}
+	f.shorten(uses, isTemp)
 	for _, id := range order {
 		if isParam[id] || isTemp(id) {
 			continue
@@ -292,7 +375,10 @@ func (f *funcGen) allocateRegisters() {
 				}
 			}
 
-			if instr.Dest == nil || !isTemp(instr.Dest.ID) {
+			if instr.Dest == nil || !isTemp(instr.Dest.ID) || f.folded[instr] {
+				continue
+			}
+			if _, placed := f.window[instr.Dest.ID]; placed || f.inReturn[instr.Dest.ID] {
 				continue
 			}
 			var slot int
@@ -312,6 +398,197 @@ func (f *funcGen) allocateRegisters() {
 
 	f.regCount = high
 	f.callBase = high
+
+	// The temporaries made for a call go where the call wants them
+	for id, offset := range f.window {
+		f.phys[id] = f.callBase + offset
+	}
+	for id := range f.inReturn {
+		f.phys[id] = returnReg
+	}
+}
+
+// fusable is the tests a branch can be made to jump on directly, with the
+// instruction for "go there unless it holds". Greater than is written as
+// less than with the operands the other way round.
+var fusable = map[ir.OpType]struct {
+	op      vm.OpCode
+	swapped bool
+}{
+	ir.OpLt:  {vm.OpJNLT, false},
+	ir.OpLte: {vm.OpJNLE, false},
+	ir.OpGt:  {vm.OpJNLT, true},
+	ir.OpGte: {vm.OpJNLE, true},
+	ir.OpEq:  {vm.OpJNEQ, false},
+	ir.OpNeq: {vm.OpJNNE, false},
+}
+
+// againstSmall is the same tests against a small number on the right, and
+// what they become with the number on the left: 2 < n is n > 2.
+var againstSmall = map[ir.OpType][2]vm.OpCode{
+	ir.OpLt:  {vm.OpJNLTI, vm.OpJNGTI},
+	ir.OpLte: {vm.OpJNLEI, vm.OpJNGEI},
+	ir.OpGt:  {vm.OpJNGTI, vm.OpJNLTI},
+	ir.OpGte: {vm.OpJNGEI, vm.OpJNLEI},
+	ir.OpEq:  {vm.OpJNEQI, vm.OpJNEQI},
+	ir.OpNeq: {vm.OpJNNEI, vm.OpJNNEI},
+}
+
+// shorten decides, before any instruction is written, where one
+// instruction can do the work of several:
+//
+//   - a call of a function known by its name needs no function value
+//     (CALLK, CALLX);
+//   - a value worked out only to be an argument is worked out where the
+//     call wants it, instead of being moved there;
+//   - a test whose only use is the branch after it becomes the branch
+//     (JNLT and the like);
+//   - a small number that is only an operand of an addition, a
+//     subtraction or such a test is written in the instruction.
+//
+// Each concerns a temporary: a value written once and read once, in the
+// block it was made in. Nothing else can depend on how it is produced.
+func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
+	f.folded = make(map[*ir.Instruction]bool)
+	f.direct = make(map[*ir.Instruction]directCall)
+	f.fused = make(map[*ir.Instruction]*ir.Instruction)
+	f.small = make(map[*ir.Instruction]smallOperand)
+	f.window = make(map[int]int)
+	f.unread = make(map[int]bool)
+	f.inReturn = make(map[int]bool)
+	for id, u := range uses {
+		if isTemp(id) && u.reads == 0 {
+			f.unread[id] = true
+		}
+	}
+
+	// once returns how a register is used, if it is a temporary read once
+	once := func(v ir.Value) *usage {
+		id, ok := regID(v)
+		if !ok || !isTemp(id) || uses[id].reads != 1 || f.folded[uses[id].defInstr] {
+			return nil
+		}
+		return uses[id]
+	}
+	// smallNumber returns the number a register was given, if it is a
+	// temporary read once that holds a number an operand can hold
+	smallNumber := func(v ir.Value) (uint16, *usage, bool) {
+		u := once(v)
+		if u == nil || u.defInstr.Op != ir.OpMov || len(u.defInstr.Operands) != 1 {
+			return 0, nil, false
+		}
+		c, ok := u.defInstr.Operands[0].(ir.Constant)
+		if !ok || c.Type != "Int" {
+			return 0, nil, false
+		}
+		n, ok := toInt64(c.Val)
+		if !ok || n < 0 || n > vm.MaxOperand {
+			return 0, nil, false
+		}
+		return uint16(n), u, true
+	}
+
+	for _, bb := range f.blocks {
+		instrs := body(bb)
+		for idx, instr := range instrs {
+			switch instr.Op {
+			case ir.OpCall:
+				f.shortenCall(instr, idx, instrs, uses, isTemp, once)
+
+			case ir.OpAdd, ir.OpSub:
+				if len(instr.Operands) != 2 {
+					continue
+				}
+				if n, u, ok := smallNumber(instr.Operands[1]); ok {
+					f.folded[u.defInstr] = true
+					f.small[instr] = smallOperand{operand: 1, value: n}
+				} else if n, u, ok := smallNumber(instr.Operands[0]); ok && instr.Op == ir.OpAdd {
+					f.folded[u.defInstr] = true
+					f.small[instr] = smallOperand{operand: 0, value: n}
+				}
+
+			case ir.OpBr:
+				// The jump holds the address of where to go: not in a
+				// function too far into the program for that
+				if f.long || idx == 0 || len(instr.Operands) == 0 {
+					continue
+				}
+				test := instrs[idx-1]
+				u := once(instr.Operands[0])
+				if u == nil || u.defInstr != test || len(test.Operands) != 2 {
+					continue
+				}
+				if _, ok := fusable[test.Op]; !ok {
+					continue
+				}
+				f.folded[test] = true
+				f.fused[instr] = test
+				if n, u, ok := smallNumber(test.Operands[1]); ok {
+					f.folded[u.defInstr] = true
+					f.small[test] = smallOperand{operand: 1, value: n}
+				} else if n, u, ok := smallNumber(test.Operands[0]); ok {
+					f.folded[u.defInstr] = true
+					f.small[test] = smallOperand{operand: 0, value: n}
+				}
+			}
+		}
+	}
+}
+
+// shortenCall decides how a call gets its function and its arguments.
+func (f *funcGen) shortenCall(call *ir.Instruction, idx int, instrs []*ir.Instruction, uses map[int]*usage, isTemp func(int) bool, once func(ir.Value) *usage) {
+	if len(call.Operands) == 0 {
+		return
+	}
+
+	// A function named where it is called
+	if u := once(call.Operands[0]); u != nil && u.defInstr.Op == ir.OpMov && len(u.defInstr.Operands) == 1 {
+		if c, ok := u.defInstr.Operands[0].(ir.Constant); ok && c.Type == "FuncRef" {
+			name, _ := c.Val.(string)
+			if index, known := f.g.protoIndex[name]; known && f.g.capturesNothing[name] {
+				f.direct[call] = directCall{op: vm.OpCALLK, index: uint16(index)}
+				f.folded[u.defInstr] = true
+			} else if !known && f.g.externs[name] {
+				f.direct[call] = directCall{op: vm.OpCALLX, index: f.g.extern(name)}
+				f.folded[u.defInstr] = true
+			}
+		}
+	}
+
+	callFree := func(from, to int) bool {
+		for between := from + 1; between < to; between++ {
+			if instrs[between].Op == ir.OpCall {
+				return false
+			}
+		}
+		return true
+	}
+
+	// What is made for this call alone is made in its place. Another call
+	// in between would use the same registers for its own arguments.
+	defer func() {
+		// The result of the call is in r0 until the next call. If its one
+		// reader comes before that, it is read from there and not moved.
+		if call.Dest == nil {
+			return
+		}
+		u := uses[call.Dest.ID]
+		if _, placed := f.window[call.Dest.ID]; placed || !isTemp(call.Dest.ID) || u.reads != 1 {
+			return
+		}
+		if callFree(idx, u.useIdx) {
+			f.inReturn[call.Dest.ID] = true
+		}
+	}()
+	for n, operand := range call.Operands {
+		u := once(operand)
+		if u == nil || u.useInstr != call || (n == 0 && f.folded[u.defInstr]) {
+			continue
+		}
+		if id, ok := regID(operand); ok && callFree(u.defIdx, idx) {
+			f.window[id] = n
+		}
+	}
 }
 
 // --- Emission ---
@@ -349,12 +626,49 @@ func (f *funcGen) dest(instr *ir.Instruction) uint16 {
 	return f.reg(instr.Dest)
 }
 
-// emitJump emits an unconditional or conditional 32-bit relative jump.
+// emitJump emits a jump to a block: JMP32, JMPIF32 or JMPIFNOT32 on the
+// register cond. It is one instruction holding the address where it can
+// be, and the three-word long form otherwise.
 func (f *funcGen) emitJump(op vm.OpCode, cond uint16, target *ir.BasicBlock) {
+	if !f.long {
+		switch op {
+		case vm.OpJMP32:
+			f.fixups = append(f.fixups, fixup{idx: len(f.g.chunk.Code), target: target, field: 'A'})
+			f.emit(vm.OpJMP, 0, 0, 0)
+			return
+		case vm.OpJMPIF32, vm.OpJMPIFNOT32:
+			short := vm.OpJMPIF
+			if op == vm.OpJMPIFNOT32 {
+				short = vm.OpJMPIFNOT
+			}
+			f.fixups = append(f.fixups, fixup{idx: len(f.g.chunk.Code), target: target, field: 'B'})
+			f.emit(short, cond, 0, 0)
+			return
+		}
+	}
 	f.emit(vm.OpLONG, 0, 0, 0)
 	f.emit(op, cond, 0, 0)
-	f.fixups = append(f.fixups, fixup{offsetIdx: len(f.g.chunk.Code), target: target})
+	f.fixups = append(f.fixups, fixup{idx: len(f.g.chunk.Code), target: target})
 	f.emit(vm.OpNOP, 0, 0, 0) // Offset word, patched later
+}
+
+// emitTest emits a test that jumps to a block unless it holds, in place
+// of the test and the branch on its result.
+func (f *funcGen) emitTest(test *ir.Instruction, otherwise *ir.BasicBlock) {
+	at := len(f.g.chunk.Code)
+	if small, ok := f.small[test]; ok {
+		// With the number on the left the test reads the other way round
+		op := againstSmall[test.Op][1-small.operand]
+		f.emit(op, f.reg(test.Operands[1-small.operand]), small.value, 0)
+	} else {
+		how := fusable[test.Op]
+		a, b := f.reg(test.Operands[0]), f.reg(test.Operands[1])
+		if how.swapped {
+			a, b = b, a
+		}
+		f.emit(how.op, a, b, 0)
+	}
+	f.fixups = append(f.fixups, fixup{idx: at, target: otherwise, field: 'C'})
 }
 
 func (f *funcGen) generateBlock(bb, next *ir.BasicBlock) {
@@ -362,6 +676,9 @@ func (f *funcGen) generateBlock(bb, next *ir.BasicBlock) {
 	for _, instr := range instrs {
 		if instr.Pos.Line > 0 {
 			f.pos = instr.Pos
+		}
+		if f.folded[instr] {
+			continue // Another instruction does its work
 		}
 		f.generateInstr(instr, next)
 	}
@@ -390,6 +707,14 @@ var binaryOps = map[ir.OpType]vm.OpCode{
 func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 	if op, ok := binaryOps[instr.Op]; ok {
 		if !f.arity(instr, 2) {
+			return
+		}
+		if small, ok := f.small[instr]; ok {
+			op = vm.OpADDI
+			if instr.Op == ir.OpSub {
+				op = vm.OpSUBI
+			}
+			f.emit(op, f.dest(instr), f.reg(instr.Operands[1-small.operand]), small.value)
 			return
 		}
 		f.emit(op, f.dest(instr), f.reg(instr.Operands[0]), f.reg(instr.Operands[1]))
@@ -424,8 +749,11 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 		if !ok1 || !ok2 {
 			return
 		}
-		cond := f.reg(instr.Operands[0])
-		f.emitJump(vm.OpJMPIFNOT32, cond, elseBlock)
+		if test, ok := f.fused[instr]; ok {
+			f.emitTest(test, elseBlock)
+		} else {
+			f.emitJump(vm.OpJMPIFNOT32, f.reg(instr.Operands[0]), elseBlock)
+		}
 		if thenBlock != next {
 			f.emitJump(vm.OpJMP32, 0, thenBlock)
 		}
@@ -611,12 +939,24 @@ func (f *funcGen) generateCall(instr *ir.Instruction) {
 		return
 	}
 
+	direct, isDirect := f.direct[instr]
 	for i, operand := range instr.Operands {
-		f.emit(vm.OpMOV, uint16(f.callBase+i), f.reg(operand), 0)
+		if i == 0 && isDirect {
+			continue // No function value is needed
+		}
+		// What was made for this call is already in its place
+		if src, dest := f.reg(operand), uint16(f.callBase+i); src != dest {
+			f.emit(vm.OpMOV, dest, src, 0)
+		}
 	}
-	f.emit(vm.OpCALL, uint16(f.callBase), uint16(nargs), 0)
+	if isDirect {
+		f.emit(direct.op, uint16(f.callBase), uint16(nargs), direct.index)
+	} else {
+		f.emit(vm.OpCALL, uint16(f.callBase), uint16(nargs), 0)
+	}
 
-	if instr.Dest != nil {
+	// The result is left in r0; it is moved only if something reads it
+	if instr.Dest != nil && !f.unread[instr.Dest.ID] {
 		if dest := f.reg(instr.Dest); dest != returnReg {
 			f.emit(vm.OpMOV, dest, returnReg, 0)
 		}

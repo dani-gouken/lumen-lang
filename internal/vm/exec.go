@@ -17,14 +17,76 @@ type fieldCache struct {
 	slot  int32  // Where the field is; -1 if objects of that shape have none
 }
 
-// cacheFor returns the field caches of a chunk, one per instruction.
-func (vm *VM) cacheFor(chunk *Chunk) []fieldCache {
-	cache, ok := vm.fieldCaches[chunk]
-	if !ok || len(cache) != len(chunk.Code) {
-		cache = make([]fieldCache, len(chunk.Code))
-		vm.fieldCaches[chunk] = cache
+// chunkCache is what the VM keeps for a chunk whose code it runs, so as
+// not to work the same thing out at every instruction. It belongs to the
+// chunk: a function may run long after the program it came with has ended
+// (a value kept from one program of an interactive session to the next),
+// and what it remembers must be about its own code.
+type chunkCache struct {
+	// What each instruction that reaches a field remembers
+	fields []fieldCache
+
+	// The function object of each function that captures nothing, made
+	// the first time it is needed: calling a function by its name, or
+	// taking it as a value, allocates nothing afterwards
+	funcs []Value
+
+	// The same for the host functions the chunk names
+	externs []Value
+}
+
+// cacheFor returns what is kept for a chunk.
+func (vm *VM) cacheFor(chunk *Chunk) *chunkCache {
+	cache, ok := vm.caches[chunk]
+	if !ok || len(cache.fields) != len(chunk.Code) || len(cache.funcs) != len(chunk.Prototypes) || len(cache.externs) != len(chunk.ExternNames) {
+		cache = &chunkCache{
+			fields:  make([]fieldCache, len(chunk.Code)),
+			funcs:   make([]Value, len(chunk.Prototypes)),
+			externs: make([]Value, len(chunk.ExternNames)),
+		}
+		vm.caches[chunk] = cache
 	}
 	return cache
+}
+
+// externObject returns the function object of a host function, making it
+// the first time. One object per host function is enough.
+func (vm *VM) externObject(name string) (Value, error) {
+	if cached, ok := vm.externObjs[name]; ok {
+		return cached, nil
+	}
+	externFunc, ok := vm.externFuncs[name]
+	if !ok {
+		return NewNull(), vm.runtimeError(fmt.Sprintf("unknown extern function: %s", name))
+	}
+	if vm.permitted != nil && !vm.permitted(name) {
+		return NewNull(), vm.runtimeErrorOf(KindLibrary, name+": this program is not permitted to use it")
+	}
+
+	// argCount is -1: the function checks its arguments itself
+	funcObj, _, err := vm.heap.AllocExternFunction(name, externFunc, -1)
+	if err != nil {
+		return NewNull(), vm.runtimeError(fmt.Sprintf("extern function allocation failed: %v", err))
+	}
+	funcObj.signature = vm.externSignatures[name]
+
+	value := valueOf(&funcObj.header)
+	vm.externObjs[name] = value
+	return value, nil
+}
+
+// functionObject returns the function object of a function that captures
+// nothing, making it the first time.
+func (vm *VM) functionObject(chunk *Chunk, funcs []Value, index int) (Value, error) {
+	if cached := funcs[index]; cached != 0 {
+		return cached, nil
+	}
+	funcObj, _, err := vm.heap.AllocFunction(chunk, index, 0)
+	if err != nil {
+		return NewNull(), vm.runtimeError(fmt.Sprintf("function allocation failed: %v", err))
+	}
+	funcs[index] = valueOf(&funcObj.header)
+	return funcs[index], nil
 }
 
 // Exec executes a chunk of bytecode.
@@ -71,10 +133,7 @@ func (vm *VM) Exec(chunk *Chunk) (result Value, err error) {
 	vm.outcome, vm.failure = NewNull(), nil
 	vm.handlers, vm.pending = nil, nil
 	vm.steps = 0
-	vm.fieldCaches = map[*Chunk][]fieldCache{}
-
-	// Cached function objects belong to the chunk being run
-	vm.funcObjs = make([]Value, len(chunk.Prototypes))
+	vm.caches = map[*Chunk]*chunkCache{}
 
 	// The program starts as one task, main
 	vm.sched.stop()
@@ -172,6 +231,24 @@ func (vm *VM) compare(op OpCode, a, b Value) (bool, error) {
 		name, symbol = "GE", ">="
 	}
 	return false, vm.arithmeticError(name, symbol, a, b)
+}
+
+// testAgainst is a test that jumps, against a small number, on a value
+// that is not an Int: what the comparison it stands for would do.
+func (vm *VM) testAgainst(op OpCode, a, k Value) (bool, error) {
+	switch op {
+	case OpJNEQI:
+		return valuesEqual(a, k), nil
+	case OpJNNEI:
+		return !valuesEqual(a, k), nil
+	case OpJNLTI:
+		return vm.compare(OpLT, a, k)
+	case OpJNLEI:
+		return vm.compare(OpLE, a, k)
+	case OpJNGTI:
+		return vm.compare(OpGT, a, k)
+	}
+	return vm.compare(OpGE, a, k)
 }
 
 // shift applies SHL or SHR. A shift to the left that pushes bits out of an
@@ -292,7 +369,8 @@ func (vm *VM) execute(base int) (Value, error) {
 	chunk := vm.chunk
 	code := chunk.Code
 	consts := chunk.Constants
-	cache := vm.cacheFor(chunk)
+	kept := vm.cacheFor(chunk)
+	cache, funcs, externs := kept.fields, kept.funcs, kept.externs
 	regs := vm.regs
 	ip := vm.ip
 	hooked := vm.debugHook != nil
@@ -622,7 +700,9 @@ func (vm *VM) execute(base int) (Value, error) {
 				}
 				if vm.chunk != chunk {
 					chunk = vm.chunk
-					code, consts, cache = chunk.Code, chunk.Constants, vm.cacheFor(chunk)
+					code, consts = chunk.Code, chunk.Constants
+					kept = vm.cacheFor(chunk)
+					cache, funcs, externs = kept.fields, kept.funcs, kept.externs
 				}
 				regs = vm.regs
 				ip = vm.ip
@@ -651,6 +731,175 @@ func (vm *VM) execute(base int) (Value, error) {
 			default:
 				return NewNull(), vm.runtimeError(fmt.Sprintf("CALL requires function object, got %v", callee.Type))
 			}
+
+		case OpCALLK:
+			// A function of this chunk, known by its number: A = the
+			// register before the arguments, B = nargs, C = the function.
+			// That it takes B arguments was checked with the chunk.
+			callee := funcs[instr.C]
+			if callee == 0 {
+				made, err := vm.functionObject(chunk, funcs, int(instr.C))
+				if err != nil {
+					return NewNull(), err
+				}
+				callee = made
+			}
+			if vm.interrupted.Load() || vm.outOfSteps() {
+				return NewNull(), vm.stopped()
+			}
+			first := int(instr.A) + 1
+			last := first + int(instr.B)
+			if err := vm.enter((*FunctionObj)(unsafe.Pointer(header(callee))), regs[first:last:last]); err != nil {
+				return NewNull(), err
+			}
+			regs = vm.regs
+			ip = vm.ip
+			continue
+
+		case OpCALLX:
+			// A host function known by its number: A = the register before
+			// the arguments, B = nargs, C = the host function
+			callee := externs[instr.C]
+			if callee == 0 {
+				object, err := vm.externObject(chunk.ExternNames[instr.C])
+				if err != nil {
+					return NewNull(), err
+				}
+				callee = object
+				externs[instr.C] = callee
+			}
+			first := int(instr.A) + 1
+			last := first + int(instr.B)
+			pinned := len(vm.pinned)
+			retVal, err := vm.callExtern((*ExternFunctionObj)(unsafe.Pointer(header(callee))), regs[first:last:last])
+			if err != nil {
+				return NewNull(), err
+			}
+			regs = vm.regs
+			regs[0] = retVal
+			vm.pinned = vm.pinned[:pinned]
+			vm.collectIfNeeded()
+
+		case OpJNLT:
+			// Go on at C unless A < B
+			a, b := regs[instr.A], regs[instr.B]
+			holds := false
+			if bothInts(a, b) {
+				holds = intOf(a) < intOf(b)
+			} else {
+				result, err := vm.compare(OpLT, a, b)
+				if err != nil {
+					return NewNull(), err
+				}
+				holds = result
+			}
+			if !holds {
+				target := int(instr.C)
+				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+					return NewNull(), vm.stopped()
+				}
+				ip = target
+				continue
+			}
+
+		case OpJNLE:
+			a, b := regs[instr.A], regs[instr.B]
+			holds := false
+			if bothInts(a, b) {
+				holds = intOf(a) <= intOf(b)
+			} else {
+				result, err := vm.compare(OpLE, a, b)
+				if err != nil {
+					return NewNull(), err
+				}
+				holds = result
+			}
+			if !holds {
+				target := int(instr.C)
+				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+					return NewNull(), vm.stopped()
+				}
+				ip = target
+				continue
+			}
+
+		case OpJNEQ, OpJNNE:
+			a, b := regs[instr.A], regs[instr.B]
+			equal := a == b || valuesEqual(a, b)
+			if equal != (instr.Op == OpJNEQ) {
+				target := int(instr.C)
+				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+					return NewNull(), vm.stopped()
+				}
+				ip = target
+				continue
+			}
+
+		case OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI:
+			// The same against a small number: go on at C unless the test
+			// of A against B holds
+			a := regs[instr.A]
+			holds := false
+			if a.IsInt() {
+				n, k := intOf(a), int64(instr.B)
+				switch instr.Op {
+				case OpJNLTI:
+					holds = n < k
+				case OpJNLEI:
+					holds = n <= k
+				case OpJNGTI:
+					holds = n > k
+				case OpJNGEI:
+					holds = n >= k
+				case OpJNEQI:
+					holds = n == k
+				default:
+					holds = n != k
+				}
+			} else {
+				result, err := vm.testAgainst(instr.Op, a, NewInt(int64(instr.B)))
+				if err != nil {
+					return NewNull(), err
+				}
+				holds = result
+			}
+			if !holds {
+				target := int(instr.C)
+				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+					return NewNull(), vm.stopped()
+				}
+				ip = target
+				continue
+			}
+
+		case OpADDI:
+			a := regs[instr.B]
+			if a.IsInt() {
+				sum := intOf(a) + int64(instr.C)
+				if sum > MaxInt {
+					return NewNull(), vm.runtimeError("integer overflow")
+				}
+				regs[instr.A] = NewInt(sum)
+			} else {
+				// Whatever ADD does of a value that is not an Int and one
+				// that is
+				result, err := vm.concatenate(a, NewInt(int64(instr.C)))
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = result
+			}
+
+		case OpSUBI:
+			a := regs[instr.B]
+			if !a.IsInt() {
+				return NewNull(), vm.arithmeticError("SUB", "-", a, NewInt(int64(instr.C)))
+			}
+			diff := intOf(a) - int64(instr.C)
+			if diff < MinInt {
+				return NewNull(), vm.runtimeError("integer overflow")
+			}
+			regs[instr.A] = NewInt(diff)
 
 		case OpENDTRY:
 			n := len(vm.handlers)
@@ -687,7 +936,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			vm.leave()
 			if vm.chunk != chunk {
 				chunk = vm.chunk
-				code, consts, cache = chunk.Code, chunk.Constants, vm.cacheFor(chunk)
+				code, consts = chunk.Code, chunk.Constants
+				kept = vm.cacheFor(chunk)
+				cache, funcs, externs = kept.fields, kept.funcs, kept.externs
 			}
 			regs = vm.regs
 			regs[0] = retVal
@@ -703,9 +954,13 @@ func (vm *VM) execute(base int) (Value, error) {
 
 			// A function that captures nothing is the same object every
 			// time; only closures need one of their own
-			shared := proto.UpvalueCount == 0 && protoIdx < len(vm.funcObjs)
-			if shared && vm.funcObjs[protoIdx] != 0 {
-				regs[instr.A] = vm.funcObjs[protoIdx]
+			if proto.UpvalueCount == 0 {
+				shared, err := vm.functionObject(chunk, funcs, protoIdx)
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = shared
+				vm.collectIfNeeded()
 				break
 			}
 
@@ -714,9 +969,6 @@ func (vm *VM) execute(base int) (Value, error) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("function allocation failed: %v", err))
 			}
 			regs[instr.A] = valueOf(&funcObj.header)
-			if shared {
-				vm.funcObjs[protoIdx] = regs[instr.A]
-			}
 			if shouldGC {
 				vm.CollectGarbage()
 			}
@@ -748,34 +1000,12 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpNEWEXFUNC:
 			// NEWEXFUNC: A = dest_reg, B = extern_idx
-			externName := chunk.ExternNames[instr.B]
-
-			// One object per host function is enough
-			if cached, ok := vm.externObjs[externName]; ok {
-				regs[instr.A] = cached
-				break
-			}
-
-			externFunc, ok := vm.externFuncs[externName]
-			if !ok {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("unknown extern function: %s", externName))
-			}
-			if vm.permitted != nil && !vm.permitted(externName) {
-				return NewNull(), vm.runtimeErrorOf(KindLibrary, externName+": this program is not permitted to use it")
-			}
-
-			// argCount is -1: the function checks its arguments itself
-			funcObj, shouldGC, err := vm.heap.AllocExternFunction(externName, externFunc, -1)
+			object, err := vm.externObject(chunk.ExternNames[instr.B])
 			if err != nil {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("extern function allocation failed: %v", err))
+				return NewNull(), err
 			}
-			funcObj.signature = vm.externSignatures[externName]
-
-			regs[instr.A] = valueOf(&funcObj.header)
-			vm.externObjs[externName] = regs[instr.A]
-			if shouldGC {
-				vm.CollectGarbage()
-			}
+			regs[instr.A] = object
+			vm.collectIfNeeded()
 
 		case OpCLOSEUP:
 			// CLOSEUP: A = register. Closures that captured this register

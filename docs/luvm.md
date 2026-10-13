@@ -158,6 +158,7 @@ type Chunk struct {
 - `DIV r_dest r_a r_b` - Division
 - `MOD r_dest r_a r_b` - Remainder
 - `NEG r_dest r_a` - Negation
+- `ADDI r_dest r_a k`, `SUBI r_dest r_a k` - Addition and subtraction of a number `k` (0 to 65535) written in the instruction
 - `NOT r_dest r_a` - Boolean negation
 
 Both operands must be of the same kind (two Ints or two Numbers); there is no
@@ -201,8 +202,13 @@ See [assembly.md](assembly.md) for the exact rules of each instruction.
 - `JMPIF r_cond offset` - Jump if true
 - `JMPIFNOT r_cond offset` - Jump if false
 - `LONG` + `JMP32` / `JMPIF32` / `JMPIFNOT32` + offset word - The same jumps
-  with a 32-bit relative offset, for targets a one-byte address cannot reach.
-  The compiler always emits this form.
+  with a 32-bit relative offset, for a function that lies beyond the first
+  65536 instructions of its chunk. The compiler uses the short form wherever
+  the address fits.
+- `JNLT r_a r_b target`, `JNLE`, `JNEQ`, `JNNE` - A test and a jump in one: go
+  on at `target` unless `r_a < r_b` (`<=`, `==`, `!=`). No Bool is made.
+- `JNLTI r_a k target`, `JNLEI`, `JNGTI`, `JNGEI`, `JNEQI`, `JNNEI` - The same
+  against a number `k` written in the instruction.
 
 ### Function Calls
 
@@ -211,6 +217,8 @@ See [assembly.md](assembly.md) for the exact rules of each instruction.
 - `NEWFUNC r_dest func_name` - Create a function object (or closure) from a prototype.
 - `NEWEXFUNC r_dest extern_name` - Create an external function object.
 - `CALL r_func nargs` - Call a function object in `r_func` with `nargs` arguments.
+- `CALLK r_window nargs function` - Call a function of the chunk by its number, with the arguments in the registers after `r_window`. The function must capture nothing; that, and the number of arguments, are checked when the chunk is verified, not at each call.
+- `CALLX r_window nargs host_function` - The same for a host function.
 - `RET r_val` - Return from function with value.
 - `CAPLOCAL r_func upval_idx local_reg` - Capture a local variable into a closure's upvalue slot.
 - `CAPUPVAL r_func upval_idx parent_upval_idx` - Capture an existing upvalue into a closure's upvalue slot.

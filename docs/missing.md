@@ -259,7 +259,6 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 | GC roots and Go's GC | Heap objects are held as integers in registers and stay alive only through the VM's object list; correct today, fragile if Go ever moves objects. Every such conversion goes through one function (`header` in `value.go`) |
 | Pauses | The collector stops the program for as long as it takes to mark what is alive: not incremental, not generational. Some tens of milliseconds with millions of objects alive |
 | Stopping a program that waits | `VM.Interrupt` and Ctrl-C stop a program that computes or sleeps where it is. One that waits for a line of input or an answer from the network stops when that wait is over; `lumen` ends the process after two seconds |
-| Jumps | Every jump the compiler writes takes three words (the long form), also when the short one would do |
 | Equality | Arrays compare by identity; so do structs that do not implement `Equal` |
 | Float formatting | `println(3.0)` prints `3`, indistinguishable from an Int |
 
@@ -278,7 +277,7 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 | Formatter; more from the language server | Colours and a language server are there, with a VS Code extension ([editor.md](editor.md)). Not there: a formatter, renaming, finding every use of a name, the parameters of a function while its arguments are typed |
 | A way to run tests | No `lumen test`, no `assert`; a program is tested by comparing what it prints |
 | Documentation from comments | None |
-| Optimization | None: no constant folding, no dead code elimination beyond unreachable blocks, every jump uses the 3-word long form |
+| Optimization | Functions never reached are left out, and common sequences are written as one instruction ([bytecode_generation.md](compilation/bytecode_generation.md#one-instruction-for-several)). Not there: constant folding, inlining, anything that looks further than one block |
 | `Instr.String()` | Still renders every operand as a register; the debugger and disassembler use `asm.FormatInstruction` instead |
 
 ---

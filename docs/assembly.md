@@ -863,4 +863,16 @@ back_to_start:
 - Offsets are signed 32-bit integers (range: -2,147,483,648 to 2,147,483,647)
 - The VM automatically handles the 3-word sequence when encountering a LONG prefix
 
+## Instructions Only the Compiler Writes
 
+A listing made from a Lumen program (`lumen build program.lum program.lasm`) shows instructions the assembler does not read. Each says in one step what several of the instructions above say, and is written by the compiler where it can ([bytecode_generation.md](compilation/bytecode_generation.md#one-instruction-for-several)):
+
+| Instruction | Does |
+|---|---|
+| `CALLK rW n function` | Calls a function of the program by its name, with the `n` arguments in `rW+1`...; no function value is made |
+| `CALLX rW n function` | The same for a host function |
+| `JNLT ra rb target`, `JNLE`, `JNEQ`, `JNNE` | Goes on at `target` unless `ra < rb` (`<=`, `==`, `!=`) |
+| `JNLTI ra k target`, `JNLEI`, `JNGTI`, `JNGEI`, `JNEQI`, `JNNEI` | The same against the number `k` (0 to 65535) |
+| `ADDI rd ra k`, `SUBI rd ra k` | `rd = ra + k`, `rd = ra - k` |
+
+In assembly, write the instructions they stand for: `NEWFUNC` and `CALL`, a comparison and `JMPIFNOT`, `LOADI` and `ADD`.

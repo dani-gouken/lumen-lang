@@ -60,16 +60,14 @@ type VM struct {
 	// a function without captured variables (by prototype index) and a host
 	// function (by name). Without this every call of a function by its name
 	// would allocate an object just to call it.
-	funcObjs   []Value
 	externObjs map[string]Value
 
 	// The texts of one ASCII character, made once each: what indexing a
 	// text gives, most of the time
 	charStrings [128]Value
 
-	// What the instructions that reach a field remember (see fieldCache),
-	// one entry per instruction of the chunk they belong to
-	fieldCaches map[*Chunk][]fieldCache
+	// What is kept for each chunk that has code running (see chunkCache)
+	caches map[*Chunk]*chunkCache
 
 	gray []*ObjHeader // Objects marked, whose contents are still to be (see gc.go)
 
@@ -123,7 +121,7 @@ func NewVMWithHeapSize(heapSize uint64) *VM {
 		externSignatures: make(map[string]string),
 		maxCallDepth:     DefaultMaxCallDepth,
 		externObjs:       make(map[string]Value),
-		fieldCaches:      make(map[*Chunk][]fieldCache),
+		caches:           make(map[*Chunk]*chunkCache),
 		sched:            newScheduler(),
 		interrupt:        make(chan struct{}),
 	}

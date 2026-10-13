@@ -48,8 +48,10 @@ func (vm *VM) markRoots() {
 
 	// Function objects kept for reuse (see functionObject, NEWEXFUNC), and
 	// the texts of one character
-	for _, cached := range vm.funcObjs {
-		vm.markValue(cached)
+	for _, cache := range vm.caches {
+		for _, cached := range cache.funcs {
+			vm.markValue(cached)
+		}
 	}
 	for _, cached := range vm.externObjs {
 		vm.markValue(cached)

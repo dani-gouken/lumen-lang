@@ -42,10 +42,13 @@ type Generator struct {
 	// Names of host-provided functions that may be referenced
 	externs map[string]bool
 
-	protoIndex  map[string]int   // Function name -> prototype index
-	externIndex map[string]int   // Extern name -> index in chunk.ExternNames
-	constIndex  map[vm.Value]int // Constant value -> index in chunk.Constants
-	stringIndex map[string]int   // String -> index in chunk.StringPool
+	protoIndex map[string]int // Function name -> prototype index
+	// The functions that capture no variable: one value of each is all
+	// there ever is, and it can be called by its number
+	capturesNothing map[string]bool
+	externIndex     map[string]int   // Extern name -> index in chunk.ExternNames
+	constIndex      map[vm.Value]int // Constant value -> index in chunk.Constants
+	stringIndex     map[string]int   // String -> index in chunk.StringPool
 
 	debugIndex map[place]*vm.DebugInfo // The debug record of each place
 }
@@ -54,16 +57,17 @@ type Generator struct {
 // functions the program is allowed to reference.
 func NewGenerator(prog *ir.Program, externs []string, errs *errors.Handler) *Generator {
 	g := &Generator{
-		prog:        prog,
-		errs:        errs,
-		sourceLines: make(map[int]string),
-		chunk:       vm.NewChunk(),
-		externs:     make(map[string]bool),
-		protoIndex:  make(map[string]int),
-		externIndex: make(map[string]int),
-		constIndex:  make(map[vm.Value]int),
-		stringIndex: make(map[string]int),
-		debugIndex:  make(map[place]*vm.DebugInfo),
+		prog:            prog,
+		errs:            errs,
+		sourceLines:     make(map[int]string),
+		chunk:           vm.NewChunk(),
+		externs:         make(map[string]bool),
+		protoIndex:      make(map[string]int),
+		capturesNothing: make(map[string]bool),
+		externIndex:     make(map[string]int),
+		constIndex:      make(map[vm.Value]int),
+		stringIndex:     make(map[string]int),
+		debugIndex:      make(map[place]*vm.DebugInfo),
 	}
 	for _, name := range externs {
 		g.externs[name] = true
@@ -91,6 +95,7 @@ func (g *Generator) Generate() *vm.Chunk {
 	functions := g.reachableFunctions()
 	for i, fn := range functions {
 		g.protoIndex[fn.Name] = i
+		g.capturesNothing[fn.Name] = fn.UpvalueCount == 0
 	}
 	g.checkEntryPoint(functions)
 

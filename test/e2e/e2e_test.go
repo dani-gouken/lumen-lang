@@ -272,7 +272,7 @@ func TestBuildListing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{".func main", "NEWEXFUNC", "println", `"Hello, Lumen!"`, "CALL", "RET"} {
+	for _, want := range []string{".func main", "CALLX", "println", `"Hello, Lumen!"`, "RET"} {
 		if !strings.Contains(string(text), want) {
 			t.Errorf("expected the listing to contain %q, got:\n%s", want, text)
 		}
@@ -451,7 +451,7 @@ func TestLargeProgram(t *testing.T) {
 	if !strings.Contains(string(text), fmt.Sprintf(".func step%d ", count-1)) {
 		t.Errorf("expected the listing to define step%d", count-1)
 	}
-	if !regexp.MustCompile(fmt.Sprintf(`NEWFUNC r\d+ step%d\n`, count-1)).Match(text) {
+	if !regexp.MustCompile(fmt.Sprintf(`CALLK r\d+ \d+ step%d\n`, count-1)).Match(text) {
 		t.Errorf("expected the listing to refer to step%d by name", count-1)
 	}
 	// Constant indexes past 255 are printed in full
@@ -471,9 +471,9 @@ func TestDebuggerSession(t *testing.T) {
 		t.Fatalf("debugger exited with %d:\n%s\n%s", res.exit, res.stdout, res.stderr)
 	}
 	for _, want := range []string{
-		"NEWFUNC r7 schedule  [main]", // Functions by name, not by register
-		"closures_in_loops.lum:17",    // Source position of the instruction
-		`r8 = String("build")`,        // Registers after three steps
+		"NEWSTR r7 6  [main]",      // The instruction, and the function it is in
+		"closures_in_loops.lum:17", // Source position of the instruction
+		`r7 = String("build")`,     // Registers after three steps
 		"Function: main",
 		"Execution complete: Int(0)",
 	} {
@@ -527,7 +527,7 @@ func TestModulesThroughCommands(t *testing.T) {
 		t.Fatalf("build of the listing failed:\n%s", res.stderr)
 	}
 	text, _ := os.ReadFile(listing)
-	for _, name := range []string{".func zoo.animals.heaviest ", "NEWFUNC r5 zoo.animals.new"} {
+	for _, name := range []string{".func zoo.animals.heaviest ", "CALLK r9 2 zoo.animals.new"} {
 		if !strings.Contains(string(text), name) {
 			t.Errorf("expected the listing to contain %q", name)
 		}
@@ -849,8 +849,8 @@ fn main() -> Int {
 		t.Fatalf("build of the listing failed:\n%s", res.stderr)
 	}
 	text, _ := os.ReadFile(listing)
-	if !regexp.MustCompile(`NEWEXFUNC r\d+ std\.io\.readLine`).Match(text) {
-		t.Error("expected the listing to load std.io.readLine as a host function")
+	if !regexp.MustCompile(`CALLX r\d+ \d+ std\.io\.readLine`).Match(text) {
+		t.Error("expected the listing to call std.io.readLine as a host function")
 	}
 
 	// Files: written by one run, read by the next

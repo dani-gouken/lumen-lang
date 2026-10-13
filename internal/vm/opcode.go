@@ -96,7 +96,41 @@ const (
 	OpTRY32   // After OpLONG, followed by an offset word: from here a failure in this call continues at the offset
 	OpENDTRY  // The innermost handler of this call no longer applies
 	OpRETHROW // Pass on the failure the handler was run for
+
+	// Shorter ways of saying what the instructions above can say, which
+	// the compiler uses where it can. Each does in one step what took
+	// several: less to fetch, and no value made only to be looked at once.
+
+	// Calls of a function known by its number, without making a function
+	// value of it first: A = register before the arguments, B = nargs,
+	// C = the function (CALLK) or the host function (CALLX).
+	OpCALLK
+	OpCALLX
+
+	// Tests that jump: A, B = the registers compared, C = where to go on
+	// unless the test holds. JNLT jumps unless A < B, and so on. Greater
+	// than is less than with the registers the other way round.
+	OpJNLT
+	OpJNLE
+	OpJNEQ
+	OpJNNE
+
+	// The same against a small number: A = register, B = the number,
+	// C = where to go on unless the test holds.
+	OpJNLTI
+	OpJNLEI
+	OpJNGTI
+	OpJNGEI
+	OpJNEQI
+	OpJNNEI
+
+	// Arithmetic with a small number: A = dest, B = register, C = the number.
+	OpADDI
+	OpSUBI
 )
+
+// LastOp is the highest opcode there is.
+const LastOp = OpSUBI
 
 // MaxOperand is the largest value an instruction operand can hold. It bounds
 // what one operand can index: registers per function, constants, functions
@@ -234,6 +268,12 @@ func (i Instr) String() string {
 		return "ENDTRY"
 	case OpRETHROW:
 		return "RETHROW"
+	case OpCALLK:
+		return formatInstr("CALLK", i.A, i.B, i.C)
+	case OpCALLX:
+		return formatInstr("CALLX", i.A, i.B, i.C)
+	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI:
+		return formatInstr(shortNames[i.Op], i.A, i.B, i.C)
 	case OpGC:
 		return "GC"
 	default:
@@ -261,4 +301,19 @@ func EncodeOffset32(offset int32) Instr {
 // DecodeOffset32 decodes a 32-bit signed offset from an Instr.
 func DecodeOffset32(instr Instr) int32 {
 	return int32(uint32(instr.A)<<16 | uint32(instr.B))
+}
+
+// shortNames names the instructions that say in one step what took several.
+var shortNames = map[OpCode]string{
+	OpCALLK: "CALLK", OpCALLX: "CALLX",
+	OpJNLT: "JNLT", OpJNLE: "JNLE", OpJNEQ: "JNEQ", OpJNNE: "JNNE",
+	OpJNLTI: "JNLTI", OpJNLEI: "JNLEI", OpJNGTI: "JNGTI", OpJNGEI: "JNGEI", OpJNEQI: "JNEQI", OpJNNEI: "JNNEI",
+	OpADDI: "ADDI", OpSUBI: "SUBI",
+}
+
+// ShortName returns the name of one of those instructions, and whether op
+// is one.
+func ShortName(op OpCode) (string, bool) {
+	name, ok := shortNames[op]
+	return name, ok
 }
