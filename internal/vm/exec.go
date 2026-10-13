@@ -112,6 +112,29 @@ func (kept *chunkCache) method(chunk *Chunk, root *Shape, number int32, nameCons
 	return index
 }
 
+// caseOf is where the SWITCH at an instruction goes on for a value: the
+// case of its type, or the place for none of them. It is kept out of the
+// instruction loop, which is the faster for every instruction the
+// smaller it is.
+//
+//go:noinline
+func (kept *chunkCache) caseOf(chunk *Chunk, at int, known *fieldCache, v Value) int {
+	h := header(v)
+	if h == nil || h.Type != ObjTypeObject {
+		return int(chunk.Code[at].C)
+	}
+	root := (*ObjectObj)(unsafe.Pointer(h)).shape.root
+	if known.other == 0 {
+		kept.switches++
+		known.other = kept.switches
+	}
+	number := known.other - 1
+	if root.casesOf == kept && int(number) < len(root.cases) && root.cases[number] != 0 {
+		return int(root.cases[number]) - 1
+	}
+	return int(kept.switchTo(chunk, at, number, root))
+}
+
 // switchTo finds where a SWITCH goes on for the values of a type: the
 // target of the CASE that names the type, or the one for none of them.
 // The cases are gone through once per type; what is found is kept with the
@@ -159,6 +182,26 @@ func (vm *VM) methodOf(v Value, chunk *Chunk, kept *chunkCache, known *fieldCach
 		return callee, nil
 	}
 	return vm.functionObject(chunk, kept.funcs, int(known.slot))
+}
+
+// calledMethod is the function a CALLM calls: the method found on the
+// value, checked to take the arguments it is given, unless the program is
+// to stop here. Kept out of the instruction loop like caseOf.
+//
+//go:noinline
+func (vm *VM) calledMethod(v Value, chunk *Chunk, kept *chunkCache, known *fieldCache, instr Instr) (*FunctionObj, error) {
+	callee, err := vm.methodOf(v, chunk, kept, known, instr.C)
+	if err != nil {
+		return nil, err
+	}
+	funcObj := (*FunctionObj)(unsafe.Pointer(header(callee)))
+	if int(instr.B) != funcObj.proto.ArgCount {
+		return nil, vm.runtimeError(fmt.Sprintf("function %s expects %d arguments, got %d", funcObj.proto.Name, funcObj.proto.ArgCount, instr.B))
+	}
+	if vm.interrupted.Load() || vm.outOfSteps() {
+		return nil, vm.stopped()
+	}
+	return funcObj, nil
 }
 
 func (vm *VM) noSuchMethod(v Value, chunk *Chunk, nameConst uint16) error {
@@ -1071,21 +1114,7 @@ func (vm *VM) execute(base int) (Value, error) {
 		case OpSWITCH:
 			// A = the value, B = the number of CASE words that follow,
 			// C = where to go on for a value none of them names
-			target := int(instr.C)
-			if h := header(regs[instr.A]); h != nil && h.Type == ObjTypeObject {
-				root := (*ObjectObj)(unsafe.Pointer(h)).shape.root
-				known := &cache[ip]
-				if known.other == 0 {
-					kept.switches++
-					known.other = kept.switches
-				}
-				number := known.other - 1
-				if root.casesOf == kept && int(number) < len(root.cases) && root.cases[number] != 0 {
-					target = int(root.cases[number]) - 1
-				} else {
-					target = int(kept.switchTo(chunk, ip, number, root))
-				}
-			}
+			target := kept.caseOf(chunk, ip, &cache[ip], regs[instr.A])
 			if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
 				return NewNull(), vm.stopped()
 			}
@@ -1105,16 +1134,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			// register before the arguments, B = nargs, C = the name
 			first := int(instr.A) + 1
 			last := first + int(instr.B)
-			callee, err := vm.methodOf(regs[first], chunk, kept, &cache[ip], instr.C)
+			funcObj, err := vm.calledMethod(regs[first], chunk, kept, &cache[ip], instr)
 			if err != nil {
 				return NewNull(), err
-			}
-			funcObj := (*FunctionObj)(unsafe.Pointer(header(callee)))
-			if int(instr.B) != funcObj.proto.ArgCount {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("function %s expects %d arguments, got %d", funcObj.proto.Name, funcObj.proto.ArgCount, instr.B))
-			}
-			if vm.interrupted.Load() || vm.outOfSteps() {
-				return NewNull(), vm.stopped()
 			}
 			if err := vm.enter(funcObj, regs[first:last:last]); err != nil {
 				return NewNull(), err
