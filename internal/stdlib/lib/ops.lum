@@ -229,3 +229,120 @@ pub fn join<T: Show>(items: [T], separator: String) -> String {
     }
     return out;
 }
+
+// --- Ranges ---
+
+// The whole numbers from one to another: what `0..10` is when it is kept
+// instead of looped over.
+//
+//     let teens = 13..20;                     // 13 to 19
+//     teens.contains(age)
+//     for i in (0..100).step(10) { ... }      // 0, 10, ... 90
+//     for i in (0..5).reversed() { ... }      // 4, 3, 2, 1, 0
+//     (1..=6).map(n -> n * n)                 // [1, 4, 9, 16, 25, 36]
+//
+// `to` is the end as written: left out by `..`, included by `..=`. With a
+// step below 0 the numbers go down, from `from` towards `to`:
+// (10..0).step(-2) is 10, 8, 6, 4, 2. A range that cannot move towards its
+// end holds no number.
+//
+// `for i in 0..10` makes no Range: it counts. A loop over a Range counts
+// as well, without making an array.
+pub struct Range {
+    from: Int;
+    to: Int;
+    inclusive: Bool = false;
+    by: Int = 1;
+}
+
+impl Range {
+    // The same numbers, taken one every `by`: (0..10).step(3) is 0, 3, 6, 9.
+    // A step below 0 goes down from `from`: (10..0).step(-1) is 10 to 1.
+    pub fn step(by: Int) -> Range {
+        if by == 0 { panic("a range cannot go by steps of 0"); }
+        return Range { from: self.from, to: self.to, inclusive: self.inclusive, by: by };
+    }
+
+    // The same numbers, from the last to the first.
+    pub fn reversed() -> Range {
+        let last = self.last();
+        if last == null { return Range { from: self.from, to: self.from, by: -self.by }; }
+        return Range { from: last, to: self.from, inclusive: true, by: -self.by };
+    }
+
+    // How many numbers it holds.
+    pub fn len() -> Int {
+        let span = self.to - self.from;
+        if self.by < 0 { span = -span; }
+        if self.inclusive { span++; }
+        if span <= 0 { return 0; }
+        let by = self.by;
+        if by < 0 { by = -by; }
+        return (span + by - 1) / by;
+    }
+
+    pub fn isEmpty() -> Bool { return self.len() == 0; }
+
+    // The first number, or null when there is none.
+    pub fn first() -> Int? {
+        if self.isEmpty() { return null; }
+        return self.from;
+    }
+
+    // The last number, or null when there is none.
+    pub fn last() -> Int? {
+        let count = self.len();
+        if count == 0 { return null; }
+        return self.from + (count - 1) * self.by;
+    }
+
+    // Whether a number is one of them.
+    pub fn contains(n: Int) -> Bool {
+        let last = self.last();
+        if last == null { return false; }
+        if self.by > 0 && (n < self.from || n > last) { return false; }
+        if self.by < 0 && (n > self.from || n < last) { return false; }
+        return (n - self.from) % self.by == 0;
+    }
+
+    // The numbers, as an array.
+    pub fn toArray() -> [Int] {
+        let out: [Int] = [];
+        for n in self { push(out, n); }
+        return out;
+    }
+
+    // What a function makes of each number.
+    pub fn map<U>(convert: fn(Int) -> U) -> [U] {
+        let out: [U] = [];
+        for n in self { push(out, convert(n)); }
+        return out;
+    }
+
+    // The numbers a function says yes to.
+    pub fn filter(wanted: fn(Int) -> Bool) -> [Int] {
+        let out: [Int] = [];
+        for n in self { if wanted(n) { push(out, n); } }
+        return out;
+    }
+
+    // Where a loop over the range stops: the first number past its end, in
+    // the direction it goes. What `for n in range` counts up or down to.
+    pub fn stop() -> Int {
+        let count = self.len();
+        return self.from + count * self.by;
+    }
+}
+
+impl Iterable<Int> for Range {
+    fn iterate() -> [Int] { return self.toArray(); }
+}
+
+impl Show for Range {
+    fn show() -> String {
+        let text = toString(self.from) + ".." + toString(self.to);
+        if self.inclusive { text = toString(self.from) + "..=" + toString(self.to); }
+        if self.by != 1 { text = "(" + text + ").step(" + toString(self.by) + ")"; }
+        return text;
+    }
+}

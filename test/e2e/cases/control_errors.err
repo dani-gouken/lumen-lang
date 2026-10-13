@@ -8,8 +8,7 @@ Every case of a match that gives a value gives the same type
 control_errors.lum:25:9
 [ERROR] E2029: a case with several patterns cannot name a value: 'r'
 Write '_' in its place, or give the pattern a case of its own
-[ERROR] E2038: a range is not a value
-Loop over it (for i in 0..10 { ... }), match against it (case 0..10:), or make the array: arrays.range(0, 10)
+control_errors.lum:37:22
 [ERROR] E2038: the bounds of a range are whole numbers, this is float
 [ERROR] E2026: cannot assign to loop variable 'i'
 'i' follows the range; use a while loop to control the count

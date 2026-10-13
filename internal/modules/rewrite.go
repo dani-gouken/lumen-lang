@@ -563,6 +563,21 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 	case *ast.RangeExpr:
 		e.Low = r.expr(e.Low)
 		e.High = r.expr(e.High)
+		if !e.Counted && r.loader.modules[RangeModule] != nil {
+			// Kept as a value: a struct like any other from here on
+			yes := "false"
+			if e.Inclusive {
+				yes = "true"
+			}
+			literal := func(kind, text string) ast.Expr {
+				tok := e.Token()
+				tok.Literal = text
+				return &ast.Literal{BaseNode: ast.BaseNode{Pos: e.Position(), Tok: tok}, Kind: kind, Value: text}
+			}
+			return &ast.StructInitExpr{BaseNode: e.BaseNode, Name: RangeStruct, Range: e, Fields: map[string]ast.Expr{
+				"from": e.Low, "to": e.High, "inclusive": literal("bool", yes), "by": literal("int", "1"),
+			}}
+		}
 
 	case *ast.StructInitExpr:
 		e.Name = r.typeName(e.Name, e.Token())

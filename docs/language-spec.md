@@ -39,7 +39,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
   - `while` with `Bool` condition.
   - `for item in items { ... }` over arrays or strings; a string yields its characters.
   - `for i, item in items { ... }` also gives the position, from 0.
-  - `for i in low..high { ... }` counts from `low` up to, not including, `high`; `low..=high` includes it. Both are `Int`, worked out once before the first iteration; nothing runs when `low` is not below `high`. A range is only written there and as a `match` pattern; anywhere else it is `E2038`.
+  - `for i in low..high { ... }` counts from `low` up to, not including, `high`; `low..=high` includes it. Both are `Int`, worked out once before the first iteration; nothing runs when `low` is not below `high`. There and as a `match` pattern a range is counted or compared with, and nothing is made for it. Anywhere else it is a value: a `Range` of `std.ops` (a struct: `from`, `to`, `inclusive`, `by`), which the program need not import to make. `(0..10).step(2)`, `.reversed()`, `.contains(n)`, `.len()`, `.toArray()`, `.map(f)`, `.filter(f)`; a loop over one counts without making an array. Its ends are `Int` (`E2038`).
   - The loop's variables cannot be assigned (`E2026`). Assigning to the index would not move the loop, and assigning to the element would not change the collection; both look like they would. To change the collection write `items[i] = ...`; to control the position use `while`. Changing a value *through* the element is fine: `for p in points { p.x = 0; }`.
   - `break`/`continue` only in loops.
 

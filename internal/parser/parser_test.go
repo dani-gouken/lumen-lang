@@ -1466,3 +1466,52 @@ func TestParsePipeRefused(t *testing.T) {
 		})
 	}
 }
+
+// A range in the header of a loop or of a case is counted or compared
+// with; anywhere else it is a value, which the file is then said to keep.
+func TestParseRangesKeptAndCounted(t *testing.T) {
+	rangesOf := func(src string) (counted, kept int, keeps bool) {
+		prog := parseOK(t, src)
+		ast.Walk(prog.Decls[0].(*ast.FnDecl).Body, func(expr ast.Expr) {
+			if r, ok := expr.(*ast.RangeExpr); ok {
+				if r.Counted {
+					counted++
+				} else {
+					kept++
+				}
+			}
+		}, func(ast.Stmt) {})
+		return counted, kept, prog.KeepsRanges
+	}
+
+	cases := []struct {
+		name, body    string
+		counted, kept int
+	}{
+		{"a loop", `for i in 0..10 { }`, 1, 0},
+		{"a loop to the last included", `for i in 0..=n - 1 { }`, 1, 0},
+		{"a loop with a position", `for at, i in low..high { }`, 1, 0},
+		{"a case", `match n { case 0..10: { } case 10..=20 | 30..40: { } default: { } }`, 3, 0},
+		{"a variable", `let r = 0..10;`, 0, 1},
+		{"an argument", `show(0..10, 1..=2);`, 0, 2},
+		{"what is returned", `return low..high;`, 0, 1},
+		{"a field", `let b = Booking { nights: 3..6 };`, 0, 1},
+		{"an item", `let rs = [0..1, 2..3];`, 0, 2},
+		{"in brackets, with a method", `let xs = (0..10).step(2).toArray();`, 0, 1},
+		{"a loop over one in brackets with a method", `for i in (0..10).step(2) { }`, 0, 1},
+		{"a loop over one in brackets alone", `for i in (0..10) { }`, 1, 0},
+		{"piped", `let n = 0..10 |> total;`, 0, 1},
+		{"both in one function", `let r = 0..3; for i in 0..3 { let s = i..3; } match 1 { case 0..2: { } default: { } }`, 2, 2},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			counted, kept, keeps := rangesOf("fn main() { " + c.body + " }")
+			if counted != c.counted || kept != c.kept {
+				t.Errorf("expected %d counted and %d kept, got %d and %d", c.counted, c.kept, counted, kept)
+			}
+			if keeps != (c.kept > 0) {
+				t.Errorf("expected the file to keep ranges: %v, got %v", c.kept > 0, keeps)
+			}
+		})
+	}
+}

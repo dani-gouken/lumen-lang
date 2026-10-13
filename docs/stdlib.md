@@ -962,6 +962,22 @@ The traits that give a struct or an enum the syntax of the builtin types, and wh
 
 `Int`, `Float`, `String` and `Bool` implement `Equal` and `Show`; all but `Bool` implement `Ordered`.
 
+### `Range`
+
+What `0..10` is when it is kept instead of looped over: `let teens = 13..20;`. A struct, made by writing a range (no import is needed for that; `import std.ops.{Range};` to name the type). It knows its numbers without holding them, and a loop over one counts.
+
+| Field or method | |
+|-----------------|--|
+| `from`, `to`, `inclusive`, `by` | The ends as written, whether `to` is one of the numbers (`..=`), and the step, 1 unless `step` said otherwise |
+| `step(by: Int) -> Range` | One number every `by`: `(0..10).step(3)` is 0, 3, 6, 9. Below 0 it goes down from `from`: `(10..0).step(-2)` is 10, 8, 6, 4, 2. A step of 0 stops the program |
+| `reversed() -> Range` | The same numbers, from the last to the first |
+| `len() -> Int`, `isEmpty() -> Bool` | How many numbers. A range that cannot move towards its end (`10..0`) holds none |
+| `first() -> Int?`, `last() -> Int?` | `null` when there is none |
+| `contains(n: Int) -> Bool` | Whether `n` is one of them, the step counted |
+| `toArray() -> [Int]`, `map<U>(f) -> [U]`, `filter(wanted) -> [Int]` | The numbers, or what a function makes or keeps of them |
+
+It is written as its range: `0..10`, `(0..=10).step(5)`.
+
 For any type that implements the trait named:
 
 | Function | Result |

@@ -168,7 +168,24 @@ fn area(shape: Shape) -> Float {
 
 Each case is an expression, all of the same type (a `null` among them makes the whole optional), or a block that leaves: `case 0: { return null; }`, `{ continue; }`, `{ panic("..."); }`. Such a match has to give a value whatever is matched: it handles every variant of an enum, or has a `default` (`E2028`).
 
-A range is for looping over and for matching against; it is not a value to keep (`E2038`). `arrays.range(0, 10)` makes the array. Its two ends are worked out once, before the loop starts, and `..` binds looser than arithmetic: `0..count - 1`.
+The two ends of a range are whole numbers. Its two ends are worked out once, before the loop starts, and `..` binds looser than arithmetic: `0..count - 1`.
+
+A range can also be kept, like any value: it is then a `Range`, which knows its numbers without holding them.
+
+```rust
+let teens = 13..20;
+teens.contains(age)                       // true from 13 to 19
+teens.len()                               // 7
+
+for i in (0..100).step(10) { ... }        // 0, 10, ... 90
+for i in (0..5).reversed() { ... }        // 4, 3, 2, 1, 0
+for i in (10..0).step(-2) { ... }         // 10, 8, 6, 4, 2
+
+(1..=6).map(n -> n * n)                   // [1, 4, 9, 16, 25, 36]
+(0..20).filter(n -> n % 3 == 0)           // [0, 3, 6, 9, 12, 15, 18]
+```
+
+In brackets, because a dot binds tighter than `..`: `0..5.reversed()` would ask the 5. A loop over a `Range` counts, as `for i in 0..10` does: no array is made, whatever its size. The type is written `Range`, with `import std.ops.{Range};`: see [`std.ops`](stdlib.md#stdops).
 
 `defer` sets something aside to run when the block it is written in is left, whichever way: at its end, by `return`, `break`, `continue` or `?`, or because something failed.
 

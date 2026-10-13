@@ -792,3 +792,25 @@ let evens = [x * 2 for x in nums if x % 2 == 0];
 - [Rust HIR (High-level IR)](https://rustc-dev-guide.rust-lang.org/hir.html) - Rust's approach to desugaring
 - [Swift SIL](https://github.com/apple/swift/blob/main/docs/SIL.rst) - Swift's desugaring and lowering strategy
 - [GHC Core](https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/compiler/core-syn-type) - Haskell's core language after desugaring
+
+## Loops over a range that was kept
+
+`for i in 0..10` counts, as shown above. A range anywhere else is a value, a `Range` of `std.ops` (module loading writes the struct literal in its place), and a loop over one is desugared to a count as well, read from the struct:
+
+```rust
+for i in numbers { body }
+
+{
+    let __tmp_N = numbers;
+    let __iter_N: Int = __tmp_N.from;
+    let __len_N: Int = __tmp_N.stop();     // the first number past the end
+    let __tmp_M: Int = __tmp_N.by;
+    while __iter_N != __len_N {
+        let i: Int = __iter_N;
+        __iter_N = __iter_N + __tmp_M;
+        body
+    }
+}
+```
+
+`stop` is a whole number of steps from `from`, so the loop meets it exactly, going up or down. No array is made; `Range` implements `Iterable<Int>` only so that it is one to the type checker and to generic code.

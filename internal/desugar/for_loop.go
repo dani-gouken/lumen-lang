@@ -34,6 +34,11 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 		return d.desugarRangeLoop(forStmt, numbers)
 	}
 
+	// A loop over a range kept as a value counts as well
+	if kept, ok := d.typeInfo.Types[forStmt.Iterable].(*types.StructType); ok && kept.Name == rangeStruct {
+		return d.desugarKeptRangeLoop(forStmt, kept)
+	}
+
 	// A loop over a struct goes through the array the struct gives
 	forStmt = d.iterated(forStmt)
 
@@ -363,4 +368,84 @@ func (d *Desugarer) typeToASTType(t types.Type, pos token.Position) *ast.Type {
 	default:
 		return nil
 	}
+}
+
+// rangeStruct is what a range kept as a value is: the Range of the
+// standard library (see modules.RangeStruct).
+const rangeStruct = "std.ops.Range"
+
+// desugarKeptRangeLoop transforms a loop over a Range, a range that was
+// kept as a value, into a while loop that counts: no array is made.
+//
+//	for i in numbers { body }
+//
+//	{
+//	  let __tmp_N = numbers;
+//	  let __iter_N: Int = __tmp_N.from;
+//	  let __len_N: Int = __tmp_N.stop();   // the first number past the end
+//	  let __tmp_M: Int = __tmp_N.by;
+//	  while __iter_N != __len_N {
+//	    let i: Int = __iter_N;
+//	    __iter_N = __iter_N + __tmp_M;
+//	    body
+//	  }
+//	}
+//
+// The range is read once, before the first iteration: what the body does
+// to it changes nothing of the loop. `stop` is a whole number of steps
+// from `from`, so the loop meets it exactly, going up or down.
+func (d *Desugarer) desugarKeptRangeLoop(forStmt *ast.ForStmt, kept *types.StructType) ast.Stmt {
+	pos := forStmt.Position()
+	at := ast.BaseNode{Pos: pos}
+	intType := func() *ast.Type { return &ast.Type{BaseNode: at, Kind: ast.TypeBasic, Name: "Int"} }
+
+	rangeVar, iterVar, stopVar, stepVar := d.generateTmpVar(), d.generateIterVar(), d.generateLenVar(), d.generateTmpVar()
+	numbers := func() ast.Expr {
+		ident := d.createIdent(rangeVar, pos)
+		d.typeInfo.Types[ident] = kept
+		return ident
+	}
+	iter := func() ast.Expr { return d.createIdent(iterVar, pos) }
+	stop := d.call(numbers(), "stop", at)
+	d.typeInfo.Types[stop] = types.Int
+
+	stmts := []ast.Stmt{
+		&ast.LetStmt{BaseNode: at, Name: rangeVar, Value: d.desugarExpr(forStmt.Iterable)},
+		&ast.LetStmt{BaseNode: at, Name: iterVar, Type: intType(), Value: d.createMemberExpr(numbers(), "from", pos)},
+		&ast.LetStmt{BaseNode: at, Name: stopVar, Type: intType(), Value: stop},
+		&ast.LetStmt{BaseNode: at, Name: stepVar, Type: intType(), Value: d.createMemberExpr(numbers(), "by", pos)},
+	}
+
+	body := []ast.Stmt{&ast.LetStmt{BaseNode: at, Name: forStmt.Var, Type: intType(), Value: iter()}}
+	if forStmt.Index != nil {
+		// How many numbers came before this one
+		countVar := d.generateTmpVar()
+		stmts = append(stmts, &ast.LetStmt{BaseNode: at, Name: countVar, Type: intType(), Value: d.createIntLiteral("0", pos)})
+		body = append(body,
+			&ast.LetStmt{BaseNode: forStmt.Index.BaseNode, Name: forStmt.Index.Name, Type: intType(), Value: d.createIdent(countVar, pos)},
+			&ast.ExprStmt{BaseNode: at, Expr: &ast.BinaryExpr{
+				BaseNode: at,
+				Left:     d.createIdent(countVar, pos),
+				Op:       "=",
+				Right:    d.createBinaryExpr(d.createIdent(countVar, pos), "+", d.createIntLiteral("1", pos), pos),
+			}})
+	}
+	// The step comes before the body so that `continue` cannot skip it
+	body = append(body, &ast.ExprStmt{BaseNode: at, Expr: &ast.BinaryExpr{
+		BaseNode: at,
+		Left:     iter(),
+		Op:       "=",
+		Right:    d.createBinaryExpr(iter(), "+", d.createIdent(stepVar, pos), pos),
+	}})
+	body = append(body, d.desugarBlockStmt(forStmt.Body).Stmts...)
+
+	stmts = append(stmts, &ast.WhileStmt{
+		BaseNode: at,
+		Cond:     d.createBinaryExpr(iter(), "!=", d.createIdent(stopVar, pos), pos),
+		Body:     &ast.BlockStmt{BaseNode: at, Stmts: body},
+	})
+
+	block := d.wrapInBlock(stmts, pos)
+	d.info.Mapping[forStmt] = block
+	return block
 }

@@ -1068,3 +1068,150 @@ func TestPipe(t *testing.T) {
 		"hey!!", "81", "go!!", "21",
 		"150 200 null")
 }
+
+// Ranges kept as values: made, passed around, asked about, stepped through
+// both ways, and looped over without an array being made.
+func TestRangesAsValues(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+		import std.ops.{Range};
+		import std.strings;
+
+		struct Booking { guest: String; nights: Range; }
+		impl Booking {
+			fn overlaps(other: Booking) -> Bool {
+				return arrays.any(self.nights.toArray(), n -> other.nights.contains(n));
+			}
+		}
+
+		fn evens(numbers: Range) -> [Int] { return numbers.filter(n -> n % 2 == 0); }
+		fn total(numbers: Range) -> Int {
+			let sum = 0;
+			for n in numbers { sum += n; }
+			return sum;
+		}
+		fn span(low: Int, high: Int) -> Range { return low..high; }
+		fn describe(r: Range) -> String { return "${r} holds ${r.len()}: ${r.toArray()}"; }
+
+		fn main() {
+			// Kept, passed, returned
+			let teens = 13..20;
+			println(teens.len(), teens.contains(13), teens.contains(19), teens.contains(20), teens.contains(12));
+			println(evens(0..=10));
+			println(total(1..=100), total(span(5, 8)));
+			println(teens.from, teens.to, teens.inclusive, teens.by);
+			println(teens is Range);
+
+			// Steps, up and down
+			println(describe((0..10).step(3)));
+			println(describe((0..=10).step(5)));
+			println(describe((10..0).step(-2)));
+			println(describe((10..=0).step(-5)));
+			println(describe((0..10).reversed()));
+			println(describe((0..10).step(3).reversed()));
+			println(describe((10..0).step(-2).reversed()));
+			println((0..100).step(7).first(), (0..100).step(7).last());
+			println((0..100).step(7).contains(49), (0..100).step(7).contains(50), (10..0).step(-2).contains(4), (10..0).step(-2).contains(5), (10..0).step(-2).contains(0));
+
+			// Ranges that hold nothing
+			println(describe(5..5));
+			println(describe(5..=5));
+			println(describe(10..0));
+			println(describe((0..10).step(-1)));
+			println(describe((5..5).reversed()));
+			println((5..5).first(), (5..5).last(), (5..5).isEmpty(), (5..=5).isEmpty());
+
+			// Loops: with a position, left early, with a step skipped
+			let seen: [String] = [];
+			for at, n in (20..0).step(-4) {
+				if n == 12 { continue; }
+				if n == 4 { break; }
+				push(seen, "${at}:${n}");
+			}
+			println(seen |> strings.join(" "));
+
+			// The range is read once: what the body does to it changes nothing
+			let window = 0..3;
+			let turns = 0;
+			for n in window { window = 0..1000; turns++; }
+			println(turns, window.len());
+
+			// Loops inside loops, each with its own count
+			let pairs = 0;
+			for a in (0..6).step(2) { for b in (a..6).step(2) { pairs += a * b; } }
+			println(pairs);
+
+			// With the rest of the language
+			println((1..=5).map(n -> n * n) |> arrays.sum());
+			println((1..=3).map(n -> strings.repeat("*", n)) |> strings.join(" "));
+			let stays = [Booking { guest: "ada", nights: 3..6 }, Booking { guest: "bob", nights: 5..8 }, Booking { guest: "cy", nights: 6..7 }];
+			println(stays[0].overlaps(stays[1]), stays[0].overlaps(stays[2]), stays[1].overlaps(stays[2]));
+			let ranges = [0..2, 10..=11, (5..0).step(-2)];
+			println(arrays.map(ranges, r -> r.len()), arrays.map(ranges, total));
+
+			// A loop that counts needs none of this, and still counts
+			let plain = 0;
+			for i in 0..5 { plain += i; }
+			match plain { case 0..10: println("few"); case 10..=20: println("some"); default: println("many"); }
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out,
+		"7 true true false false",
+		"[0, 2, 4, 6, 8, 10]",
+		"5050 18",
+		"13 20 false 1",
+		"true",
+		"(0..10).step(3) holds 4: [0, 3, 6, 9]",
+		"(0..=10).step(5) holds 3: [0, 5, 10]",
+		"(10..0).step(-2) holds 5: [10, 8, 6, 4, 2]",
+		"(10..=0).step(-5) holds 3: [10, 5, 0]",
+		"(9..=0).step(-1) holds 10: [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]",
+		"(9..=0).step(-3) holds 4: [9, 6, 3, 0]",
+		"(2..=10).step(2) holds 5: [2, 4, 6, 8, 10]",
+		"0 98",
+		"true false true false false",
+		"5..5 holds 0: []",
+		"5..=5 holds 1: [5]",
+		"10..0 holds 0: []",
+		"(0..10).step(-1) holds 0: []",
+		"(5..5).step(-1) holds 0: []",
+		"null null true false",
+		"0:20 1:16 3:8",
+		"3 1000",
+		"28",
+		"55",
+		"* ** ***",
+		"true false true",
+		"[2, 2, 3] [1, 21, 9]",
+		"some")
+}
+
+// A loop over a range that was kept counts: a hundred thousand numbers
+// in a heap that could not hold them as an array.
+func TestLoopOverAKeptRangeMakesNoArray(t *testing.T) {
+	out, err := runWith(t, 1<<20, `
+		fn main() {
+			let numbers = (0..2000000).step(2);
+			let sum = 0;
+			for n in numbers { sum += n % 7; }
+			println(numbers.len(), sum);
+			let down = 0;
+			for n in (1000000..0).step(-1) { down += n % 3; }
+			println(down);
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out, "1000000 2999997", "1000000")
+}
+
+func TestRangeRefusals(t *testing.T) {
+	_, err := runWith(t, 16<<20, `fn main() { let r = (0..10).step(0); println(r); }`, nil)
+	if err == nil || !strings.Contains(err.Error(), "a range cannot go by steps of 0") {
+		t.Errorf("a step of 0: %v", err)
+	}
+}

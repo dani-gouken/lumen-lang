@@ -34,7 +34,7 @@ fn round(shape: Shape) -> Bool {
 }
 
 fn count() -> Int {
-    let numbers = 0..10;
+    let numbers = 0..10.5;
     for i in 0..2.5 { }
     for i in 0..3 { i = 5; }
     match "text" {

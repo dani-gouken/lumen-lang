@@ -1261,6 +1261,16 @@ func (c *Checker) checkStructInitExpr(e *ast.StructInitExpr) Type {
 	}
 	result := &StructType{Name: e.Name, BaseName: e.Name, TypeArgs: typeArgs}
 
+	if e.Range != nil && c.structs[e.Name] != nil {
+		// A range kept as a value. It was written as a range, and that
+		// is what its ends are checked as
+		c.checkRangeBounds(e.Range, true)
+		for _, name := range []string{"by", "inclusive"} {
+			c.checkExpr(e.Fields[name])
+		}
+		return result
+	}
+
 	// Field initializers are checked in name order, for stable diagnostics
 	names := make([]string, 0, len(e.Fields))
 	for name := range e.Fields {

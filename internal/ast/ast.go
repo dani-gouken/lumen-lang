@@ -57,6 +57,10 @@ type Program struct {
 	// them among Decls; module loading moves them here, so that later
 	// stages only see declarations with something to compile.
 	Externs []*FnDecl
+
+	// KeepsRanges says that a range is used as a value somewhere in the
+	// file: it then needs the Range of std.ops, imported or not.
+	KeepsRanges bool
 }
 
 func (p *Program) String() string {
@@ -628,6 +632,12 @@ type RangeExpr struct {
 	Low       Expr
 	High      Expr
 	Inclusive bool
+
+	// Counted marks the range of a loop (for i in 0..10) or of a case
+	// (case 0..10:): numbers gone through or compared with, and never a
+	// value. Any other range is one: a Range of std.ops, which the
+	// loading of modules writes in its place.
+	Counted bool
 }
 
 func (e *RangeExpr) exprNode() {}
@@ -967,6 +977,11 @@ type StructInitExpr struct {
 	Name     string
 	TypeArgs []*Type
 	Fields   map[string]Expr
+
+	// Range is the range this was written as, for the Range of the
+	// standard library a range kept as a value is: let r = 0..10;
+	// What is wrong with its ends is then said of a range.
+	Range *RangeExpr
 }
 
 func (e *StructInitExpr) exprNode() {}

@@ -246,7 +246,23 @@ func sameFile(a, b string) bool {
 }
 
 // loadImports reads the modules a module imports that are not loaded yet.
+// RangeModule is the module of the standard library that has Range, the
+// struct a range kept as a value is: let r = 0..10;
+const (
+	RangeModule = "std.ops"
+	RangeStruct = RangeModule + ".Range"
+)
+
 func (l *loader) loadImports(m *module) {
+	// A range kept as a value is a Range of std.ops, which the file need
+	// not have imported. Without the library there is none, and the
+	// range stays what it was: not a value, as the checker will say.
+	if _, seen := l.modules[RangeModule]; !seen && m.prog.KeepsRanges && m.name != RangeModule {
+		file := l.path(RangeModule)
+		if src, err := l.read(file); err == nil {
+			l.modules[RangeModule] = l.parse(RangeModule, file, src)
+		}
+	}
 	for _, imp := range m.prog.Imports {
 		if _, seen := l.modules[imp.Path]; seen {
 			continue

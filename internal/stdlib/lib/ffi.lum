@@ -68,22 +68,14 @@ pub extern fn writePointer(address: Int, offset: Int, value: Int);
 // To be freed.
 pub fn int32s(values: [Int]) -> Int {
     let address = alloc(arrays.len(values) * 4);
-    let i = 0;
-    for value in values {
-        writeInt32(address, i * 4, value);
-        i++;
-    }
+    for i, value in values { writeInt32(address, i * 4, value); }
     return address;
 }
 
 // The whole numbers at an address, read as 32-bit ones.
 pub fn readInt32s(address: Int, count: Int) -> [Int] {
     let out: [Int] = [];
-    let i = 0;
-    while i < count {
-        push(out, readInt32(address, i * 4));
-        i++;
-    }
+    for i in 0..count { push(out, readInt32(address, i * 4)); }
     return out;
 }
 
@@ -91,21 +83,13 @@ pub fn readInt32s(address: Int, count: Int) -> [Int] {
 // be freed.
 pub fn float32s(values: [Float]) -> Int {
     let address = alloc(arrays.len(values) * 4);
-    let i = 0;
-    for value in values {
-        writeFloat32(address, i * 4, value);
-        i++;
-    }
+    for i, value in values { writeFloat32(address, i * 4, value); }
     return address;
 }
 
 // The numbers at an address, read as 32-bit floats.
 pub fn readFloat32s(address: Int, count: Int) -> [Float] {
     let out: [Float] = [];
-    let i = 0;
-    while i < count {
-        push(out, readFloat32(address, i * 4));
-        i++;
-    }
+    for i in 0..count { push(out, readFloat32(address, i * 4)); }
     return out;
 }

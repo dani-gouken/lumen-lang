@@ -36,6 +36,9 @@ type Parser struct {
 	// While speculating, syntax errors unwind without being reported.
 	speculating bool
 
+	// The ranges read so far that no loop and no case took: values
+	keptRanges int
+
 	// How many names were made up so far, for those to differ
 	made int
 
@@ -202,6 +205,7 @@ func (p *Parser) parseProgram() *ast.Program {
 		p.parseTopLevel(prog)
 	}
 	classifyPatterns(prog)
+	prog.KeepsRanges = p.keptRanges > 0
 	return prog
 }
 
@@ -936,7 +940,7 @@ func (p *Parser) parseStmt() ast.Stmt {
 			stmt.Var = loopVar()
 		}
 		p.expect(token.IN, "'in'")
-		stmt.Iterable = p.parseHeaderExpr()
+		stmt.Iterable = p.counted(p.parseHeaderExpr())
 		stmt.Body = p.parseBlock()
 		if apart != nil {
 			item := &ast.Ident{BaseNode: base(nameTok), Name: stmt.Var}
@@ -1157,7 +1161,18 @@ func (p *Parser) parseCasePattern() ast.Node {
 	if typ := p.tryTypePattern(); typ != nil {
 		return typ
 	}
-	return p.variantPattern(p.parseHeaderExpr(), true)
+	return p.variantPattern(p.counted(p.parseHeaderExpr()), true)
+}
+
+// counted marks a range written where numbers are gone through or
+// compared with, the header of a loop or a case: it is not a value there,
+// and nothing is made for it.
+func (p *Parser) counted(expr ast.Expr) ast.Expr {
+	if r, ok := expr.(*ast.RangeExpr); ok && !r.Counted {
+		r.Counted = true
+		p.keptRanges--
+	}
+	return expr
 }
 
 // tryTypePattern parses the pattern of a match case as a type when it can
@@ -1306,6 +1321,7 @@ func (p *Parser) parseExpr() ast.Expr {
 	// 0..count - 1 is the range up to count - 1
 	if tok := p.cur(); tok.Type == token.DOTDOT || tok.Type == token.DOTDOT_EQ {
 		p.next()
+		p.keptRanges++
 		return &ast.RangeExpr{BaseNode: base(tok), Low: left, High: p.parseBinary(1), Inclusive: tok.Type == token.DOTDOT_EQ}
 	}
 	return left

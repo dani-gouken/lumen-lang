@@ -10,7 +10,6 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | ranges as values |
 | Failures | one shape for all errors |
 | Types | patterns on structs and arrays, names in a case with several patterns, traits for arrays |
 | Correctness | unused variables |
@@ -21,15 +20,6 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 ---
 
 ## 1. Syntax and Language Features
-
-### Ranges as values — M
-
-```rust
-let evens = (0..10).filter(isEven);
-for i in (0..10).step(2) { ... }
-```
-
-**Today**: `for i in 0..10`, `0..=10` and `case 0..10:` work, and count without making an array. Anywhere else a range is refused (`E2038`): it has no type of its own, no step, and cannot be kept in a variable or passed to a function. `arrays.range(0, 10)` makes the array.
 
 ### Members on arrays and texts — by design
 

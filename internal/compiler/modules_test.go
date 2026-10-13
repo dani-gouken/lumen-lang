@@ -826,3 +826,53 @@ func TestLengthCompilesToOneInstruction(t *testing.T) {
 		t.Errorf("expected 6, got %s, %v", vm.FormatValue(value), err)
 	}
 }
+
+// A range kept as a value is a Range of std.ops, in any module and without
+// an import; the names the program gives its own things are still its own.
+func TestRangesAsValuesInModules(t *testing.T) {
+	expectModulesOutput(t, sources{
+		"main.lum": `
+			import ops;
+			import calendar;
+			import calendar.{Range};
+
+			fn main() {
+				// The program's own Range, and its own module called ops
+				let mine = Range { label: "week" };
+				println(mine.label, ops.double(21));
+
+				// The library's, through a module that keeps ranges
+				let days = calendar.workdays();
+				println(days.len(), days.contains(5), calendar.weekend().toArray());
+				let kept = 1..4;
+				println(kept, kept.reversed().toArray(), calendar.total(kept.step(2)));
+			}
+		`,
+		"ops.lum": `pub fn double(n: Int) -> Int { return n * 2; }`,
+		"calendar.lum": `
+			import std.ops;
+
+			pub struct Range { label: String; }
+
+			// Named in full where the module has a Range of its own
+			pub fn workdays() -> ops.Range { return 1..=5; }
+			pub fn weekend() -> ops.Range { return (7..5).step(-1); }
+			pub fn total(days: ops.Range) -> Int {
+				let sum = 0;
+				for day in days { sum += day; }
+				return sum;
+			}
+		`,
+	}, "week 42\n5 true [7, 6]\n1..4 [3, 2, 1] 4\n")
+
+	// What is wrong with a range that is kept is said of a range
+	expectModulesError(t, sources{
+		"main.lum": "fn main() { let r = 1..2.5; }",
+	}, "E2038", "main.lum", "the bounds of a range are whole numbers, this is float")
+	expectModulesError(t, sources{
+		"main.lum": "fn main() { let n: Int = 1..5; }",
+	}, "E2001", "main.lum", "Range")
+	expectModulesError(t, sources{
+		"main.lum": "fn main() { let r = 1..5; r.grow(); }",
+	}, "E2015", "main.lum", "Range has no method 'grow'")
+}
