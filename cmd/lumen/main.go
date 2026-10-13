@@ -238,6 +238,7 @@ func printHelp() {
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  lumen run <file.lum>       Compile and run a Lumen source file")
+	fmt.Println("  lumen run <file.lc>        Run a program built earlier, as its source would run")
 	fmt.Println("  lumen build <in> <out>     Compile .lum to .lc bytecode (or .lasm text)")
 	fmt.Println("  lumen ir <file.lum>        Print the intermediate representation")
 	fmt.Println("  lumen repl                 Type Lumen in a line at a time")
@@ -339,8 +340,25 @@ var programFile string
 
 // cmdRun compiles and executes a .lum file. An Int returned by main becomes
 // the process exit code.
+//
+// A .lc file built earlier is run the same way: what `lumen build` made of
+// a program does what the program does, ends with the status it ends with
+// and writes nothing of its own. (`lumen exec` is the tool for looking at
+// a bytecode file: it says what main returned.)
 func cmdRun(inputFile string) {
-	chunk := compileSource(inputFile).Chunk
+	var chunk *vm.Chunk
+	if strings.HasSuffix(inputFile, ".lc") {
+		programFile = inputFile
+		data, err := os.ReadFile(inputFile)
+		if err != nil {
+			fatal(err)
+		}
+		if chunk, err = vm.DeserializeChunk(data); err != nil {
+			fatal(fmt.Errorf("%s: %v", inputFile, err))
+		}
+	} else {
+		chunk = compileSource(inputFile).Chunk
+	}
 
 	result, err := newVM().Exec(chunk)
 	if err != nil {

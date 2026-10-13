@@ -503,7 +503,7 @@ func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.Me
 func (fc *FunctionCompiler) lookUpMethod(receiver *ir.Register, name string) *ir.Register {
 	builtins := fc.gen.builtinOwners(name)
 	if len(builtins) == 0 {
-		return fc.builder.CreateGetField(receiver, name)
+		return fc.builder.CreateGetField(receiver, methodSlot(name))
 	}
 
 	fn := fc.builder.NewRegister()
@@ -523,7 +523,7 @@ func (fc *FunctionCompiler) lookUpMethod(receiver *ir.Register, name string) *ir
 
 		fc.builder.SetBlock(nextBlock)
 	}
-	fc.builder.Emit(ir.OpMov, fn, fc.builder.CreateGetField(receiver, name))
+	fc.builder.Emit(ir.OpMov, fn, fc.builder.CreateGetField(receiver, methodSlot(name)))
 	fc.builder.CreateJmp(endBlock)
 
 	fc.builder.SetBlock(endBlock)
@@ -653,7 +653,7 @@ func (fc *FunctionCompiler) compileStructInit(expr *ast.StructInitExpr) *ir.Regi
 			continue
 		}
 		fn := fc.builder.CreateMov(ir.Constant{Val: m.irName, Type: "FuncRef"})
-		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: m.name, Type: "String"}, fn)
+		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: methodSlot(m.name), Type: "String"}, fn)
 	}
 
 	return dest
@@ -686,7 +686,7 @@ func (fc *FunctionCompiler) compileVariant(expr *ast.VariantExpr) *ir.Register {
 			continue
 		}
 		fn := fc.builder.CreateMov(ir.Constant{Val: m.irName, Type: "FuncRef"})
-		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: m.name, Type: "String"}, fn)
+		fc.builder.Emit(ir.OpSetField, nil, dest, ir.Constant{Val: methodSlot(m.name), Type: "String"}, fn)
 	}
 	return dest
 }

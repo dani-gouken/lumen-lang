@@ -1,0 +1,45 @@
+// Classes, inheritance, methods, fields and closures.
+class Shape {
+  init(name) { this.name = name; }
+  area() { return 0; }
+  describe() { return this.name + " of area " + this.label(); }
+  label() { if (this.area() > 50) return "large"; return "small"; }
+}
+
+class Rect < Shape {
+  init(w, h) { super.init("rect"); this.w = w; this.h = h; }
+  area() { return this.w * this.h; }
+}
+
+class Square < Rect {
+  init(side) { super.init(side, side); this.name = "square"; }
+}
+
+fun counter() {
+  var count = 0;
+  fun bump(by) { count = count + by; return count; }
+  return bump;
+}
+
+var total = 0;
+var large = 0;
+var bump = counter();
+// Lox has no remainder: three counters go round instead
+var third = 0;
+var seventh = 0;
+var tenth = 0;
+for (var i = 0; i < 4000; i = i + 1) {
+  var shape;
+  if (third == 0) shape = Square(tenth); else shape = Rect(3, seventh);
+  total = total + shape.area();
+  if (shape.describe() == "square of area large" or shape.label() == "large") large = bump(1);
+
+  third = third + 1;
+  if (third == 3) third = 0;
+  seventh = seventh + 1;
+  if (seventh == 7) seventh = 0;
+  tenth = tenth + 1;
+  if (tenth == 10) tenth = 0;
+}
+print total;
+print large;

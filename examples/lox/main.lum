@@ -1,0 +1,91 @@
+// Lox, the language of "Crafting Interpreters" by Robert Nystrom, as a
+// tree-walking interpreter: the program is read into a tree, and the tree
+// is walked to run it.
+//
+//   lox/token.lum         the words of the language
+//   lox/scanner.lum       text        -> tokens
+//   lox/tree.lum          what a program is once read
+//   lox/parser.lum        tokens      -> statements
+//   lox/resolver.lum      which declaration each name means
+//   lox/interpreter.lum   statements, run
+//
+//   lumen run examples/lox program.lox     runs a program
+//   lumen run examples/lox -               reads lines and runs each
+//   lumen run examples/lox                 runs demo.lox, next to this file
+//
+// A program that cannot be read ends with status 65, one that fails while
+// running with 70, as the interpreters of the book do.
+
+import std.arrays;
+import std.io;
+import std.os;
+import std.path;
+import std.result.{Result, Kind, attempt};
+import lox.token.{Reporter};
+import lox.scanner;
+import lox.parser;
+import lox.resolver;
+import lox.interpreter.{Interpreter, RuntimeError, interpreter};
+
+const CANNOT_BE_READ = 65;
+const FAILED = 70;
+const USAGE = 64;
+
+// Runs one text: a whole program, or a line of a prompt. Gives the status
+// it ends with.
+fn run(source: String, lox: Interpreter) -> Int {
+    let reporter = Reporter { report: line -> io.printError(line + "\n") };
+    let program = parser.parse(scanner.scan(source, reporter), reporter);
+    if reporter.failed { return CANNOT_BE_READ; }
+
+    let distances = resolver.resolve(program, reporter);
+    if reporter.failed { return CANNOT_BE_READ; }
+
+    // A program that calls itself without end runs out of calls of the
+    // interpreter's own: that is a failure of the program, said as one
+    match attempt(() -> lox.run(program.statements, distances)) {
+        case Result.Ok(error): {
+            if error == null { return 0; }
+            io.printError("${error.message}\n[line ${error.token.line}]\n");
+        }
+        case Result.Err(failure): {
+            match failure.kind {
+                case Kind.Depth: { io.printError("Stack overflow.\n[line ${lox.line}]\n"); }
+                default: { io.printError(failure.trace() + "\n"); }
+            }
+        }
+    }
+    return FAILED;
+}
+
+fn prompt(lox: Interpreter) {
+    while true {
+        let line = io.ask("> ");
+        if line == null { return; }
+        run(line, lox);
+    }
+}
+
+fn main() -> Int {
+    let arguments = os.args();
+    let lox = interpreter(line -> println(line));
+
+    if arrays.len(arguments) > 1 {
+        io.printError("Usage: lumen run examples/lox [script | -]\n");
+        return USAGE;
+    }
+    if arrays.len(arguments) == 1 && arguments[0] == "-" {
+        prompt(lox);
+        return 0;
+    }
+
+    let script = path.join([path.dir(os.program()), "demo.lox"]);
+    if arrays.len(arguments) == 1 { script = arguments[0]; }
+    match io.readFile(script) {
+        case Result.Ok(source): { return run(source, lox); }
+        case Result.Err(error): {
+            io.printError(error.describe() + "\n");
+            return USAGE;
+        }
+    }
+}

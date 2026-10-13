@@ -156,6 +156,15 @@ func methodIRName(structName, methodName string) string {
 	return structName + "." + methodName
 }
 
+// methodSlot is the name a method is stored under on a value that carries
+// it (see storedOnValue). It is not the name of the method itself, which
+// a field of the struct may have too: a struct with a field `count` and a
+// method `count()` holds both, and `self.count` reads the field. No field
+// can be named like this.
+func methodSlot(methodName string) string {
+	return methodName + "()"
+}
+
 // hasMethod reports whether a struct has an impl method of that name.
 func (g *IRGenerator) hasMethod(structName, name string) bool {
 	for _, m := range g.structMethods[structName] {

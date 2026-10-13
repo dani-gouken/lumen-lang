@@ -260,7 +260,11 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 | Pauses | The collector stops the program for as long as it takes to mark what is alive: not incremental, not generational. Some tens of milliseconds with millions of objects alive |
 | Stopping a program that waits | `VM.Interrupt` and Ctrl-C stop a program that computes or sleeps where it is. One that waits for a line of input or an answer from the network stops when that wait is over; `lumen` ends the process after two seconds |
 | Equality | Arrays compare by identity; so do structs that do not implement `Equal` |
-| Float formatting | `println(3.0)` prints `3`, indistinguishable from an Int |
+| Float formatting | `println(3.0)` prints `3`, indistinguishable from an Int; infinity prints as `+Inf` |
+| A value compared with itself | Equal without being looked into, so a value of an enum that holds NaN equals itself, though NaN does not. Compare the numbers themselves where that matters |
+| Limits of a built program | A `.lc` file does not carry the `max_depth` and `heap_mb` of its project: `lumen run program.lc` needs them given again (`--max-depth=N`) |
+| `match` on an enum | Tries the variants one after the other, in the order of the cases: the last of twelve costs twelve tests |
+| Methods kept on values | A method is kept on every value of its type when a trait can reach it, or when another type has a method of that name. Naming a method `map` or `expect` anywhere in a program makes every `Result` it creates carry both of its own |
 
 ---
 

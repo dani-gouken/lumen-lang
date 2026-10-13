@@ -1,0 +1,49 @@
+// What a program is once read: expressions, which have a value, and
+// statements, which do something.
+
+import lox.token.{Token};
+
+// A value written in the program.
+pub enum Literal {
+    Nil,
+    Bool(Bool),
+    Number(Float),
+    Text(String),
+}
+
+// The expressions that name a variable carry a number of their own, given
+// by the parser. The resolver works out, for each, how many scopes out its
+// variable is declared, and the interpreter finds that by the number: two
+// uses of the same name are two expressions, and may be two variables.
+pub enum Expr {
+    Assign(Token, Expr, Int),           // name = value
+    Binary(Expr, Token, Expr),
+    Call(Expr, Token, [Expr]),          // callee, the closing parenthesis, arguments
+    Get(Expr, Token),                   // object.name
+    Grouping(Expr),
+    Literal(Literal),
+    Logical(Expr, Token, Expr),         // and, or: the right side may not be worked out
+    Set(Expr, Token, Expr),             // object.name = value
+    Super(Token, Token, Int),           // super.method
+    This(Token, Int),
+    Unary(Token, Expr),
+    Variable(Token, Int),
+}
+
+pub struct Function {
+    name: Token;
+    params: [Token];
+    body: [Stmt];
+}
+
+pub enum Stmt {
+    Block([Stmt]),
+    Class(Token, Expr?, [Function]),    // name, the superclass (a Variable), methods
+    Expression(Expr),
+    Function(Function),
+    If(Expr, Stmt, Stmt?),
+    Print(Expr),
+    Return(Token, Expr?),
+    Var(Token, Expr?),
+    While(Expr, Stmt),
+}

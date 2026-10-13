@@ -1,0 +1,229 @@
+// Step 3: for every expression that names a variable, how many scopes out
+// that variable is declared.
+//
+// A closure sees the variables that were there when it was written, not
+// those of the same name declared later. Working out once, before the
+// program runs, which declaration each name means makes that so, and
+// finds the mistakes that can be seen without running: a variable read in
+// its own initializer, `return` outside a function, `this` outside a class.
+
+import std.arrays;
+import std.dict;
+import std.dict.{Dict};
+import std.list;
+import std.list.{List};
+import lox.token.{Token, Reporter};
+import lox.tree.{Expr, Stmt, Function};
+import lox.parser.{Program};
+
+// GLOBAL is the distance of a name that no scope of the program declares:
+// it is looked for among the global variables when the program runs.
+pub const GLOBAL = -1;
+
+// Gives, for each numbered expression, the distance to its variable.
+pub fn resolve(program: Program, reporter: Reporter) -> [Int] {
+    let resolver = Resolver {
+        reporter: reporter,
+        distances: arrays.fill(program.names, GLOBAL),
+        scopes: list.empty<Dict<Bool>>(),
+    };
+    resolver.statements(program.statements);
+    return resolver.distances;
+}
+
+enum Inside { Nothing, Function, Initializer, Method }
+enum InsideClass { None, Class, Subclass }
+
+struct Resolver {
+    reporter: Reporter;
+    distances: [Int];
+    // The scopes the resolver is in, innermost last. A name is there from
+    // its declaration, and true once its initializer has been read.
+    scopes: List<Dict<Bool>>;
+    function: Inside = Inside.Nothing;
+    class: InsideClass = InsideClass.None;
+}
+
+impl Resolver {
+    fn begin() {
+        self.scopes.add(dict.empty<Bool>());
+    }
+
+    fn end() {
+        self.scopes.pop();
+    }
+
+    fn declare(name: Token) {
+        let scope = self.scopes.last();
+        if scope == null { return; }
+        if scope.has(name.lexeme) {
+            self.reporter.atToken(name, "Already a variable with this name in this scope.");
+        }
+        scope.set(name.lexeme, false);
+    }
+
+    fn define(name: Token) {
+        self.scopes.last()?.set(name.lexeme, true);
+    }
+
+    // Notes how far out the variable of a numbered expression is
+    fn local(number: Int, name: Token) {
+        let depth = self.scopes.size();
+        for out in 0..depth {
+            if self.scopes[depth - 1 - out].has(name.lexeme) {
+                self.distances[number] = out;
+                return;
+            }
+        }
+    }
+
+    fn statements(statements: [Stmt]) {
+        for statement in statements { self.statement(statement); }
+    }
+
+    fn statement(statement: Stmt) {
+        match statement {
+            case Stmt.Block(statements): {
+                self.begin();
+                self.statements(statements);
+                self.end();
+            }
+            case Stmt.Class(name, superclass, methods): { self.classDeclaration(name, superclass, methods); }
+            case Stmt.Expression(value): { self.expression(value); }
+            case Stmt.Function(declaration): {
+                // Defined before its body is read: it may call itself
+                self.declare(declaration.name);
+                self.define(declaration.name);
+                self.function(declaration, Inside.Function);
+            }
+            case Stmt.If(condition, thenBranch, elseBranch): {
+                self.expression(condition);
+                self.statement(thenBranch);
+                if elseBranch != null { self.statement(elseBranch); }
+            }
+            case Stmt.Print(value): { self.expression(value); }
+            case Stmt.Return(keyword, value): {
+                if self.function == Inside.Nothing {
+                    self.reporter.atToken(keyword, "Can't return from top-level code.");
+                }
+                if value != null {
+                    if self.function == Inside.Initializer {
+                        self.reporter.atToken(keyword, "Can't return a value from an initializer.");
+                    }
+                    self.expression(value);
+                }
+            }
+            case Stmt.Var(name, initializer): {
+                self.declare(name);
+                if initializer != null { self.expression(initializer); }
+                self.define(name);
+            }
+            case Stmt.While(condition, body): {
+                self.expression(condition);
+                self.statement(body);
+            }
+        }
+    }
+
+    fn classDeclaration(name: Token, superclass: Expr?, methods: [Function]) {
+        let enclosing = self.class;
+        self.class = InsideClass.Class;
+        defer { self.class = enclosing; }
+
+        self.declare(name);
+        self.define(name);
+
+        if superclass != null {
+            match superclass {
+                case Expr.Variable(parent, number): {
+                    if parent.lexeme == name.lexeme {
+                        self.reporter.atToken(parent, "A class can't inherit from itself.");
+                    }
+                }
+                default: { }
+            }
+            self.class = InsideClass.Subclass;
+            self.expression(superclass);
+
+            // The methods of a subclass see `super` one scope out
+            self.begin();
+            self.scopes.last()?.set("super", true);
+        }
+
+        self.begin();
+        self.scopes.last()?.set("this", true);
+        for method in methods {
+            let kind = Inside.Method;
+            if method.name.lexeme == "init" { kind = Inside.Initializer; }
+            self.function(method, kind);
+        }
+        self.end();
+
+        if superclass != null { self.end(); }
+    }
+
+    fn function(declaration: Function, kind: Inside) {
+        let enclosing = self.function;
+        self.function = kind;
+        defer { self.function = enclosing; }
+
+        self.begin();
+        for param in declaration.params {
+            self.declare(param);
+            self.define(param);
+        }
+        self.statements(declaration.body);
+        self.end();
+    }
+
+    fn expression(expression: Expr) {
+        match expression {
+            case Expr.Assign(name, value, number): {
+                self.expression(value);
+                self.local(number, name);
+            }
+            case Expr.Binary(left, operator, right): {
+                self.expression(left);
+                self.expression(right);
+            }
+            case Expr.Call(callee, paren, arguments): {
+                self.expression(callee);
+                for argument in arguments { self.expression(argument); }
+            }
+            case Expr.Get(object, name): { self.expression(object); }
+            case Expr.Grouping(inner): { self.expression(inner); }
+            case Expr.Literal(value): { }
+            case Expr.Logical(left, operator, right): {
+                self.expression(left);
+                self.expression(right);
+            }
+            case Expr.Set(object, name, value): {
+                self.expression(value);
+                self.expression(object);
+            }
+            case Expr.Super(keyword, method, number): {
+                if self.class == InsideClass.None {
+                    self.reporter.atToken(keyword, "Can't use 'super' outside of a class.");
+                } else if self.class != InsideClass.Subclass {
+                    self.reporter.atToken(keyword, "Can't use 'super' in a class with no superclass.");
+                }
+                self.local(number, keyword);
+            }
+            case Expr.This(keyword, number): {
+                if self.class == InsideClass.None {
+                    self.reporter.atToken(keyword, "Can't use 'this' outside of a class.");
+                    return;
+                }
+                self.local(number, keyword);
+            }
+            case Expr.Unary(operator, right): { self.expression(right); }
+            case Expr.Variable(name, number): {
+                let scope = self.scopes.last();
+                if scope != null && scope.get(name.lexeme) == false {
+                    self.reporter.atToken(name, "Can't read local variable in its own initializer.");
+                }
+                self.local(number, name);
+            }
+        }
+    }
+}

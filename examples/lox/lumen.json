@@ -1,0 +1,5 @@
+{
+    "name": "lox",
+    "entry": "main.lum",
+    "max_depth": 40000
+}

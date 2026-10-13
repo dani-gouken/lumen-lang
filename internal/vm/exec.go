@@ -175,6 +175,16 @@ func (vm *VM) internalError(r interface{}) error {
 	return failure
 }
 
+// sameValue is EQ. Two values with the same bits are equal, with one
+// exception, which valuesEqual knows: NaN is a Float that equals nothing.
+// Whatever is not a Float is decided by its bits when they are the same.
+func sameValue(a, b Value) bool {
+	if a == b && !a.IsNumber() {
+		return true
+	}
+	return valuesEqual(a, b)
+}
+
 func bothInts(a, b Value) bool {
 	return uint64(a)&kindMask == kindInt && uint64(b)&kindMask == kindInt
 }
@@ -593,11 +603,11 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpEQ:
 			a, b := regs[instr.B], regs[instr.C]
-			regs[instr.A] = NewBool(a == b || valuesEqual(a, b))
+			regs[instr.A] = NewBool(sameValue(a, b))
 
 		case OpNE:
 			a, b := regs[instr.B], regs[instr.C]
-			regs[instr.A] = NewBool(a != b && !valuesEqual(a, b))
+			regs[instr.A] = NewBool(!sameValue(a, b))
 
 		case OpLT:
 			a, b := regs[instr.B], regs[instr.C]
@@ -857,7 +867,7 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpJNEQ, OpJNNE:
 			a, b := regs[instr.A], regs[instr.B]
-			equal := a == b || valuesEqual(a, b)
+			equal := sameValue(a, b)
 			if equal != (instr.Op == OpJNEQ) {
 				target := int(instr.C)
 				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {

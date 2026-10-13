@@ -1,0 +1,80 @@
+// The words of a Lox program: what the scanner makes of the text, and the
+// parser reads.
+
+pub enum Kind {
+    // One character
+    LeftParen, RightParen, LeftBrace, RightBrace,
+    Comma, Dot, Minus, Plus, Semicolon, Slash, Star,
+
+    // One or two characters
+    Bang, BangEqual, Equal, EqualEqual,
+    Greater, GreaterEqual, Less, LessEqual,
+
+    // What they hold varies
+    Identifier, Text, Number,
+
+    // Words of the language
+    And, Class, Else, False, Fun, For, If, Nil, Or,
+    Print, Return, Super, This, True, Var, While,
+
+    Eof,
+}
+
+pub struct Token {
+    kind: Kind;
+    lexeme: String;         // As it is written in the program
+    line: Int;
+    number: Float = 0.0;    // What a Number is worth
+    text: String = "";      // What a Text says, without its quotes
+}
+
+// The word a name is, if it is one of the language's.
+pub fn keyword(name: String) -> Kind? {
+    return match name {
+        case "and": Kind.And;
+        case "class": Kind.Class;
+        case "else": Kind.Else;
+        case "false": Kind.False;
+        case "for": Kind.For;
+        case "fun": Kind.Fun;
+        case "if": Kind.If;
+        case "nil": Kind.Nil;
+        case "or": Kind.Or;
+        case "print": Kind.Print;
+        case "return": Kind.Return;
+        case "super": Kind.Super;
+        case "this": Kind.This;
+        case "true": Kind.True;
+        case "var": Kind.Var;
+        case "while": Kind.While;
+        default: null;
+    };
+}
+
+// Reporter is where everything wrong with a program before it runs is
+// said: by the scanner, the parser and the resolver. A program with
+// anything wrong is not run.
+pub struct Reporter {
+    failed: Bool = false;
+    report: fn(String) -> Void;
+}
+
+impl Reporter {
+    pub fn atLine(line: Int, message: String) {
+        self.say(line, "", message);
+    }
+
+    pub fn atToken(token: Token, message: String) {
+        if token.kind == Kind.Eof {
+            self.say(token.line, " at end", message);
+        } else {
+            self.say(token.line, " at '" + token.lexeme + "'", message);
+        }
+    }
+
+    fn say(line: Int, place: String, message: String) {
+        self.failed = true;
+        let report = self.report;
+        report("[line ${line}] Error${place}: ${message}");
+    }
+}

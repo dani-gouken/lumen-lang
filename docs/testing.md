@@ -266,9 +266,15 @@ Three tests look for what nobody thought to write a test for:
 
 Everything runs in `internal/sandbox`: bounded steps, memory, depth and output, and no native function that reaches outside the program. As ordinary tests the two fuzzers run on the programs of the repository; `make fuzz` lets them search for new inputs, a minute each (`FUZZ_TIME=10m make fuzz` for longer). An input that fails is saved under `test/fuzz/testdata` and runs with the tests from then on: commit it with the fix.
 
+### A real program (`examples/lox`, `test/e2e/lox`)
+
+`examples/lox` is an interpreter for Lox, the language of *Crafting Interpreters*, written in Lumen: a scanner, a parser, a resolver and a tree-walking interpreter with closures, classes and inheritance, some 1,400 lines in six modules. `TestLox` builds it and runs it on the 241 test programs of the book that apply to such an interpreter (`test/e2e/lox`, copied unchanged, under their own licence), comparing what each prints, how it fails and the status it ends with.
+
+It is the widest test there is of Lumen doing what it is for. Writing it found three defects no other test had: Floats compared by their bits (`0.0 == -0.0` was false), a method stored on a value overwriting a field of the same name, and a built program not ending with the status its source ends with.
+
 ### Whole programs, measured (`test/bench`)
 
-`test/bench/programs` holds one program per part of the language (calls, arrays, structs, traits, closures, texts, enums), each with the output it must print. `make bench` times them, and the compiler on them. Before a change meant to make Lumen faster or smaller, save its output; after, compare (`benchstat`). `TestBytecodeSize` logs how large each compiles to.
+`test/bench/programs` holds one program per part of the language (calls, arrays, structs, traits, closures, texts, enums), each with the output it must print. `make bench` times them, and the compiler on them. `BenchmarkLox` runs the Lox interpreter on two Lox programs: a program of real size, doing everything at once. Before a change meant to make Lumen faster or smaller, save its output; after, compare (`benchstat`). `TestBytecodeSize` logs how large each compiles to.
 
 ### Limits on the tests themselves
 

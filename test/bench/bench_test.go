@@ -137,3 +137,60 @@ func BenchmarkCompile(b *testing.B) {
 		})
 	}
 }
+
+// The Lox interpreter of examples/lox is a program of its own size: some
+// 1,400 lines that scan, parse, resolve and run another language. Running
+// it on a Lox program measures Lumen on what a real program is made of,
+// all at once: values of enums matched over and over, Results passed up
+// through every call, dictionaries for the variables, closures, structs.
+func loxInterpreter(t testing.TB) *vm.Chunk {
+	t.Helper()
+	errs := errors.NewHandler()
+	result, err := compiler.CompileFile("../../examples/lox/main.lum", errs)
+	if err != nil || errs.HasErrors() {
+		t.Fatalf("the Lox interpreter does not compile: %v\n%v", err, errs.Diagnostics)
+	}
+	return result.Chunk
+}
+
+// runLox runs a Lox program on the interpreter and gives what it printed.
+func runLox(t testing.TB, interpreter *vm.Chunk, program string) string {
+	t.Helper()
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	machine.SetMaxCallDepth(40000)
+	machine.SetArgs([]string{program})
+	if result, err := machine.Exec(interpreter); err != nil || !result.IsInt() || result.AsInt() != 0 {
+		t.Fatalf("%s: %v, %v", program, result, err)
+	}
+	return out.String()
+}
+
+var loxPrograms = map[string]string{
+	"lox/fib.lox":    "17711\n",
+	"lox/shapes.lox": "62010\n267\n",
+}
+
+func TestLoxProgramsPrintWhatTheyShould(t *testing.T) {
+	interpreter := loxInterpreter(t)
+	for program, want := range loxPrograms {
+		if got := runLox(t, interpreter, program); got != want {
+			t.Errorf("%s printed %q, expected %q", program, got, want)
+		}
+	}
+}
+
+func BenchmarkLox(b *testing.B) {
+	interpreter := loxInterpreter(b)
+	for program, want := range loxPrograms {
+		b.Run(strings.TrimSuffix(filepath.Base(program), ".lox"), func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				if got := runLox(b, interpreter, program); got != want {
+					b.Fatalf("%s printed %q", program, got)
+				}
+			}
+		})
+	}
+}

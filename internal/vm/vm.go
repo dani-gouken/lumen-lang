@@ -388,8 +388,8 @@ func stringPair(a, b Value) (string, string, bool) {
 	return sa, sb, ok
 }
 
-// valuesEqual implements EQ: strings compare by content, everything else by
-// identity.
+// valuesEqual implements EQ: numbers compare as numbers, strings by
+// content, everything else by identity.
 //
 // Values of an enum are equal when they are the same variant holding equal
 // values. Structs and arrays are only equal to themselves. What a variant
@@ -398,6 +398,12 @@ func stringPair(a, b Value) (string, string, bool) {
 // length.
 func valuesEqual(a, b Value) bool {
 	for {
+		// Two Floats are compared as numbers, not as the bits that hold
+		// them: zero equals minus zero, and NaN equals nothing, itself
+		// included
+		if a.IsNumber() && b.IsNumber() {
+			return floatOf(a) == floatOf(b)
+		}
 		if a == b {
 			return true
 		}

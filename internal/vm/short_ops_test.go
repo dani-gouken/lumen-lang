@@ -2,6 +2,7 @@ package vm
 
 import (
 	"io"
+	"math"
 	"strings"
 	"testing"
 )
@@ -302,6 +303,80 @@ func TestWhatIsKeptBelongsToItsChunk(t *testing.T) {
 		}
 		if result, err := machine.Exec(second); err != nil || result.AsInt() != 18 {
 			t.Errorf("the second program: %v, %v", result, err)
+		}
+	}
+}
+
+// Floats are equal as numbers are, not as the bits that hold them: zero
+// and minus zero are the same number, and NaN is not equal to anything,
+// itself included. The same wherever equality is asked: as a value, in a
+// test that jumps, inside a value of an enum.
+func TestFloatsAreEqualAsNumbers(t *testing.T) {
+	zero := NewNumber(0)
+	minusZero := NewNumber(math.Copysign(0, -1))
+	nan := NewNumber(zero.AsNumber() / zero.AsNumber())
+	if uint64(zero) == uint64(minusZero) {
+		t.Fatal("zero and minus zero are the same bits: the test tests nothing")
+	}
+
+	cases := []struct {
+		name  string
+		a, b  Value
+		equal bool
+	}{
+		{"zero and minus zero", zero, minusZero, true},
+		{"minus zero and zero", minusZero, zero, true},
+		{"NaN and itself", nan, nan, false},
+		{"NaN and a number", nan, NewNumber(1), false},
+		{"a number and itself", NewNumber(1.5), NewNumber(1.5), true},
+		{"two numbers", NewNumber(1.5), NewNumber(2.5), false},
+		{"infinity and itself", NewNumber(1 / zero.AsNumber()), NewNumber(1 / zero.AsNumber()), true},
+		// An Int and a Float are two kinds of value, never equal
+		{"an Int and the same Float", NewInt(1), NewNumber(1), false},
+		{"null and itself", NewNull(), NewNull(), true},
+		{"true and itself", NewBool(true), NewBool(true), true},
+	}
+	for _, c := range cases {
+		if got := valuesEqual(c.a, c.b); got != c.equal {
+			t.Errorf("%s: valuesEqual says %v", c.name, got)
+		}
+		if got := sameValue(c.a, c.b); got != c.equal {
+			t.Errorf("%s: sameValue says %v", c.name, got)
+		}
+
+		// As EQ, as NE, as a test that jumps, and held by a variant
+		run := func(code ...Instr) Value {
+			chunk := NewChunk()
+			chunk.Constants = []Value{c.a, c.b, NewInt(0), NewInt(1)}
+			chunk.StringPool = []string{"Box.Of", "0"}
+			chunk.Code = code
+			chunk.Prototypes = []FunctionPrototype{{Name: "main", CodeSize: len(code), RegisterCount: 6}}
+			result, err := NewVM().Exec(chunk)
+			if err != nil {
+				t.Fatalf("%s: %v", c.name, err)
+			}
+			return result
+		}
+		load := []Instr{NewInstr(OpLOADK, 1, 0, 0), NewInstr(OpLOADK, 2, 1, 0)}
+		if got := run(append(load, NewInstr(OpEQ, 0, 1, 2), NewInstr(OpRET, 0, 0, 0))...); got.AsBool() != c.equal {
+			t.Errorf("%s: EQ says %v", c.name, got.AsBool())
+		}
+		if got := run(append(load, NewInstr(OpNE, 0, 1, 2), NewInstr(OpRET, 0, 0, 0))...); got.AsBool() == c.equal {
+			t.Errorf("%s: NE says %v", c.name, got.AsBool())
+		}
+		jumped := run(append(load,
+			NewInstr(OpJNEQ, 1, 2, 5),
+			NewInstr(OpLOADBOOL, 0, 1, 0), NewInstr(OpRET, 0, 0, 0),
+			NewInstr(OpLOADBOOL, 0, 0, 0), NewInstr(OpRET, 0, 0, 0))...)
+		if jumped.AsBool() != c.equal {
+			t.Errorf("%s: JNEQ says %v", c.name, jumped.AsBool())
+		}
+		boxed := run(append(load,
+			NewInstr(OpNEWOBJ, 3, 2, ObjectIsVariant|1<<ObjectFieldsShift), NewInstr(OpSETFIELD, 3, 3, 1),
+			NewInstr(OpNEWOBJ, 4, 2, ObjectIsVariant|1<<ObjectFieldsShift), NewInstr(OpSETFIELD, 4, 3, 2),
+			NewInstr(OpEQ, 0, 3, 4), NewInstr(OpRET, 0, 0, 0))...)
+		if boxed.AsBool() != c.equal {
+			t.Errorf("%s: held by a variant, EQ says %v", c.name, boxed.AsBool())
 		}
 	}
 }

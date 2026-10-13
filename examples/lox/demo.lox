@@ -1,0 +1,64 @@
+// A tour of Lox, run when the interpreter is given no program.
+
+// Functions are values, and remember the variables around them
+fun counter(start) {
+  var count = start;
+  fun next() {
+    count = count + 1;
+    return count;
+  }
+  return next;
+}
+
+var next = counter(10);
+next();
+print "counted to " + "eleven and then:";
+print next();
+
+// Classes, with a constructor, methods and inheritance
+class Animal {
+  init(name, sound) {
+    this.name = name;
+    this.sound = sound;
+  }
+
+  speak() {
+    return this.name + " says " + this.sound;
+  }
+}
+
+class Dog < Animal {
+  init(name) {
+    super.init(name, "woof");
+    this.tricks = 0;
+  }
+
+  learn() {
+    this.tricks = this.tricks + 1;
+    return this;
+  }
+
+  speak() {
+    return super.speak() + ", and knows this many tricks:";
+  }
+}
+
+var rex = Dog("Rex");
+rex.learn().learn().learn();
+print rex.speak();
+print rex.tricks;
+print rex;
+
+// Loops and recursion
+fun fib(n) {
+  if (n < 2) return n;
+  return fib(n - 2) + fib(n - 1);
+}
+
+for (var i = 0; i < 10; i = i + 1) {
+  if (i == 0 or i > 7) print fib(i);
+}
+
+// Only nil and false are false
+if (0 and "") print "zero and the empty text are true";
+print nil == false;

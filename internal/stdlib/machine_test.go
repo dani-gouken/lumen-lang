@@ -639,3 +639,67 @@ func TestValuesKnowWhatTheyAre(t *testing.T) {
 		"true false true true false",
 		"[Red, Flashing(1), Flashing(2), Flashing(3)] true true")
 }
+
+// A struct may have a field and a method of the same name. The method is
+// kept on the value when a trait can reach it, or when another struct has
+// a method of that name too; the field must still be the field.
+func TestAFieldAndAMethodOfTheSameName(t *testing.T) {
+	out, err := runWith(t, 64<<20, `
+		import std.arrays;
+
+		enum Mode { Off, On, Dimmed(Int) }
+
+		trait Countable { fn count() -> Int; }
+
+		// "mode" and "count" are fields, and methods other structs have too
+		struct Lamp { mode: Mode = Mode.Off; count: Int = 0; name: String; }
+		struct Dial { level: Int; }
+		struct Shelf { items: [String]; }
+
+		impl Lamp {
+			fn mode(next: Mode) { self.mode = next; self.count += 1; }
+			fn isOff() -> Bool { return self.mode == Mode.Off; }
+			fn name() -> String { return "lamp " + self.name; }
+		}
+		impl Countable for Lamp {
+			fn count() -> Int { return self.count * 100; }
+		}
+		impl Dial {
+			fn mode(next: Mode) { self.level += 1; }
+			fn name() -> String { return "dial"; }
+		}
+		impl Countable for Shelf {
+			fn count() -> Int { return arrays.len(self.items); }
+		}
+
+		fn total(things: [Countable]) -> Int {
+			let sum = 0;
+			for thing in things { sum += thing.count(); }
+			return sum;
+		}
+
+		fn main() -> Int {
+			let lamp = Lamp { name: "desk" };
+			println(lamp.isOff(), lamp.mode == Mode.Off, lamp.mode, lamp.count, lamp.count(), lamp.name, lamp.name());
+
+			lamp.mode(Mode.Dimmed(3));
+			lamp.mode(Mode.On);
+			println(lamp.isOff(), lamp.mode, lamp.count, lamp.count());
+
+			lamp.count = 7;
+			lamp.name = "hall";
+			let dial = Dial { level: 0 };
+			dial.mode(Mode.On);
+			println(lamp.count, lamp.count(), lamp.name(), dial.name(), dial.level);
+			println(total([lamp, Shelf { items: ["a", "b"] }]), lamp);
+			return 0;
+		}`, nil)
+	if err != nil {
+		t.Fatalf("the program was stopped: %v", err)
+	}
+	expectLines(t, out,
+		"true true Off 0 0 desk lamp desk",
+		"false On 2 200",
+		"7 700 lamp hall dial 1",
+		`702 {count: 7, mode: On, name: "hall"}`)
+}
