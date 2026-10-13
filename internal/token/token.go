@@ -455,16 +455,18 @@ func (typ TokenType) Precedence() int {
 		return 1
 	case AND:
 		return 2
-	case QUESTION_QUESTION:
-		return 3
 	case EQ, NEQ:
-		return 4
+		return 3
 	case LT, LTE, GT, GTE:
-		return 5
+		return 4
 	case PIPE_INTO:
-		// Looser than arithmetic and the operators on bits, so that
-		// a + b |> f is f(a + b); tighter than comparisons, so that
-		// xs |> count == 3 compares the count
+		// Looser than arithmetic, the operators on bits and ??, so that
+		// a + b |> f is f(a + b) and name ?? "" |> trim trims either;
+		// tighter than comparisons, so that xs |> count == 3 compares
+		// the count
+		return 5
+	case QUESTION_QUESTION:
+		// Tighter than comparisons: count ?? 0 > 3 compares the count
 		return 6
 	case PIPE:
 		return 7

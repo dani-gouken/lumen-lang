@@ -282,11 +282,12 @@ strings.join(arrays.map(arrays.filter(strings.split("the quick brown fox", " "),
 
 A function of one argument needs no parentheses: `numbers |> arrays.sum`. A `?` after the call is asked of what the call returns: `text |> strings.trim() |> parse()?`.
 
-It binds looser than arithmetic and tighter than comparisons, so both of these read as they look:
+It binds looser than arithmetic and `??`, and tighter than comparisons, so these read as they look:
 
 ```rust
 a + b |> math.abs                 // math.abs(a + b)
 if items |> arrays.len == 3 { }   // arrays.len(items) == 3
+name ?? "" |> strings.trim()      // strings.trim(name ?? "")
 ```
 
 It is only another way to write the call: the types are checked, and mistakes are reported, as for the call it stands for.

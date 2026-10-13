@@ -93,7 +93,7 @@ Full description: [enums.md](enums.md).
 - Primary: literals, identifiers, grouping `(expr)`, tuples `(a, b)`.
 - Text over several lines: `"""` ... `"""`. The line end after the opening quotes and the one before the closing quotes are dropped, and the indentation of the closing quotes is removed from every line. `"` needs no escape inside; escapes and `${...}` work.
 - Unary: `-` on `Int`/`Float`, `!` on `Bool`.
-- Binary precedence (high → low): `* / %`, `+ -`, `<< >>`, `&`, `^`, `|`, `|>`, `< <= > >=`, `== !=`, `??`, `&&`, `||`.
+- Binary precedence (high → low): `* / %`, `+ -`, `<< >>`, `&`, `^`, `|`, `??`, `|>`, `< <= > >=`, `== !=`, `&&`, `||`. `??` binds tighter than a comparison and than `|>`: `count ?? 0 > 3` compares the count, and `name ?? "" |> strings.trim()` trims either.
   - On bits: `& | ^ << >>` and unary `~`, on `Int` only, with `&= |= ^= <<= >>=`. They bind tighter than comparisons: `flags & MASK == 0` tests the mask. `>>` keeps the sign. A shift by a negative count, or one that pushes bits past the 48 an `Int` has, is a runtime error. In the pattern of a `case`, `|` separates patterns (`case 1 | 2:`); in brackets it is the operator.
   - Whole numbers are also written by their bits: `0xFF`, `0b1010`.
   - Arithmetic: `Int`/`Float`. Two `Int` give an `Int` (`7 / 2` is `3`), two `Float` a `Float`. An `Int` with a `Float` is worked out as two `Float`: `7 / 2.0` is `3.5`.
@@ -269,11 +269,11 @@ ExprStmt     = Expr ";" ;
 
 Expr         = OrExpr ;
 OrExpr       = AndExpr { "||" AndExpr } ;
-AndExpr      = NullCoalesceExpr { "&&" NullCoalesceExpr } ;
-NullCoalesceExpr = EqExpr { "??" EqExpr } ;
+AndExpr      = EqExpr { "&&" EqExpr } ;
 EqExpr       = RelExpr { ("==" | "!=") RelExpr } ;
 RelExpr      = PipeExpr { ("<" | "<=" | ">" | ">=") PipeExpr } ;
-PipeExpr     = BitOrExpr { "|>" UnaryExpr } ;
+PipeExpr     = NullCoalesceExpr { "|>" UnaryExpr } ;
+NullCoalesceExpr = BitOrExpr { "??" BitOrExpr } ;
 BitOrExpr    = BitXorExpr { "|" BitXorExpr } ;
 BitXorExpr   = BitAndExpr { "^" BitAndExpr } ;
 BitAndExpr   = ShiftExpr { "&" ShiftExpr } ;
