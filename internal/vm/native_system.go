@@ -88,11 +88,46 @@ func init() {
 	registerNatives("std.io",
 		// A line of input without its end of line, or null at the end
 		native{"readLine", 0, func(vm *VM, args []Value) (Value, error) {
-			line, err := vm.input().ReadString('\n')
+			// Other tasks go on while the line is typed
+			input := vm.input()
+			var line string
+			var err error
+			if gone := vm.blocking(func() {
+				vm.inLock.Lock()
+				line, err = input.ReadString('\n')
+				vm.inLock.Unlock()
+			}); gone != nil {
+				return NewNull(), gone
+			}
 			if err != nil && (err != io.EOF || line == "") {
 				return NewNull(), nil
 			}
 			return vm.newString(strings.TrimRight(line, "\r\n"))
+		}},
+		// That many bytes of input as a text, or null if the input ends
+		// before: for what comes in pieces of a known size, not in lines
+		native{"readBytes", 1, func(vm *VM, args []Value) (Value, error) {
+			count, err := argInt(args, 0)
+			if err != nil {
+				return NewNull(), err
+			}
+			if count < 0 || count > maxBody {
+				return NewNull(), fmt.Errorf("cannot read %d bytes at once", count)
+			}
+			input := vm.input()
+			buffer := make([]byte, count)
+			var failed error
+			if gone := vm.blocking(func() {
+				vm.inLock.Lock()
+				_, failed = io.ReadFull(input, buffer)
+				vm.inLock.Unlock()
+			}); gone != nil {
+				return NewNull(), gone
+			}
+			if failed != nil {
+				return NewNull(), nil
+			}
+			return vm.newString(string(buffer))
 		}},
 		// The content of a file, or null if it cannot be read; the reason
 		// is then kept for std.io.problem
@@ -169,7 +204,8 @@ func init() {
 				return NewNull(), err
 			}
 			if ms > 0 {
-				time.Sleep(time.Duration(ms) * time.Millisecond)
+				// Only the task that asks sleeps
+				return NewNull(), vm.pause(time.Duration(ms) * time.Millisecond)
 			}
 			return NewNull(), nil
 		}},

@@ -29,6 +29,7 @@ import std.encoding;
 import std.arrays;
 import std.math;
 import std.io;
+import std.task;
 
 pub enum Method { Get, Post, Put, Patch, Delete, Head, Options }
 
@@ -187,6 +188,7 @@ pub struct Request {
     body: String;
     params: Dict<String>;       // the parts of the path a route names: /users/:id
     sender: String;             // the address it came from
+    id: Int = 0;                // which request of its server it is, for the answer
 }
 
 impl Request {
@@ -231,6 +233,7 @@ pub fn redirect(to: String) -> Response {
 pub struct Server {
     id: Int;
     port: Int;
+    last: Int = 0;              // the request `next` gave last
 }
 
 // Starts listening on a port of this machine. Port 0 lets the system
@@ -249,23 +252,32 @@ impl Server {
 
     // The same, giving up after that many milliseconds.
     pub fn nextWithin(milliseconds: Int) -> Request? {
-        // The method, the path, the query, the body, the sender, then the headers
+        // Its number, the method, the path, the query, the body, the
+        // sender, then the headers
         let parts = accept(self.id, milliseconds)?;
+        self.last = strings.parseInt(parts[0]) ?? 0;
         return Request {
-            method: methodOf(parts[0]) ?? Method.Get,
-            path: parts[1],
-            query: queryOf(parts[2]),
-            headers: paired(parts, 5),
-            body: parts[3],
+            method: methodOf(parts[1]) ?? Method.Get,
+            path: parts[2],
+            query: queryOf(parts[3]),
+            headers: paired(parts, 6),
+            body: parts[4],
             params: dict.empty<String>(),
-            sender: parts[4],
+            sender: parts[5],
+            id: self.last,
         };
     }
 
-    // Answers the request `next` gave. Each request is answered once,
-    // before the next is taken.
+    // Answers the request `next` gave last. Each request is answered once.
     pub fn reply(response: Response) {
-        respondTo(self.id, response.status, pairs(response.headers), response.body);
+        respondTo(self.id, self.last, response.status, pairs(response.headers), response.body);
+    }
+
+    // Answers a request `next` gave, whichever it was: for a server that
+    // takes the next request before it has answered the one before, each
+    // being worked on in a task of its own.
+    pub fn answer(request: Request, response: Response) {
+        respondTo(self.id, request.id, response.status, pairs(response.headers), response.body);
     }
 
     // Answers that many requests with what a function makes of each, then
@@ -280,9 +292,25 @@ impl Server {
         }
     }
 
+    // Answers every request until the server is closed, each in a task
+    // of its own. Start it in a task to do something else meanwhile:
+    //
+    //     let serving = task.run(fn() { server.handleAll(app.handler()); });
+    pub fn handleAll(handler: fn(Request) -> Response) {
+        while true {
+            let request = self.next()?;
+            answerApart(self, request, handler);
+        }
+    }
+
     pub fn close() {
         shut(self.id);
     }
+}
+
+// Answers one request in a task of its own.
+fn answerApart(server: Server, request: Request, handler: fn(Request) -> Response) {
+    task.run(fn() { server.answer(request, answerOf(request, handler)); });
 }
 
 // What a handler makes of a request, or status 500 if it stops.
@@ -297,11 +325,14 @@ fn answerOf(request: Request, handler: fn(Request) -> Response) -> Response {
 }
 
 // Listens on a port and answers every request with what a function makes
-// of it, for as long as the program runs. It only returns if the port
-// cannot be listened on.
+// of it, for as long as the program runs. Each request is answered in a
+// task of its own: one that waits, for a file or for another server, does
+// not keep the others waiting. It only returns if the port cannot be
+// listened on, or once the server is closed.
 pub fn serve(port: Int, handler: fn(Request) -> Response) -> Result<Server, Error> {
     return listen(port).map(fn(server: Server) -> Server {
-        while true { server.handle(1000, handler); }
+        server.handleAll(handler);
+        return server;
     });
 }
 
@@ -447,6 +478,6 @@ fn kindOf(name: String) -> ErrorKind {
 extern fn exchange(method: String, url: String, headers: [String], body: String, timeout: Int) -> [String]?;
 extern fn open(port: Int) -> [Int]?;
 extern fn accept(server: Int, timeout: Int) -> [String]?;
-extern fn respondTo(server: Int, status: Int, headers: [String], body: String);
+extern fn respondTo(server: Int, request: Int, status: Int, headers: [String], body: String);
 extern fn shut(server: Int);
 extern fn problem() -> [String];

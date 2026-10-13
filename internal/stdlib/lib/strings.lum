@@ -3,6 +3,11 @@
 // Positions count characters from 0, like text[i]. A range `from, to`
 // includes from and stops before to.
 
+// How many bytes a text takes in UTF-8: "é" is one character and two
+// bytes. For what counts in bytes: a file's size, the length a protocol
+// announces.
+pub extern fn byteLength(text: String) -> Int;
+
 // How many characters a text has.
 pub fn len(text: String) -> Int {
     return text.length;

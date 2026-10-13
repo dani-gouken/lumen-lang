@@ -16,7 +16,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Correctness | unused variables, bytecode checked before it runs |
 | Runtime | register allocation per call, method dispatch cost |
 | Program structure | native code from outside (shared libraries), a way to install packages, variables outside functions |
-| Tooling | syntax highlighting, a `lumen test` command, a formatter |
+| Tooling | a `lumen test` command, a formatter, renaming and finding uses in the editor |
 
 ---
 
@@ -64,7 +64,7 @@ The cost is an `import std.arrays;` in almost every program. Calls of the two fu
 
 ### The standard library has gaps — S to M each
 
-There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, optionals, files and folders, dates, program arguments, running other programs, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, and tests. Its own list of [what is missing](stdlib.md#what-is-missing) covers maps with keys that are not text, files read in pieces, doing two things at once and time zones by name.
+There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, optionals, files and folders, dates, program arguments, running other programs, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, and tests. Its own list of [what is missing](stdlib.md#what-is-missing) covers maps with keys that are not text, files read in pieces, what tasks cannot do yet and time zones by name.
 
 Adding a function written in Lumen means editing a file in `internal/stdlib/lib/`. Adding a native one means an `extern fn` there and a Go function in `internal/vm/native_*.go`; a test fails if the two do not match.
 
@@ -177,7 +177,7 @@ Requirements on type parameters, traits with type parameters, methods with a bod
 | `\u` escapes in a text | Not parsed; write the character itself |
 | Formatting inside `${...}`: a width, a number of decimals | Call a function: `"${strings.padLeft(toString(n), 5)}"` |
 | `x!`, to insist a value is not null | Not parsed. `x ?? panic(...)` does not type either: test against `null`, or use `?` |
-| Anything concurrent: threads, async, timers | Nothing; a program is one sequence of steps |
+| Several processors at once | Tasks and channels are there ([tasks.md](tasks.md)), taking turns on one processor. Not there: `select`, waits that give up after some time, stopping a task from outside |
 | Type aliases | Not parsed |
 | Methods on builtin types without a trait (`"abc".upper()`) | By design: `impl Trait for String` gives texts the methods of a trait, and nothing else puts a method on one |
 | Tuples of more than six values, or of one | A struct |
@@ -269,10 +269,10 @@ Function objects are reused, so calling a function by name allocates nothing for
 | REPL | `lumen repl` is a stub |
 | Round-trip of compiled listings | `lumen build x.lum x.lasm` produces a listing that `lumen asm` cannot read, because long jumps are printed in an annotated form |
 | Errors from several stages in one run | The pipeline stops at the first stage with errors, so type errors appear only after syntax errors are fixed |
-| Machine-readable diagnostics | No `--format=json` |
+| Machine-readable diagnostics | No `--format=json` on the command line; a program gets them as values from [`std.compiler`](stdlib.md#stdcompiler) |
 | Source-level debugging | `lumdbg` steps bytecode instructions and shows registers by number; it has no statement stepping and no variable names |
 | Compiler flags | `--heap-mb` and `--max-depth` exist; no optimization level, no warnings-as-errors |
-| Syntax highlighting, formatter, language server | None. Highlighting is the cheapest of the three and the most visible |
+| Formatter; more from the language server | Colours and a language server are there, with a VS Code extension ([editor.md](editor.md)). Not there: a formatter, renaming, finding every use of a name, the parameters of a function while its arguments are typed |
 | A way to run tests | No `lumen test`, no `assert`; a program is tested by comparing what it prints |
 | Documentation from comments | None |
 | Optimization | None: no constant folding, no dead code elimination beyond unreachable blocks, every jump uses the 3-word long form |
@@ -285,7 +285,6 @@ Function objects are reused, so calling a function by name allocates nothing for
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
 1.  **Chaining**: the pipe operator. Small, and it changes how nested calls read.
-3.  **Syntax highlighting** for one editor.
 5.  **`match`**: conditions on cases, several patterns per case, `match` as an expression.
 6.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
 

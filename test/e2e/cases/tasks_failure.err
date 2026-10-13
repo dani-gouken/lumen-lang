@@ -1,0 +1,3 @@
+[ERROR] R0002: index out of bounds: 0 (length 0)
+--> test/e2e/cases/tasks_failure.lum:10:23 in function 'firstItem'
+called from test/e2e/cases/tasks_failure.lum:20:66 in function 'lambda_0'

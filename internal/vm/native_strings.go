@@ -43,6 +43,15 @@ func init() {
 	}
 
 	registerNatives("std.strings",
+		// How many bytes a text takes written in UTF-8, which is not how
+		// many characters it has
+		native{"byteLength", 1, func(vm *VM, args []Value) (Value, error) {
+			s, err := argString(args, 0)
+			if err != nil {
+				return NewNull(), err
+			}
+			return NewInt(int64(len(s))), nil
+		}},
 		native{"substring", 3, func(vm *VM, args []Value) (Value, error) {
 			s, err := argString(args, 0)
 			if err != nil {

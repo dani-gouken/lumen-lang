@@ -693,3 +693,15 @@ func isPanic(stmt *ast.ExprStmt) bool {
 	callee, ok := call.Func.(*ast.Ident)
 	return ok && callee.Name == "panic"
 }
+
+// WalkExprs calls visit for every expression under a node, including the
+// bodies of nested function expressions. For tools that look a program
+// over once it is checked.
+func WalkExprs(node ast.Node, visit func(ast.Expr)) {
+	walkExprs(node, visit)
+}
+
+// WalkStmts calls visit for every statement under a node.
+func WalkStmts(node ast.Node, visit func(ast.Stmt)) {
+	walk(node, func(ast.Expr) {}, visit)
+}

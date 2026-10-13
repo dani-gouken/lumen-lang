@@ -45,3 +45,6 @@ Thumbs.db
 tmp/
 temp/
 *.tmp
+
+# Packaged editor extensions
+*.vsix

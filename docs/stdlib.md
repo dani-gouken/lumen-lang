@@ -16,7 +16,7 @@ fn main() -> Int {
 }
 ```
 
-A longer program using the core of it is [`examples/words.lum`](../examples/words.lum). Whole programs built on the rest: a [to-do list](../examples/todo/main.lum) kept in a JSON file, a [report on a web server's log](../examples/logs/main.lum), a [sales report](../examples/sales/main.lum) from a CSV file, and a [web service](../examples/notes/main.lum) with its tests.
+A longer program using the core of it is [`examples/words.lum`](../examples/words.lum). Whole programs built on the rest: a [to-do list](../examples/todo/main.lum) kept in a JSON file, a [report on a web server's log](../examples/logs/main.lum), a [sales report](../examples/sales/main.lum) from a CSV file, a [web service](../examples/notes/main.lum) with its tests, and a [build](../examples/build.lum) that works on several targets at once.
 
 | Module | For |
 |--------|-----|
@@ -40,6 +40,9 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.set`](#stdset) | `Set<T>`: values without repeats |
 | [`std.encoding`, `std.hash`](#stdencoding-and-stdhash) | Base64, hex, URL encoding; SHA, MD5, HMAC |
 | [`std.http`](#stdhttp) | Asking web servers, and being one |
+| [`std.task`](#stdtask) | Doing several things at once: tasks and channels |
+| [`std.reflect`](#stdreflect) | Asking a value what it is while the program runs: its type, its fields |
+| [`std.compiler`](#stdcompiler) | Asking the compiler about a program: its mistakes, its declarations, what a name is |
 | [`std.test`](#stdtest) | Tests and checks |
 | [`std.ops`](#stdops) | The traits behind operators, loops and brackets; `sorted`, `max`, `join` for any type that has them |
 
@@ -128,6 +131,7 @@ let diagonal = math.sqrt(math.toFloat(a * a + b * b));    // 5.0
 | Function | Result |
 |----------|--------|
 | `len(text) -> Int` | How many characters the text has. This is the only way to ask: a text has no `.length` |
+| `byteLength(text) -> Int` | How many bytes it takes in UTF-8: `"é"` is one character and two bytes |
 
 **Taking apart**
 
@@ -498,6 +502,7 @@ Output goes through the builtins `print` and `println`. Reading and writing a fi
 | Function | Result |
 |----------|--------|
 | `readLine() -> String?` | A line of input, without its line end. `null` at the end of the input |
+| `readBytes(count) -> String?` | The next `count` bytes of the input, as a text: for input that says first how long it is. `null` if the input ends before |
 | `ask(question) -> String?` | Prints the question, then reads the answer |
 | `readLines() -> [String]` | Every remaining line of the input |
 | `readFile(path) -> Result<String, Error>` | The whole content of a file, or why it cannot be read |
@@ -883,9 +888,11 @@ http.serve(8080, app.handler()).expect("a free port");
 
 | Function / method | Result |
 |-------------------|--------|
-| `http.serve(port, handler)` | Answers every request, for as long as the program runs |
+| `http.serve(port, handler)` | Answers every request, each in a [task](#stdtask) of its own, for as long as the program runs |
 | `http.listen(port) -> Result<Server, Error>` | Port 0 lets the system choose: `server.port` |
-| `server.handle(count, handler)`, `next()`, `reply(response)`, `close()` | That many requests, or one at a time by hand |
+| `server.handleAll(handler)` | The same on a server that is listening, until it is closed |
+| `server.handle(count, handler)`, `next()`, `reply(response)`, `close()` | That many requests one after the other, or one at a time by hand |
+| `server.answer(request, response)` | Answers a request `next` gave, whichever it was: several can be in progress |
 | `router.get`, `post`, `put`, `patch`, `delete`, `on(method, path, handler)` | `:name` takes one part of the path into `request.params`; a last `*` takes the rest, as `"rest"` |
 | `router.answer(request) -> Response` | The answer, without a server: how routes are tested |
 | `http.text(body)`, `html(body)`, `sendJson(status, document)`, `respond(status, body)`, `notFound()`, `redirect(to)` | Answers |
@@ -894,7 +901,7 @@ http.serve(8080, app.handler()).expect("a free port");
 
 A path nobody takes is answered with 404, one taken only for other methods with 405. A handler that stops, by a `panic` or any other failure, does not stop the server: its request is answered with 500 and the failure goes to the error output.
 
-A program does one thing at a time: requests are answered one after the other, and a handler that waits makes the others wait. The server listens on this machine only (`127.0.0.1`).
+With `serve` and `handleAll` a handler that waits, for another server or for the clock, does not keep the other requests waiting; handlers still run one at a time between their waits ([tasks.md](tasks.md)). `handle` answers one request after the other. The server listens on this machine only (`127.0.0.1`).
 
 A complete service with its tests: [`examples/notes`](../examples/notes/main.lum).
 
@@ -941,6 +948,98 @@ impl Ordered for Version {
 let newest = ops.largest(versions);
 if newest != null && newest > installed { ... }
 ```
+
+---
+
+## `std.task`
+
+Functions running at the same time, and channels between them. All of it, with how a program of several tasks ends, is in [tasks.md](tasks.md).
+
+```lumen
+let pages = task.map(urls, url -> http.get(url));          // all asked at once
+
+let lines = task.channel<String>(16);
+task.run(fn() {
+    for name in files { lines.send(io.readFile(name).orElse("")); }
+    lines.close();
+});
+lines.each(fn(text: String) { println(strings.len(text)); });
+```
+
+One task runs at a time, until it waits: for a task, a channel, `time.sleep`, the network, a line of input, another program. Tasks share everything and need no locks, as long as a change does not have a wait in its middle.
+
+| Function / method | Result |
+|-------------------|--------|
+| `task.start(work) -> Task<T>` | Runs `work` on its own; returns at once |
+| `task.run(action) -> Task<Bool>` | The same for a function that returns nothing |
+| `task.wait() -> Result<T, Failure>` | What it returned, or the failure that stopped it |
+| `task.expect(message)`, `isDone()` | |
+| `task.all(tasks) -> Result<[T], Failure>` | Every value in order, or the first failure |
+| `task.map(items, work) -> Result<[U], Failure>` | One task per item |
+| `task.pause()`, `task.current()` | Lets the others have a turn; the number of the task that asks |
+| `task.channel<T>(capacity) -> Channel<T>` | Capacity 0: a send waits for its receive |
+| `channel.send(value)`, `receive() -> T?`, `close()` | `receive` gives `null` once closed and empty |
+| `channel.each(action)`, `drain()`, `length()`, `isClosed()` | |
+
+A task that stops does not stop the program: whoever waits for it gets the failure. If nobody ever does, the failure ends the program once the other tasks are done. Tasks that all wait for each other end it with error `R0009`.
+
+---
+
+## `std.reflect`
+
+Asking a value what it is, while the program runs: for code that prints, saves or compares a struct it was never told about.
+
+```lumen
+struct User { name: String; age: Int; }
+let user = User { name: "ada", age: 36 };
+
+for name in reflect.fields(user) {
+    println(name, "=", reflect.get(user, name));       // age = 36, name = ada
+}
+reflect.set(user, "age", 37);
+println(reflect.dump(user));
+```
+
+| Function | Result |
+|----------|--------|
+| `reflect.kind(value) -> Kind` | `Null`, `Bool`, `Int`, `Float`, `String`, `Array`, `Tuple`, `Struct`, `Variant`, `Function` |
+| `reflect.typeName(value)` | `"Int"`, `"array"`, and for a struct or an enum its name: `"User"`, `"geometry.Shape"` |
+| `reflect.fields(value) -> [String]` | The fields of a struct value, in alphabetical order |
+| `reflect.hasField(value, name)`, `get(value, name) -> Any` | `get` gives `null` for a field that is not there |
+| `reflect.set(value, name, to)` | Changes a field; the new value has to be of the same sort as the old |
+| `reflect.variant(value) -> String?` | For a value of an enum, which variant: `"Circle"` |
+| `reflect.values(value) -> [Any]` | What a variant or a tuple holds, in order |
+| `reflect.items(array) -> [Any]`, `toDict(value) -> Dict<Any>` | |
+| `reflect.dump(value)` | Any value written out in full, over several lines |
+
+A value read this way has the type `Any`: test it with `is` or cast it with `as` to use it.
+
+**What the machine knows is less than what the compiler knew.** A struct value knows its struct's name and its fields; a value of an enum its variant and what it holds. A field does not know its declared type, only the value in it now: that is all `set` can check, and why a field holding `null` accepts anything. An array does not know what its items were meant to be. Methods are not listed, nor fields that hold a function. A generic struct has one name whatever it holds: `"std.list.List"`. For types as written, ask the compiler.
+
+---
+
+## `std.compiler`
+
+The front of the compiler, asked about a program instead of told to run it. Every function takes the path of a file and its text: the text is what is looked at, the path says where its modules are and how places are named.
+
+```lumen
+let source = io.readFile("main.lum").expect("a file");
+for problem in compiler.check("main.lum", source) {
+    println(problem.describe());        // main.lum:4:9: error E1001: undefined identifier 'totl'
+}
+```
+
+| Function | Result |
+|----------|--------|
+| `compiler.check(path, source) -> [Problem]` | Errors and warnings: `severity`, `code`, `message`, `at`, `endColumn`, `suggestion` |
+| `compiler.symbols(path, source) -> [Symbol]` | What the file declares: `kind`, `name`, `detail`, `container`, `line`, `column` |
+| `compiler.describe(path, source, line, column) -> Description?` | The name at that place: its `signature`, the `doc` above its declaration, where it is `declared` |
+| `compiler.complete(path, source, line, column) -> [Suggestion]` | What could be written there; the line being typed need not make sense |
+| `compiler.open(path, text)`, `close(path)` | A file being edited: importing it gives this text, not what is on disk |
+
+Lines and columns count from 1, columns in characters. `describe` answers `null` for a program with errors that keep it from being understood; `complete` then works from the file without the line being typed.
+
+It is what the [language server](editor.md) is written with, and serves as well for a linter or a documentation generator: [`internal/lsp/server.lum`](../internal/lsp/server.lum) is the longest example.
 
 ---
 
@@ -1001,15 +1100,17 @@ The package `std` is found like any [package](project.md#packages-modules-from-s
 
 **Natives hand back simple things.** A native function cannot make a struct or a value of an enum: those are made by compiled code, which knows what each must hold. So a native returns a number, a text, or arrays of them, and the Lumen half of the module builds the types the program sees. `json.parse` is the clearest case: Go checks the text and lists its tokens, and thirty lines of Lumen build the tree of `Json` values from them. An operation that fails gives `null` and keeps the reason, which the Lumen half fetches to build its error value.
 
-**The web server** is split the same way, for another reason: a program is one thread. Go accepts connections and reads requests, each in its own goroutine, and queues them; the program takes them one at a time, works out the answer in Lumen, and hands it back.
+**The web server** is split the same way, for another reason: only one task of a program runs at a time. Go accepts connections and reads requests, each in its own goroutine, and queues them; the program takes them one at a time, works out each answer in Lumen, in a task of its own if it wants several in progress, and hands it back under the number of its request.
+
+**Tasks** are mostly Lumen as well. The machine provides tasks by number and three things to do with them: suspend the one that asks, resume another, wait for one to end. `Task<T>` and `Channel<T>` are written on those, which is how they come to be typed and collected like any other struct ([tasks.md](tasks.md#how-it-works)).
 
 A folder called `std` among a program's own modules is not reachable as `std.something`: the name belongs to the library.
 
 ## What Is Missing
 
 *   **Maps with keys that are not text.** `Dict` takes texts, and `Set` asks for a function that makes a text of an item: nothing can be required of a type parameter yet, so there is no "any type that can be hashed".
-*   **Reading a file in pieces**, and files that are not text: `readFile` takes all of it, as a text.
-*   **Doing two things at once.** A web server answers one request at a time; a program cannot ask two servers at the same moment, or go on while another program runs.
+*   **Reading a file in pieces**, and files that are not text: `readFile` takes all of it, as a text. The input can be read a number of bytes at a time (`io.readBytes`), a file cannot.
+*   **More for tasks.** Several things can be waited for at once ([`std.task`](#stdtask)), on one processor. There is no waiting for the first of several channels, no wait that gives up after some time, and no stopping a task from outside ([tasks.md](tasks.md#what-is-not-there)).
 *   **Time zones by name.** A date is told in UTC, where the program runs, or at a fixed offset; there is no "Europe/Paris".
 *   **Sockets below HTTP**, HTTPS for a server of your own, and e-mail.
 *   **Equality by content for arrays.** A struct says when two of its values are equal by implementing `Equal`; two arrays are still only `==` when they are the same one. `ops.same(first, second)` and `test.same` compare them item by item.

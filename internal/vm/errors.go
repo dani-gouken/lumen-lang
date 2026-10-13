@@ -21,6 +21,7 @@ const (
 	KindDepth      ErrorKind = "depth"      // Calls nested deeper than the limit
 	KindMemory     ErrorKind = "memory"     // More memory than the limit
 	KindLibrary    ErrorKind = "library"    // A function of the standard library refused its arguments
+	KindDeadlock   ErrorKind = "deadlock"   // Every task waits for another
 	KindOther      ErrorKind = "other"      // Anything else: a mistake in the bytecode, mostly
 )
 
@@ -63,6 +64,7 @@ var runtimeCodes = map[ErrorKind]string{
 	KindMemory:     "R0006",
 	KindLibrary:    "R0007",
 	KindOther:      "R0008",
+	KindDeadlock:   "R0009",
 }
 
 // Code is the code of the error: R0002 for an index out of bounds.
@@ -89,6 +91,8 @@ func (e *RuntimeError) Suggestion() string {
 		return "A function that calls itself needs a case where it stops; if the depth is intended, raise the limit with --max-depth=N"
 	case KindMemory:
 		return "Keep less alive at once, or raise the limit with --heap-mb=N"
+	case KindDeadlock:
+		return "A task that receives from a channel waits until a value is sent or the channel is closed: close it once nothing more will come"
 	}
 	return ""
 }

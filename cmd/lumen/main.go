@@ -12,6 +12,8 @@ import (
 	"github.com/dani-gouken/lumen/internal/compiler"
 	"github.com/dani-gouken/lumen/internal/debugger"
 	"github.com/dani-gouken/lumen/internal/errors"
+	_ "github.com/dani-gouken/lumen/internal/inspect" // The natives of std.compiler
+	"github.com/dani-gouken/lumen/internal/lsp"
 	"github.com/dani-gouken/lumen/internal/project"
 	"github.com/dani-gouken/lumen/internal/vm"
 )
@@ -176,6 +178,9 @@ func main() {
 	case "repl":
 		fmt.Println("[stub] Starting REPL...")
 
+	case "lsp":
+		cmdLsp()
+
 	case "asm":
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: lumen asm <input.lasm> <output.lc>")
@@ -222,6 +227,7 @@ func printHelp() {
 	fmt.Println("  lumen build <in> <out>     Compile .lum to .lc bytecode (or .lasm text)")
 	fmt.Println("  lumen ir <file.lum>        Print the intermediate representation")
 	fmt.Println("  lumen repl                 Start interactive REPL (not implemented)")
+	fmt.Println("  lumen lsp                  Start the language server, for an editor to talk to")
 	fmt.Println("  lumen asm <in> <out>       Assemble .lasm to .lc bytecode")
 	fmt.Println("  lumen disasm <in> <out>    Disassemble .lc to .lasm text")
 	fmt.Println("  lumen exec <file>          Execute .lc bytecode file")
@@ -288,6 +294,26 @@ func cmdRun(inputFile string) {
 	if result.IsInt() {
 		os.Exit(int(result.AsInt() & 0xFF))
 	}
+}
+
+// cmdLsp runs the language server: a Lumen program kept in the binary,
+// which talks to an editor over the input and the output.
+func cmdLsp() {
+	errs := errors.NewHandler()
+	result := compiler.Compile(lsp.Source, lsp.File, errs)
+	if errs.HasErrors() {
+		for _, d := range errs.Diagnostics {
+			fmt.Fprintln(os.Stderr, d.String())
+		}
+		os.Exit(1)
+	}
+	programFile = lsp.File
+	_, err := newVM().Exec(result.Chunk)
+	if err != nil {
+		leaveIfAsked(err)
+		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
+	}
+	os.Exit(1)
 }
 
 // cmdBuild compiles a .lum file to bytecode, or to assembly text when the

@@ -221,8 +221,12 @@ pub fn guard(action: fn() -> Void) -> Failure? {
 
 // The failure the runtime kept from the last protected call.
 fn caught() -> Failure {
-    // kind, message, then four entries per call: function, file, line, column
-    let parts = failure();
+    return failureOf(failure());
+}
+
+// A failure as the runtime lists one: its kind, its message, then four
+// entries per call: function, file, line, column. For the library.
+pub fn failureOf(parts: [String]) -> Failure {
     let stack = locations(parts, 2);
     let at = Location { function: "", file: "", line: 0, column: 0 };
     if stack.length > 0 { at = stack[0]; }

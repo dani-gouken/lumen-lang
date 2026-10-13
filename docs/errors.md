@@ -193,6 +193,7 @@ The exit code is 1.
 | `R0006` | Memory | More memory than the limit (`--heap-mb`) |
 | `R0007` | Library | A function of the standard library given arguments it cannot work with |
 | `R0008` | Other | Anything else; in practice, bytecode written by hand |
+| `R0009` | Deadlock | Every [task](tasks.md#how-a-program-ends) waits for another. Nothing catches it |
 
 A function calling itself gives the same line many times: it is shown once, with how often. Beyond twelve different calls the rest is counted, and the outermost, where it all started, is named.
 

@@ -319,7 +319,12 @@ func init() {
 				cmd.Stdin = strings.NewReader(input)
 			}
 			status := 0
-			if err := cmd.Run(); err != nil {
+			// Other tasks go on while the program runs
+			var failed error
+			if gone := vm.blocking(func() { failed = cmd.Run() }); gone != nil {
+				return NewNull(), gone
+			}
+			if err := failed; err != nil {
 				var exit *exec.ExitError
 				if errors.Is(err, exec.ErrNotFound) {
 					return vm.refused("not found", "there is no such program")

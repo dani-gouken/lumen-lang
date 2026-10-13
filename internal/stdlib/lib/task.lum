@@ -1,0 +1,271 @@
+// Doing several things at once.
+//
+// A task is a function running on its own, while the rest of the program
+// goes on. `start` makes one and gives a handle to it; `wait` gives what
+// the function returned.
+//
+//     let first = task.start(fn() -> Result<Response, Error> { return http.get(urlA); });
+//     let second = task.start(fn() -> Result<Response, Error> { return http.get(urlB); });
+//     println(first.wait(), second.wait());       // both asked at the same moment
+//
+// One task runs at a time. It keeps going until it has to wait: for
+// another task, for a channel, for the clock (time.sleep), for the
+// network, for a line of input, for another program. Then the others get
+// their turn. Nothing interrupts a task between two such moments, so two
+// tasks can change the same list or the same struct without stepping on
+// each other, as long as neither waits half way through a change.
+//
+// Tasks talk through channels: one sends values, another receives them,
+// each waiting for the other when it is ahead.
+//
+//     let lines = task.channel<String>(16);
+//     task.run(fn() {
+//         for name in files { lines.send(io.readFile(name).orElse("")); }
+//         lines.close();
+//     });
+//     lines.each(fn(text: String) { println(strings.len(text)); });
+//
+// The program ends when main has returned and every task has ended. A task
+// that stops, by a panic or any other failure, does not stop the others:
+// whoever waits for it gets the failure. If nobody ever does, the failure
+// ends the program once the other tasks are done, rather than being lost.
+
+import std.result;
+import std.result.{Result, Failure};
+import std.arrays;
+
+// --- Tasks ---
+
+// What a task leaves for whoever waits for it.
+struct Outcome<T> {
+    values: [T];            // what the function returned, once it has
+    failure: Failure?;      // or how it stopped, once somebody asked
+}
+
+// A function that is running, or has run, on its own.
+pub struct Task<T> {
+    id: Int;
+    outcome: Outcome<T>;
+}
+
+// Runs a function on its own and returns at once. The task starts when
+// the one that made it next has to wait.
+pub fn start<T>(work: fn() -> T) -> Task<T> {
+    let none: [T] = [];
+    let outcome = Outcome<T> { values: none, failure: null };
+    let id = spawn(fn() { push(outcome.values, work()); });
+    return Task<T> { id: id, outcome: outcome };
+}
+
+// The same for a function run for what it does, not for a value. What
+// `wait` gives is then only whether it completed.
+pub fn run(action: fn() -> Void) -> Task<Bool> {
+    return start(fn() -> Bool { action(); return true; });
+}
+
+impl<T> Task<T> {
+    // Whether the function has returned or stopped.
+    pub fn isDone() -> Bool {
+        return !alive(self.id);
+    }
+
+    // Waits for the task to end. Gives what its function returned, or the
+    // failure that stopped it. A task can be waited for any number of
+    // times, by any number of tasks.
+    pub fn wait() -> Result<T, Failure> {
+        join(self.id);
+        if self.outcome.values.length > 0 {
+            return Result.Ok(self.outcome.values[0]);
+        }
+        let known = self.outcome.failure;
+        if known != null { return Result.Err(known); }
+        let failure = result.failureOf(fault(self.id));
+        self.outcome.failure = failure;
+        return Result.Err(failure);
+    }
+
+    // What the function returned. Stops the program with `message` if the
+    // task failed: for where that would be a mistake in the program.
+    pub fn expect(message: String) -> T {
+        return self.wait().mapErr(fn(failure: Failure) -> String { return failure.describe(); }).expect(message);
+    }
+}
+
+// Waits for every task. Gives what they returned, in the order of the
+// tasks, or the failure of the first of them that failed.
+pub fn all<T>(tasks: [Task<T>]) -> Result<[T], Failure> {
+    let values: [T] = [];
+    let first: Failure? = null;
+    for one in tasks {
+        match one.wait() {
+            case Result.Ok(value): { push(values, value); }
+            case Result.Err(failure): { if first == null { first = failure; } }
+        }
+    }
+    if first != null { return Result.Err(first); }
+    return Result.Ok(values);
+}
+
+// What a function makes of each item, all of them worked on at once:
+// one task per item. The results are in the order of the items.
+//
+//     let pages = task.map(urls, url -> http.get(url));
+pub fn map<T, U>(items: [T], work: fn(T) -> U) -> Result<[U], Failure> {
+    let tasks: [Task<U>] = [];
+    for item in items {
+        push(tasks, each(item, work));
+    }
+    return all(tasks);
+}
+
+// A task for one item: a function of its own, so that each task keeps
+// its own item.
+fn each<T, U>(item: T, work: fn(T) -> U) -> Task<U> {
+    return start(fn() -> U { return work(item); });
+}
+
+// Lets the other tasks that can go on do so, then carries on. For a long
+// computation that should not keep everything else waiting.
+pub fn pause() {
+    yield();
+}
+
+// The number of the task that asks: 0 for main, then 1, 2, ... in the
+// order the tasks were started.
+pub fn current() -> Int {
+    return running();
+}
+
+// --- Channels ---
+
+// A way from some tasks to others: values go in at one end and come out
+// at the other in the same order.
+pub struct Channel<T> {
+    capacity: Int;
+    items: [T];             // sent and not received yet, from `head` on
+    head: Int;
+    sent: Int;              // how many values went in, ever
+    received: Int;          // how many came out
+    senders: [Int];         // tasks waiting for room, or for their value to be taken
+    receivers: [Int];       // tasks waiting for a value
+    closed: Bool;
+}
+
+// A channel that holds up to `capacity` values waiting to be received.
+// Sending to a full channel waits for room. With a capacity of 0 nothing
+// is held: a send waits until a task has received the value.
+pub fn channel<T>(capacity: Int) -> Channel<T> {
+    if capacity < 0 { panic("a channel cannot hold ${capacity} values"); }
+    let none: [T] = [];
+    return Channel<T> {
+        capacity: capacity, items: none, head: 0, sent: 0, received: 0,
+        senders: [], receivers: [], closed: false,
+    };
+}
+
+impl<T> Channel<T> {
+    // Puts a value in, waiting while the channel is full. Sending to a
+    // closed channel stops the program: whoever closes says nothing more
+    // will come.
+    pub fn send(value: T) {
+        while self.capacity > 0 && self.length() >= self.capacity && !self.closed {
+            waitIn(self.senders);
+        }
+        if self.closed { panic("send on a closed channel"); }
+
+        push(self.items, value);
+        self.sent++;
+        let mine = self.sent;
+        wake(self.receivers);
+        self.receivers = [];
+
+        if self.capacity == 0 {
+            while self.received < mine && !self.closed {
+                waitIn(self.senders);
+            }
+        }
+    }
+
+    // Takes the next value out, waiting for one if there is none. Null
+    // once the channel is closed and empty.
+    pub fn receive() -> T? {
+        return arrays.first(self.take());
+    }
+
+    // Calls a function with each value, until the channel is closed and
+    // empty.
+    pub fn each(action: fn(T) -> Void) {
+        while true {
+            let next = self.take();
+            if next.length == 0 { return; }
+            action(next[0]);
+        }
+    }
+
+    // Every value until the channel is closed.
+    pub fn drain() -> [T] {
+        let all: [T] = [];
+        self.each(fn(value: T) { push(all, value); });
+        return all;
+    }
+
+    // Says nothing more will be sent. What was sent can still be
+    // received; after that `receive` gives null, and the tasks waiting to
+    // receive go on. Closing twice is the same as closing once.
+    pub fn close() {
+        self.closed = true;
+        wake(self.receivers);
+        self.receivers = [];
+        wake(self.senders);
+        self.senders = [];
+    }
+
+    pub fn isClosed() -> Bool { return self.closed; }
+
+    // How many values are waiting to be received.
+    pub fn length() -> Int { return self.items.length - self.head; }
+
+    // The next value in an array of one, or an empty array once the
+    // channel is closed and empty: a value may itself be null.
+    fn take() -> [T] {
+        while self.length() == 0 {
+            if self.closed {
+                let none: [T] = [];
+                return none;
+            }
+            waitIn(self.receivers);
+        }
+        let value = self.items[self.head];
+        self.head++;
+        if self.head >= 32 && self.head * 2 >= self.items.length {
+            self.items = arrays.drop(self.items, self.head);
+            self.head = 0;
+        }
+        self.received++;
+        wake(self.senders);
+        self.senders = [];
+        return [value];
+    }
+}
+
+// Waits until a task wakes the ones listed. Whoever calls it checks, once
+// back, that what it waited for has come.
+fn waitIn(waiting: [Int]) {
+    push(waiting, running());
+    suspend();
+}
+
+// Lets the tasks listed go on, in the order they came to wait.
+fn wake(waiting: [Int]) {
+    for one in waiting { resume(one); }
+}
+
+// Provided by the runtime: tasks by number, and the turn passed around.
+extern fn spawn(action: Any) -> Int;
+extern fn running() -> Int;
+extern fn yield();
+extern fn suspend();
+extern fn resume(task: Int);
+extern fn alive(task: Int) -> Bool;
+extern fn join(task: Int);
+extern fn fault(task: Int) -> [String];

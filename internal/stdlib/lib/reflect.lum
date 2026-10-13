@@ -1,0 +1,169 @@
+// Asking a value what it is, while the program runs.
+//
+// A program normally knows its types when it is written. Reflection is
+// for the code that cannot: something that prints, saves or compares any
+// struct it is given, without having been told its fields.
+//
+//     struct User { name: String; age: Int; }
+//     let user = User { name: "ada", age: 36 };
+//     for name in reflect.fields(user) {
+//         println(name, "=", reflect.get(user, name));       // age = 36, name = ada
+//     }
+//     reflect.set(user, "age", 37);
+//
+// What the machine knows of a value is less than what the compiler knew
+// of the program. A struct value knows its struct's name and its fields;
+// a value of an enum knows its variant and what the variant holds. An
+// array does not know what its items were meant to be, and a field does
+// not know its declared type, only the value in it now. For the types as
+// written, ask the compiler: std.compiler reads a program's source.
+
+import std.dict;
+import std.dict.{Dict};
+import std.strings;
+import std.arrays;
+
+// The sorts of values there are.
+pub enum Kind {
+    Null,
+    Bool,
+    Int,
+    Float,
+    String,
+    Array,
+    Tuple,
+    Struct,         // a value of a struct
+    Variant,        // a value of an enum
+    Function,
+    Other,
+}
+
+// Which sort of value this is.
+pub fn kind(value: Any) -> Kind {
+    match kindName(value) {
+        case "null": { return Kind.Null; }
+        case "bool": { return Kind.Bool; }
+        case "int": { return Kind.Int; }
+        case "float": { return Kind.Float; }
+        case "string": { return Kind.String; }
+        case "array": { return Kind.Array; }
+        case "tuple": { return Kind.Tuple; }
+        case "struct": { return Kind.Struct; }
+        case "variant": { return Kind.Variant; }
+        case "function": { return Kind.Function; }
+        default: { return Kind.Other; }
+    }
+}
+
+// The name of a value's type: "Int", "String", "array", and for a value
+// of a struct or of an enum the name it was declared with, "User" or
+// "Shape". A type from another module has that module in front:
+// "geometry.Shape".
+pub extern fn typeName(value: Any) -> String;
+
+// For a value of an enum, which variant it is: "Circle". Null for
+// anything else.
+pub fn variant(value: Any) -> String? {
+    let name = variantName(value);
+    if name == "" { return null; }
+    return name;
+}
+
+// The names of the fields of a struct value, in alphabetical order.
+// Fields that hold a function are left out, as are methods. Empty for
+// anything that is not a struct.
+pub fn fields(value: Any) -> [String] {
+    if kindName(value) != "struct" { return []; }
+    return fieldNames(value);
+}
+
+// Whether a struct value has a field of that name.
+pub extern fn hasField(value: Any, name: String) -> Bool;
+
+// The value of a field, of any type: test it with `is`, or cast it with
+// `as`, to use it. Null if there is no such field.
+//
+//     let age = reflect.get(user, "age");
+//     if age is Int { println(age + 1); }
+pub fn get(value: Any, name: String) -> Any {
+    if !hasField(value, name) { return null; }
+    return field(value, name);
+}
+
+// Changes a field. The new value has to be of the same sort as the one
+// it replaces, an Int for an Int: the machine knows what a field holds,
+// not what it was declared as, so that is all it can check. A field that
+// holds null may be given anything, and any field may be given null.
+// Stops the program if there is no such field, or the sorts differ.
+pub fn set(value: Any, name: String, to: Any) {
+    setField(value, name, to);
+}
+
+// What a value of an enum, or a tuple, holds, in order: for
+// Shape.Rect(2.0, 3.0), [2.0, 3.0]. Empty for anything else.
+pub fn values(value: Any) -> [Any] {
+    let out: [Any] = [];
+    let sort = kindName(value);
+    if sort != "variant" && sort != "tuple" { return out; }
+    for position in fieldNames(value) { push(out, field(value, position)); }
+    return out;
+}
+
+// The items of an array, each as a value of any type. Stops the program
+// if the value is not an array.
+pub extern fn items(value: Any) -> [Any];
+
+// The fields of a struct value by name.
+pub fn toDict(value: Any) -> Dict<Any> {
+    let out = dict.empty<Any>();
+    for name in fields(value) { out.set(name, field(value, name)); }
+    return out;
+}
+
+// A value written out in full, whatever it is, over several lines:
+//
+//     User {
+//       age: 36
+//       name: "ada"
+//     }
+pub fn dump(value: Any) -> String {
+    return dumpAt(value, 0);
+}
+
+fn dumpAt(value: Any, depth: Int) -> String {
+    let inner = strings.repeat("  ", depth + 1);
+    let outer = strings.repeat("  ", depth);
+    match kindName(value) {
+        case "string": { return "\"" + toString(value) + "\""; }
+        case "struct": {
+            let names = fieldNames(value);
+            if names.length == 0 { return typeName(value) + " { }"; }
+            let lines = arrays.map(names, name -> "${inner}${name}: ${dumpAt(field(value, name), depth + 1)}");
+            return "${typeName(value)} {\n${strings.join(lines, "\n")}\n${outer}}";
+        }
+        case "variant": {
+            let held = arrays.map(fieldNames(value), position -> dumpAt(field(value, position), depth + 1));
+            let name = "${typeName(value)}.${variantName(value)}";
+            if held.length == 0 { return name; }
+            return "${name}(${strings.join(held, ", ")})";
+        }
+        case "tuple": {
+            let held = arrays.map(fieldNames(value), position -> dumpAt(field(value, position), depth + 1));
+            return "(${strings.join(held, ", ")})";
+        }
+        case "array": {
+            let all = items(value);
+            if all.length == 0 { return "[]"; }
+            let lines = arrays.map(all, item -> inner + dumpAt(item, depth + 1));
+            return "[\n${strings.join(lines, ",\n")}\n${outer}]";
+        }
+        default: { return toString(value); }
+    }
+}
+
+// Provided by the runtime: what the machine keeps about a value.
+extern fn kindName(value: Any) -> String;
+extern fn variantName(value: Any) -> String;
+extern fn fieldNames(value: Any) -> [String];
+extern fn field(value: Any, name: String) -> Any;
+extern fn setField(value: Any, name: String, to: Any);

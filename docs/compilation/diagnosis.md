@@ -190,6 +190,7 @@ A failure of a running program is a `vm.RuntimeError`; its `Diagnostic()` is sho
 | `R0006` | More memory than the limit |
 | `R0007` | A function of the standard library given arguments it cannot work with |
 | `R0008` | Anything else |
+| `R0009` | Every task waits for another |
 
 A `Diagnostic` has two fields for these: `Function`, shown after the position, and `Notes`, lines printed after the suggestion.
 

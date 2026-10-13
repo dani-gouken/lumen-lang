@@ -9,6 +9,7 @@ import (
 	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/compiler"
 	"github.com/dani-gouken/lumen/internal/errors"
+	_ "github.com/dani-gouken/lumen/internal/inspect" // The natives of std.compiler
 	"github.com/dani-gouken/lumen/internal/parser"
 	"github.com/dani-gouken/lumen/internal/stdlib"
 	"github.com/dani-gouken/lumen/internal/vm"
@@ -70,8 +71,8 @@ func expectFailure(t *testing.T, imports, body, want string) {
 
 func TestModulesAreEmbedded(t *testing.T) {
 	want := []string{
-		"std.arrays", "std.csv", "std.dict", "std.encoding", "std.format", "std.fs", "std.hash", "std.http", "std.io", "std.json", "std.list",
-		"std.math", "std.ops", "std.option", "std.os", "std.path", "std.random", "std.regex", "std.result", "std.set", "std.strings", "std.test", "std.time",
+		"std.arrays", "std.compiler", "std.csv", "std.dict", "std.encoding", "std.format", "std.fs", "std.hash", "std.http", "std.io", "std.json", "std.list",
+		"std.math", "std.ops", "std.option", "std.os", "std.path", "std.random", "std.reflect", "std.regex", "std.result", "std.set", "std.strings", "std.task", "std.test", "std.time",
 	}
 	if got := stdlib.Modules(); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("expected the modules %v, got %v", want, got)

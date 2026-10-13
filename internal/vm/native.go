@@ -176,3 +176,21 @@ func ptrOf(arr *ArrayObj) unsafe.Pointer {
 func (vm *VM) Collections() int {
 	return vm.heap.Collections()
 }
+
+// --- Natives provided by other packages ---
+
+// RegisterNative adds a native function provided outside this package: by
+// a package that needs what this one cannot import, the compiler first of
+// all. It is to be called when the program starts, before a VM is made.
+func RegisterNative(name string, args int, fn ExternFunc) {
+	natives[name] = native{name: name, args: args, fn: fn}
+}
+
+// ArgString reads an argument that is a String.
+func ArgString(args []Value, i int) (string, error) { return argString(args, i) }
+
+// ArgInt reads an argument that is an Int.
+func ArgInt(args []Value, i int) (int64, error) { return argInt(args, i) }
+
+// NewStringArray builds an array of strings, as a native returns one.
+func (vm *VM) NewStringArray(items []string) (Value, error) { return vm.newStringArray(items) }

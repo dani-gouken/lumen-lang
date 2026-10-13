@@ -136,7 +136,7 @@ func (vm *VM) protect(fn Value) (bool, error) {
 		vm.outcome = result
 		return true, nil
 	}
-	if _, leaving := err.(*exitError); leaving {
+	if leaving(err) {
 		return false, err
 	}
 

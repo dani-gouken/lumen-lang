@@ -14,11 +14,11 @@ import (
 	"time"
 )
 
-// A program is one thread: it cannot answer a request while it is doing
-// something else. So the server of std.http is split in two. Go accepts
-// the connections and reads the requests, each in its own goroutine, and
-// queues them; the program takes them one at a time (accept), works out
-// the answer, and hands it back (respond).
+// The server of std.http is split in two. Go accepts the connections and
+// reads the requests, each in its own goroutine, and queues them; the
+// program takes them one at a time (accept), works out the answers, in a
+// task each if it wants to work on several at once, and hands each back
+// under the number of its request (respondTo).
 
 // exchange is one request waiting for its answer.
 type exchange struct {
@@ -37,7 +37,8 @@ type httpServer struct {
 	port     int
 	waiting  chan *exchange
 	closed   chan struct{}
-	current  *exchange // accepted, not answered yet
+	accepted map[int64]*exchange // by number, until answered
+	last     int64
 	isClosed bool
 }
 
@@ -157,23 +158,35 @@ func init() {
 				request.Header.Set(headers[i], headers[i+1])
 			}
 
+			// Other tasks go on while the answer is on its way
 			client := &http.Client{Timeout: time.Duration(timeout) * time.Millisecond}
-			response, err := client.Do(request)
-			if err != nil {
-				var wrapped *url.Error
-				reason := err.Error()
-				if errors.As(err, &wrapped) {
-					reason = wrapped.Err.Error()
+			var parts []string
+			var kind, reason string
+			gone := vm.blocking(func() {
+				response, err := client.Do(request)
+				if err != nil {
+					var wrapped *url.Error
+					kind, reason = kindOfNetworkError(err), err.Error()
+					if errors.As(err, &wrapped) {
+						reason = wrapped.Err.Error()
+					}
+					return
 				}
-				return vm.refused(kindOfNetworkError(err), reason)
+				defer response.Body.Close()
+				content, err := io.ReadAll(io.LimitReader(response.Body, maxBody))
+				if err != nil {
+					kind, reason = kindOfNetworkError(err), err.Error()
+					return
+				}
+				parts = append([]string{strconv.Itoa(response.StatusCode), string(content)}, headerPairs(response.Header)...)
+			})
+			if gone != nil {
+				return NewNull(), gone
 			}
-			defer response.Body.Close()
-			content, err := io.ReadAll(io.LimitReader(response.Body, maxBody))
-			if err != nil {
-				return vm.refused(kindOfNetworkError(err), err.Error())
+			if parts == nil {
+				return vm.refused(kind, reason)
 			}
-			parts := []string{strconv.Itoa(response.StatusCode), string(content)}
-			return vm.newStringArray(append(parts, headerPairs(response.Header)...))
+			return vm.newStringArray(parts)
 		}},
 
 		// Starts listening on a port of this machine; 0 lets the system
@@ -196,9 +209,10 @@ func init() {
 				return vm.refused("other", reason)
 			}
 			server := &httpServer{
-				port:    listener.Addr().(*net.TCPAddr).Port,
-				waiting: make(chan *exchange),
-				closed:  make(chan struct{}),
+				port:     listener.Addr().(*net.TCPAddr).Port,
+				waiting:  make(chan *exchange),
+				accepted: map[int64]*exchange{},
+				closed:   make(chan struct{}),
 			}
 			server.server = &http.Server{Handler: server}
 			go server.server.Serve(listener)
@@ -210,9 +224,10 @@ func init() {
 			vm.servers[vm.lastServer] = server
 			return vm.newIntArray([]int64{vm.lastServer, int64(server.port)})
 		}},
-		// The next request: its method, path, query, body and sender, then
-		// its headers. Waits for one, at most `timeout` milliseconds if
-		// that is not 0. Null if none came, or the server is closed.
+		// The next request: its number, its method, path, query, body and
+		// sender, then its headers. Waits for one, at most `timeout`
+		// milliseconds if that is not 0, while other tasks go on. Null if
+		// none came, or the server is closed.
 		native{"accept", 2, func(vm *VM, args []Value) (Value, error) {
 			server, err := vm.httpServerOf(args)
 			if err != nil {
@@ -222,48 +237,60 @@ func init() {
 			if err != nil {
 				return NewNull(), err
 			}
-			if server.current != nil {
-				return NewNull(), errors.New("the request before this one has not been answered")
-			}
 			var limit <-chan time.Time
 			if timeout > 0 {
 				limit = time.After(time.Duration(timeout) * time.Millisecond)
 			}
-			select {
-			case next := <-server.waiting:
-				server.current = next
-				return vm.newStringArray(next.request)
-			case <-limit:
-			case <-server.closed:
+			var next *exchange
+			quit := vm.sched.quit
+			if gone := vm.blocking(func() {
+				select {
+				case next = <-server.waiting:
+				case <-limit:
+				case <-server.closed:
+				case <-quit:
+				}
+			}); gone != nil {
+				return NewNull(), gone
 			}
-			return NewNull(), nil
+			if next == nil {
+				return NewNull(), nil
+			}
+			server.last++
+			server.accepted[server.last] = next
+			return vm.newStringArray(append([]string{strconv.FormatInt(server.last, 10)}, next.request...))
 		}},
-		// Answers the request accept gave
-		native{"respondTo", 4, func(vm *VM, args []Value) (Value, error) {
+		// Answers a request accept gave, named by its number
+		native{"respondTo", 5, func(vm *VM, args []Value) (Value, error) {
 			server, err := vm.httpServerOf(args)
 			if err != nil {
 				return NewNull(), err
 			}
-			status, err := argInt(args, 1)
+			request, err := argInt(args, 1)
 			if err != nil {
 				return NewNull(), err
 			}
-			headers, err := argStrings(args, 2)
+			status, err := argInt(args, 2)
 			if err != nil {
 				return NewNull(), err
 			}
-			body, err := argString(args, 3)
+			headers, err := argStrings(args, 3)
 			if err != nil {
 				return NewNull(), err
 			}
-			if server.current == nil {
-				return NewNull(), errors.New("there is no request to answer")
+			body, err := argString(args, 4)
+			if err != nil {
+				return NewNull(), err
+			}
+			asked, ok := server.accepted[request]
+			if !ok {
+				return NewNull(), errors.New("there is no request to answer, or it has been answered already")
 			}
 			if status < 100 || status > 599 {
 				return NewNull(), fmt.Errorf("%d is not a status a server can answer with", status)
 			}
-			server.current.answer <- answer{status: int(status), headers: headers, body: body}
-			server.current = nil
+			delete(server.accepted, request)
+			asked.answer <- answer{status: int(status), headers: headers, body: body}
 			return NewNull(), nil
 		}},
 		native{"shut", 1, func(vm *VM, args []Value) (Value, error) {

@@ -9,6 +9,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -77,6 +78,10 @@ type VM struct {
 	lastServer  int64
 	in          *bufio.Reader // Input of std.io.readLine
 	rng         *rand.Rand    // Generator of std.random
+	inLock      sync.Mutex    // One task reads the input at a time
+
+	// The tasks of the program and whose turn it is (see task.go)
+	sched *scheduler
 }
 
 // NewVM creates a new VM instance.
@@ -97,6 +102,7 @@ func NewVM() *VM {
 		maxCallDepth:     DefaultMaxCallDepth,
 		funcObjs:         make(map[int]Value),
 		externObjs:       make(map[string]Value),
+		sched:            newScheduler(),
 	}
 	vm.heap.collect = vm.CollectGarbage
 	vm.registerBuiltins()
@@ -122,6 +128,7 @@ func NewVMWithHeapSize(heapSize uint64) *VM {
 		maxCallDepth:     DefaultMaxCallDepth,
 		funcObjs:         make(map[int]Value),
 		externObjs:       make(map[string]Value),
+		sched:            newScheduler(),
 	}
 	vm.heap.collect = vm.CollectGarbage
 	vm.registerBuiltins()
@@ -513,7 +520,11 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 	// Cached function objects belong to the chunk being run
 	vm.funcObjs = make(map[int]Value)
 
-	return vm.run(0)
+	// The program starts as one task, main
+	vm.sched.stop()
+	vm.sched = newScheduler()
+
+	return vm.finish(vm.run(0))
 }
 
 // run executes instructions until the function that was running when it
@@ -964,8 +975,8 @@ func (vm *VM) run(base int) (Value, error) {
 						// into: already complete, with its own place
 						return NewNull(), failure
 					}
-					if _, leaving := err.(*exitError); leaving {
-						// The program asked to end: not a failure
+					if leaving(err) {
+						// The program is ending: not a failure
 						return NewNull(), err
 					}
 					if stop, ok := err.(*panicError); ok {

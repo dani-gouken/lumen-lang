@@ -39,6 +39,9 @@ func (vm *VM) markRoots() {
 		}
 	}
 
+	// What the tasks whose turn it is not are in the middle of
+	vm.markTasks()
+
 	// What a protected call returned, until the program takes it
 	vm.markValue(vm.outcome)
 
@@ -106,9 +109,9 @@ func (vm *VM) markValue(v Value) {
 		}
 
 	case ObjTypeFunction:
-		// Mark function object
-		funcObj := (*FunctionObj)(unsafe.Pointer(ptr))
-		vm.markFunction(funcObj)
+		// The header is marked above; what a closure captured is still
+		// to be
+		vm.markUpvalues((*FunctionObj)(unsafe.Pointer(ptr)))
 
 	case ObjTypeExternFunction:
 		// Extern functions have no children
@@ -136,8 +139,11 @@ func (vm *VM) markFunction(funcObj *FunctionObj) {
 
 	// Mark the function object
 	header.Marked = true
+	vm.markUpvalues(funcObj)
+}
 
-	// Mark upvalues
+// markUpvalues marks the variables a closure captured.
+func (vm *VM) markUpvalues(funcObj *FunctionObj) {
 	for _, upval := range funcObj.upvalues {
 		if upval != nil {
 			// Mark the upvalue object itself

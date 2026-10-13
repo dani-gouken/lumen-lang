@@ -1,0 +1,48 @@
+build (2 workers)
+  worker 1 starts runtime
+  worker 2 starts lexer
+  lexer: built by worker 2
+  worker 2 starts docs
+  runtime: built by worker 1
+  worker 1 starts parser
+  docs: built by worker 2
+  parser: built by worker 1
+  worker 2 starts types
+  types: built by worker 2
+  worker 1 starts stdlib
+  stdlib: built by worker 1
+  worker 2 starts app
+  app: built by worker 2
+  7 of 7 built
+build (1 workers)
+  worker 1 starts runtime
+  runtime: built by worker 1
+  worker 1 starts lexer
+  lexer: built by worker 1
+  worker 1 starts docs
+  docs: built by worker 1
+  worker 1 starts parser
+  parser: built by worker 1
+  worker 1 starts types
+  types: built by worker 1
+  worker 1 starts stdlib
+  stdlib: built by worker 1
+  worker 1 starts app
+  app: built by worker 1
+  7 of 7 built
+build with a mistake in types (3 workers)
+  worker 1 starts runtime
+  worker 2 starts lexer
+  worker 3 starts docs
+  docs: built by worker 3
+  lexer: built by worker 2
+  runtime: built by worker 1
+  worker 3 starts parser
+  parser: built by worker 3
+  worker 2 starts types
+  types: FAILED: types does not compile
+  stdlib: skipped, needs types
+  app: skipped, needs stdlib
+  4 of 7 built
+build of what is not there (2 workers)
+  cannot build: there is no target 'tests'

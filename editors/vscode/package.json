@@ -1,0 +1,47 @@
+{
+  "name": "lumen",
+  "displayName": "Lumen",
+  "description": "The Lumen language: colours, and the language server (mistakes as you type, what a name is, where it is declared, what a file declares, what to write next).",
+  "version": "0.1.0",
+  "publisher": "lumen",
+  "license": "MIT",
+  "engines": { "vscode": "^1.75.0" },
+  "categories": ["Programming Languages"],
+  "main": "./extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "lumen",
+        "aliases": ["Lumen", "lumen"],
+        "extensions": [".lum"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "lumen",
+        "scopeName": "source.lumen",
+        "path": "./syntaxes/lumen.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      { "command": "lumen.restartServer", "title": "Lumen: Restart the language server" }
+    ],
+    "configuration": {
+      "title": "Lumen",
+      "properties": {
+        "lumen.path": {
+          "type": "string",
+          "default": "",
+          "description": "The lumen program to run as language server. Empty: ./lumen in the workspace if there is one, else lumen from the PATH."
+        },
+        "lumen.server.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run the language server. Without it only the colours are left."
+        }
+      }
+    }
+  }
+}

@@ -243,3 +243,36 @@ func countObjects(h *Heap) int {
 	}
 	return count
 }
+
+// A closure the program keeps in a variable, a field or an array is
+// reached as a value, not as the function being run. What it captured
+// has to be kept all the same.
+func TestGCKeepsWhatAClosureHeldAsAValueCaptured(t *testing.T) {
+	vm := NewVMWithHeapSize(10 * 1024)
+	chunk := &Chunk{Prototypes: []FunctionPrototype{{Name: "counter", UpvalueCount: 1}}}
+
+	captured, _, _ := vm.heap.AllocString("captured")
+	slot := NewHeapPtr(uintptr(unsafe.Pointer(captured)))
+	upvalue, _, _ := vm.heap.AllocUpvalue(&slot)
+	upvalue.Close()
+	closure, _, _ := vm.heap.AllocFunction(chunk, 0, 1)
+	closure.SetUpvalue(0, upvalue)
+
+	// Held in an array held in a register
+	holder, _, _ := vm.heap.AllocArray(1)
+	holder.Append(NewHeapPtr(uintptr(unsafe.Pointer(closure))))
+	vm.regs = []Value{NewHeapPtr(uintptr(unsafe.Pointer(holder)))}
+	vm.heap.AllocString("garbage")
+
+	var freed []ObjType
+	vm.heap.onFree = func(header *ObjHeader) { freed = append(freed, header.Type) }
+	vm.CollectGarbage()
+	vm.CollectGarbage()
+
+	if len(freed) != 1 || freed[0] != ObjTypeString {
+		t.Errorf("expected only the garbage to be freed, got %v", freed)
+	}
+	if got := countObjects(vm.heap); got != 4 {
+		t.Errorf("expected the array, the closure, its variable and the text to be kept, got %d objects", got)
+	}
+}

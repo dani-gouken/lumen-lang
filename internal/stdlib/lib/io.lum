@@ -14,6 +14,11 @@ import std.strings;
 // of the input.
 pub extern fn readLine() -> String?;
 
+// The next `count` bytes of the input, as a text. Null if the input ends
+// before that many came. For input that is not made of lines: a message
+// that says first how long it is.
+pub extern fn readBytes(count: Int) -> String?;
+
 // Prints a question, then reads the answer. Null at the end of the input.
 pub fn ask(question: String) -> String? {
     print(question);

@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -481,29 +482,31 @@ func TestNativeHttpServer(t *testing.T) {
 
 	pending := ask("POST", "/users/7?page=2&q=a+b", "héllo")
 	got := s.call("std.http.accept", id, 5000)
-	if !strings.HasPrefix(got, `["POST", "/users/7", "page=2&q=a+b", "héllo", "127.0.0.1:`) || !strings.Contains(got, `"x-token", "secret"`) {
+	if !strings.HasPrefix(got, `["1", "POST", "/users/7", "page=2&q=a+b", "héllo", "127.0.0.1:`) || !strings.Contains(got, `"x-token", "secret"`) {
 		t.Errorf("unexpected request: %s", got)
 	}
-	// One at a time
-	if _, err := callNative(t, s.machine, "std.http.accept", id, 10); err == nil || !strings.Contains(err.Error(), "has not been answered") {
-		t.Errorf("expected accept to refuse a second request before the first is answered, got %v", err)
-	}
-	s.call("std.http.respondTo", id, 201, []string{"X-Made-By", "lumen"}, "created é")
+	s.call("std.http.respondTo", id, 1, 201, []string{"X-Made-By", "lumen"}, "created é")
 	if r := <-pending; r.err != nil || r.status != 201 || r.body != "created é" || r.header != "lumen" {
 		t.Errorf("unexpected answer: %+v", r)
 	}
 
-	// Requests that arrive together wait their turn
+	// Requests that arrive together are both taken before either is
+	// answered, and answered in the other order: each gets its own
 	first, second := ask("GET", "/a", ""), ask("GET", "/b", "")
+	var taken [][]string
 	for i := 0; i < 2; i++ {
-		request := s.call("std.http.accept", id, 5000)
-		s.call("std.http.respondTo", id, 200, []string{}, strings.Split(request, `"`)[3])
+		taken = append(taken, strings.Split(s.call("std.http.accept", id, 5000), `"`))
+	}
+	for i := 1; i >= 0; i-- {
+		number, _ := strconv.Atoi(taken[i][1])
+		s.call("std.http.respondTo", id, number, 200, []string{}, taken[i][5])
 	}
 	if a, b := <-first, <-second; a.body != "/a" || b.body != "/b" {
 		t.Errorf("expected each request to get its own answer, got %q and %q", a.body, b.body)
 	}
 
-	if _, err := callNative(t, s.machine, "std.http.respondTo", id, 200, []string{}, ""); err == nil || !strings.Contains(err.Error(), "no request to answer") {
+	// A request is answered once
+	if _, err := callNative(t, s.machine, "std.http.respondTo", id, 3, 200, []string{}, ""); err == nil || !strings.Contains(err.Error(), "no request to answer") {
 		t.Errorf("expected an answer without a request to be refused, got %v", err)
 	}
 	if _, err := callNative(t, s.machine, "std.http.accept", 99, 0); err == nil || !strings.Contains(err.Error(), "there is no server 99") {
@@ -513,10 +516,10 @@ func TestNativeHttpServer(t *testing.T) {
 	// A bad status is refused, and the request can still be answered
 	pending = ask("GET", "/c", "")
 	s.call("std.http.accept", id, 5000)
-	if _, err := callNative(t, s.machine, "std.http.respondTo", id, 99, []string{}, ""); err == nil || !strings.Contains(err.Error(), "99 is not a status") {
+	if _, err := callNative(t, s.machine, "std.http.respondTo", id, 4, 99, []string{}, ""); err == nil || !strings.Contains(err.Error(), "99 is not a status") {
 		t.Errorf("expected status 99 to be refused, got %v", err)
 	}
-	s.call("std.http.respondTo", id, 204, []string{}, "")
+	s.call("std.http.respondTo", id, 4, 204, []string{}, "")
 	if r := <-pending; r.status != 204 {
 		t.Errorf("expected 204, got %+v", r)
 	}
