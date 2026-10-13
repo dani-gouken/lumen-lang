@@ -2,7 +2,7 @@
 //
 // Each program in programs/ leans on one part of the language (calls,
 // arrays, structs, traits, closures, texts, enums) the way a real program
-// does, and prints what it worked out; the .out file next to it is what it
+// does, and prints what it worked out; the .expected file next to it is what it
 // must print. A change that makes Lumen faster is measured here before and
 // after, and one that makes a program print something else has not made
 // it faster.
@@ -53,7 +53,7 @@ func programs(t testing.TB) []program {
 		if err != nil || errs.HasErrors() {
 			t.Fatalf("%s does not compile: %v\n%v", file, err, errs.Diagnostics)
 		}
-		want, err := os.ReadFile(strings.TrimSuffix(file, ".lum") + ".out")
+		want, err := os.ReadFile(strings.TrimSuffix(file, ".lum") + ".expected")
 		if err != nil {
 			t.Fatalf("%s has nothing to be compared with: %v", file, err)
 		}
