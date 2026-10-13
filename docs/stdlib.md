@@ -41,6 +41,7 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.encoding`, `std.hash`](#stdencoding-and-stdhash) | Base64, hex, URL encoding; SHA, MD5, HMAC |
 | [`std.http`](#stdhttp) | Asking web servers, and being one |
 | [`std.test`](#stdtest) | Tests and checks |
+| [`std.ops`](#stdops) | The traits behind operators, loops and brackets; `sorted`, `max`, `join` for any type that has them |
 
 The modules are imported and used like any other ([modules.md](modules.md)): `import std.math;` then `math.abs(-3)`, or `import std.math.{abs};` then `abs(-3)`.
 
@@ -288,10 +289,10 @@ Generic functions on plain arrays. Type arguments are inferred: `arrays.reversed
 ```lumen
 let people = [Person { name: "Ada", age: 36 }, Person { name: "Linus", age: 21 }];
 
-let adults = arrays.filter(people, fn(p: Person) -> Bool { return p.age >= 18; });
-let names = arrays.map(adults, fn(p: Person) -> String { return p.name; });
-let oldestFirst = arrays.sorted(people, fn(a: Person, b: Person) -> Bool { return a.age > b.age; });
-let totalAge = arrays.fold(people, 0, fn(sum: Int, p: Person) -> Int { return sum + p.age; });
+let adults = arrays.filter(people, p -> p.age >= 18);
+let names = arrays.map(adults, p -> p.name);
+let oldestFirst = arrays.sorted(people, (a, b) -> a.age > b.age);
+let totalAge = arrays.fold(people, 0, (sum, p) -> sum + p.age);
 ```
 
 ---
@@ -305,7 +306,11 @@ import std.list;
 
 let names = list.of(["ada", "linus"]);
 names.add("grace");
-let long = names.filter(fn(n: String) -> Bool { return strings.len(n) > 3; }).sorted(alphabetical);
+let long = names.filter(n -> strings.len(n) > 3).sorted(alphabetical);
+
+for name in names { println(name); }    // a list goes where an array does
+names[0] = "Ada";                       // as with an array, a position that is not there stops the program
+println(names[0]);
 ```
 
 | Function | Result |
@@ -343,7 +348,7 @@ let long = names.filter(fn(n: String) -> Bool { return strings.len(n) > 3; }).so
 
 `map<U>(convert)`, `filter(wanted)`, `sorted(before)`, `reversed()`, `slice(from, to)`.
 
-`map` and `fold` have a type parameter of their own, for what they produce. It is worked out from the function passed, or can be written: `names.map<Int>(fn(n: String) -> Int { return strings.len(n); })`.
+`map` and `fold` have a type parameter of their own, for what they produce. It is worked out from the function passed, or can be written: `names.map<Int>(n -> strings.len(n))`.
 
 The field `items` is the array itself, for a `for` loop: `for name in names.items { ... }`.
 
@@ -371,7 +376,7 @@ println(ages.get("nobody") ?? 0);
 | `set(key, value)` | Sets the value of a key, replacing the one it had |
 | `get(key) -> V?` | The value, or `null` if the key has none |
 | `getOr(key, fallback) -> V` | The value, or the fallback |
-| `update(key, start, change)` | Sets the key to what a function makes of its value, or of `start` if it has none. Counting: `counts.update(word, 0, fn(n: Int) -> Int { return n + 1; })` |
+| `update(key, start, change)` | Sets the key to what a function makes of its value, or of `start` if it has none. Counting: `counts.update(word, 0, n -> n + 1)` |
 | `has(key) -> Bool` | |
 | `remove(key) -> Bool` | Removes a key; whether it was there |
 | `size()`, `isEmpty()` | |
@@ -380,6 +385,8 @@ println(ages.get("nobody") ?? 0);
 | `entries() -> [(String, V)]` | Each key with its value: `for (name, age) in ages.entries() { ... }` |
 | `values() -> [V]` | The values, in the order of their keys |
 | `each(action)` | Calls `action(key, value)` for each |
+
+A dictionary takes brackets and loops: `ages["ada"]` is what `get` gives, a value or `null`; `ages["ada"] = 36;` is `set`; and `for name in ages { ... }` goes through the keys. Counting reads `counts[word] = (counts[word] ?? 0) + 1;`.
 
 Keys are compared exactly: `"a"` and `"A"` are two keys, and `""` is a key.
 
@@ -418,7 +425,7 @@ if line != null {
 }
 
 // With: each step runs only if the one before gave a value
-let doubled = option.map(option.then(io.readLine(), strings.parseInt), fn(n: Int) -> Int { return n * 2; });
+let doubled = option.map(option.then(io.readLine(), strings.parseInt), n -> n * 2);
 ```
 
 | Function | Result |
@@ -439,9 +446,9 @@ What comes out is an ordinary optional: `??` gives it a fallback, and a test aga
 
 ```lumen
 // The name of a user's manager, through two lookups and a field that may be null
-let manager = option.then(users.get(key), fn(u: User) -> String? { return u.manager; });
-let found = option.then(manager, fn(k: String) -> User? { return users.get(k); });
-println(option.mapOr(found, "no manager", fn(u: User) -> String { return u.name; }));
+let manager = option.then(users.get(key), u -> u.manager);
+let found = option.then(manager, k -> users.get(k));
+println(option.mapOr(found, "no manager", u -> u.name));
 ```
 
 Type arguments are worked out from the values and functions passed. A function of the library can be passed directly (`strings.parseInt`, `toString`); a method cannot, so a call of one is wrapped: `fn(k: String) -> User? { return users.get(k); }`.
@@ -745,7 +752,7 @@ pub enum Json { Null, Bool(Bool), Number(Float), String(String), Array([Json]), 
 | `find(path) -> Json?` | Keys and positions separated by dots: `find("user.tags.0")` |
 | `text()`, `number()`, `int()`, `bool()`, `items()`, `fields()` | The value if it is of that kind, else `null` |
 | `isNull()` | |
-| `equals(other)` | By content. `==` only finds two arrays or objects equal when they are the same one |
+| `a == b`, `a != b` | By content: the same kind of value, equal items in the same order, equal values under the same keys |
 | `stringify()`, `pretty()` | On one line; over several, indented |
 | `json.int(n)`, `json.texts(items)`, `json.ints(items)`, `json.array(items, convert)` | Making documents |
 | `json.object()` | An object built a key at a time: `.text(k, v)`, `.int`, `.number`, `.bool`, `.none`, `.set(k, json)`, then `.done()` |
@@ -819,7 +826,8 @@ Values without repeats. A set tells its items apart by a text worked out from ea
 | `add(item) -> Bool`, `addAll(items)`, `remove(item) -> Bool`, `has(item)` | `add` says whether the item was new |
 | `size()`, `isEmpty()`, `items()`, `copy()` | Items come in the order they were first added |
 | `union(other)`, `intersection(other)`, `difference(other)`, `filter(wanted)` | New sets |
-| `isSubsetOf(other)`, `equals(other)` | |
+| `isSubsetOf(other)`, `a == b` | Two sets are equal when they hold the same items, in whatever order |
+| `for item in set` | Goes through the items |
 
 ---
 
@@ -892,6 +900,50 @@ A complete service with its tests: [`examples/notes`](../examples/notes/main.lum
 
 ---
 
+## `std.ops`
+
+The traits that give a struct or an enum the syntax of the builtin types, and what a generic function asks of its type parameters. They are explained, with how to implement them, in [traits.md](traits.md#operators-loops-and-brackets).
+
+| Trait | Method to write | Gives |
+|-------|-----------------|-------|
+| `Equal` | `equals(other: Self) -> Bool` | `==`, `!=` |
+| `Ordered` | `compare(other: Self) -> Int` | `<`, `<=`, `>`, `>=`; `isBefore`, `isAfter` |
+| `Add`, `Subtract`, `Multiply`, `Divide` | `plus`, `minus`, `times`, `dividedBy` | `+ - * /`, `+=` ... |
+| `Show` | `show() -> String` | What `println`, `toString` and `"${...}"` write |
+| `Iterable<T>` | `iterate() -> [T]` | `for item in value` |
+| `Indexed<K, V>`, `IndexedSet<K, V>` | `at(key) -> V`, `put(key, value)` | `value[key]`, `value[key] = v;` |
+
+`Int`, `Float`, `String` and `Bool` implement `Equal` and `Show`; all but `Bool` implement `Ordered`.
+
+For any type that implements the trait named:
+
+| Function | Result |
+|----------|--------|
+| `max<T: Ordered>(a, b)`, `min(a, b)` | The first when neither comes first |
+| `largest<T: Ordered>(items) -> T?`, `smallest(items) -> T?` | `null` for an empty array |
+| `sorted<T: Ordered>(items) -> [T]` | From first to last; equal items keep their order |
+| `contains<T: Equal>(items, wanted)`, `indexOf(items, wanted) -> Int?` | |
+| `same<T: Equal>(first, second) -> Bool` | Equal items in the same order |
+| `join<T: Show>(items, separator) -> String` | The texts of the items |
+
+```lumen
+import std.ops;
+import std.ops.{Ordered};
+
+struct Version { major: Int; minor: Int; }
+impl Ordered for Version {
+    fn compare(other: Version) -> Int {
+        if self.major != other.major { return self.major - other.major; }
+        return self.minor - other.minor;
+    }
+}
+
+let newest = ops.largest(versions);
+if newest != null && newest > installed { ... }
+```
+
+---
+
 ## `std.test`
 
 ```lumen
@@ -960,6 +1012,5 @@ A folder called `std` among a program's own modules is not reachable as `std.som
 *   **Doing two things at once.** A web server answers one request at a time; a program cannot ask two servers at the same moment, or go on while another program runs.
 *   **Time zones by name.** A date is told in UTC, where the program runs, or at a fixed offset; there is no "Europe/Paris".
 *   **Sockets below HTTP**, HTTPS for a server of your own, and e-mail.
-*   **Equality by content** for arrays and structs: `==`, and so `contains` and `indexOf`, only say whether two of them are the same object. `json.equals`, `set.equals` and `test.same` are written by hand for their types.
-*   **`for` over a `List`, a `Dict` or a `Set`** directly: loop over `list.items`, `dict.keys()`, `set.items()`.
+*   **Equality by content for arrays.** A struct says when two of its values are equal by implementing `Equal`; two arrays are still only `==` when they are the same one. `ops.same(first, second)` and `test.same` compare them item by item.
 *   Everything is compiled into the program that imports a module, used or not; there is no removal of unused functions yet. A program that imports `std.http` compiles `std.json`, `std.dict` and the rest with it.

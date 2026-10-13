@@ -6,6 +6,11 @@ import (
 
 // desugarBinaryExpr desugars binary expressions, particularly short-circuit and null coalescing operators
 func (d *Desugarer) desugarBinaryExpr(binary *ast.BinaryExpr) ast.Expr {
+	// An operator a trait gives a struct
+	if lowered := d.lowerStructOperation(binary); lowered != nil {
+		return lowered
+	}
+
 	// Check for operators that need special desugaring
 	switch binary.Op {
 	case "&&":

@@ -34,6 +34,11 @@ type Desugarer struct {
 
 	// Source lines for error reporting (map of line number to line content)
 	sourceLines map[int]string
+
+	// The structs of the program by name, found when first asked for
+	structs map[string]*ast.StructDecl
+	// The value of each field that has one of its own, desugared
+	defaults map[*ast.Field]ast.Expr
 }
 
 // NewDesugarer creates a new desugarer instance
@@ -276,8 +281,15 @@ func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
 		if decl, variant := d.variantOf(expr); decl != nil {
 			return d.lowerVariantRef(expr, decl, variant)
 		}
+		if signature, ok := d.typeInfo.MethodValues[expr]; ok {
+			return d.methodValue(expr, signature)
+		}
 		return d.desugarMemberExpr(expr)
 	case *ast.IndexExpr:
+		if d.typeInfo.IndexReads[expr] {
+			// What a struct says its brackets give
+			return d.call(d.desugarExpr(expr.Expr), types.MethodAt, expr.BaseNode, d.desugarExpr(expr.Index))
+		}
 		return d.desugarIndexExpr(expr)
 	case *ast.StructInitExpr:
 		return d.desugarStructInitExpr(expr)
@@ -345,6 +357,7 @@ func (d *Desugarer) desugarCallExpr(call *ast.CallExpr) ast.Expr {
 	for i, arg := range call.Args {
 		newArgs[i] = d.desugarExpr(arg)
 	}
+	d.shown(call, newArgs)
 
 	return &ast.CallExpr{
 		BaseNode: call.BaseNode,
@@ -384,6 +397,7 @@ func (d *Desugarer) desugarStructInitExpr(structInit *ast.StructInitExpr) ast.Ex
 	for name, expr := range structInit.Fields {
 		newFields[name] = d.desugarExpr(expr)
 	}
+	d.withDefaults(structInit.Name, newFields)
 
 	return &ast.StructInitExpr{
 		BaseNode: structInit.BaseNode,

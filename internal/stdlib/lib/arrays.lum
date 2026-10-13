@@ -235,14 +235,14 @@ pub fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
 }
 
 // The items in the order of a number worked out from each, smallest
-// first: sortedBy(people, fn(p: Person) -> Int { return p.age; }).
+// first: sortedBy(people, p -> p.age).
 pub fn sortedBy<T>(items: [T], rank: fn(T) -> Int) -> [T] {
-    return sorted<T>(items, fn(a: T, b: T) -> Bool { return rank(a) < rank(b); });
+    return sorted<T>(items, (a, b) -> rank(a) < rank(b));
 }
 
 // The items in the alphabetical order of a text worked out from each.
 pub fn sortedByText<T>(items: [T], name: fn(T) -> String) -> [T] {
-    return sorted<T>(items, fn(a: T, b: T) -> Bool { return name(a) < name(b); });
+    return sorted<T>(items, (a, b) -> name(a) < name(b));
 }
 
 // The item a function ranks highest, or null for an empty array. Of
@@ -262,7 +262,7 @@ pub fn maxBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
 
 // The item a function ranks lowest, or null for an empty array.
 pub fn minBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
-    return maxBy<T>(items, fn(item: T) -> Int { return -rank(item); });
+    return maxBy<T>(items, item -> -rank(item));
 }
 
 // Changes the array itself: the items at the two positions change places.
@@ -324,7 +324,7 @@ pub fn flatMap<T, U>(items: [T], convert: fn(T) -> [U]) -> [U] {
 // The items sorted into groups by a text worked out from each. The
 // groups come in the order their first item did.
 //
-//     arrays.groupBy(words, fn(word: String) -> String { return strings.first(word, 1); })
+//     arrays.groupBy(words, word -> strings.first(word, 1))
 pub fn groupBy<T>(items: [T], name: fn(T) -> String) -> Dict<[T]> {
     let groups = dict.empty<[T]>();
     for item in items {
@@ -366,7 +366,7 @@ pub fn uniqueBy<T>(items: [T], name: fn(T) -> String) -> [T] {
 
 // The texts without repeats.
 pub fn unique(texts: [String]) -> [String] {
-    return uniqueBy<String>(texts, fn(text: String) -> String { return text; });
+    return uniqueBy<String>(texts, text -> text);
 }
 
 // The items a function accepts, and the ones it does not.
@@ -441,11 +441,11 @@ pub fn largest(numbers: [Int]) -> Int? {
 
 // The numbers from smallest to largest.
 pub fn sortedNumbers(numbers: [Int]) -> [Int] {
-    return sorted<Int>(numbers, fn(a: Int, b: Int) -> Bool { return a < b; });
+    return sorted<Int>(numbers, (a, b) -> a < b);
 }
 
 // The texts in alphabetical order.
 pub fn sortedTexts(texts: [String]) -> [String] {
-    return sorted<String>(texts, fn(a: String, b: String) -> Bool { return a < b; });
+    return sorted<String>(texts, (a, b) -> a < b);
 }
 

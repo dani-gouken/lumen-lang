@@ -50,7 +50,7 @@ impl Method {
 pub fn methodOf(name: String) -> Method? {
     let all = [Method.Get, Method.Post, Method.Put, Method.Patch, Method.Delete, Method.Head, Method.Options];
     let wanted = strings.upper(name);
-    return arrays.find(all, fn(method: Method) -> Bool { return method.name() == wanted; });
+    return arrays.find(all, method -> method.name() == wanted);
 }
 
 // Why there was no answer.

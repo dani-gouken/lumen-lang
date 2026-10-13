@@ -43,6 +43,8 @@ const (
 	ErrNoMembers         = "E2033" // `.length` on an array or a text
 	ErrBadTry            = "E2034" // `value?` where there is no failure to pass on, or nowhere to pass it
 	ErrNeverNull         = "E2035" // `value?.member` on a value that cannot be null
+	ErrBoundNotMet       = "E2036" // A type argument that does not implement what its parameter requires
+	ErrShortFn           = "E2037" // A function written with `->` where nothing says what its types are
 )
 
 type Checker struct {
@@ -77,6 +79,13 @@ type Checker struct {
 	methods  map[string]map[string]*ast.FnDecl // struct -> method -> declaration
 	impls    map[*ast.FnDecl]*ast.ImplDecl     // method -> the impl block it is in
 	registry *ImplRegistry
+	// By the name of a type, then of a trait: the impl that makes the type
+	// implement the trait
+	traitImpls map[string]map[string]*ast.ImplDecl
+	// What the type parameters in scope are required to implement
+	bounds map[string][]*ast.Type
+	// The types whose requirements were checked, each once
+	boundsChecked map[*ast.Type]bool
 
 	// Flow typing (see flow.go): variables currently known to be non-null,
 	// and how often each variable has been assigned so far
@@ -116,6 +125,9 @@ func NewChecker(prog *ast.Program, table *resolve.Table, errs *errors.Handler) *
 		methods:       make(map[string]map[string]*ast.FnDecl),
 		impls:         make(map[*ast.FnDecl]*ast.ImplDecl),
 		registry:      NewImplRegistry(),
+		traitImpls:    make(map[string]map[string]*ast.ImplDecl),
+		bounds:        make(map[string][]*ast.Type),
+		boundsChecked: make(map[*ast.Type]bool),
 		narrowed:      make(map[*resolve.Symbol]Type),
 		narrowedPaths: make(map[string]pathFact),
 		writes:        make(map[*resolve.Symbol]int),
@@ -134,6 +146,10 @@ func (c *Checker) SetSourceLines(lines map[int]string) {
 }
 
 func (c *Checker) Check() *Info {
+	c.info.implements = func(t Type, trait string) bool {
+		_, ok := c.traitArgsOf(t, trait)
+		return ok
+	}
 	c.collectDecls()
 	c.findFieldWriters()
 
@@ -176,6 +192,7 @@ func (c *Checker) checkFnDecl(d *ast.FnDecl) {
 	c.currentFn = d
 	defer func() { c.currentFn = prevFn }()
 	defer c.bindTypeParams(d.TypeParams)()
+	defer c.bindBounds(d.Bounds)()
 
 	if d.Body == nil {
 		return
@@ -219,17 +236,33 @@ func (c *Checker) checkFnDecl(d *ast.FnDecl) {
 
 func (c *Checker) checkStructDecl(d *ast.StructDecl) {
 	defer c.bindTypeParams(d.TypeParams)()
+	defer c.bindBounds(d.Bounds)()
 
 	// Check that all field types are valid
 	for _, field := range d.Fields {
-		if field.Type != nil {
-			c.resolveType(field.Type)
-			// The resolveType will report errors if the type is undefined
+		if field.Type == nil {
+			continue
+		}
+		fieldType := c.resolveType(field.Type)
+		if field.Default == nil {
+			continue
+		}
+		// port: Int = 8080; the value has to be one the field can hold
+		value := c.checkExprAs(field.Default, fieldType)
+		if value != nil && !c.assignable(fieldType, value) {
+			c.errorfWithSuggestion(field.Default.Token(), ErrTypeMismatch,
+				fmt.Sprintf("Give a value of type %s, or change the type of the field", describe(fieldType)),
+				"field '%s' is of type %s, and its value when none is given is of type %s", field.Name, fieldType, value)
 		}
 	}
 }
 
 func (c *Checker) checkTraitDecl(d *ast.TraitDecl) {
+	defer c.bindTypeParams(d.TypeParams)()
+	c.withSelf(c.traitSelf(d), func() { c.checkTraitMethods(d) })
+}
+
+func (c *Checker) checkTraitMethods(d *ast.TraitDecl) {
 	// Check all trait methods
 	for _, method := range d.Methods {
 		// Trait methods can be abstract (no body) or have default implementations
@@ -252,6 +285,16 @@ func (c *Checker) checkTraitDecl(d *ast.TraitDecl) {
 func (c *Checker) checkImplDecl(d *ast.ImplDecl) {
 	// The struct's type parameters are in scope for the methods
 	defer c.bindTypeParams(d.TypeParams)()
+	defer c.bindBounds(d.Bounds)()
+
+	if d.TraitName == "" && IsBuiltinTypeName(d.StructName) {
+		// A number or a text gets methods through a trait, so that the
+		// dot on one only ever reaches something a trait names
+		c.errorfWithSuggestion(d.Token(), ErrUnknownMethod,
+			fmt.Sprintf("Declare a trait with the methods and implement it: impl Trait for %s { ... }; or write functions that take a %s", d.StructName, d.StructName),
+			"%s is a builtin type: it can implement a trait, not be given methods of its own", d.StructName)
+		return
+	}
 
 	// Inside the impl, `Self` and `self` refer to the struct
 	c.withSelf(c.implSelfType(d), func() {
@@ -263,7 +306,7 @@ func (c *Checker) checkImplDecl(d *ast.ImplDecl) {
 		// If this is a trait implementation (not just inherent impl), verify completeness
 		if d.TraitName != "" {
 			traitDecl := c.findTraitDecl(d.TraitName)
-			if traitDecl != nil {
+			if traitDecl != nil && c.checkImplHeader(d, traitDecl) {
 				c.verifyTraitImpl(d, traitDecl)
 			}
 		}
@@ -311,6 +354,17 @@ func (c *Checker) checkCompoundAssignment(e *ast.BinaryExpr, op string) Type {
 		sym = c.table.Defs[ident]
 		c.checkNotConst(ident, sym)
 	} else {
+		if target, ok := e.Left.(*ast.IndexExpr); ok {
+			// stock["nails"] += 1 on a struct would read and write through
+			// two methods, asking for the key twice
+			if recv := c.checkExpr(target.Expr); recv != nil && typeKeyOrParam(recv) != "" {
+				c.errorfWithSuggestion(e.Token(), ErrInvalidOperation,
+					fmt.Sprintf("Write it out: target[key] = target[key] %s value;", op),
+					"%s cannot be used on what is in the brackets of %s", e.Op, recv)
+				c.checkExpr(e.Right)
+				return Unknown
+			}
+		}
 		declared = c.declaredTargetType(e.Left)
 	}
 
@@ -319,6 +373,10 @@ func (c *Checker) checkCompoundAssignment(e *ast.BinaryExpr, op string) Type {
 	// known to be non-null here
 	computation := &ast.BinaryExpr{BaseNode: e.BaseNode, Left: e.Left, Op: op, Right: e.Right}
 	result := c.checkBinaryExpr(computation)
+	if method, ok := c.info.OperatorMethods[computation]; ok {
+		// position += step, on a struct that says what + is
+		c.info.OperatorMethods[e] = method
+	}
 
 	if result != nil && !isUnknown(result) && declared != nil && !c.assignable(declared, result) {
 		c.errorf(e.Token(), ErrTypeMismatch, "cannot assign the %s result of %s to %s", result, e.Op, declared)
@@ -391,6 +449,8 @@ func (c *Checker) checkAssignment(e *ast.BinaryExpr) Type {
 		sym = c.table.Defs[ident]
 
 		c.checkNotConst(ident, sym)
+	} else if value, ok := c.indexWrite(e); ok {
+		left = value
 	} else {
 		left = c.declaredTargetType(e.Left)
 		if member, ok := e.Left.(*ast.MemberExpr); ok {
@@ -454,6 +514,10 @@ func (c *Checker) verifyTraitImpl(implDecl *ast.ImplDecl, traitDecl *ast.TraitDe
 	// Check each trait method
 	for _, traitMethod := range traitDecl.Methods {
 		implMethod, ok := implMethods[traitMethod.Name]
+		if !ok && traitMethod.Body != nil {
+			// The trait says what the method does when an impl does not
+			continue
+		}
 		if !ok {
 			c.errorfWithSuggestion(
 				implDecl.Token(),
@@ -466,8 +530,15 @@ func (c *Checker) verifyTraitImpl(implDecl *ast.ImplDecl, traitDecl *ast.TraitDe
 			continue
 		}
 
-		// Verify method signatures match
+		// Verify method signatures match, the trait's type parameters
+		// standing for what the impl gives them
+		traitArgs := make(map[string]Type, len(traitDecl.TypeParams))
+		for i, name := range traitDecl.TypeParams {
+			traitArgs[name] = c.resolveType(implDecl.TraitArgs[i])
+		}
+		restore := c.bind(traitArgs)
 		c.verifyMethodSignature(implMethod, traitMethod, traitDecl.Name)
+		restore()
 	}
 }
 
@@ -713,7 +784,16 @@ func (c *Checker) checkForStmt(s *ast.ForStmt) {
 				c.errorfWithSuggestion(s.Iterable.Token(), ErrNotIterable, "Use an array or string in for loops", "cannot iterate over type %s", iterType)
 			}
 		default:
-			c.errorfWithSuggestion(s.Iterable.Token(), ErrNotIterable, "Use an array or string in for loops", "cannot iterate over type %s", iterType)
+			if args, ok := c.traitArgsOf(iterType, TraitIterable); ok && len(args) == 1 {
+				// A struct that says what a loop over it goes through
+				c.info.Iterations[s] = args[0]
+				break
+			}
+			suggestion := "Use an array or string in for loops"
+			if typeKeyOrParam(iterType) != "" {
+				suggestion = fmt.Sprintf("Loop over an array it holds, or implement Iterable<...> for %s (method 'iterate'), with: import std.ops.{Iterable};", describe(iterType))
+			}
+			c.errorfWithSuggestion(s.Iterable.Token(), ErrNotIterable, suggestion, "cannot iterate over type %s", iterType)
 		}
 	}
 	c.forgetAssignedIn(s.Body)
@@ -884,6 +964,9 @@ func (c *Checker) declaredIdentType(id *ast.Ident) Type {
 					return String
 				}
 			}
+			if elem, ok := c.info.Iterations[decl]; ok {
+				return elem
+			}
 		case *ast.ForIndex:
 			// Position variable of `for i, item in items`
 			return Int
@@ -899,6 +982,9 @@ func (c *Checker) declaredIdentType(id *ast.Ident) Type {
 		case *ast.ImplDecl:
 			// Implicit `self` of an impl method
 			return c.implSelfType(decl)
+		case *ast.TraitDecl:
+			// ...and of a method a trait gives a body
+			return c.traitSelf(decl)
 		}
 	case resolve.SymbolFunc:
 		if fn, ok := sym.Decl.(*ast.FnDecl); ok {
@@ -995,6 +1081,13 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 		if !c.comparable(left, right) {
 			c.errorf(e.Token(), ErrInvalidOperation, "operator %s not defined for types %s and %s", e.Op, left, right)
 		}
+		// Two values of a type that says when its values are equal are
+		// compared that way; anything else as before
+		if typeKeyOrParam(left) != "" && !isUnknown(right) && !right.Equals(Null) {
+			if _, ok := c.traitArgsOf(left, TraitEqual); ok && c.assignable(left, right) {
+				c.info.OperatorMethods[e] = Operators[e.Op].Method
+			}
+		}
 		return Bool
 	}
 
@@ -1041,6 +1134,11 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 		}
 	}
 
+	// A struct with the trait behind the operator
+	if result := c.operatorOn(e, left, right); result != nil {
+		return result
+	}
+
 	for _, side := range []struct {
 		typ  Type
 		expr ast.Expr
@@ -1053,6 +1151,10 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 		}
 	}
 
+	if suggestion := missingOperator(e.Op, left); suggestion != "" {
+		c.errorfWithSuggestion(e.Token(), ErrInvalidOperation, suggestion, "operator %s not defined for types %s and %s", e.Op, left, right)
+		return Unknown
+	}
 	c.errorf(e.Token(), ErrInvalidOperation, "operator %s not defined for types %s and %s", e.Op, left, right)
 	return Unknown
 }
@@ -1125,6 +1227,7 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 		result = c.checkMethodCall(e, member, expected)
 	} else {
 		c.inferFunctionTypeArgs(e, expected)
+		c.checkCallBounds(e)
 		result = c.callValue(e, c.checkExpr(e.Func))
 		if c.isBuiltinCall(e, "push") {
 			c.checkPush(e)
@@ -1188,14 +1291,16 @@ func (c *Checker) checkStructInitExpr(e *ast.StructInitExpr) Type {
 		}
 	}
 
+	c.requireBounds(decl.TypeParams, decl.Bounds, typeArgs, e.Token(), "struct "+decl.Name)
+
 	var missing []string
 	for _, field := range decl.Fields {
-		if _, given := e.Fields[field.Name]; !given {
+		if _, given := e.Fields[field.Name]; !given && field.Default == nil {
 			missing = append(missing, "'"+field.Name+"'")
 		}
 	}
 	if len(missing) > 0 {
-		c.errorfWithSuggestion(e.Token(), ErrMissingField, "Every field needs a value; use null for an optional field",
+		c.errorfWithSuggestion(e.Token(), ErrMissingField, "Every field needs a value; use null for an optional field, or give the field a value of its own in the struct: name: Type = value;",
 			"struct literal of %s is missing %s", e.Name, strings.Join(missing, ", "))
 	}
 	return result
@@ -1272,6 +1377,9 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 				"a tuple has no '%s'", e.Name)
 			return Unknown
 		}
+		if decl := c.methodDecl(t, e.Name); decl != nil && c.enums[t.Name] != nil {
+			return c.methodValue(e, t, decl)
+		}
 		if decl := c.enums[t.Name]; decl != nil {
 			c.errorfWithSuggestion(e.Token(), ErrUnknownField,
 				fmt.Sprintf("Take the value apart with a match: match value { case %s.%s(...): { ... } }", decl.Name, firstVariant(decl)),
@@ -1284,10 +1392,8 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 		if fieldType, ok := c.fieldType(t, e.Name); ok {
 			return fieldType
 		}
-		if c.methodDecl(t, e.Name) != nil {
-			c.errorfWithSuggestion(e.Token(), ErrUnknownField, fmt.Sprintf("Call it: %s()", e.Name),
-				"'%s' is a method of %s, not a field", e.Name, t)
-			return Unknown
+		if decl := c.methodDecl(t, e.Name); decl != nil {
+			return c.methodValue(e, t, decl)
 		}
 		if similar := c.similarMember(t, e.Name); similar != "" {
 			c.errorfWithSuggestion(e.Token(), ErrUnknownField, "Did you mean '"+similar+"'?",
@@ -1351,6 +1457,20 @@ func asWritten(expr ast.Expr) string {
 // checkIndexExpr types `expr[index]`.
 func (c *Checker) checkIndexExpr(e *ast.IndexExpr) Type {
 	recv := c.checkExpr(e.Expr)
+
+	// A struct that says what its brackets give: the key is what it asks
+	// for, not necessarily a number
+	if recv != nil && typeKeyOrParam(recv) != "" {
+		if args, ok := c.traitArgsOf(recv, TraitIndexed); ok && len(args) == 2 {
+			key := c.checkExprAs(e.Index, args[0])
+			if key != nil && !c.assignable(args[0], key) {
+				c.errorf(e.Index.Token(), ErrTypeMismatch, "%s is indexed by %s, got %s", recv, args[0], key)
+			}
+			c.info.IndexReads[e] = true
+			return args[1]
+		}
+	}
+
 	index := c.checkExpr(e.Index)
 	if index != nil && !index.Equals(Int) && !isUnknown(index) {
 		c.errorfWithSuggestion(e.Index.Token(), ErrTypeMismatch, "Use an Int as index", "index must be int, got %s", index)
@@ -1376,12 +1496,34 @@ func (c *Checker) checkIndexExpr(e *ast.IndexExpr) Type {
 		}
 	}
 
+	if recv != nil && typeKeyOrParam(recv) != "" {
+		c.errorfWithSuggestion(e.Token(), ErrInvalidOperation,
+			fmt.Sprintf("Call one of its methods, or implement Indexed<Key, Value> for %s (method 'at'), with: import std.ops.{Indexed};", describe(recv)),
+			"type %s cannot be indexed", recv)
+		return Unknown
+	}
 	c.errorf(e.Token(), ErrInvalidOperation, "type %s cannot be indexed", recv)
 	return Unknown
 }
 
 // checkFnExpr types an anonymous function and checks its body.
 func (c *Checker) checkFnExpr(e *ast.FnExpr) Type {
+	if e.Short && !e.Typed && len(e.Params) == 0 {
+		// () -> now() needs nothing from outside: its body says what it
+		// gives
+		result := c.shortFnResult(e, nil)
+		if result == nil {
+			result = Unknown
+		}
+		c.annotateShortFn(e, nil, result)
+	}
+	if !shortFnIsTyped(e) {
+		// item -> item.name, where no function type is expected
+		c.errorfWithSuggestion(e.Token(), ErrShortFn,
+			"Use it where a function is expected (an argument, a variable or a field of a function type), or write the types: fn(name: Type) -> Type { ... }",
+			"nothing here says what the parameters of this function are")
+		return Unknown
+	}
 	// Reuse the FnDecl machinery so `return` is checked against the lambda
 	fn := &ast.FnDecl{BaseNode: e.BaseNode, Params: e.Params, ReturnType: e.ReturnType, Body: e.Body}
 	if c.currentFn != nil {
@@ -1473,14 +1615,16 @@ func (c *Checker) resolveType(n *ast.Type) Type {
 			return Self
 		}
 
-		if _, isTrait := c.traits[n.Name]; isTrait {
-			return NewBehavior(n.Name, nil)
-		}
-
 		var typeArgs []Type
 		for _, arg := range n.Generics {
 			typeArgs = append(typeArgs, c.resolveType(arg))
 		}
+		if _, isTrait := c.traits[n.Name]; isTrait {
+			trait := NewBehavior(n.Name, nil)
+			trait.TypeArgs = typeArgs
+			return trait
+		}
+		c.checkTypeBounds(n, typeArgs)
 		return &StructType{Name: n.Name, BaseName: n.Name, TypeArgs: typeArgs}
 
 	case ast.TypeArray, ast.TypeVariadic:

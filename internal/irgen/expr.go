@@ -479,7 +479,7 @@ func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.Me
 	if how == dispatchStatic {
 		fn = fc.builder.CreateMov(ir.Constant{Val: methodIRName(structName, member.Name), Type: "FuncRef"})
 	} else {
-		fn = fc.builder.CreateGetField(receiver, member.Name)
+		fn = fc.lookUpMethod(receiver, member.Name)
 	}
 
 	args := []ir.Value{receiver}
@@ -488,6 +488,41 @@ func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.Me
 	}
 	fc.setPos(expr)
 	return fc.builder.CreateCall(fn, args...)
+}
+
+// lookUpMethod finds a method on a value whose type is only known when
+// the program runs. A struct or an enum value carries the methods traits
+// can reach, so it is asked. A number or a text carries nothing: when one
+// of those types has a method of that name, the value is tested for being
+// of that type first.
+func (fc *FunctionCompiler) lookUpMethod(receiver *ir.Register, name string) *ir.Register {
+	builtins := fc.gen.builtinOwners(name)
+	if len(builtins) == 0 {
+		return fc.builder.CreateGetField(receiver, name)
+	}
+
+	fn := fc.builder.NewRegister()
+	endBlock := fc.builder.NewBlock()
+	for _, builtin := range builtins {
+		test := fc.builder.CreateMov(ir.Constant{Val: TypeTestIntrinsic, Type: "FuncRef"})
+		desc := fc.builder.CreateMov(ir.Constant{Val: strings.ToLower(builtin), Type: "String"})
+		isIt := fc.builder.CreateCall(test, receiver, desc)
+
+		foundBlock := fc.builder.NewBlock()
+		nextBlock := fc.builder.NewBlock()
+		fc.builder.CreateBr(isIt, foundBlock, nextBlock)
+
+		fc.builder.SetBlock(foundBlock)
+		fc.builder.Emit(ir.OpMov, fn, ir.Constant{Val: methodIRName(builtin, name), Type: "FuncRef"})
+		fc.builder.CreateJmp(endBlock)
+
+		fc.builder.SetBlock(nextBlock)
+	}
+	fc.builder.Emit(ir.OpMov, fn, fc.builder.CreateGetField(receiver, name))
+	fc.builder.CreateJmp(endBlock)
+
+	fc.builder.SetBlock(endBlock)
+	return fn
 }
 
 // compileArgs compiles call arguments. When the callee is a known function

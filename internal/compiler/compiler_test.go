@@ -1219,7 +1219,7 @@ func TestCompileErrors(t *testing.T) {
 		{"unknown method", "struct P { x: Int; }\nfn main() -> Int { let p = P { x: 1 }; return p.missing(1); }", "E2015", "P has no method 'missing'"},
 		{"method argument", "struct P { x: Int; }\nimpl P { fn add(n: Int) -> Int { return self.x + n; } }\nfn main() -> Int { let p = P { x: 1 }; return p.add(\"one\"); }", "E2010", "cannot use type string as argument of type int"},
 		{"method result", "struct P { x: Int; }\nimpl P { fn get() -> Int { return self.x; } }\nfn main() -> Int { let p = P { x: 1 }; let s: String = p.get(); return 0; }", "E2001", "cannot assign type int to string"},
-		{"method used as a value", "struct P { x: Int; }\nimpl P { fn get() -> Int { return self.x; } }\nfn main() -> Int { let p = P { x: 1 }; let f = p.get; return 0; }", "E2014", "'get' is a method of P"},
+		{"method of a computed value used as a value", "struct P { x: Int; }\nimpl P { fn get() -> Int { return self.x; } }\nfn main() -> Int { let f = P { x: 1 }.get; return 0; }", "E2014", "a method can be used as a value on a variable or a field"},
 		{"struct lacks the trait", "trait T { fn m() -> Int; }\nstruct P { x: Int; }\nfn use(t: T) -> Int { return t.m(); }\nfn main() -> Int { return use(P { x: 1 }); }", "E2010", "cannot use type P as argument of type T"},
 		{"method not in the trait", "trait T { fn m() -> Int; }\nfn use(t: T) -> Int { return t.other(); }\nfn main() -> Int { return 0; }", "E2015", "trait T has no method 'other'"},
 		{"generic result", "fn id<T>(v: T) -> T { return v; }\nfn main() -> Int { let s: String = id<Int>(1); return 0; }", "E2001", "cannot assign type int to string"},

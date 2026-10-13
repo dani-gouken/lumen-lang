@@ -116,6 +116,7 @@ func describeVariant(decl *ast.EnumDecl, variant *ast.EnumVariant) string {
 
 func (c *Checker) checkEnumDecl(d *ast.EnumDecl) {
 	defer c.bindTypeParams(d.TypeParams)()
+	defer c.bindBounds(d.Bounds)()
 
 	seen := make(map[string]bool)
 	for _, variant := range d.Variants {
@@ -208,7 +209,7 @@ func (c *Checker) checkVariant(member *ast.MemberExpr, args []ast.Expr, called b
 			argType := c.checkExprAs(arg, c.partial(declared[i], isParam, found, hint))
 			argTypes = append(argTypes, argType)
 			if argType != nil {
-				unify(declared[i], argType, isParam, found)
+				c.unify(declared[i], argType, isParam, found)
 			}
 		}
 	}

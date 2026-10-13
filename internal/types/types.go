@@ -264,6 +264,10 @@ type Method struct {
 type BehaviorType struct {
 	Name    string
 	Methods []Method
+
+	// TypeArgs are the type arguments of a trait that has type
+	// parameters: the Int of Source<Int>
+	TypeArgs []Type
 }
 
 func NewBehavior(name string, methods []Method) *BehaviorType {
@@ -276,7 +280,15 @@ func (t *BehaviorType) String() string {
 }
 func (t *BehaviorType) Equals(other Type) bool {
 	o, ok := other.(*BehaviorType)
-	return ok && t.Name == o.Name
+	if !ok || t.Name != o.Name || len(t.TypeArgs) != len(o.TypeArgs) {
+		return false
+	}
+	for i := range t.TypeArgs {
+		if !t.TypeArgs[i].Equals(o.TypeArgs[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // --- Intersections ---

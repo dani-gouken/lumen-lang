@@ -115,6 +115,8 @@ that detects the problem.
 | `E2033` | `.length` on an array or a text; the suggestion names the function of the standard library to call |
 | `E2034` | `value?` where it cannot work: on something that is neither a `Result` nor an optional, or in a function that cannot return the failure or `null` |
 | `E2035` | `value?.member` on a value that cannot be null, or on a `Result` |
+| `E2036` | A type argument that does not implement what its type parameter requires (`<T: Ordered>`) |
+| `E2037` | A function written without types (`x -> x + 1`) where nothing says what its parameters are, or with the wrong number of them |
 | `E2028` | `match` on an enum that leaves values out; the message names one as a pattern |
 | `E2029` | Pattern that cannot match: unknown variant, wrong number of values, variant of another enum, literal of the wrong type |
 | `E2030` | Enum used wrongly: unknown variant, wrong number of values, type argument nothing determines, the enum as a value |

@@ -107,15 +107,15 @@ fn summed(orders: [Order], name: fn(Order) -> String) -> [Line] {
         return Line {
             name: key,
             orders: arrays.len(group),
-            units: arrays.sumOf(group, fn(o: Order) -> Int { return o.quantity; }),
-            revenue: arrays.fold(group, 0.0, fn(sum: Float, o: Order) -> Float { return sum + o.total(); }),
+            units: arrays.sumOf(group, o -> o.quantity),
+            revenue: arrays.fold(group, 0.0, (sum, o) -> sum + o.total()),
         };
     });
-    return arrays.sorted(lines, fn(a: Line, b: Line) -> Bool { return a.revenue > b.revenue; });
+    return arrays.sorted(lines, (a, b) -> a.revenue > b.revenue);
 }
 
 fn revenueOf(lines: [Line]) -> Float {
-    return arrays.fold(lines, 0.0, fn(sum: Float, line: Line) -> Float { return sum + line.revenue; });
+    return arrays.fold(lines, 0.0, (sum, line) -> sum + line.revenue);
 }
 
 // `total` is what the shares are of: all the revenue, also when only
@@ -152,12 +152,12 @@ fn report(table: Table, source: String, output: String?) -> Int {
         return 1;
     }
 
-    let byDate = arrays.sortedBy(orders, fn(o: Order) -> Int { return o.date.timestamp(); });
+    let byDate = arrays.sortedBy(orders, o -> o.date.timestamp());
     let first = byDate[0].date;
     let last = byDate[arrays.len(byDate) - 1].date;
-    let categories = summed(orders, fn(o: Order) -> String { return o.category; });
-    let customers = summed(orders, fn(o: Order) -> String { return o.customer; });
-    let products = summed(orders, fn(o: Order) -> String { return o.product; });
+    let categories = summed(orders, o -> o.category);
+    let customers = summed(orders, o -> o.customer);
+    let products = summed(orders, o -> o.product);
     let total = revenueOf(categories);
 
     println("Sales, ${first.format("D MMMM")} to ${last.format("D MMMM YYYY")}");
@@ -173,7 +173,7 @@ fn report(table: Table, source: String, output: String?) -> Int {
     let weeks = arrays.groupBy(byDate, fn(o: Order) -> String {
         return o.date.plusDays(-weekdayIndex(o.date)).format("DD MMM");
     });
-    let best = arrays.fold(weeks.values(), 0.0, fn(most: Float, week: [Order]) -> Float { return math.fmax(most, weekRevenue(week)); });
+    let best = arrays.fold(weeks.values(), 0.0, (most, week) -> math.fmax(most, weekRevenue(week)));
     for (start, week) in weeks.entries() {
         let revenue = weekRevenue(week);
         println("week of ${start}", format.pad(format.money(revenue), 9, Align.Right), " " + format.bar(math.round(revenue), math.round(best), 24));
@@ -213,7 +213,7 @@ fn weekdayIndex(date: Date) -> Int {
 }
 
 fn weekRevenue(week: [Order]) -> Float {
-    return arrays.fold(week, 0.0, fn(sum: Float, o: Order) -> Float { return sum + o.total(); });
+    return arrays.fold(week, 0.0, (sum, o) -> sum + o.total());
 }
 
 fn main() -> Int {
@@ -233,6 +233,6 @@ fn main() -> Int {
 // Reading the file and reading it as a table fail in different ways; both
 // end as a sentence for the person at the terminal.
 fn load(source: String) -> Result<Table, String> {
-    let text = io.readFile(source).mapErr(fn(error: io.Error) -> String { return error.describe(); })?;
+    let text = io.readFile(source).mapErr(error -> error.describe())?;
     return csv.table(text).mapErr(fn(error: csv.ParseError) -> String { return "${path.base(source)}, ${error.describe()}"; });
 }

@@ -63,18 +63,18 @@ fn fromDocument(document: Json) -> Result<[Task], StoreError> {
 
 impl Store {
     pub fn save() -> Result<Int, StoreError> {
-        let document = json.array(self.tasks, fn(t: Task) -> Json { return t.toJson(); });
+        let document = json.array(self.tasks, t -> t.toJson());
         return io.writeFile(self.file, document.pretty() + "\n").mapErr(StoreError.File);
     }
 
     // One more than the highest id in use: ids are never given twice,
     // even after a task is removed from the middle.
     pub fn nextId() -> Int {
-        return (arrays.largest(arrays.map(self.tasks, fn(t: Task) -> Int { return t.id; })) ?? 0) + 1;
+        return (arrays.largest(arrays.map(self.tasks, t -> t.id)) ?? 0) + 1;
     }
 
     pub fn find(id: Int) -> Task? {
-        return arrays.find(self.tasks, fn(t: Task) -> Bool { return t.id == id; });
+        return arrays.find(self.tasks, t -> t.id == id);
     }
 
     pub fn add(new: Task) {
@@ -83,7 +83,7 @@ impl Store {
 
     // Returns whether there was such a task.
     pub fn remove(id: Int) -> Bool {
-        let at = arrays.findIndex(self.tasks, fn(t: Task) -> Bool { return t.id == id; });
+        let at = arrays.findIndex(self.tasks, t -> t.id == id);
         if at == null { return false; }
         self.tasks = arrays.without(self.tasks, at);
         return true;

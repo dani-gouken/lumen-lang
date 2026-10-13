@@ -55,13 +55,13 @@ pub fn empty() -> Book {
 
 impl Book {
     pub fn find(id: Int) -> Note? {
-        return arrays.find(self.notes, fn(note: Note) -> Bool { return note.id == id; });
+        return arrays.find(self.notes, note -> note.id == id);
     }
 
     // The notes that carry a tag, or all of them without one.
     pub fn tagged(tag: String?) -> [Note] {
         if tag == null { return self.notes; }
-        return arrays.filter(self.notes, fn(note: Note) -> Bool { return arrays.contains(note.tags, tag); });
+        return arrays.filter(self.notes, note -> arrays.contains(note.tags, tag));
     }
 
     // The notes whose title or body holds a text, whatever its case.
@@ -74,7 +74,7 @@ impl Book {
 
     // Every tag in use, each once, in alphabetical order.
     pub fn tags() -> [String] {
-        let all = set.of(arrays.flatMap(self.notes, fn(note: Note) -> [String] { return note.tags; }));
+        let all = set.of(arrays.flatMap(self.notes, note -> note.tags));
         return arrays.sortedTexts(all.items());
     }
 
@@ -99,7 +99,7 @@ impl Book {
     }
 
     pub fn remove(id: Int) -> Bool {
-        let at = arrays.findIndex(self.notes, fn(note: Note) -> Bool { return note.id == id; });
+        let at = arrays.findIndex(self.notes, note -> note.id == id);
         if at == null { return false; }
         self.notes = arrays.without(self.notes, at);
         return true;
@@ -113,7 +113,7 @@ impl Book {
         if title == "" { return Result.Err(Refusal.Missing("title")); }
         if strings.len(title) > 60 { return Result.Err(Refusal.TooLong("title", 60)); }
 
-        let taken = arrays.find(self.notes, fn(note: Note) -> Bool { return strings.lower(note.title) == strings.lower(title); });
+        let taken = arrays.find(self.notes, note -> strings.lower(note.title) == strings.lower(title));
         if taken != null && taken.id != replacing { return Result.Err(Refusal.Duplicate(taken.title)); }
 
         let body = document.get("body")?.text() ?? "";

@@ -1,0 +1,231 @@
+// The traits behind operators, loops and brackets.
+//
+// A struct or an enum that implements one of these gets the syntax that
+// goes with it:
+//
+//     impl Equal for Point       a == b, a != b
+//     impl Ordered for Version   a < b, a <= b, a > b, a >= b
+//     impl Add for Vector        a + b, a += b      (Subtract, Multiply, Divide alike)
+//     impl Iterable<T> for Deck  for card in deck { ... }
+//     impl Indexed<K, V> for Grid       grid[key]
+//     impl IndexedSet<K, V> for Grid    grid[key] = value;
+//
+// They are also what a function asks of the types it works for:
+//
+//     fn largest<T: Ordered>(items: [T]) -> T? { ... }
+//
+// Numbers, texts and booleans implement Equal, and all but booleans
+// Ordered, so such a function takes them as well.
+
+// Saying when two values are equal. Without it, two structs are only
+// equal when they are the very same one.
+pub trait Equal {
+    fn equals(other: Self) -> Bool;
+}
+
+// Saying which of two values comes first.
+pub trait Ordered {
+    // Below zero when this value comes before the other, zero when
+    // neither comes first, above zero when it comes after.
+    fn compare(other: Self) -> Int;
+
+    fn isBefore(other: Self) -> Bool { return self.compare(other) < 0; }
+    fn isAfter(other: Self) -> Bool { return self.compare(other) > 0; }
+}
+
+pub trait Add {
+    fn plus(other: Self) -> Self;
+}
+
+pub trait Subtract {
+    fn minus(other: Self) -> Self;
+}
+
+pub trait Multiply {
+    fn times(other: Self) -> Self;
+}
+
+pub trait Divide {
+    fn dividedBy(other: Self) -> Self;
+}
+
+// What a loop over a value goes through.
+pub trait Iterable<T> {
+    fn iterate() -> [T];
+}
+
+// What a value gives for a key in brackets.
+pub trait Indexed<K, V> {
+    fn at(key: K) -> V;
+}
+
+// What assigning to a key in brackets does.
+pub trait IndexedSet<K, V> {
+    fn put(key: K, value: V);
+}
+
+// Saying how a value reads as text.
+pub trait Show {
+    fn show() -> String;
+}
+
+// --- The builtin types ---
+
+impl Equal for Int {
+    fn equals(other: Int) -> Bool { return self == other; }
+}
+
+impl Equal for Float {
+    fn equals(other: Float) -> Bool { return self == other; }
+}
+
+impl Equal for String {
+    fn equals(other: String) -> Bool { return self == other; }
+}
+
+impl Equal for Bool {
+    fn equals(other: Bool) -> Bool { return self == other; }
+}
+
+impl Ordered for Int {
+    fn compare(other: Int) -> Int {
+        if self < other { return -1; }
+        if self > other { return 1; }
+        return 0;
+    }
+}
+
+impl Ordered for Float {
+    fn compare(other: Float) -> Int {
+        if self < other { return -1; }
+        if self > other { return 1; }
+        return 0;
+    }
+}
+
+impl Ordered for String {
+    fn compare(other: String) -> Int {
+        if self < other { return -1; }
+        if self > other { return 1; }
+        return 0;
+    }
+}
+
+impl Show for Int {
+    fn show() -> String { return toString(self); }
+}
+
+impl Show for Float {
+    fn show() -> String { return toString(self); }
+}
+
+impl Show for String {
+    fn show() -> String { return self; }
+}
+
+impl Show for Bool {
+    fn show() -> String { return toString(self); }
+}
+
+// --- For anything that implements them ---
+
+// The larger of two values; the first when neither is.
+pub fn max<T: Ordered>(a: T, b: T) -> T {
+    if b.compare(a) > 0 { return b; }
+    return a;
+}
+
+// The smaller of two values; the first when neither is.
+pub fn min<T: Ordered>(a: T, b: T) -> T {
+    if b.compare(a) < 0 { return b; }
+    return a;
+}
+
+// The largest item, or null for an empty array.
+pub fn largest<T: Ordered>(items: [T]) -> T? {
+    if items.length == 0 { return null; }
+    let best = items[0];
+    for item in items {
+        if item.compare(best) > 0 { best = item; }
+    }
+    return best;
+}
+
+// The smallest item, or null for an empty array.
+pub fn smallest<T: Ordered>(items: [T]) -> T? {
+    if items.length == 0 { return null; }
+    let best = items[0];
+    for item in items {
+        if item.compare(best) < 0 { best = item; }
+    }
+    return best;
+}
+
+// The items from the one that comes first to the one that comes last.
+// Items of which neither comes first stay in the order they were in.
+pub fn sorted<T: Ordered>(items: [T]) -> [T] {
+    if items.length < 2 {
+        let same: [T] = [];
+        for item in items { push(same, item); }
+        return same;
+    }
+    let middle = items.length / 2;
+    let left: [T] = [];
+    let right: [T] = [];
+    for i, item in items {
+        if i < middle { push(left, item); } else { push(right, item); }
+    }
+    left = sorted(left);
+    right = sorted(right);
+
+    let out: [T] = [];
+    let l = 0;
+    let r = 0;
+    while l < left.length && r < right.length {
+        if right[r].compare(left[l]) < 0 {
+            push(out, right[r]);
+            r++;
+        } else {
+            push(out, left[l]);
+            l++;
+        }
+    }
+    while l < left.length { push(out, left[l]); l++; }
+    while r < right.length { push(out, right[r]); r++; }
+    return out;
+}
+
+// Whether an array holds an item equal to a value.
+pub fn contains<T: Equal>(items: [T], wanted: T) -> Bool {
+    for item in items {
+        if item.equals(wanted) { return true; }
+    }
+    return false;
+}
+
+// Where an item equal to a value first is, or null.
+pub fn indexOf<T: Equal>(items: [T], wanted: T) -> Int? {
+    for i, item in items {
+        if item.equals(wanted) { return i; }
+    }
+    return null;
+}
+
+// Whether two arrays hold equal items in the same order.
+pub fn same<T: Equal>(first: [T], second: [T]) -> Bool {
+    if first.length != second.length { return false; }
+    for i, item in first {
+        if !item.equals(second[i]) { return false; }
+    }
+    return true;
+}
+
+// The texts of the items, joined: join(points, ", ").
+pub fn join<T: Show>(items: [T], separator: String) -> String {
+    let out = "";
+    for i, item in items {
+        if i > 0 { out = out + separator; }
+        out = out + item.show();
+    }
+    return out;
+}

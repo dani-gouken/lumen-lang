@@ -395,18 +395,59 @@ func (p *Parser) parseExternDecl() *ast.FnDecl {
 }
 
 func (p *Parser) parseTypeParams() []string {
+	params, _ := p.parseBoundedTypeParams(false)
+	return params
+}
+
+// parseBoundedTypeParams parses `<T, U: Ordered + Show>`: type parameters,
+// each with the traits it is required to implement, if any. Where bounds
+// make no sense (the parameters of a trait, the ones repeated after the
+// struct name of an impl) they are refused.
+func (p *Parser) parseBoundedTypeParams(bounded bool) ([]string, map[string][]*ast.Type) {
 	var params []string
+	var bounds map[string][]*ast.Type
 	if !p.accept(token.LT) {
-		return nil
+		return nil, nil
 	}
 	for {
-		params = append(params, p.expect(token.IDENT, "type parameter name").Literal)
+		name := p.expect(token.IDENT, "type parameter name").Literal
+		params = append(params, name)
+		if p.at(token.COLON) {
+			if !bounded {
+				p.failWith(ErrUnexpectedToken, "Say what a type parameter has to implement where it is introduced: after 'fn name', 'struct Name', 'enum Name' or 'impl'",
+					"a type parameter cannot be given a requirement here")
+			}
+			p.next()
+			if bounds == nil {
+				bounds = make(map[string][]*ast.Type)
+			}
+			for {
+				bounds[name] = append(bounds[name], p.parseTraitName())
+				if !p.accept(token.PLUS) {
+					break
+				}
+			}
+		}
 		if !p.accept(token.COMMA) {
 			break
 		}
 	}
 	p.expect(token.GT, "'>'")
-	return params
+	return params, bounds
+}
+
+// parseTraitName parses the name of a trait, with its type arguments if it
+// has any: `Ordered`, `shapes.Drawable`, `Source<Int>`.
+func (p *Parser) parseTraitName() *ast.Type {
+	tok := p.cur()
+	name := p.expectTypeName("trait name")
+	tok.Literal = name
+	t := &ast.Type{BaseNode: base(tok), Kind: ast.TypeBasic, Name: name}
+	if p.accept(token.LT) {
+		t.Generics = p.parseTypeList(token.GT)
+		p.expect(token.GT, "'>'")
+	}
+	return t
 }
 
 // parseFnDecl parses a function declaration. Trait methods have no body.
@@ -414,7 +455,7 @@ func (p *Parser) parseFnDecl(traitMethod bool) *ast.FnDecl {
 	tok := p.expect(token.FN, "'fn'")
 	decl := &ast.FnDecl{BaseNode: base(tok), IsTraitMethod: traitMethod}
 	decl.Name = p.expect(token.IDENT, "function name").Literal
-	decl.TypeParams = p.parseTypeParams()
+	decl.TypeParams, decl.Bounds = p.parseBoundedTypeParams(true)
 	decl.Params = p.parseParams()
 	if p.accept(token.ARROW) {
 		decl.ReturnType = p.parseType()
@@ -452,7 +493,7 @@ func (p *Parser) parseStructDecl() *ast.StructDecl {
 	tok := p.expect(token.STRUCT, "'struct'")
 	decl := &ast.StructDecl{BaseNode: base(tok)}
 	decl.Name = p.expect(token.IDENT, "struct name").Literal
-	decl.TypeParams = p.parseTypeParams()
+	decl.TypeParams, decl.Bounds = p.parseBoundedTypeParams(true)
 
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
@@ -460,6 +501,11 @@ func (p *Parser) parseStructDecl() *ast.StructDecl {
 		field := &ast.Field{BaseNode: base(nameTok), Name: nameTok.Literal}
 		p.expect(token.COLON, "':'")
 		field.Type = p.parseType()
+		if p.accept(token.ASSIGN) {
+			// port: Int = 8080; what the field holds when a literal does
+			// not say
+			field.Default = p.parseExpr()
+		}
 		decl.Fields = append(decl.Fields, field)
 		if !p.accept(token.SEMICOLON) && !p.accept(token.COMMA) {
 			break
@@ -473,7 +519,7 @@ func (p *Parser) parseEnumDecl() *ast.EnumDecl {
 	tok := p.expect(token.ENUM, "'enum'")
 	decl := &ast.EnumDecl{BaseNode: base(tok)}
 	decl.Name = p.expect(token.IDENT, "enum name").Literal
-	decl.TypeParams = p.parseTypeParams()
+	decl.TypeParams, decl.Bounds = p.parseBoundedTypeParams(true)
 
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
@@ -501,6 +547,7 @@ func (p *Parser) parseTraitDecl() *ast.TraitDecl {
 	tok := p.expect(token.TRAIT, "'trait'")
 	decl := &ast.TraitDecl{BaseNode: base(tok)}
 	decl.Name = p.expect(token.IDENT, "trait name").Literal
+	decl.TypeParams = p.parseTypeParams()
 
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
@@ -516,9 +563,20 @@ func (p *Parser) parseTraitDecl() *ast.TraitDecl {
 func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	tok := p.expect(token.IMPL, "'impl'")
 	decl := &ast.ImplDecl{BaseNode: base(tok)}
-	decl.TypeParams = p.parseTypeParams()
+	decl.TypeParams, decl.Bounds = p.parseBoundedTypeParams(true)
 
 	first := p.expectTypeName("trait or struct name")
+	// impl Source<Int> for Counter: the type arguments of a trait are
+	// types, where those of the struct can only repeat the parameters of
+	// the impl. Which of the two follows is known once they are read.
+	if p.at(token.LT) {
+		start := p.pos
+		if args := p.tryTraitArgs(); args != nil {
+			decl.TraitArgs = args
+		} else {
+			p.pos = start
+		}
+	}
 	if p.accept(token.FOR) {
 		decl.TraitName = first
 		decl.StructName = p.expectTypeName("struct name")
@@ -536,6 +594,30 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 	}
 	p.expect(token.RBRACE, "'}'")
 	return decl
+}
+
+// tryTraitArgs parses `<Int, [T]>` when `for` follows it, which makes it
+// the type arguments of the trait of an impl. Otherwise it returns nil.
+func (p *Parser) tryTraitArgs() (args []*ast.Type) {
+	wasSpeculating := p.speculating
+	p.speculating = true
+	defer func() {
+		p.speculating = wasSpeculating
+		if r := recover(); r != nil {
+			if _, ok := r.(bailout); !ok {
+				panic(r)
+			}
+			args = nil
+		}
+	}()
+
+	p.expect(token.LT, "'<'")
+	list := p.parseTypeList(token.GT)
+	p.expect(token.GT, "'>'")
+	if !p.at(token.FOR) {
+		return nil
+	}
+	return list
 }
 
 // expectImplTypeArgs parses the `<T, U>` after the struct name of an impl
@@ -1027,6 +1109,15 @@ func (p *Parser) tryTypePattern() (typ *ast.Type) {
 // statements, so there is no value of `i++` to define.
 func (p *Parser) parseExprStmt() *ast.ExprStmt {
 	tok := p.cur()
+	expr, _ := p.parseExprOrAssignment()
+	p.expectSemicolon()
+	return &ast.ExprStmt{BaseNode: base(tok), Expr: expr}
+}
+
+// parseExprOrAssignment parses what an expression statement is made of:
+// an expression, or an assignment to one (`x = 1`, `x += 1`, `x++`). It
+// reports whether it was an assignment, which has no value.
+func (p *Parser) parseExprOrAssignment() (ast.Expr, bool) {
 	expr := p.parseExpr()
 
 	opTok := p.cur()
@@ -1034,17 +1125,15 @@ func (p *Parser) parseExprStmt() *ast.ExprStmt {
 	case token.ASSIGN, token.PLUS_ASSIGN, token.MINUS_ASSIGN, token.STAR_ASSIGN, token.SLASH_ASSIGN, token.PERCENT_ASSIGN:
 		p.checkAssignable(expr)
 		p.next()
-		expr = &ast.BinaryExpr{BaseNode: base(opTok), Left: expr, Op: opTok.Literal, Right: p.parseExpr()}
+		return &ast.BinaryExpr{BaseNode: base(opTok), Left: expr, Op: opTok.Literal, Right: p.parseExpr()}, true
 
 	case token.INC, token.DEC:
 		p.checkAssignable(expr)
 		p.next()
 		one := &ast.Literal{BaseNode: base(opTok), Value: "1", Kind: "int"}
-		expr = &ast.BinaryExpr{BaseNode: base(opTok), Left: expr, Op: opTok.Literal[:1] + "=", Right: one}
+		return &ast.BinaryExpr{BaseNode: base(opTok), Left: expr, Op: opTok.Literal[:1] + "=", Right: one}, true
 	}
-
-	p.expectSemicolon()
-	return &ast.ExprStmt{BaseNode: base(tok), Expr: expr}
+	return expr, false
 }
 
 // checkAssignable fails unless expr can stand on the left of an assignment.
@@ -1264,21 +1353,34 @@ func (p *Parser) parsePrimary() ast.Expr {
 		return &ast.Literal{BaseNode: base(tok), Value: tok.Literal, Kind: "null"}
 
 	case token.IDENT:
+		if isShortFnArrow(p.peekAt(1)) {
+			// item -> item.name
+			p.next()
+			return p.parseShortFn(tok, []ast.Expr{&ast.Ident{BaseNode: base(tok), Name: tok.Literal}})
+		}
 		return p.parseIdentExpr()
 
 	case token.LPAREN:
 		p.next()
-		expr := p.parseNestedExpr()
-		if !p.at(token.COMMA) {
-			p.expect(token.RPAREN, "')'")
-			return expr
+		if p.at(token.RPAREN) && isShortFnArrow(p.peekAt(1)) {
+			// () -> now()
+			p.next()
+			return p.parseShortFn(tok, nil)
 		}
-		// (1, "a"): a tuple
+		expr := p.parseNestedExpr()
 		elems := []ast.Expr{expr}
 		for p.accept(token.COMMA) && !p.at(token.RPAREN) {
 			elems = append(elems, p.parseNestedExpr())
 		}
 		p.expect(token.RPAREN, "')'")
+		if isShortFnArrow(p.cur()) {
+			// (a, b) -> a + b: what was read is its parameters
+			return p.parseShortFn(tok, elems)
+		}
+		if len(elems) == 1 {
+			return expr
+		}
+		// (1, "a"): a tuple
 		return p.tuple(tok, elems)
 
 	case token.LBRACKET:
@@ -1301,6 +1403,64 @@ func (p *Parser) parsePrimary() ast.Expr {
 
 	p.fail("expected expression, found %s", describe(tok))
 	return nil
+}
+
+// isShortFnArrow reports whether a token is the arrow of a function
+// written without types, or the `=>` other languages write there, which
+// is reported with what to write instead.
+func isShortFnArrow(tok token.Token) bool {
+	return tok.Type == token.ARROW || tok.Type == token.FAT_ARROW
+}
+
+// parseShortFn parses a function written without types, from its arrow:
+//
+//	item -> item.name
+//	(a, b) -> a + b
+//	() -> now()
+//	line -> { count++; return strings.trim(line); }
+//
+// The arrow is the one of `fn(item: Person) -> String`: what is on its
+// left gives what is on its right. names are the parameters as they were
+// read, as expressions. Their types and that of the result are those of
+// the function type expected where the function stands, which the type
+// checker fills in.
+func (p *Parser) parseShortFn(start token.Token, names []ast.Expr) ast.Expr {
+	fn := &ast.FnExpr{BaseNode: base(start), Short: true}
+	for _, name := range names {
+		ident, ok := name.(*ast.Ident)
+		if !ok || len(ident.TypeArgs) > 0 {
+			if !p.speculating {
+				p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+					"the parameters of a function written with '->' are names",
+					"Write them as (first, second) -> ..., or use fn(first: Type) -> Type { ... } to give their types",
+					name.Token(), p.sourceLines)
+			}
+			panic(bailout{})
+		}
+		fn.Params = append(fn.Params, &ast.Param{BaseNode: ident.BaseNode, Name: ident.Name})
+	}
+
+	if p.at(token.FAT_ARROW) {
+		p.failWith(ErrUnexpectedToken, "Write '->', as in: item -> item.name", "a function is written with '->', not '=>'")
+	}
+	arrow := p.expect(token.ARROW, "'->'")
+	if p.at(token.LBRACE) {
+		fn.Body = p.parseBlock()
+		return fn
+	}
+	// One expression: what the function gives. Or one assignment, which
+	// gives nothing: () -> count++
+	saved := p.noStructLit
+	p.noStructLit = false
+	value, isAssignment := p.parseExprOrAssignment()
+	p.noStructLit = saved
+	if isAssignment {
+		fn.Body = &ast.BlockStmt{BaseNode: base(arrow), Stmts: []ast.Stmt{&ast.ExprStmt{BaseNode: base(arrow), Expr: value}}}
+		return fn
+	}
+	fn.ExprBody = true
+	fn.Body = &ast.BlockStmt{BaseNode: base(arrow), Stmts: []ast.Stmt{&ast.ReturnStmt{BaseNode: base(arrow), Value: value}}}
+	return fn
 }
 
 // parseIdentExpr parses an identifier, optionally with type arguments, and

@@ -67,7 +67,7 @@ fn main() -> Int {
         println("top + 1 =", top + 1, "of", numbers.size());
     }
 
-    let labels = numbers.map<String>(fn(n: Int) -> String { return "#" + toString(n); });
+    let labels = numbers.map<String>(n -> "#" + toString(n));
     println("labels:", labels.items);
 
     // ...or a fallback covers the null case

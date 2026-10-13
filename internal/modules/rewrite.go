@@ -42,14 +42,19 @@ func (r *rewriter) rewrite() {
 		case *ast.StructDecl:
 			d.Name = r.m.qualify(d.Name)
 			r.withTypeParams(d.TypeParams, func() {
+				r.bounds(d.Bounds)
 				for _, field := range d.Fields {
 					r.typ(field.Type)
+					if field.Default != nil {
+						r.scoped(func() { field.Default = r.expr(field.Default) })
+					}
 				}
 			})
 
 		case *ast.EnumDecl:
 			d.Name = r.m.qualify(d.Name)
 			r.withTypeParams(d.TypeParams, func() {
+				r.bounds(d.Bounds)
 				for _, variant := range d.Variants {
 					for _, value := range variant.Values {
 						r.typ(value)
@@ -59,12 +64,14 @@ func (r *rewriter) rewrite() {
 
 		case *ast.TraitDecl:
 			d.Name = r.m.qualify(d.Name)
-			for _, method := range d.Methods {
-				// What a trait promises is as visible as the trait
-				method.Pub = true
-				method.Module = r.m.name
-				r.fn(method)
-			}
+			r.withTypeParams(d.TypeParams, func() {
+				for _, method := range d.Methods {
+					// What a trait promises is as visible as the trait
+					method.Pub = true
+					method.Module = r.m.name
+					r.method(method)
+				}
+			})
 
 		case *ast.ImplDecl:
 			d.StructName = r.typeName(d.StructName, d.Token())
@@ -72,12 +79,14 @@ func (r *rewriter) rewrite() {
 				d.TraitName = r.typeName(d.TraitName, d.Token())
 			}
 			r.withTypeParams(d.TypeParams, func() {
+				r.bounds(d.Bounds)
+				r.types(d.TraitArgs)
 				for _, method := range d.Methods {
 					method.Module = r.m.name
 					if d.TraitName != "" {
 						method.Pub = true
 					}
-					r.fn(method)
+					r.method(method)
 				}
 			})
 		}
@@ -248,8 +257,24 @@ func (r *rewriter) types(list []*ast.Type) {
 
 // --- Declarations and statements ---
 
+// bounds rewrites the traits type parameters are required to implement.
+func (r *rewriter) bounds(bounds map[string][]*ast.Type) {
+	for _, traits := range bounds {
+		r.types(traits)
+	}
+}
+
+// method rewrites a method: a function in which `self` is a variable.
+func (r *rewriter) method(d *ast.FnDecl) {
+	r.scoped(func() {
+		r.declare("self")
+		r.fn(d)
+	})
+}
+
 func (r *rewriter) fn(d *ast.FnDecl) {
 	r.withTypeParams(d.TypeParams, func() {
+		r.bounds(d.Bounds)
 		r.scoped(func() {
 			r.params(d.Params)
 			r.typ(d.ReturnType)

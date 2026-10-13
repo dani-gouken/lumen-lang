@@ -10,10 +10,9 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | a pipe operator for chaining, short lambdas, ranges |
+| Everyday syntax | a pipe operator for chaining, ranges |
 | Failures | cleanup that always runs, one shape for all errors |
-| Types | traits as bounds on type parameters, generic traits, conditions and alternatives in `match` |
-| Structs as first-class containers | `for` over a struct, `list[i]`, methods as values |
+| Types | conditions and alternatives in `match`, `match` as an expression, traits for arrays |
 | Correctness | unused variables, bytecode checked before it runs |
 | Runtime | register allocation per call, method dispatch cost |
 | Program structure | native code from outside (shared libraries), a way to install packages, variables outside functions |
@@ -47,14 +46,6 @@ Arrays and texts have no members. `items.length` is an error (`E2033`); the leng
 
 The cost is an `import std.arrays;` in almost every program. Calls of the two functions are compiled to the same single instruction `.length` was, so there is none at runtime.
 
-### Short lambdas — S
-
-```lumen
-arrays.map(numbers, n => n * 2)
-```
-
-**Today**: `fn(n: Int) -> Int { return n * 2; }`, with the types written even where the call already says what they are. This is most of the noise in code that uses `map`, `filter` and `std.option`.
-
 ### More for failures — S to M each
 
 `Result`, `panic`, `attempt` and traces are there ([errors.md](errors.md)). Not there:
@@ -63,7 +54,7 @@ arrays.map(numbers, n => n * 2)
 |---------|-------|
 | Cleanup that runs whatever happens: `defer`, `finally` | Nothing; harmless while the library keeps nothing open between calls |
 | `attempt` on a function with arguments | Wrap the call in a lambda |
-| One shape for all errors | `io.Error`, `Failure` and your own each have `describe()` by convention; a trait cannot be required of a type parameter |
+| One shape for all errors | `io.Error`, `Failure` and your own each have `describe()` by convention. A trait for it can now be written and required (`<E: Describe>`); the library does not have one yet |
 | Underlining exactly what failed | A runtime error underlines the name or number that starts where the instruction's source does; the end of the expression is not recorded |
 | `Result` from the functions that parse | `strings.parseInt` returns an optional: the reason is always "not a number" |
 
@@ -81,14 +72,11 @@ Adding a function written in Lumen means editing a file in `internal/stdlib/lib/
 
 The library is some 2,500 lines of Lumen. Most of it compiled as first written; these are the places where the language made the code longer or stranger than it should be, in the order of how often they came up.
 
-Five that headed this list have since been added, and the library and the examples rewritten with them: tuples, `?` to pass a failure on, `?.`, texts over several lines, and what a test established reaching into a function expression.
+Most of this list has since been added, and the library and the examples rewritten with it: tuples, `?` to pass a failure on, `?.`, texts over several lines, what a test established reaching into a function expression, requirements on type parameters and equality a type defines for itself. Calling a function held in a field, `self.key(item)`, turned out to work all along.
 
 | Missing | What it cost |
 |---------|--------------|
 | **`match` with a value** | Every `kindOf(name)` is a `match` with a `return` in each case |
-| **Something required of a type parameter** | `Set<T>` has to be given a function from an item to a text; every error type has a `describe()` by convention only |
-| **Equality by content** | `Json.equals`, `Set.equals` and `test.same` are each written by hand; `test.equal` on two arrays fails with "expected [1, 2], got [1, 2]", and has a special message for it |
-| **A function in a field, called** | `self.key(item)` is taken for a method call: `let key = self.key; key(item)` |
 | **`${` in a text that is not an insertion** | A regex replacement naming a group is `"\${year}"`: easy to forget, and the error is "undefined identifier 'year'" |
 | **A `Result` with nothing in it** | `fs.makeDir` gives back the path it was given, for want of a `Result<Void, Error>` |
 | **Keywords as names** | `for case in cases` is a syntax error; so are `match`, `in`, `is` as names of variables |
@@ -139,23 +127,23 @@ Patterns on literals, on types and on the variants of an enum (with names, liter
 
 **Notes**: Needs storage that lives for the whole run (global slots in the VM) and an order in which initializers run across modules.
 
-### Traits and generics do not meet — M / L
+### What traits and structs still lack — S to M each
 
-*   **A type parameter cannot be required to implement a trait.** `fn largest<T: Ordered>(items: [T])` is not parsed, and inside `fn f<T>(x: T)` nothing can be called on `x` (`E2015`): a `T` is opaque. Generic code that needs to compare or print its values takes a function for it, as `arrays.sorted(items, before)` does. (L)
-*   **A trait cannot have type parameters**: `trait Source<T> { fn next() -> T?; }` is not parsed. This is what an iteration trait needs. (M)
-*   **No operators on structs**: `a + b` on two vectors, `a < b`, `==` by content. (M)
-
-### Structs are not containers yet — M
-
-A `List` or a `Dict` from the standard library is a struct, and a struct cannot take part in the syntax of arrays:
+Requirements on type parameters, traits with type parameters, methods with a body, traits for the builtin types, operators, loops and brackets on structs, fields with a value of their own and methods as values are all there ([traits.md](traits.md)). Not there:
 
 | Missing | Today |
 |---------|-------|
-| `for item in list` | `E2011`; write `for item in list.items`, `for key in dict.keys()` |
-| `list[i]`, `dict["key"]` | `E2006`; write `list.get(i)`, `dict.get("key")` |
-| A method as a value: `arrays.map(keys, users.get)` | `E2014`; wrap it: `fn(k: String) -> User? { return users.get(k); }` |
-
-The first two wait for generic traits, above.
+| Two impls of one trait for one type: `impl Source<Int>` and `impl Source<String>` for the same struct | `E2019`. A type implements a trait once |
+| Types a trait leaves to its impls: `type Item;` | Type parameters of the trait: `Iterable<T>` |
+| Functions of a type rather than of a value: `Point.origin()` | A function next to the struct |
+| Traits for arrays, tuples, optionals and functions | Only structs, enums and the four builtin types |
+| `%` and unary `-` on a struct; `a[k] += v` on a struct | Not operators a trait gives; the last has to be written out |
+| Equality by content inside other values | Two tuples, enum values or arrays holding structs are compared by the machine, which does not ask the structs for `equals` |
+| `Show` inside other values | `println([money])` writes the struct as any value; `ops.join` writes each with its `show` |
+| `value is Trait` for a number or a text | False, though the type implements the trait: the test looks at what the value carries |
+| A method with type parameters as a value: `box.map` | `E2014`; wrap the call in a function |
+| A method of a computed value as a value: `load().get` | `E2014`; put the value in a variable |
+| Fields hidden from other modules | A `pub struct` shows all of them |
 
 ### Functions: defaults and names for arguments — S
 
@@ -165,10 +153,6 @@ The first two wait for generic traits, above.
 
 *   `fn inner() { ... }` inside a function body is a syntax error. Use `let inner = fn() { ... };`.
 *   A lambda cannot call itself: in `let f = fn(n: Int) -> Int { ... f(n - 1) ... };` the name `f` is not in scope inside the body (`E1001`). Use a top-level function for recursion.
-
-### Trait default methods — M
-
-**Today**: a trait method may have a body, but an `impl` that does not provide the method is rejected (`E2012`), so the default is never used.
 
 ### Bitwise operators — S
 
@@ -195,12 +179,13 @@ The first two wait for generic traits, above.
 | `x!`, to insist a value is not null | Not parsed. `x ?? panic(...)` does not type either: test against `null`, or use `?` |
 | Anything concurrent: threads, async, timers | Nothing; a program is one sequence of steps |
 | Type aliases | Not parsed |
-| Methods on builtin types (`"abc".upper()`) | `impl Trait for Int` parses, but calls are not dispatched |
-| Struct field defaults | Not parsed |
+| Methods on builtin types without a trait (`"abc".upper()`) | By design: `impl Trait for String` gives texts the methods of a trait, and nothing else puts a method on one |
 | Tuples of more than six values, or of one | A struct |
 | Taking a tuple apart in a parameter (`fn(key, value)` for a function of a pair) or a struct apart at all | `let (key, value) = pair;` as the first line |
 | `?.` followed by an index: `items?[0]` | `arrays.at`, or a test against `null` |
 | `?` in `main`, to end the program with the failure | A `match` |
+| Types on a short function: `(n: Int) -> n * 2` | The long form, `fn(n: Int) -> Int { return n * 2; }`; a short one always takes its types from outside |
+| A short function where nothing is expected: `let f = x -> x + 1;` | `E2037`; give the variable a type, or use the long form |
 
 ---
 
@@ -228,8 +213,7 @@ Type arguments are inferred from the arguments of a call (`first([1, 2])`, `stac
 
 *   a call whose result goes nowhere typed: `let xs = none();` still needs `none<Int>()`;
 *   the first argument that mentions a parameter decides it; there is no search for a type common to several arguments (`same(1, 2.5)` is an error, not `T = Any`);
-*   inference does not look further than one call: in `first(none())`, nothing determines the inner call;
-*   **a generic call with `??` as what a `for` loops over** is a defect, not a limit: `for tag in option.then(value, json.itemsOf) ?? [] { ... }` is accepted by the type checker and then refused by the desugarer with `E4001: Cannot iterate over type 'struct U { }'`, the second type pass having lost what `U` was. Naming the array first (`let tags: [Json] = ...;`) avoids it.
+*   inference does not look further than one call: in `first(none())`, nothing determines the inner call.
 
 ### Function casts cannot see through generics — inherent
 
@@ -273,7 +257,7 @@ Function objects are reused, so calling a function by name allocates nothing for
 |------|--------|
 | `.lc` compatibility | Bytecode files carry a version (4 today) that is raised by hand when the format changes; a new opcode alone does not raise it |
 | GC roots and Go's GC | Heap objects are held as integers in registers and stay alive only through the VM's object list; correct today, fragile if Go ever moves objects |
-| Equality | Arrays and structs compare by identity; there is no structural `==` |
+| Equality | Arrays compare by identity; so do structs that do not implement `Equal` |
 | Float formatting | `println(3.0)` prints `3`, indistinguishable from an Int |
 
 ---
@@ -300,9 +284,8 @@ Function objects are reused, so calling a function by name allocates nothing for
 
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
-1.  **Chaining and less noise**: the pipe operator and short lambdas. Small, and they change how every program reads.
+1.  **Chaining**: the pipe operator. Small, and it changes how nested calls read.
 3.  **Syntax highlighting** for one editor.
-4.  **Traits with type parameters, and as bounds**: what `for` over a `List`, `list[i]` and generic code that compares its values all wait for.
 5.  **`match`**: conditions on cases, several patterns per case, `match` as an expression.
 6.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
 

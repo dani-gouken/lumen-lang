@@ -90,7 +90,7 @@ impl Suite {
 
 impl Report {
     pub fn passed() -> Int {
-        return arrays.count(self.results, fn(r: TestResult) -> Bool { return r.passed(); });
+        return arrays.count(self.results, r -> r.passed());
     }
 
     pub fn failed() -> Int {

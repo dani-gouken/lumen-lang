@@ -28,6 +28,9 @@ import (
 func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 	pos := forStmt.Position()
 
+	// A loop over a struct goes through the array the struct gives
+	forStmt = d.iterated(forStmt)
+
 	// Validate that the iterable is actually iterable
 	if !d.validateForLoopIterable(forStmt) {
 		// Return the original statement on error - compilation will fail anyway

@@ -84,12 +84,12 @@ pub fn removeAll(target: String) -> Result<String, Error> {
 
 // Gives a file or a folder another name or place. Gives the new path.
 pub fn rename(from: String, to: String) -> Result<String, Error> {
-    return done(move(from, to), "rename", from).map(fn(old: String) -> String { return to; });
+    return done(move(from, to), "rename", from).map(old -> to);
 }
 
 // Copies a file, replacing what was at the new path. Gives the new path.
 pub fn copy(from: String, to: String) -> Result<String, Error> {
-    return done(duplicate(from, to), "copy", from).map(fn(source: String) -> String { return to; });
+    return done(duplicate(from, to), "copy", from).map(source -> to);
 }
 
 // The folder relative paths are taken from.

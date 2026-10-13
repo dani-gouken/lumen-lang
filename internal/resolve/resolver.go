@@ -126,6 +126,7 @@ func (r *Resolver) visitFnDecl(d *ast.FnDecl) {
 		sym := &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: d}
 		r.current.Insert(tp, sym)
 	}
+	r.visitBounds(d.Bounds)
 
 	// Register parameters
 	for _, param := range d.Params {
@@ -152,9 +153,25 @@ func (r *Resolver) visitStructDecl(d *ast.StructDecl) {
 		r.current.Insert(tp, &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: d})
 	}
 
-	// Resolve field types
+	r.visitBounds(d.Bounds)
+
+	// Resolve field types, and the values fields have when a literal does
+	// not give one: those see what the top level declares, nothing else
 	for _, f := range d.Fields {
 		r.visitType(f.Type)
+		if f.Default != nil {
+			r.visitExpr(f.Default)
+		}
+	}
+}
+
+// visitBounds resolves the traits type parameters are required to
+// implement.
+func (r *Resolver) visitBounds(bounds map[string][]*ast.Type) {
+	for _, traits := range bounds {
+		for _, trait := range traits {
+			r.visitType(trait)
+		}
 	}
 }
 
@@ -165,6 +182,7 @@ func (r *Resolver) visitEnumDecl(d *ast.EnumDecl) {
 	for _, tp := range d.TypeParams {
 		r.current.Insert(tp, &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: d})
 	}
+	r.visitBounds(d.Bounds)
 
 	for _, v := range d.Variants {
 		for _, t := range v.Values {
@@ -174,7 +192,14 @@ func (r *Resolver) visitEnumDecl(d *ast.EnumDecl) {
 }
 
 func (r *Resolver) visitTraitDecl(d *ast.TraitDecl) {
-	// Trait methods
+	// The type parameters of the trait, and `self`, are visible in its
+	// methods: in the signatures, and in the bodies of those that have one
+	r.pushScope(d)
+	defer r.popScope()
+	r.current.Insert("self", &Symbol{Name: "self", Kind: SymbolVar, Decl: d})
+	for _, tp := range d.TypeParams {
+		r.current.Insert(tp, &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: d})
+	}
 	for _, m := range d.Methods {
 		r.visitFnDecl(m)
 	}
@@ -208,6 +233,18 @@ func (r *Resolver) visitImplDecl(d *ast.ImplDecl) {
 			}
 		}
 	}
+
+	// impl<T: Ordered> Source<T> for List<T>: the requirements and the
+	// trait's type arguments may name the impl's type parameters
+	r.pushScope(d.TraitArgsScope())
+	for _, tp := range d.TypeParams {
+		r.current.Insert(tp, &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: d})
+	}
+	r.visitBounds(d.Bounds)
+	for _, arg := range d.TraitArgs {
+		r.visitType(arg)
+	}
+	r.popScope()
 
 	for _, m := range d.Methods {
 		r.visitMethodDecl(d, m)

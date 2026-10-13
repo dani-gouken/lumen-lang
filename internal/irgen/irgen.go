@@ -207,20 +207,58 @@ func (g *IRGenerator) resolveMethod(receiver ast.Expr, name string) (dispatch, s
 		// on a value whose type arguments are no longer known here
 		// (`outer.get().get()` with outer a Box<Box<Int>>). Treated like
 		// any receiver of unknown type, below.
-	case *types.BehaviorType:
+	case *types.BehaviorType, *types.TypeParam:
+		// Only what the value implements is known: a trait, or what a
+		// type parameter is required to
 		return dispatchDynamic, ""
+	case *types.PrimitiveType:
+		// A method a trait gives numbers or texts
+		if key := builtinTypeName(t); key != "" && g.hasMethod(key, name) {
+			return dispatchStatic, key
+		}
 	}
 
 	// The receiver's type is not known (its elements came from an untyped
 	// `[]`, for instance). The name still identifies the method when only
-	// one struct defines it.
+	// one struct defines it. A number or a text cannot be asked for its
+	// methods, so when one of those has the method too it is found by
+	// looking at the value (see compileMethodCall).
 	switch owners := g.methodOwners[name]; len(owners) {
 	case 0:
 		return dispatchField, ""
 	case 1:
-		return dispatchStatic, owners[0]
+		if !types.IsBuiltinTypeName(owners[0]) {
+			return dispatchStatic, owners[0]
+		}
 	}
 	return dispatchDynamic, ""
+}
+
+// builtinTypeName is the name impls give a builtin type, or "".
+func builtinTypeName(t *types.PrimitiveType) string {
+	switch t.Name {
+	case types.PrimitiveInt:
+		return "Int"
+	case types.PrimitiveFloat:
+		return "Float"
+	case types.PrimitiveString:
+		return "String"
+	case types.PrimitiveBool:
+		return "Bool"
+	}
+	return ""
+}
+
+// builtinOwners lists the builtin types that have a method of that name,
+// in a fixed order.
+func (g *IRGenerator) builtinOwners(name string) []string {
+	var owners []string
+	for _, builtin := range []string{"Int", "Float", "String", "Bool"} {
+		if g.hasMethod(builtin, name) {
+			owners = append(owners, builtin)
+		}
+	}
+	return owners
 }
 
 // storedOnValue reports whether a method has to be stored on each value of

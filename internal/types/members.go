@@ -30,6 +30,15 @@ func (c *Checker) collectDecls() {
 		}
 		if impl.TraitName != "" {
 			c.registry.Register(impl.StructName, impl.TraitName)
+			if c.traitImpls[impl.StructName] == nil {
+				c.traitImpls[impl.StructName] = make(map[string]*ast.ImplDecl)
+			}
+			if _, twice := c.traitImpls[impl.StructName][impl.TraitName]; twice {
+				c.errorfWithSuggestion(impl.Token(), ErrDuplicateMethod, "A type implements a trait once, with one choice of type arguments",
+					"%s already implements %s", impl.StructName, impl.TraitName)
+			} else {
+				c.traitImpls[impl.StructName][impl.TraitName] = impl
+			}
 		}
 		if c.methods[impl.StructName] == nil {
 			c.methods[impl.StructName] = make(map[string]*ast.FnDecl)
@@ -111,19 +120,8 @@ func (c *Checker) fieldType(recv *StructType, name string) (Type, bool) {
 // methodDecl finds the declaration of a method of a struct, or of a
 // method a trait requires.
 func (c *Checker) methodDecl(recv Type, name string) *ast.FnDecl {
-	switch t := recv.(type) {
-	case *StructType:
-		return c.methods[t.Name][name]
-	case *BehaviorType:
-		if trait := c.traits[t.Name]; trait != nil {
-			for _, m := range trait.Methods {
-				if m.Name == name {
-					return m
-				}
-			}
-		}
-	}
-	return nil
+	decl, _ := c.methodOn(recv, name)
+	return decl
 }
 
 // checkMethodVisible reports a use of a method from a module that may not
@@ -145,12 +143,16 @@ func (c *Checker) checkMethodVisible(recv Type, member *ast.MemberExpr) {
 // parameters of the impl are the receiver's type arguments, and the
 // method's own type parameters are the given type arguments.
 func (c *Checker) methodType(recv Type, name string, typeArgs []Type) (*FunctionType, bool) {
-	decl := c.methodDecl(recv, name)
+	decl, traitArgs := c.methodOn(recv, name)
 	if decl == nil {
 		return nil, false
 	}
 
+	// In `trait Source<T>`, T is what the receiver gives the trait
 	bindings := make(map[string]Type)
+	for param, arg := range traitArgs {
+		bindings[param] = arg
+	}
 
 	// In `impl<T> Box<T>`, T is whatever the receiver has in that position
 	if impl := c.impls[decl]; impl != nil {
@@ -227,8 +229,10 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 		return Unknown
 
 	case *StructType:
-		if ft, ok := c.methodType(t, member.Name, c.methodTypeArgs(t, member, e, expected)); ok {
+		typeArgs := c.methodTypeArgs(t, member, e, expected)
+		if ft, ok := c.methodType(t, member.Name, typeArgs); ok {
 			c.checkMethodVisible(t, member)
+			c.checkMethodBounds(t, member, typeArgs)
 			c.info.Types[member] = ft
 			return c.checkArgs(e, ft)
 		}
@@ -268,6 +272,33 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 			c.checkArgsOnly(e)
 			return Unknown
 		}
+		// A method a trait gives numbers or texts
+		if ft, ok := c.methodType(t, member.Name, c.methodTypeArgs(t, member, e, expected)); ok {
+			c.info.Types[member] = ft
+			return c.checkArgs(e, ft)
+		}
+
+	case *TypeParam:
+		// What is required of the type parameter says what can be called
+		if ft, ok := c.methodType(t, member.Name, c.methodTypeArgs(t, member, e, expected)); ok {
+			c.info.Types[member] = ft
+			return c.checkArgs(e, ft)
+		}
+		c.checkArgsOnly(e)
+		if len(c.boundsOf(t)) == 0 {
+			c.errorfWithSuggestion(member.Token(), ErrUnknownMethod,
+				fmt.Sprintf("Require a trait that has the method where %s is introduced: <%s: Trait>", t.Name, t.Name),
+				"nothing is known of a %s: it has no method '%s'", t.Name, member.Name)
+			return Unknown
+		}
+		var traits []string
+		for _, bound := range c.boundsOf(t) {
+			// As the program writes it: Show, not std.ops.Show
+			traits = append(traits, displayName(bound.Name)+strings.TrimPrefix(describe(bound), bound.Name))
+		}
+		c.errorf(member.Token(), ErrUnknownMethod, "%s is only known to implement %s, which has no method '%s'",
+			t.Name, strings.Join(traits, " and "), member.Name)
+		return Unknown
 	}
 
 	return fail("type %s has no method '%s'", recv, member.Name)
@@ -382,6 +413,14 @@ func (c *Checker) checkArgs(e *ast.CallExpr, ft *FunctionType) Type {
 // `let names: [String] = [];` have the declared type. A call of a generic
 // function takes from it the type arguments it could not infer otherwise.
 func (c *Checker) checkExprAs(expr ast.Expr, expected Type) Type {
+	if fn, ok := expr.(*ast.FnExpr); ok && fn.Short {
+		// item -> item.name takes its types from what is expected here
+		typ := c.checkShortFn(fn, expected)
+		if typ != nil {
+			c.info.Types[expr] = typ
+		}
+		return typ
+	}
 	if _, isCall := expr.(*ast.CallExpr); isCall || c.isVariantRef(expr) {
 		// A generic call may take the type arguments its own arguments
 		// leave open from here: let xs: [Int] = none();
@@ -522,12 +561,24 @@ func (c *Checker) assignable(target, source Type) bool {
 		return c.assignable(t.ReturnType, src.ReturnType)
 
 	case *BehaviorType:
-		// A struct fits a trait it implements
-		if src, ok := source.(*StructType); ok {
-			return c.registry.Implements(src.Name, t.Name)
-		}
+		// A value fits a trait its type implements
+		return c.implements(source, t)
 	}
 	return false
+}
+
+// checkMethodBounds checks a method call against what the impl and the
+// method require of their type parameters: `impl<T: Ordered> Box<T>` has
+// methods only a Box of something ordered has.
+func (c *Checker) checkMethodBounds(recv *StructType, member *ast.MemberExpr, typeArgs []Type) {
+	decl := c.methodDecl(recv, member.Name)
+	if decl == nil {
+		return
+	}
+	if impl := c.impls[decl]; impl != nil && len(recv.TypeArgs) == len(impl.TypeParams) {
+		c.requireBounds(impl.TypeParams, impl.Bounds, recv.TypeArgs, member.Token(), "method '"+member.Name+"'")
+	}
+	c.requireBounds(decl.TypeParams, decl.Bounds, typeArgs, member.Token(), "method '"+member.Name+"'")
 }
 
 // sameType reports whether two types are interchangeable.
@@ -835,7 +886,14 @@ func describe(t Type) string {
 		return t.Name + "<" + strings.Join(args, ", ") + ">"
 
 	case *BehaviorType:
-		return t.Name
+		if len(t.TypeArgs) == 0 {
+			return t.Name
+		}
+		args := make([]string, len(t.TypeArgs))
+		for i, arg := range t.TypeArgs {
+			args[i] = describe(arg)
+		}
+		return t.Name + "<" + strings.Join(args, ", ") + ">"
 
 	case *ArrayType:
 		return "[" + describe(t.ElementType) + "]"

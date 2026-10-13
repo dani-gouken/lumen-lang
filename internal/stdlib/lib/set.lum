@@ -11,6 +11,7 @@
 
 import std.dict;
 import std.dict.{Dict};
+import std.ops.{Iterable, Equal};
 
 pub struct Set<T> {
     members: Dict<T>;
@@ -24,12 +25,12 @@ pub fn by<T>(key: fn(T) -> String) -> Set<T> {
 
 // An empty set of texts.
 pub fn texts() -> Set<String> {
-    return by(fn(text: String) -> String { return text; });
+    return by(text -> text);
 }
 
 // An empty set of whole numbers.
 pub fn numbers() -> Set<Int> {
-    return by(fn(n: Int) -> String { return toString(n); });
+    return by(n -> toString(n));
 }
 
 // The set of the texts of an array.
@@ -44,6 +45,18 @@ pub fn ofNumbers(items: [Int]) -> Set<Int> {
     let out = numbers();
     out.addAll(items);
     return out;
+}
+
+// `for item in seen` goes through the items, and two sets are == when
+// they hold the same items, in whatever order.
+impl<T> Iterable<T> for Set<T> {
+    fn iterate() -> [T] { return self.items(); }
+}
+
+impl<T> Equal for Set<T> {
+    fn equals(other: Set<T>) -> Bool {
+        return self.size() == other.size() && self.isSubsetOf(other);
+    }
 }
 
 impl<T> Set<T> {
@@ -93,12 +106,12 @@ impl<T> Set<T> {
 
     // What is in both.
     pub fn intersection(other: Set<T>) -> Set<T> {
-        return self.filter(fn(item: T) -> Bool { return other.has(item); });
+        return self.filter(item -> other.has(item));
     }
 
     // What is in this set and not in the other.
     pub fn difference(other: Set<T>) -> Set<T> {
-        return self.filter(fn(item: T) -> Bool { return !other.has(item); });
+        return self.filter(item -> !other.has(item));
     }
 
     // The items a function accepts.
@@ -118,13 +131,7 @@ impl<T> Set<T> {
         return true;
     }
 
-    // Whether both hold the same items, in whatever order.
-    pub fn equals(other: Set<T>) -> Bool {
-        return self.size() == other.size() && self.isSubsetOf(other);
-    }
-
     fn name(item: T) -> String {
-        let key = self.key;
-        return key(item);
+        return self.key(item);
     }
 }

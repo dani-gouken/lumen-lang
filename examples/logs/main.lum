@@ -157,8 +157,8 @@ fn report(log: Log) {
     }
     let first = hits[0].at;
     let last = hits[count - 1].at;
-    let clients = set.of(arrays.map(hits, fn(hit: Hit) -> String { return hit.client; }));
-    let bytes = arrays.sumOf(hits, fn(hit: Hit) -> Int { return hit.bytes; });
+    let clients = set.of(arrays.map(hits, hit -> hit.client));
+    let bytes = arrays.sumOf(hits, hit -> hit.bytes);
 
     heading("Access log, ${first.format("dddd D MMMM YYYY")}");
     println("${format.plural(count, "request", "requests")} from ${format.plural(clients.size(), "client", "clients")}, ${first.format("HH:mm")} to ${last.format("HH:mm")}");
@@ -166,12 +166,12 @@ fn report(log: Log) {
 
     heading("By outcome");
     for outcome in [Outcome.Ok, Outcome.Redirect, Outcome.ClientError, Outcome.ServerError] {
-        let n = arrays.count(hits, fn(hit: Hit) -> Bool { return hit.outcome() == outcome; });
+        let n = arrays.count(hits, hit -> hit.outcome() == outcome);
         println(format.pad(outcome.label(), 26, Align.Left), format.pad(toString(n), 3, Align.Right), " " + format.bar(n, count, 30));
     }
 
     heading("By hour");
-    let hours = arrays.countBy(hits, fn(hit: Hit) -> String { return hit.at.format("HH:00"); });
+    let hours = arrays.countBy(hits, hit -> hit.at.format("HH:00"));
     let busiest = arrays.largest(hours.values()) ?? 1;
     for hour in hours.sortedKeys() {
         let n = hours.getOr(hour, 0);
@@ -180,13 +180,13 @@ fn report(log: Log) {
 
     heading("Busiest routes");
     let numbers = regex.must("/\\d+");
-    let routes = arrays.groupBy(hits, fn(hit: Hit) -> String { return hit.route(numbers); });
+    let routes = arrays.groupBy(hits, hit -> hit.route(numbers));
     let rows: [[String]] = [];
-    let ranked = arrays.sortedBy(routes.keys(), fn(route: String) -> Int { return -arrays.len(routes.get(route) ?? []); });
+    let ranked = arrays.sortedBy(routes.keys(), route -> -arrays.len(routes.get(route) ?? []));
     for route in arrays.take(ranked, 5) {
         let there = routes.get(route) ?? [];
-        let slowest = arrays.fold(there, 0.0, fn(worst: Float, hit: Hit) -> Float { return math.fmax(worst, hit.seconds); });
-        let failed = arrays.count(there, fn(hit: Hit) -> Bool { return hit.outcome() == Outcome.ServerError; });
+        let slowest = arrays.fold(there, 0.0, (worst, hit) -> math.fmax(worst, hit.seconds));
+        let failed = arrays.count(there, hit -> hit.outcome() == Outcome.ServerError);
         push(rows, [route, toString(arrays.len(there)), format.duration(math.round(slowest * 1000.0)), toString(failed)]);
     }
     print(format.table(["route", "hits", "slowest", "failed"], rows));
@@ -201,21 +201,21 @@ fn report(log: Log) {
         }
     }
     users.each(fn(user: String, theirs: [Hit]) {
-        let writes = arrays.count(theirs, fn(hit: Hit) -> Bool { return hit.method != "GET"; });
+        let writes = arrays.count(theirs, hit -> hit.method != "GET");
         println("${user}: ${format.plural(arrays.len(theirs), "request", "requests")}, ${writes} of them changing something");
     });
 
     heading("Worth a look");
     let suspects = arrays.groupBy(
-        arrays.filter(hits, fn(hit: Hit) -> Bool { return hit.outcome() == Outcome.ClientError; }),
-        fn(hit: Hit) -> String { return hit.client; });
+        arrays.filter(hits, hit -> hit.outcome() == Outcome.ClientError),
+        hit -> hit.client);
     suspects.each(fn(client: String, refused: [Hit]) {
         if arrays.len(refused) >= 3 {
-            let paths = strings.join(arrays.map(refused, fn(hit: Hit) -> String { return hit.path; }), ", ");
+            let paths = strings.join(arrays.map(refused, hit -> hit.path), ", ");
             println("${client} was refused ${arrays.len(refused)} times in a row: ${paths}");
         }
     });
-    for hit in arrays.filter(hits, fn(hit: Hit) -> Bool { return hit.seconds >= 1.0; }) {
+    for hit in arrays.filter(hits, hit -> hit.seconds >= 1.0) {
         println("${hit.method} ${hit.path} took ${format.fixed(hit.seconds, 1)}s at ${hit.at.format("HH:mm:ss")} (status ${hit.status})");
     }
 

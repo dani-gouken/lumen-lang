@@ -46,6 +46,7 @@ func (c *Checker) inferFunctionTypeArgs(e *ast.CallExpr, expected Type) {
 		params:   c.parameterTypes(fn),
 		variadic: isVariadicDecl(fn),
 		result:   c.resolveType(fn.ReturnType),
+		bounds:   c.openBounds(fn.Bounds),
 	}
 	restore()
 
@@ -86,6 +87,7 @@ func (c *Checker) inferMethodTypeArgs(recv Type, member *ast.MemberExpr, e *ast.
 	c.withSelf(recv, func() {
 		signature.params = c.parameterTypes(decl)
 		signature.result = c.resolveType(decl.ReturnType)
+		signature.bounds = c.openBounds(decl.Bounds)
 	})
 	restore()
 
@@ -123,6 +125,25 @@ type genericSignature struct {
 	params   []Type
 	variadic bool
 	result   Type
+
+	// What each type parameter is required to implement. In
+	// <T, S: Source<T>>, an S that is a Counter says what T is.
+	bounds map[string][]Type
+}
+
+// openBounds resolves the requirements of type parameters, for a
+// signature being matched: to be called while the parameters are open.
+func (c *Checker) openBounds(bounds map[string][]*ast.Type) map[string][]Type {
+	if len(bounds) == 0 {
+		return nil
+	}
+	out := make(map[string][]Type, len(bounds))
+	for name, traits := range bounds {
+		for _, trait := range traits {
+			out[name] = append(out[name], c.resolveType(trait))
+		}
+	}
+	return out
 }
 
 // inferTypeArgs matches parameter types against arguments, then the result
@@ -146,13 +167,68 @@ func (c *Checker) inferTypeArgs(sig genericSignature, args []ast.Expr, expected 
 		default:
 			continue
 		}
-		unify(param, argType, isParam, found)
+		c.unify(param, argType, isParam, found)
 	}
+
+	// A function written with `->` has no type until its parameters do.
+	// Once the other arguments say what those are, its body says what it
+	// gives: in arrays.map(people, p -> p.name), T is Person from the
+	// first argument, and U is String from the body.
+	fromShortFns := func() {
+		for i, arg := range args {
+			fn, ok := arg.(*ast.FnExpr)
+			if !ok || !fn.Short || i >= len(params) {
+				continue
+			}
+			want, ok := params[i].(*FunctionType)
+			if !ok || len(want.Params) != len(fn.Params) {
+				continue
+			}
+			known := make([]Type, len(want.Params))
+			complete := true
+			for j, param := range want.Params {
+				// Asked of the parameter as declared: what was found for
+				// T may itself be a type parameter called T, the caller's
+				if mentionsOpen(param, isParam, found) {
+					complete = false
+				}
+				known[j] = Instantiate(param, found)
+			}
+			if !complete {
+				continue
+			}
+			if result := c.shortFnResult(fn, known); result != nil {
+				c.unify(want.ReturnType, result, isParam, found)
+			} else if !fn.Typed && c.annotateShortFn(fn, known, Unknown) {
+				// Its body does not say what it gives: there is a mistake
+				// in it. Check it now, with what is known of its
+				// parameters, for the mistake to be the error reported.
+				c.info.Types[fn] = c.checkFnExpr(fn)
+			}
+		}
+	}
+	fromShortFns()
+
+	// A parameter that was found says what the others are, through what
+	// it is required to implement; and those in turn
+	fromBounds := func() {
+		for range names {
+			for _, name := range names {
+				if typ, ok := found[name]; ok {
+					for _, bound := range sig.bounds[name] {
+						c.unify(bound, typ, isParam, found)
+					}
+				}
+			}
+		}
+	}
+	fromBounds()
 
 	// What the arguments say comes first; the expected type only fills in
 	// what they leave open
 	if expected != nil && !expected.Equals(Any) {
-		unify(sig.result, expected, isParam, found)
+		c.unify(sig.result, expected, isParam, found)
+		fromBounds()
 	}
 
 	result := make([]*ast.Type, len(names))
@@ -187,7 +263,7 @@ func (c *Checker) typesOf(exprs []ast.Expr) []Type {
 // records what each type parameter has to be. The first argument that
 // determines a parameter decides; if a later one disagrees, the ordinary
 // argument check reports it against that decision.
-func unify(param, arg Type, isParam map[string]bool, found map[string]Type) {
+func (c *Checker) unify(param, arg Type, isParam map[string]bool, found map[string]Type) {
 	if param == nil || arg == nil || isUnknown(arg) {
 		return
 	}
@@ -203,7 +279,7 @@ func unify(param, arg Type, isParam map[string]bool, found map[string]Type) {
 
 	case *ArrayType:
 		if a, ok := arg.(*ArrayType); ok {
-			unify(p.ElementType, a.ElementType, isParam, found)
+			c.unify(p.ElementType, a.ElementType, isParam, found)
 		}
 
 	case *FunctionType:
@@ -212,9 +288,19 @@ func unify(param, arg Type, isParam map[string]bool, found map[string]Type) {
 			return
 		}
 		for i := range p.Params {
-			unify(p.Params[i], a.Params[i], isParam, found)
+			c.unify(p.Params[i], a.Params[i], isParam, found)
 		}
-		unify(p.ReturnType, a.ReturnType, isParam, found)
+		c.unify(p.ReturnType, a.ReturnType, isParam, found)
+
+	case *BehaviorType:
+		// Source<T> against a Counter that implements Source<Int>
+		if args, ok := c.traitArgsOf(arg, p.Name); ok {
+			for i := range p.TypeArgs {
+				if i < len(args) {
+					c.unify(p.TypeArgs[i], args[i], isParam, found)
+				}
+			}
+		}
 
 	case *StructType:
 		a, ok := arg.(*StructType)
@@ -222,7 +308,7 @@ func unify(param, arg Type, isParam map[string]bool, found map[string]Type) {
 			return
 		}
 		for i := range p.TypeArgs {
-			unify(p.TypeArgs[i], a.TypeArgs[i], isParam, found)
+			c.unify(p.TypeArgs[i], a.TypeArgs[i], isParam, found)
 		}
 
 	case *UnionType:
@@ -231,7 +317,7 @@ func unify(param, arg Type, isParam map[string]bool, found map[string]Type) {
 			return
 		}
 		if value, argValue := withoutNull(p), withoutNull(arg); value != nil && argValue != nil {
-			unify(value, argValue, isParam, found)
+			c.unify(value, argValue, isParam, found)
 		}
 	}
 }
@@ -264,7 +350,15 @@ func typeToAST(t Type, at ast.BaseNode) *ast.Type {
 		return basic(t.Name)
 
 	case *BehaviorType:
-		return basic(t.Name)
+		result := basic(t.Name)
+		for _, arg := range t.TypeArgs {
+			argType := typeToAST(arg, at)
+			if argType == nil {
+				return nil
+			}
+			result.Generics = append(result.Generics, argType)
+		}
+		return result
 
 	case *StructType:
 		result := basic(t.Name)

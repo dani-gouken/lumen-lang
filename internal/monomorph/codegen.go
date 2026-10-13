@@ -49,6 +49,8 @@ func (m *Monomorphizer) generateFnInstance(original *ast.FnDecl, key Instantiati
 		ReturnType:    m.substituteASTType(original.ReturnType, subst),
 		Body:          m.cloneAndSubstituteBlock(original.Body, subst),
 		IsTraitMethod: original.IsTraitMethod,
+		Pub:           original.Pub,
+		Module:        original.Module,
 	}
 
 	return newFn
@@ -111,178 +113,31 @@ func (m *Monomorphizer) cloneAndSubstituteFields(fields []*ast.Field, subst Type
 	return result
 }
 
-// cloneAndSubstituteBlock clones and substitutes a block statement.
+// cloner copies the body of a generic function for one choice of types:
+// everything in it, with the type parameters replaced wherever a type is
+// written. Every instance has nodes of its own, since the stages after
+// this one record what they learn about a node under that node.
+func (m *Monomorphizer) cloner(subst TypeSubstitution) *ast.Cloner {
+	replaced := make(map[string]*ast.Type, len(subst))
+	for name, concrete := range subst {
+		replaced[name] = m.typeToASTType(concrete)
+	}
+	return &ast.Cloner{Types: replaced}
+}
+
+// cloneAndSubstituteBlock clones a block statement and substitutes types.
 func (m *Monomorphizer) cloneAndSubstituteBlock(block *ast.BlockStmt, subst TypeSubstitution) *ast.BlockStmt {
-	if block == nil {
-		return nil
-	}
-
-	newStmts := make([]ast.Stmt, len(block.Stmts))
-	for i, stmt := range block.Stmts {
-		newStmts[i] = m.cloneAndSubstituteStmt(stmt, subst)
-	}
-
-	return &ast.BlockStmt{
-		BaseNode: block.BaseNode,
-		Stmts:    newStmts,
-	}
+	return m.cloner(subst).Block(block)
 }
 
-// cloneAndSubstituteStmt clones and substitutes a statement.
+// cloneAndSubstituteStmt clones a statement and substitutes types.
 func (m *Monomorphizer) cloneAndSubstituteStmt(stmt ast.Stmt, subst TypeSubstitution) ast.Stmt {
-	switch s := stmt.(type) {
-	case *ast.BlockStmt:
-		return m.cloneAndSubstituteBlock(s, subst)
-	case *ast.LetStmt:
-		return &ast.LetStmt{
-			BaseNode: s.BaseNode,
-			Name:     s.Name,
-			Type:     m.substituteASTType(s.Type, subst),
-			Value:    m.cloneAndSubstituteExpr(s.Value, subst),
-			IsConst:  s.IsConst,
-		}
-	case *ast.ReturnStmt:
-		return &ast.ReturnStmt{
-			BaseNode: s.BaseNode,
-			Value:    m.cloneAndSubstituteExpr(s.Value, subst),
-		}
-	case *ast.IfStmt:
-		return &ast.IfStmt{
-			BaseNode: s.BaseNode,
-			Cond:     m.cloneAndSubstituteExpr(s.Cond, subst),
-			Then:     m.cloneAndSubstituteBlock(s.Then, subst),
-			Else:     m.cloneAndSubstituteStmt(s.Else, subst),
-		}
-	case *ast.WhileStmt:
-		return &ast.WhileStmt{
-			BaseNode: s.BaseNode,
-			Cond:     m.cloneAndSubstituteExpr(s.Cond, subst),
-			Body:     m.cloneAndSubstituteBlock(s.Body, subst),
-		}
-	case *ast.ForStmt:
-		return &ast.ForStmt{
-			BaseNode: s.BaseNode,
-			Var:      s.Var,
-			Index:    s.Index,
-			Iterable: m.cloneAndSubstituteExpr(s.Iterable, subst),
-			Body:     m.cloneAndSubstituteBlock(s.Body, subst),
-		}
-	case *ast.ExprStmt:
-		return &ast.ExprStmt{
-			BaseNode: s.BaseNode,
-			Expr:     m.cloneAndSubstituteExpr(s.Expr, subst),
-		}
-	case *ast.BreakStmt:
-		return &ast.BreakStmt{BaseNode: s.BaseNode}
-	case *ast.ContinueStmt:
-		return &ast.ContinueStmt{BaseNode: s.BaseNode}
-	default:
-		return stmt
-	}
+	return m.cloner(subst).Stmt(stmt)
 }
 
-// cloneAndSubstituteExpr clones and substitutes an expression.
+// cloneAndSubstituteExpr clones an expression and substitutes types.
 func (m *Monomorphizer) cloneAndSubstituteExpr(expr ast.Expr, subst TypeSubstitution) ast.Expr {
-	if expr == nil {
-		return nil
-	}
-
-	switch e := expr.(type) {
-	case *ast.BinaryExpr:
-		return &ast.BinaryExpr{
-			BaseNode: e.BaseNode,
-			Left:     m.cloneAndSubstituteExpr(e.Left, subst),
-			Op:       e.Op,
-			Right:    m.cloneAndSubstituteExpr(e.Right, subst),
-		}
-	case *ast.UnaryExpr:
-		return &ast.UnaryExpr{
-			BaseNode: e.BaseNode,
-			Op:       e.Op,
-			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
-		}
-	case *ast.CastExpr:
-		return &ast.CastExpr{
-			BaseNode: e.BaseNode,
-			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
-			Type:     m.substituteASTType(e.Type, subst),
-		}
-	case *ast.TypeTestExpr:
-		return &ast.TypeTestExpr{
-			BaseNode: e.BaseNode,
-			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
-			Type:     m.substituteASTType(e.Type, subst),
-		}
-	case *ast.CallExpr:
-		return &ast.CallExpr{
-			BaseNode: e.BaseNode,
-			Func:     m.cloneAndSubstituteExpr(e.Func, subst),
-			Args:     m.cloneAndSubstituteExprs(e.Args, subst),
-		}
-	case *ast.MemberExpr:
-		var memberTypeArgs []*ast.Type
-		for _, ta := range e.TypeArgs {
-			memberTypeArgs = append(memberTypeArgs, m.substituteASTType(ta, subst))
-		}
-		return &ast.MemberExpr{
-			BaseNode: e.BaseNode,
-			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
-			Name:     e.Name,
-			TypeArgs: memberTypeArgs,
-		}
-	case *ast.IndexExpr:
-		return &ast.IndexExpr{
-			BaseNode: e.BaseNode,
-			Expr:     m.cloneAndSubstituteExpr(e.Expr, subst),
-			Index:    m.cloneAndSubstituteExpr(e.Index, subst),
-		}
-	case *ast.Literal:
-		return &ast.Literal{
-			BaseNode: e.BaseNode,
-			Value:    e.Value,
-			Kind:     e.Kind,
-		}
-	case *ast.Ident:
-		// Clone the type arguments and substitute any type parameters
-		var newTypeArgs []*ast.Type
-		if len(e.TypeArgs) > 0 {
-			newTypeArgs = make([]*ast.Type, len(e.TypeArgs))
-			for i, ta := range e.TypeArgs {
-				newTypeArgs[i] = m.substituteASTType(ta, subst)
-			}
-		}
-		return &ast.Ident{
-			BaseNode: e.BaseNode,
-			Name:     e.Name,
-			TypeArgs: newTypeArgs, // Keep type arguments but substitute type parameters
-		}
-	case *ast.StructInitExpr:
-		newFields := make(map[string]ast.Expr)
-		for k, v := range e.Fields {
-			newFields[k] = m.cloneAndSubstituteExpr(v, subst)
-		}
-		// Clone type arguments and substitute any type parameters
-		var newTypeArgs []*ast.Type
-		if len(e.TypeArgs) > 0 {
-			newTypeArgs = make([]*ast.Type, len(e.TypeArgs))
-			for i, ta := range e.TypeArgs {
-				newTypeArgs[i] = m.substituteASTType(ta, subst)
-			}
-		}
-		return &ast.StructInitExpr{
-			BaseNode: e.BaseNode,
-			Name:     e.Name,
-			TypeArgs: newTypeArgs, // Keep type arguments but substitute type parameters
-			Fields:   newFields,
-		}
-	case *ast.ArrayLiteralExpr:
-		return &ast.ArrayLiteralExpr{
-			BaseNode: e.BaseNode,
-			Elements: m.cloneAndSubstituteExprs(e.Elements, subst),
-		}
-	default:
-		return expr
-	}
+	return m.cloner(subst).Expr(expr)
 }
 
 // cloneAndSubstituteExprs clones and substitutes a slice of expressions.
@@ -318,12 +173,19 @@ func (m *Monomorphizer) substituteASTType(astType *ast.Type, subst TypeSubstitut
 			Name:     astType.Name,
 			Generics: newGenerics,
 		}
-	case ast.TypeArray:
+	case ast.TypeArray, ast.TypeOption, ast.TypeVariadic:
+		// [T], T? and ...T hold the type they are made of
 		return &ast.Type{
 			BaseNode: astType.BaseNode,
 			Kind:     astType.Kind,
 			ElemType: m.substituteASTType(astType.ElemType, subst),
 		}
+	case ast.TypeUnion:
+		members := make([]*ast.Type, len(astType.UnionTypes))
+		for i, member := range astType.UnionTypes {
+			members[i] = m.substituteASTType(member, subst)
+		}
+		return &ast.Type{BaseNode: astType.BaseNode, Kind: astType.Kind, UnionTypes: members}
 	case ast.TypeFunction:
 		newParams := make([]*ast.Type, len(astType.ParamTypes))
 		for i, p := range astType.ParamTypes {
@@ -364,6 +226,17 @@ func (m *Monomorphizer) typeToASTType(t types.Type) *ast.Type {
 			Kind:     ast.TypeArray,
 			ElemType: m.typeToASTType(typ.ElementType),
 		}
+	case *types.BehaviorType:
+		// A trait, with its type arguments if it has any: Source<Int>
+		var generics []*ast.Type
+		for _, arg := range typ.TypeArgs {
+			generics = append(generics, m.typeToASTType(arg))
+		}
+		return &ast.Type{Kind: ast.TypeBasic, Name: typ.Name, Generics: generics}
+	case *types.TypeParam:
+		// A type parameter of the function the call is in: it is replaced
+		// in turn when that function is instantiated
+		return &ast.Type{Kind: ast.TypeBasic, Name: typ.Name}
 	case *types.UnionType:
 		// T | null is written T?
 		for _, member := range typ.Types {

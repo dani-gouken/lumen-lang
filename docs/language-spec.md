@@ -74,6 +74,13 @@ Full description: [enums.md](enums.md).
   }
   ```
 - Usage: Behaviors define a set of methods that a type must implement. They are similar to interfaces in other languages.
+- A trait may be implemented for a struct, an enum, or one of `Int`, `Float`, `String`, `Bool`; once per type.
+- Default methods: a trait method with a body is copied into every impl that does not write it.
+- Type parameters: `trait Source<T> { fn next() -> T?; }`, implemented as `impl Source<Int> for Counter` or `impl<T> Source<T> for List<T>`. `Source<Int>` and `Source<String>` are different types.
+- Requirements: `<T: Ordered + Show>` after `fn name`, `struct Name`, `enum Name` or `impl`. Inside, the methods of those traits can be called on a `T`; where type arguments are given or inferred, each has to implement them (`E2036`).
+- The traits of `std.ops` give meaning to syntax on types that implement them: `Equal` (`==`, `!=`), `Ordered` (`<`, `<=`, `>`, `>=`), `Add`/`Subtract`/`Multiply`/`Divide` (`+ - * /` and their assignments), `Show` (`println`, `toString`, `"${}"`), `Iterable<T>` (`for`), `Indexed<K, V>` (`a[k]`), `IndexedSet<K, V>` (`a[k] = v`). See [traits.md](traits.md).
+- Struct fields may have a default: `port: Int = 8080;`. A literal may leave such a field out; the expression is evaluated for each literal.
+- A method without a call, on a variable or a field path, is a function value bound to it: `ages.get`.
 - Self Type: `Self` can be used in trait definitions and implementations to refer to the implementing type.
   ```
   trait Cloneable {
@@ -98,6 +105,7 @@ Full description: [enums.md](enums.md).
 - Calls: `callee(args...)` with arity/type check. Method calls: `value.method(args...)`.
 - Array literals: `[1, 2, 3]`, `[]`. All elements have the same type.
 - Struct literals: `Point { x: 1, y: 2 }`. In the header of `if`, `while`, `for` and `match`, a `{` after a name starts the body, so a struct literal there needs parentheses: `if (Point { x: 1 }).x == 1 { ... }`.
+- Short functions: `x -> x + 1`, `(a, b) -> a + b`, `() -> now()`, `x -> { ...; return y; }`. No types are written: the parameters take theirs from the function type expected where the expression stands (a parameter, a declared variable or field, a return type), and the result is that type's, or the type of the body when it is a type parameter still open. The body is one expression, one assignment, or a block. Without an expected function type it is `E2037`, except for one without parameters.
 - Anonymous functions: `fn(x: Int) -> Int { return x + 1; }`. They can use the variables of the enclosing function; see Closures below.
 - `&&` and `||` evaluate their right operand only if the left one does not decide the result. `a ?? b` evaluates `b` only if `a` is `null`.
 
@@ -197,7 +205,13 @@ Import       = [ "pub" ] "import" ModulePath [ "." "{" Ident { "," Ident } "}" |
 ModulePath   = Ident { "." Ident } ;
 Decl         = FnDecl | ExternDecl | ConstDecl | StructDecl | EnumDecl | TraitDecl | ImplDecl ;   (* "pub" not allowed before ImplDecl *)
 ConstDecl    = "const" Ident [ ":" Type ] "=" Expr ";" ;      (* Expr of literals, operators and constants *)
-EnumDecl     = "enum" Ident [TypeParams] "{" [ Variant { "," Variant } [ "," ] ] "}" ;
+EnumDecl     = "enum" Ident [BoundedParams] "{" [ Variant { "," Variant } [ "," ] ] "}" ;
+StructDecl   = "struct" Ident [BoundedParams] "{" { Ident ":" Type [ "=" Expr ] ( ";" | "," ) } "}" ;
+TraitDecl    = "trait" Ident [TypeParams] "{" { FnSignature ( ";" | Block ) } "}" ;
+ImplDecl     = "impl" [BoundedParams] [ TypeName [TypeArgs] "for" ] TypeName [TypeParams] "{" { [ "pub" ] FnDecl } "}" ;
+BoundedParams = "<" BoundedParam { "," BoundedParam } ">" ;   (* also after the name of a function *)
+BoundedParam = Ident [ ":" TraitRef { "+" TraitRef } ] ;
+TraitRef     = TypeName [TypeArgs] ;
 Variant      = Ident [ "(" Type { "," Type } ")" ] ;
 ExternDecl   = "extern" "fn" Ident "(" [ParamList] ")" [ "->" Type ] ";" ;
 TypeName     = Ident [ "." Ident ] ;                          (* a type of an imported module *)
@@ -262,7 +276,8 @@ TupleLit     = "(" Expr "," Expr { "," Expr } [ "," ] ")" ;
 ArrayLit     = "[" [ ArgList ] "]" ;
 StructLit    = Ident [TypeArgs] "{" [ FieldInit { "," FieldInit } [ "," ] ] "}" ;
 FieldInit    = Ident ":" Expr ;
-FnExpr       = "fn" "(" [ParamList] ")" [ "->" Type ] Block ;
+FnExpr       = "fn" "(" [ParamList] ")" [ "->" Type ] Block | ShortFn ;
+ShortFn      = ( Ident | "(" [ Ident { "," Ident } ] ")" ) "->" ( Block | Expr | Assignment ) ;
 TypeArgs     = "<" Type { "," Type } ">" ;
 
 Type         = OptType { "|" OptType } ;
@@ -297,9 +312,14 @@ known defects are inventoried in [missing.md](missing.md).
 | Text over several lines: `"""..."""` | Supported | Indentation of the closing quotes is taken off |
 | Functions, recursion, functions as values | Supported | |
 | Anonymous functions and closures | Supported | Capture by reference |
+| Short functions: `p -> p.name`, `(a, b) -> a + b` | Supported | Types come from where the function is expected |
 | Arrays | Supported | Grow with `push` |
 | Structs, field access and assignment | Supported | |
 | Traits, `impl`, methods, `self`, `Self` | Supported | Direct call when the struct is known, runtime lookup through a trait |
+| Trait methods with a body, traits with type parameters, traits for `Int`/`Float`/`String`/`Bool` | Supported | See [traits.md](traits.md) |
+| Requirements on type parameters: `<T: Ordered + Show>` | Supported | On functions, structs, enums and impls |
+| Operators, `for` and brackets on structs, through the traits of `std.ops` | Supported | `==`, `<`, `+ - * /`, `for x in it`, `it[k]`, `it[k] = v` |
+| Struct fields with a default, methods as values | Supported | |
 | Optionals `T?`, `null`, `??` | Supported | Checked statically; null tests narrow variables and fields |
 | Casts `value as Type` | Supported | Verified at runtime, including array elements, generic struct fields and function signatures |
 | `const` | Supported | Reassignment is rejected |

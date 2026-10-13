@@ -9,7 +9,7 @@
 
 // The value turned into another, or null if there was none.
 //
-//     option.map(strings.parseInt("21"), fn(n: Int) -> Int { return n * 2; })    // 42
+//     option.map(strings.parseInt("21"), n -> n * 2)    // 42
 pub fn map<T, U>(value: T?, convert: fn(T) -> U) -> U? {
     if value == null { return null; }
     return convert(value);

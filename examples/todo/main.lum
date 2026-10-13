@@ -41,8 +41,8 @@ fn parse(args: [String]) -> Result<Command, String> {
     if arrays.len(args) == 0 { return Result.Ok(Command.List(false)); }
     let rest = arrays.drop(args, 1);
     // Options may be anywhere after the command; the rest are words
-    let options = arrays.filter(rest, fn(arg: String) -> Bool { return strings.startsWith(arg, "--"); });
-    let words = arrays.filter(rest, fn(arg: String) -> Bool { return !strings.startsWith(arg, "--"); });
+    let options = arrays.filter(rest, arg -> strings.startsWith(arg, "--"));
+    let words = arrays.filter(rest, arg -> !strings.startsWith(arg, "--"));
 
     match args[0] {
         case "add": {
@@ -115,14 +115,14 @@ fn run(command: Command, list: Store, today: Date) -> Result<[String], String> {
 
 fn saved(list: Store, lines: [String]) -> Result<[String], String> {
     return list.save()
-        .map(fn(written: Int) -> [String] { return lines; })
-        .mapErr(fn(error: StoreError) -> String { return error.describe(); });
+        .map(written -> lines)
+        .mapErr(error -> error.describe());
 }
 
 // The open tasks, the most pressing first: late ones, then by priority,
 // then by date.
 fn listing(list: Store, today: Date, all: Bool) -> [String] {
-    let shown = arrays.filter(list.tasks, fn(t: Task) -> Bool { return all || t.isOpen(); });
+    let shown = arrays.filter(list.tasks, t -> all || t.isOpen());
     if arrays.len(shown) == 0 { return ["nothing to do"]; }
 
     let urgency = fn(t: Task) -> Int {
@@ -143,8 +143,8 @@ fn listing(list: Store, today: Date, all: Bool) -> [String] {
     });
 
     let lines = strings.lines(format.table(["#", "", "task", "priority", "due"], rows));
-    let open = arrays.count(list.tasks, fn(t: Task) -> Bool { return t.isOpen(); });
-    let late = arrays.count(list.tasks, fn(t: Task) -> Bool { return t.isLate(today); });
+    let open = arrays.count(list.tasks, t -> t.isOpen());
+    let late = arrays.count(list.tasks, t -> t.isLate(today));
     push(lines, "");
     push(lines, "${format.plural(open, "task", "tasks")} to do, ${late} late");
     return lines;
@@ -168,7 +168,7 @@ fn handle(args: [String], file: String, today: Date) -> Int {
 // opening the list or carrying the command out, whichever fails first.
 fn answer(args: [String], file: String, today: Date) -> Result<[String], String> {
     let command = parse(args)?;
-    let list = store.open(file).mapErr(fn(error: StoreError) -> String { return error.describe(); })?;
+    let list = store.open(file).mapErr(error -> error.describe())?;
     return run(command, list, today);
 }
 

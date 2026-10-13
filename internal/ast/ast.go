@@ -184,12 +184,19 @@ func (t *Type) String() string {
 // --- Declarations ---
 type FnDecl struct {
 	BaseNode
-	Name          string
-	TypeParams    []string
+	Name       string
+	TypeParams []string
+	// What each type parameter is required to implement: for
+	// `fn largest<T: Ordered + Show>`, Bounds["T"] is [Ordered, Show]
+	Bounds        map[string][]*Type
 	Params        []*Param
 	ReturnType    *Type
 	Body          *BlockStmt
 	IsTraitMethod bool
+
+	// FromTrait names the trait whose default this method is a copy of,
+	// for a method an impl did not write itself
+	FromTrait string
 
 	// Pub marks a declaration other modules may use. Module is the module
 	// the declaration was written in, "" for the program's entry file.
@@ -235,6 +242,10 @@ type Param struct {
 }
 
 func (p *Param) String() string {
+	if p.Type == nil {
+		// A parameter of a function written without types
+		return p.Name
+	}
 	return fmt.Sprintf("%s: %s", p.Name, p.Type.String())
 }
 
@@ -242,6 +253,7 @@ type StructDecl struct {
 	BaseNode
 	Name       string
 	TypeParams []string
+	Bounds     map[string][]*Type // See FnDecl.Bounds
 	Fields     []*Field
 	Pub        bool
 }
@@ -267,6 +279,7 @@ type EnumDecl struct {
 	BaseNode
 	Name       string
 	TypeParams []string
+	Bounds     map[string][]*Type // See FnDecl.Bounds
 	Variants   []*EnumVariant
 	Pub        bool
 }
@@ -309,6 +322,11 @@ type Field struct {
 	BaseNode
 	Name string
 	Type *Type
+
+	// Default is the value a struct literal gives the field when it does
+	// not mention it: `port: Int = 8080;`. Nil for a field that has to be
+	// given.
+	Default Expr
 }
 
 func (f *Field) String() string {
@@ -317,9 +335,10 @@ func (f *Field) String() string {
 
 type TraitDecl struct {
 	BaseNode
-	Name    string
-	Methods []*FnDecl
-	Pub     bool
+	Name       string
+	TypeParams []string // trait Source<T>
+	Methods    []*FnDecl
+	Pub        bool
 }
 
 func (d *TraitDecl) declNode() {}
@@ -335,10 +354,14 @@ func (d *TraitDecl) String() string {
 
 type ImplDecl struct {
 	BaseNode
-	TypeParams []string // impl<T> Box<T>: the struct's type parameters, by position
+	TypeParams []string           // impl<T> Box<T>: the struct's type parameters, by position
+	Bounds     map[string][]*Type // impl<T: Ordered> Box<T>; see FnDecl.Bounds
 	StructName string
 	TraitName  string
-	Methods    []*FnDecl
+	TraitArgs  []*Type // impl Source<Int> for Counter: the trait's type arguments
+
+	header  *BlockStmt // See TraitArgsScope
+	Methods []*FnDecl
 }
 
 func (d *ImplDecl) declNode() {}
@@ -505,6 +528,9 @@ type MatchCase struct {
 }
 
 func (c *MatchCase) String() string {
+	if c.Pattern == nil {
+		return fmt.Sprintf("default: %s", c.Body.String())
+	}
 	return fmt.Sprintf("case %s: %s", c.Pattern.String(), c.Body.String())
 }
 
@@ -821,6 +847,16 @@ type FnExpr struct {
 	Params     []*Param
 	ReturnType *Type
 	Body       *BlockStmt
+
+	// Short marks a function written without types, `item -> item.name`:
+	// the type checker writes them in, from the function type expected
+	// where it stands. ExprBody says its body was one expression, which
+	// is then the only statement of Body: returned, or just evaluated
+	// when the function returns nothing.
+	Short    bool
+	ExprBody bool
+	// Typed says the types of a short function have been written in
+	Typed bool
 }
 
 func (e *FnExpr) exprNode() {}
@@ -968,4 +1004,15 @@ type VariantFieldExpr struct {
 func (e *VariantFieldExpr) exprNode() {}
 func (e *VariantFieldExpr) String() string {
 	return fmt.Sprintf("%s.%s#%d", e.Expr.String(), e.Variant, e.Index)
+}
+
+// TraitArgsScope is the node the scope of an impl's header is recorded
+// under: its type parameters, seen by its requirements and by the type
+// arguments of its trait. The impl itself stands for the scope of each of
+// its methods.
+func (d *ImplDecl) TraitArgsScope() Node {
+	if d.header == nil {
+		d.header = &BlockStmt{BaseNode: d.BaseNode}
+	}
+	return d.header
 }

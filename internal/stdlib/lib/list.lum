@@ -3,12 +3,28 @@
 //
 //     let names = list.of(["ada", "linus"]);
 //     names.add("grace");
-//     names.filter(fn(n: String) -> Bool { return n.length > 3; }).size()
+//     names.filter(n -> n.length > 3).size()
 
 import std.arrays;
+import std.ops.{Iterable, Indexed, IndexedSet};
 
 pub struct List<T> {
     items: [T];
+}
+
+// A list goes where an array does: `for item in names`, `names[0]`,
+// `names[0] = "ada";`. As with an array, a position the list does not
+// have stops the program; `get` gives null instead.
+impl<T> Iterable<T> for List<T> {
+    fn iterate() -> [T] { return self.items; }
+}
+
+impl<T> Indexed<Int, T> for List<T> {
+    fn at(key: Int) -> T { return self.items[key]; }
+}
+
+impl<T> IndexedSet<Int, T> for List<T> {
+    fn put(key: Int, value: T) { self.items[key] = value; }
 }
 
 // An empty list. Say what it holds: list.empty<Int>().

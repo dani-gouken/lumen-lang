@@ -25,6 +25,20 @@ type Info struct {
 	// TryOptional. One that was refused is absent.
 	Tries map[*ast.UnaryExpr]string
 
+	// What an operator, a loop or an index stands for when its subject is
+	// a struct that implements the trait behind it (see traits.go). The
+	// desugarer writes the method calls.
+	OperatorMethods map[*ast.BinaryExpr]string // a + b: the method to call on a
+	Iterations      map[*ast.ForStmt]Type      // for x in a: the type of x, when a is an Iterable
+	IndexReads      map[*ast.IndexExpr]bool    // a[k], when a is an Indexed
+	IndexWrites     map[*ast.BinaryExpr]bool   // a[k] = v, when a is an IndexedSet
+
+	// MethodValues maps each method used as a value, `users.get` without
+	// a call, to the type of the function it stands for.
+	MethodValues map[*ast.MemberExpr]*FunctionType
+
+	implements func(t Type, trait string) bool
+
 	// Signatures maps each function declaration and function expression to
 	// the description of its type, in the same form as Casts.
 	Signatures map[ast.Node]string
@@ -40,5 +54,11 @@ func NewInfo() *Info {
 		TestedTypes: make(map[*ast.TypeTestExpr]Type),
 		Signatures:  make(map[ast.Node]string),
 		Tries:       make(map[*ast.UnaryExpr]string),
+
+		OperatorMethods: make(map[*ast.BinaryExpr]string),
+		Iterations:      make(map[*ast.ForStmt]Type),
+		IndexReads:      make(map[*ast.IndexExpr]bool),
+		IndexWrites:     make(map[*ast.BinaryExpr]bool),
+		MethodValues:    make(map[*ast.MemberExpr]*FunctionType),
 	}
 }

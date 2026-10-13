@@ -119,6 +119,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 		return result
 	}
 	declareTuples(prog)
+	giveDefaultMethods(prog)
 	checkSupported(prog, errs, lines)
 	checkExterns(prog, errs, lines)
 	if failed() {
@@ -193,6 +194,50 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 func declareTuples(prog *ast.Program) {
 	declared := parser.Parse(ast.TupleSource(), "<tuples>", errors.NewHandler())
 	prog.Decls = append(declared.Decls, prog.Decls...)
+}
+
+// giveDefaultMethods copies into each impl of a trait the methods the
+// trait gives a body and the impl does not write itself. From here on
+// they are methods of the impl like the others: checked with the type the
+// impl is for, compiled once per type.
+//
+// In a trait with type parameters, the copy has the types the impl gives
+// them: the T of `trait Source<T>` is the Int of `impl Source<Int>`.
+func giveDefaultMethods(prog *ast.Program) {
+	traits := make(map[string]*ast.TraitDecl)
+	for _, decl := range prog.Decls {
+		if trait, ok := decl.(*ast.TraitDecl); ok {
+			traits[trait.Name] = trait
+		}
+	}
+	for _, decl := range prog.Decls {
+		impl, ok := decl.(*ast.ImplDecl)
+		if !ok || traits[impl.TraitName] == nil {
+			continue
+		}
+		trait := traits[impl.TraitName]
+
+		written := make(map[string]bool, len(impl.Methods))
+		for _, method := range impl.Methods {
+			written[method.Name] = true
+		}
+		cloner := &ast.Cloner{Types: make(map[string]*ast.Type)}
+		for i, param := range trait.TypeParams {
+			if i < len(impl.TraitArgs) {
+				cloner.Types[param] = impl.TraitArgs[i]
+			}
+		}
+		for _, method := range trait.Methods {
+			if method.Body == nil || written[method.Name] {
+				continue
+			}
+			given := cloner.Fn(method)
+			given.IsTraitMethod = false
+			given.FromTrait = trait.Name
+			given.Pub = true
+			impl.Methods = append(impl.Methods, given)
+		}
+	}
 }
 
 // reanalyze recomputes names and types for a program produced by an earlier

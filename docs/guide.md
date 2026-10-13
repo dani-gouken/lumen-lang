@@ -207,6 +207,29 @@ show(p.moved(1));
 
 Structs are references: `let q = p;` makes `q` and `p` the same value.
 
+There is more to both, all of it in [traits.md](traits.md):
+
+```lumen
+struct Config { name: String; port: Int = 8080; tags: [String] = []; }   // fields with a value of their own
+let config = Config { name: "api" };
+
+trait Entrant {
+    fn name() -> String;
+    fn line() -> String { return "* ${self.name()}"; }      // a method every implementer gets
+}
+
+trait Source<T> { fn next() -> T?; }                        // a trait with a type parameter
+
+fn largest<T: Ordered>(items: [T]) -> T? { ... }            // T has to implement Ordered
+
+impl Add for Money { fn plus(other: Money) -> Money { ... } }   // gives Money the + operator
+let total = price + tax;
+
+let lookup = ages.get;                                      // a method as a value
+```
+
+The traits of `std.ops` give a struct the syntax of the builtin types: `==` and `<`, `+ - * /`, `for item in it`, `it[key]`, and how it reads in `println` and `"${...}"`.
+
 Inside the header of `if`, `while`, `for` and `match`, wrap a struct literal in parentheses: `if (Point { x: 1, y: 2 }).area() > 0 { ... }`.
 
 ### Enums
@@ -360,7 +383,7 @@ What a test established about a variable also holds inside a function written af
 ```lumen
 fn tagged(notes: [Note], tag: String?) -> [Note] {
     if tag == null { return notes; }
-    return arrays.filter(notes, fn(note: Note) -> Bool { return arrays.contains(note.tags, tag); });   // tag: String
+    return arrays.filter(notes, note -> arrays.contains(note.tags, tag));   // tag: String
 }
 ```
 
@@ -402,6 +425,26 @@ match (item.quantity < 10, item.supplier != null) {
 Two to six values. Beyond three, or when the values travel far from where they are made, a struct says more: `point.x` reads better than `point.0`.
 
 ### Closures
+
+A function can be written where it is used. Its long form says every type; its short form says none, and takes them from what it is handed to:
+
+```lumen
+let names = arrays.map(people, p -> p.name);                  // p is a Person, the result a String
+let adults = arrays.filter(people, p -> p.age >= 18);
+let total = arrays.fold(people, 0, (sum, p) -> sum + p.age);  // several parameters go in parentheses
+twice(() -> count++);                                         // none at all
+
+let double: fn(Int) -> Int = n -> n * 2;                      // a variable or a field of a function type
+arrays.each(lines, line -> {                                  // several statements go in a block
+    let clean = strings.trim(line);
+    if clean != "" { push(kept, clean); }
+});
+```
+
+*   The arrow is the one of `fn(n: Int) -> Int`: what is on its left gives what is on its right.
+*   After it comes one expression, which is what the function gives; or one assignment, or a block.
+*   It works wherever a function type is expected: an argument, a variable or a field declared with one, a `return`. Where nothing says what the parameters are (`let f = x -> x + 1;`), it is an error (`E2037`) and the long form is the one to write: `fn(x: Int) -> Int { return x + 1; }`.
+*   For a generic function, the other arguments say what the parameters are, and the body says what the result is: in `arrays.map(people, p -> p.name)`, `T` is `Person` from the array and `U` is `String` from `p.name`.
 
 ```lumen
 fn makeCounter() -> fn() -> Int {

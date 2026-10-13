@@ -125,13 +125,13 @@ fn ascending(a: Int, b: Int) -> Bool { return a < b; }
 fn main() -> Int {
     let numbers = [31, 4, 15, 9, 26, 5, 35, 8];
     println("ascending: ", sorted(numbers, ascending));
-    println("descending:", sorted(numbers, fn(a: Int, b: Int) -> Bool { return a > b; }));
+    println("descending:", sorted(numbers, (a, b) -> a > b));
     println("untouched: ", numbers);
 
     // Texts compare alphabetically with <
     let words = ["pear", "fig", "banana", "kiwi", "apple"];
-    println("alphabetic:", sorted(words, fn(a: String, b: String) -> Bool { return a < b; }));
-    println("by length: ", sorted(words, fn(a: String, b: String) -> Bool { return strings.len(a) < strings.len(b); }));
+    println("alphabetic:", sorted(words, (a, b) -> a < b));
+    println("by length: ", sorted(words, (a, b) -> strings.len(a) < strings.len(b)));
 
     // Structs, by whichever field
     let cities = [
@@ -140,17 +140,17 @@ fn main() -> Int {
         City { name: "Lima", people: 10900 },
         City { name: "Kyoto", people: 1460 },
     ];
-    println("by size:   ", names(sorted(cities, fn(a: City, b: City) -> Bool { return a.people > b.people; })));
+    println("by size:   ", names(sorted(cities, (a, b) -> a.people > b.people)));
 
     // In place: the array itself changes
-    quicksort(cities, fn(a: City, b: City) -> Bool { return a.name < b.name; });
+    quicksort(cities, (a, b) -> a.name < b.name);
     println("by name:   ", names(cities));
     quicksort(numbers, ascending);
     println("in place:  ", numbers);
 
     // The closure remembers what is being looked for
     for wanted in [26, 27] {
-        let at = search(numbers, fn(n: Int) -> Int { return n - wanted; });
+        let at = search(numbers, n -> n - wanted);
         if at == null {
             println(wanted, "is not there");
         } else {

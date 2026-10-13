@@ -71,7 +71,7 @@ func expectFailure(t *testing.T, imports, body, want string) {
 func TestModulesAreEmbedded(t *testing.T) {
 	want := []string{
 		"std.arrays", "std.csv", "std.dict", "std.encoding", "std.format", "std.fs", "std.hash", "std.http", "std.io", "std.json", "std.list",
-		"std.math", "std.option", "std.os", "std.path", "std.random", "std.regex", "std.result", "std.set", "std.strings", "std.test", "std.time",
+		"std.math", "std.ops", "std.option", "std.os", "std.path", "std.random", "std.regex", "std.result", "std.set", "std.strings", "std.test", "std.time",
 	}
 	if got := stdlib.Modules(); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("expected the modules %v, got %v", want, got)

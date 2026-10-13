@@ -424,6 +424,7 @@ var multiCharOps = []struct {
 }{
 	{"...", token.ELLIPSIS},
 	{"->", token.ARROW},
+	{"=>", token.FAT_ARROW},
 	{"==", token.EQ},
 	{"!=", token.NEQ},
 	{"<=", token.LTE},

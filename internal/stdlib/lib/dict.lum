@@ -8,6 +8,7 @@
 // many there are. Keys come back in the order they were first set.
 
 import std.strings;
+import std.ops.{Iterable, Indexed, IndexedSet};
 
 struct Entry<V> {
     key: String;
@@ -35,6 +36,21 @@ fn newBuckets(size: Int) -> [[Int]] {
         i++;
     }
     return buckets;
+}
+
+// A dictionary takes brackets and loops: `ages["ada"]` is what `get`
+// gives, a value or null; `ages["ada"] = 36;` is `set`; and
+// `for name in ages` goes through the keys.
+impl<V> Iterable<String> for Dict<V> {
+    fn iterate() -> [String] { return self.keys(); }
+}
+
+impl<V> Indexed<String, V?> for Dict<V> {
+    fn at(key: String) -> V? { return self.get(key); }
+}
+
+impl<V> IndexedSet<String, V> for Dict<V> {
+    fn put(key: String, value: V) { self.set(key, value); }
 }
 
 impl<V> Dict<V> {
@@ -71,7 +87,7 @@ impl<V> Dict<V> {
 
     // Changes the value of a key to what a function makes of it, the
     // function being given `start` if the key has none. Counting:
-    // counts.update(word, 0, fn(n: Int) -> Int { return n + 1; }).
+    // counts.update(word, 0, n -> n + 1).
     pub fn update(key: String, start: V, change: fn(V) -> V) {
         self.set(key, change(self.get(key) ?? start));
     }

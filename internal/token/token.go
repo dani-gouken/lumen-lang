@@ -88,6 +88,7 @@ const (
 	QUESTION          // ?
 	QUESTION_QUESTION // ??
 	QUESTION_DOT      // ?.
+	FAT_ARROW         // =>
 
 	// Assignment
 	ASSIGN         // =
@@ -301,6 +302,8 @@ func (typ TokenType) String() string {
 		return "QUESTION_QUESTION"
 	case QUESTION_DOT:
 		return "QUESTION_DOT"
+	case FAT_ARROW:
+		return "FAT_ARROW"
 
 	// Operators - Assignment
 	case ASSIGN:

@@ -15,6 +15,7 @@ import std.dict.{Dict};
 import std.result.{Result};
 import std.strings;
 import std.math;
+import std.ops.{Equal};
 
 pub enum Json {
     Null,
@@ -100,8 +101,43 @@ impl Reader {
     }
 }
 
+// Two documents are == when they say the same: the same kind of value,
+// equal items in the same order, equal values under the same keys,
+// whatever order the keys are in.
+impl Equal for Json {
+    fn equals(other: Json) -> Bool {
+        match (self, other) {
+            case (Json.Null, Json.Null): { return true; }
+            case (Json.Bool(a), Json.Bool(b)): { return a == b; }
+            case (Json.Number(a), Json.Number(b)): { return a == b; }
+            case (Json.String(a), Json.String(b)): { return a == b; }
+            case (Json.Array(mine), Json.Array(theirs)): {
+                if mine.length != theirs.length { return false; }
+                for i, item in mine {
+                    if item != theirs[i] { return false; }
+                }
+                return true;
+            }
+            case (Json.Object(mine), Json.Object(theirs)): {
+                if mine.size() != theirs.size() { return false; }
+                for (key, value) in mine.entries() {
+                    let other = theirs.get(key);
+                    if other == null || value != other { return false; }
+                }
+                return true;
+            }
+            default: { return false; }
+        }
+    }
+}
+
 impl Json {
-    pub fn isNull() -> Bool { return self == Json.Null; }
+    pub fn isNull() -> Bool {
+        match self {
+            case Json.Null: { return true; }
+            default: { return false; }
+        }
+    }
 
     // The value of a key, if this is an object that has it.
     pub fn get(key: String) -> Json? {
@@ -184,34 +220,6 @@ impl Json {
         match self {
             case Json.Object(fields): { return fields; }
             default: { return null; }
-        }
-    }
-
-    // Whether two documents say the same: the same kind of value, equal
-    // items in the same order, equal values under the same keys. With ==
-    // two arrays or two objects are only equal when they are the very
-    // same one.
-    pub fn equals(other: Json) -> Bool {
-        match self {
-            case Json.Array(items): {
-                let others = other.items();
-                if others == null || others.length != items.length { return false; }
-                for i, item in items {
-                    if !item.equals(others[i]) { return false; }
-                }
-                return true;
-            }
-            case Json.Object(fields): {
-                let others = other.fields();
-                if others == null || others.size() != fields.size() { return false; }
-                for key in fields.keys() {
-                    let mine = fields.get(key);
-                    let theirs = others.get(key);
-                    if mine == null || theirs == null || !mine.equals(theirs) { return false; }
-                }
-                return true;
-            }
-            default: { return self == other; }
         }
     }
 

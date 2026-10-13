@@ -281,17 +281,17 @@ func TestJson(t *testing.T) {
 		let text = made.stringify();
 		println(text);
 		let back = json.parse(text).expect("what was written");
-		println(back.equals(made), made.equals(back), back == made, back.stringify() == text);
+		println(back == made, made.equals(back), back != made, back.stringify() == text);
 		println(json.parse(made.pretty()).expect("the long form").equals(made));
 		println(option.then(back.get("name"), json.textOf) == "é\"x\n\t\\");
 
-		// Equality is by content, in order for arrays and by key for objects
+		// == is by content, in order for arrays and by key for objects
 		let a = json.parse("{\"a\": 1, \"b\": [1, 2]}").expect("a");
-		println(a.equals(json.parse("{\"b\": [1, 2], \"a\": 1}").expect("b")),
-			a.equals(json.parse("{\"a\": 1, \"b\": [2, 1]}").expect("c")),
-			a.equals(json.parse("{\"a\": 1}").expect("d")),
-			a.equals(json.parse("{\"a\": 1, \"b\": [1, 2], \"c\": 0}").expect("e")),
-			a.equals(Json.Null), Json.Null.equals(Json.Null), json.int(1).equals(Json.Number(1.0)), Json.String("1").equals(json.int(1)));
+		println(a == json.parse("{\"b\": [1, 2], \"a\": 1}").expect("b"),
+			a == json.parse("{\"a\": 1, \"b\": [2, 1]}").expect("c"),
+			a == json.parse("{\"a\": 1}").expect("d"),
+			a == json.parse("{\"a\": 1, \"b\": [1, 2], \"c\": 0}").expect("e"),
+			a == Json.Null, Json.Null == Json.Null, json.int(1) == Json.Number(1.0), Json.String("1").equals(json.int(1)));
 		println(json.parse(" [ ] ").expect("x").stringify(), json.parse("1e3").expect("x").int(), json.parse("\"\\u00e9\"").expect("x").text(), json.parse("-0.5").expect("x").number());
 		println(json.int(7).pretty(), json.ints([]).pretty(), json.texts(["a"]).pretty() == "[\n  \"a\"\n]");
 	`,
@@ -1114,5 +1114,94 @@ func TestProgramArguments(t *testing.T) {
 	}
 	if out.String() != "3 7\n" {
 		t.Errorf("expected 3 arguments and a sum of 7, got %q", out.String())
+	}
+}
+
+func TestOps(t *testing.T) {
+	src := `
+		import std.ops;
+		import std.ops.{Equal, Ordered, Show};
+		import std.arrays;
+		import std.list;
+		import std.dict;
+		import std.set;
+		import std.json;
+		import std.test;
+
+		struct Card { rank: Int; suit: String; }
+		impl Ordered for Card {
+			fn compare(other: Card) -> Int {
+				if self.rank != other.rank { return self.rank - other.rank; }
+				return self.suit.compare(other.suit);
+			}
+		}
+		impl Equal for Card { fn equals(other: Card) -> Bool { return self.compare(other) == 0; } }
+		impl Show for Card { fn show() -> String { return "${self.rank}${self.suit}"; } }
+
+		fn main() -> Int {
+			// The builtin types have the traits
+			println(3.compare(5), 5.compare(3), 4.compare(4), 2.5.compare(1.5), "a".compare("b"), "b".compare("b"));
+			println(3.equals(3), 3.equals(4), "x".equals("x"), true.equals(false), 1.5.equals(1.5));
+			println(3.isBefore(5), "b".isAfter("a"), 7.show() + "!", true.show(), 2.5.show(), "s".show());
+
+			// For anything that implements them
+			let hand = [Card { rank: 9, suit: "h" }, Card { rank: 2, suit: "s" }, Card { rank: 9, suit: "c" }, Card { rank: 14, suit: "d" }];
+			println(ops.join(ops.sorted(hand), " "), ops.largest(hand), ops.smallest(hand), ops.max(hand[0], hand[2]), ops.min(hand[0], hand[2]));
+			println(ops.sorted([3, 1, 2]), ops.sorted(["pear", "fig", "apple"]), ops.sorted([2.5, 0.5]), ops.sorted(arrays.take([1], 0)), ops.sorted([7]));
+			println(ops.largest([3, 9, 4]), ops.smallest(["b", "a"]), ops.largest(arrays.take([1], 0)), ops.max(1, 1), ops.min("b", "a"), ops.max(1.5, 2.5));
+			println(ops.contains(hand, Card { rank: 2, suit: "s" }), ops.contains(hand, Card { rank: 2, suit: "h" }), ops.indexOf(hand, Card { rank: 9, suit: "c" }), ops.indexOf([1, 2], 3), ops.contains(["a"], "a"));
+			println(ops.same(hand, hand), ops.same([1, 2], [1, 2]), ops.same([1, 2], [2, 1]), ops.same([1], [1, 2]), ops.same(arrays.take([1], 0), arrays.take([1], 0)));
+			println(ops.join(hand, ", "), ops.join([1, 2], "+"), ops.join(arrays.take([1], 0), ","), ops.join([true], ","));
+
+			// Sorting keeps what is equal in the order it was in
+			let ties = arrays.map(ops.sorted([Card { rank: 5, suit: "x" }, Card { rank: 1, suit: "x" }, Card { rank: 5, suit: "x" }]), fn(c: Card) -> Int { return c.rank; });
+			println(ties, hand[0] < hand[3], hand[0] == Card { rank: 9, suit: "h" }, hand[0] >= hand[2]);
+
+			// What the library itself implements
+			let names = list.of(["b", "a"]);
+			names[0] = "c";
+			let ages = dict.empty<Int>();
+			ages["x"] = 1;
+			let seen = set.of(["p", "q"]);
+			let walked: [String] = [];
+			for name in names { push(walked, name); }
+			for key in ages { push(walked, key); }
+			for item in seen { push(walked, item); }
+			println(walked, names[1], ages["x"], ages["y"], seen == set.of(["q", "p"]), json.ints([1]) == json.ints([1]), json.ints([1]) != json.texts(["1"]));
+
+			// A check that two values are equal uses what the type says
+			let report = test.suite("equal")
+				.test("by content", fn() { test.equal(Card { rank: 1, suit: "a" }, Card { rank: 1, suit: "a" }); test.equal(json.int(1), json.int(1)); })
+				.test("not equal", fn() { test.equal(Card { rank: 1, suit: "a" }, Card { rank: 2, suit: "a" }); })
+				.check();
+			println(report.passed(), report.failed(), report.lines()[3]);
+			return 0;
+		}`
+	errs := errors.NewHandler()
+	result := compiler.Compile(src, "ops.lum", errs)
+	for _, d := range errs.Diagnostics {
+		t.Fatalf("unexpected diagnostic:\n%s", d.String())
+	}
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	if _, err := machine.Exec(result.Chunk); err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	want := `-1 1 0 1 -1 0
+true false true false true
+true true 7! true 2.5 s
+2s 9c 9h 14d 14d 2s 9h 9c
+[1, 2, 3] ["apple", "fig", "pear"] [0.5, 2.5] [] [7]
+9 a null 1 a 2.5
+true false 2 null true
+true true false false true
+9h, 2s, 9c, 14d 1+2  true
+[1, 5, 5] true true true
+["c", "a", "x", "p", "q"] a 1 null true true true
+1 1         expected 2a, got 1a
+`
+	if out.String() != want {
+		t.Errorf("unexpected output:\n%s\nwant:\n%s", out.String(), want)
 	}
 }
