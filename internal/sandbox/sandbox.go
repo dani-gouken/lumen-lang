@@ -48,9 +48,9 @@ func (l Limits) withDefaults() Limits {
 // std.path (files), std.http (the network), std.os (the process, other
 // programs), std.time (the clock; sleeping), std.compiler (files again).
 var pure = []string{
-	"std.csv.", "std.encoding.", "std.format.", "std.hash.", "std.json.",
-	"std.math.", "std.random.", "std.reflect.", "std.regex.", "std.result.",
-	"std.strings.", "std.task.",
+	"std.arrays.", "std.csv.", "std.encoding.", "std.format.", "std.hash.",
+	"std.json.", "std.math.", "std.random.", "std.reflect.", "std.regex.",
+	"std.result.", "std.strings.", "std.task.",
 }
 
 // Permitted reports whether a sandboxed program may use a native function:

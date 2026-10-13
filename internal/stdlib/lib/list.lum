@@ -53,29 +53,24 @@ impl<T> List<T> {
     // Replaces the item at `index`. Fails if there is none there.
     pub fn set(index: Int, value: T) { self.items[index] = value; }
 
-    // Puts `value` at `index`, moving the items from there on up.
+    // Puts `value` at `index`, moving the items from there on up. An index
+    // at or past the end adds it at the end; a negative one changes nothing.
     pub fn insert(index: Int, value: T) {
-        self.items = arrays.inserted<T>(self.items, index, value);
+        arrays.insertAt<T>(self.items, index, value);
     }
 
     // Takes out the item at `index` and returns it, or null if there is
     // none there.
     pub fn removeAt(index: Int) -> T? {
-        if index < 0 || index >= arrays.len(self.items) { return null; }
-        let taken = self.items[index];
-        self.items = arrays.without<T>(self.items, index);
-        return taken;
+        return arrays.removeAt<T>(self.items, index);
     }
 
     // Takes out the last item and returns it, or null for an empty list.
     pub fn pop() -> T? {
-        return self.removeAt(arrays.len(self.items) - 1);
+        return arrays.pop<T>(self.items);
     }
 
-    pub fn clear() {
-        let none: [T] = [];
-        self.items = none;
-    }
+    pub fn clear() { arrays.clear<T>(self.items); }
 
     // Puts the list itself in order; see arrays.sorted.
     pub fn sort(before: fn(T, T) -> Bool) {

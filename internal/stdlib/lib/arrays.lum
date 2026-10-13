@@ -264,6 +264,47 @@ pub fn swap<T>(items: [T], a: Int, b: Int) {
     items[b] = held;
 }
 
+// --- Changing the array itself ---
+//
+// These four change the array they are given: whatever else holds it sees
+// the change. With `push` they make an array a stack (push, pop) or a
+// queue (push, removeAt(items, 0)). None of them makes a new array, and an
+// array made shorter keeps the room it had, to grow into again.
+
+// Takes the last item out and returns it, or null for an empty array. It
+// takes the same time however long the array is.
+//
+// In an array of optionals an item can itself be null, and then null says
+// nothing about whether there was one: ask isEmpty first.
+pub fn pop<T>(items: [T]) -> T? {
+    let count = len(items);
+    if count == 0 { return null; }
+    let taken = items[count - 1];
+    cutLast(items);
+    return taken;
+}
+
+// Takes the item at `index` out and returns it, the items after it moving
+// down one place. Null, and nothing changed, if there is none there.
+pub fn removeAt<T>(items: [T], index: Int) -> T? {
+    if index < 0 || index >= len(items) { return null; }
+    let taken = items[index];
+    cutAt(items, index);
+    return taken;
+}
+
+// Puts `value` at `index`, the items from there on moving up one place.
+// An index at or past the end puts it at the end; a negative one changes
+// nothing. That is what `inserted` does with the same indexes.
+pub fn insertAt<T>(items: [T], index: Int, value: T) {
+    putAt(items, index, value);
+}
+
+// Takes every item out.
+pub fn clear<T>(items: [T]) {
+    cutAll(items);
+}
+
 // --- Pieces and groups ---
 
 // The first `count` items, or all of them if there are fewer.
@@ -441,3 +482,11 @@ pub fn sortedTexts(texts: [String]) -> [String] {
     return sorted<String>(texts, (a, b) -> a < b);
 }
 
+// Provided by the runtime, which is what can make an array shorter. An
+// extern function cannot have type parameters, so these take an array of
+// any type, and return nothing: pop and removeAt read the item themselves
+// before it is cut out, which gives it its type without a cast.
+extern fn cutLast(items: Any);
+extern fn cutAt(items: Any, index: Int);
+extern fn putAt(items: Any, index: Int, value: Any);
+extern fn cutAll(items: Any);

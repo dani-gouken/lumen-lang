@@ -222,7 +222,7 @@ arrays.len(xs)              // 4, with: import std.arrays;
 
 Arrays and texts have no members of their own: a dot reaches into a struct or an enum, nothing else. Their length, and everything else done to them, is a function of the standard library.
 
-All elements have the same type. Reading or writing an index that does not exist is a runtime error; `xs[i] = v` replaces an element and never grows the array, `push` does.
+All elements have the same type. Reading or writing an index that does not exist is a runtime error; `xs[i] = v` replaces an element and never grows the array, `push` does. `arrays.pop(xs)`, `arrays.removeAt(xs, i)`, `arrays.insertAt(xs, i, v)` and `arrays.clear(xs)` take items out of the array itself, or put one in the middle: see [`std.arrays`](stdlib.md#stdarrays).
 
 ### Structs, traits and methods
 

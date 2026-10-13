@@ -71,7 +71,7 @@ let port = strings.parseInt(text) ?? 8080;
   called from main.lum:13:13 in function 'main'
 ```
 
-**Arrays are not changed** by the functions of `std.arrays`; they return new ones. The exceptions say so (`swap`, `random.shuffle`). A `List` is the reverse: its methods change it, unless they return a new list.
+**Arrays are not changed** by the functions of `std.arrays`; they return new ones. The exceptions say so (`pop`, `removeAt`, `insertAt`, `clear`, `swap`, `random.shuffle`). A `List` is the reverse: its methods change it, unless they return a new list.
 
 **Ranges** are given as `from, to`: `from` is included, `to` is not. Positions count from 0. In texts they count characters, not bytes, like `text[i]` and `strings.len(text)`.
 
@@ -224,8 +224,43 @@ Generic functions on plain arrays. Type arguments are inferred: `arrays.reversed
 | `slice<T>(items, from, to)` | The items from `from` up to, not including, `to`. Positions outside the array are brought back to its ends |
 | `concat<T>(first, second)` | One after the other |
 | `reversed<T>(items)` | |
-| `without<T>(items, index)` | Without the item at `index` |
-| `inserted<T>(items, index, value)` | With `value` at `index`, the rest moved up |
+| `without<T>(items, index)` | Without the item at `index`. An index outside the array changes nothing |
+| `inserted<T>(items, index, value)` | With `value` at `index`, the rest moved up. An index at or past the end puts it at the end; a negative one changes nothing |
+
+**Changing the array itself**
+
+| Function | Does |
+|----------|------|
+| `pop<T>(items) -> T?` | Takes the last item out and returns it; `null` for an empty array. Takes the same time however long the array is |
+| `removeAt<T>(items, index) -> T?` | Takes the item at `index` out and returns it, the items after it moving down. `null`, and nothing changed, if there is none there |
+| `insertAt<T>(items, index, value)` | Puts `value` at `index`, the items from there on moving up. An index at or past the end puts it at the end; a negative one changes nothing, as with `inserted` |
+| `clear<T>(items)` | Takes every item out |
+
+With `push`, these make an array a stack (`push`, `pop`) or a queue (`push`, `removeAt(items, 0)`). They change the array they are given, so everything that holds it sees the change, and they make no new array: one made shorter keeps the room it had, to grow into again.
+
+```rust
+let stack = [1, 2];
+push(stack, 3);
+let top = arrays.pop(stack);          // 3, an Int?; stack is [1, 2]
+arrays.insertAt(stack, 0, 0);         // [0, 1, 2]
+let first = arrays.removeAt(stack, 0);
+
+while !arrays.isEmpty(stack) {        // until nothing is left
+    let item = arrays.pop(stack);
+}
+```
+
+Two things to know:
+
+- **`null` from an array of optionals.** In a `[Int?]` an item can itself be `null`, and `pop` then gives `null` for that item as it does for an empty array. Ask `isEmpty` (or `len`) before, as the loop above does, instead of waiting for `null`.
+- **Not inside `for ... in` over the same array.** That loop counts the items once, before it starts; an array made shorter under it is read past its end, which stops the program (`index out of bounds`). Use `while` with an index that only moves on when nothing was removed, go down from the end, or loop over `arrays.copy(items)`:
+
+```rust
+let i = 0;
+while i < arrays.len(tasks) {
+    if tasks[i].done { arrays.removeAt(tasks, i); } else { i++; }
+}
+```
 
 **One item**
 
@@ -324,11 +359,13 @@ println(names[0]);
 
 **Methods that change the list**
 
+They change the array the list holds, as the functions of [`std.arrays`](#stdarrays) that change an array do. As there, do not take items out of a list inside a `for ... in` over that same list: the loop counted them before it started. Loop over `names.toArray()`, or use `while` with `names.size()`.
+
 | Method | Does |
 |--------|------|
 | `add(value)`, `addAll(values)` | Adds at the end |
 | `set(index, value)` | Replaces the item there. Fails if there is none |
-| `insert(index, value)` | Puts `value` at `index`, moving the rest up |
+| `insert(index, value)` | Puts `value` at `index`, moving the rest up. An index at or past the end adds it at the end; a negative one changes nothing |
 | `removeAt(index) -> T?` | Takes the item out and returns it; `null` if there is none there |
 | `pop() -> T?` | Takes out the last item; `null` for an empty list |
 | `clear()` | |

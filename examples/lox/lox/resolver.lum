@@ -10,8 +10,6 @@
 import std.arrays;
 import std.dict;
 import std.dict.{Dict};
-import std.list;
-import std.list.{List};
 import lox.token.{Token, Reporter};
 import lox.tree.{Expr, Stmt, Function};
 import lox.parser.{Program};
@@ -25,7 +23,7 @@ pub fn resolve(program: Program, reporter: Reporter) -> [Int] {
     let resolver = Resolver {
         reporter: reporter,
         distances: arrays.fill(program.names, GLOBAL),
-        scopes: list.empty<Dict<Bool>>(),
+        scopes: [],
     };
     resolver.statements(program.statements);
     return resolver.distances;
@@ -39,22 +37,22 @@ struct Resolver {
     distances: [Int];
     // The scopes the resolver is in, innermost last. A name is there from
     // its declaration, and true once its initializer has been read.
-    scopes: List<Dict<Bool>>;
+    scopes: [Dict<Bool>];
     function: Inside = Inside.Nothing;
     class: InsideClass = InsideClass.None;
 }
 
 impl Resolver {
     fn begin() {
-        self.scopes.add(dict.empty<Bool>());
+        push(self.scopes, dict.empty<Bool>());
     }
 
     fn end() {
-        self.scopes.pop();
+        arrays.pop(self.scopes);
     }
 
     fn declare(name: Token) {
-        let scope = self.scopes.last();
+        let scope = arrays.last(self.scopes);
         if scope == null { return; }
         if scope.has(name.lexeme) {
             self.reporter.atToken(name, "Already a variable with this name in this scope.");
@@ -63,12 +61,12 @@ impl Resolver {
     }
 
     fn define(name: Token) {
-        self.scopes.last()?.set(name.lexeme, true);
+        arrays.last(self.scopes)?.set(name.lexeme, true);
     }
 
     // Notes how far out the variable of a numbered expression is
     fn local(number: Int, name: Token) {
-        let depth = self.scopes.size();
+        let depth = arrays.len(self.scopes);
         for out in 0..depth {
             if self.scopes[depth - 1 - out].has(name.lexeme) {
                 self.distances[number] = out;
@@ -147,11 +145,11 @@ impl Resolver {
 
             // The methods of a subclass see `super` one scope out
             self.begin();
-            self.scopes.last()?.set("super", true);
+            arrays.last(self.scopes)?.set("super", true);
         }
 
         self.begin();
-        self.scopes.last()?.set("this", true);
+        arrays.last(self.scopes)?.set("this", true);
         for method in methods {
             let kind = Inside.Method;
             if method.name.lexeme == "init" { kind = Inside.Initializer; }
@@ -218,7 +216,7 @@ impl Resolver {
             }
             case Expr.Unary(operator, right): { self.expression(right); }
             case Expr.Variable(name, number): {
-                let scope = self.scopes.last();
+                let scope = arrays.last(self.scopes);
                 if scope != null && scope.get(name.lexeme) == false {
                     self.reporter.atToken(name, "Can't read local variable in its own initializer.");
                 }
