@@ -193,6 +193,14 @@ func (vm *VM) registerBuiltins() {
 		return vm.newString(FormatValue(args[0]))
 	})
 
+	// __text intrinsic: an expression inside a string, "${value}"
+	vm.RegisterTypedExtern("__text", "fn(any)->string", func(vm *VM, args []Value) (Value, error) {
+		if len(args) != 1 {
+			return NewNull(), fmt.Errorf("__text expects 1 argument, got %d", len(args))
+		}
+		return vm.newString(FormatValue(args[0]))
+	})
+
 	// __cast intrinsic: `value as Type`. Returns the value if it is what
 	// the descriptor says, fails otherwise.
 	vm.RegisterExtern("__cast", func(vm *VM, args []Value) (Value, error) {

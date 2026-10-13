@@ -35,12 +35,31 @@ The lexer turns characters into `token.Token` values. Each token records its typ
 | Identifiers | A letter or `_`, then letters, digits and `_`. Keywords and builtin type names are recognized by `token.LookupIdent` |
 | Integers | Digits: `42` |
 | Floats | Digits with a fraction and/or exponent: `3.14`, `10e3`, `1.5e-2`. A `.` only starts a fraction when a digit follows, so `xs.size` and `1.x` are not floats |
-| Strings | `"..."` on one line, with escapes `\n \t \r \0 \\ \"` |
+| Strings | `"..."` on one line, with escapes `\n \t \r \0 \\ \" \$`. With `${...}` inside, several tokens: see [below](#string-interpolation) |
 | Operators | Longest match first: `...`, `->`, `==`, `!=`, `<=`, `>=`, `&&`, `||`, `??`, `+=`, `-=`, `*=`, `/=`, `%=`, `++`, `--` before the single-character ones. As a consequence `a--b` is `a`, `--`, `b`; write `a - -b` |
 
 There is no token for negative numbers: `-1` is the unary operator applied to `1`.
 
 **Lexical errors do not stop the lexer.** An unknown character, an unterminated string or comment, or an invalid escape produces an `ILLEGAL` token whose text describes the problem. The parser reports it (as `E0002`) when it reaches the token. This keeps all reporting in one place and lets the parser recover the same way as for any other error.
+
+### String interpolation
+
+A string literal with `${expr}` in it is not one token. The lexer turns it into the tokens of the concatenation it stands for:
+
+```
+"total: ${n + 1} items"      ( "total: " + __text ( n + 1 ) + " items" )
+"${a}${b}"                   ( "" + __text ( a ) + __text ( b ) )
+```
+
+*   The text before the first `${` always comes first, empty or not: it makes the expression a `String` whatever follows.
+*   `__text` is a builtin that does what `toString` does. It has a name of its own so that a program's variable called `toString` cannot get in the way.
+*   The parentheses keep the whole thing one operand: `"${a}" + b` and `f("${a}")` mean what they look like.
+*   The tokens of the expression are read by the lexer itself, from the source, so they carry their real positions and an error in the expression is shown under it. A string inside the expression is read like any string, so it may have `${...}` of its own. Braces are counted, so a struct literal or a lambda inside is fine. The made-up tokens are positioned at the `${`.
+*   The expression has to close on the line it starts on. `${}` with nothing inside and a `${` that is never closed are lexical errors (`E0002`), and what is left of the line is skipped so that one mistake gives one error.
+
+The lexer keeps the tokens it has made and not yet handed out in a queue (`Lexer.pending`); `Next` empties it before reading on.
+
+Doing this in the lexer means no later stage knows the feature exists. The price is that a string with interpolation prints back, in a diagnostic or in `lumen ir`, as the concatenation.
 
 ## Parser (`parser.go`)
 

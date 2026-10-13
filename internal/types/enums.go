@@ -779,10 +779,23 @@ func (c *Checker) checkConstantExpr(expr ast.Expr) {
 		} else {
 			return // Undefined: reported by name resolution
 		}
+	case *ast.CallExpr:
+		// "size in ${UNIT}": a text made of constants is one
+		if isInterpolation(e) {
+			c.checkConstantExpr(e.Args[0])
+			return
+		}
 	}
 	c.errorfWithSuggestion(expr.Token(), ErrNotConstant,
 		"Use literals, operators and other constants; for anything else, write a function that returns the value",
 		"the value of a constant has to be known when the program is compiled")
+}
+
+// isInterpolation reports whether a call is the one a `${...}` in a string
+// stands for.
+func isInterpolation(e *ast.CallExpr) bool {
+	callee, ok := e.Func.(*ast.Ident)
+	return ok && callee.Name == "__text" && len(e.Args) == 1
 }
 
 // values counts the values of a variant in words: "no values", "1 value".

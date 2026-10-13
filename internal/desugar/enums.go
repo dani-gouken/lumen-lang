@@ -50,6 +50,18 @@ func (d *Desugarer) inlineConstant(value ast.Expr, at ast.BaseNode, depth int) a
 		if decl := d.constOf(e); decl != nil {
 			return d.inlineConstant(decl.Value, at, depth+1)
 		}
+	case *ast.CallExpr:
+		// The call a `${...}` in a string stands for, the only one a
+		// constant may hold
+		args := make([]ast.Expr, len(e.Args))
+		for i, arg := range e.Args {
+			args[i] = d.inlineConstant(arg, at, depth+1)
+		}
+		callee := e.Func
+		if ident, ok := callee.(*ast.Ident); ok {
+			callee = &ast.Ident{BaseNode: at, Name: ident.Name}
+		}
+		return &ast.CallExpr{BaseNode: at, Func: callee, Args: args}
 	}
 	return value
 }

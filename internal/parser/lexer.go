@@ -6,6 +6,11 @@ import (
 	"github.com/dani-gouken/lumen/internal/token"
 )
 
+// InterpolationFunction is the builtin an expression in a string is passed
+// to. It does what toString does, under a name a program cannot hide with
+// a variable of its own.
+const InterpolationFunction = "__text"
+
 // Lexer converts Lumen source text into tokens.
 type Lexer struct {
 	src  []rune
@@ -13,6 +18,10 @@ type Lexer struct {
 	pos  int
 	line int
 	col  int
+
+	// Tokens already made and not yet handed out. A string with `${...}`
+	// in it becomes several tokens at once (see lexString).
+	pending []token.Token
 }
 
 // NewLexer creates a lexer for the given source.
@@ -73,6 +82,16 @@ func (l *Lexer) skipWhitespace() {
 
 // Next returns the next token.
 func (l *Lexer) Next() token.Token {
+	if len(l.pending) > 0 {
+		tok := l.pending[0]
+		l.pending = l.pending[1:]
+		return tok
+	}
+	return l.scan()
+}
+
+// scan reads one token from the source.
+func (l *Lexer) scan() token.Token {
 	l.skipWhitespace()
 	start := l.position()
 
@@ -174,13 +193,69 @@ func (l *Lexer) lexNumber(start token.Position) token.Token {
 	return token.NewToken(typ, string(l.src[begin:l.pos]), start, l.position())
 }
 
+// lexString reads a string literal.
+//
+// A string may hold expressions, written `${expr}`: "total: ${n} items".
+// Such a string is not one token but the tokens of the concatenation it
+// stands for,
+//
+//	( "total: " + __text ( n ) + " items" )
+//
+// so the parser and everything after it see an ordinary expression. The
+// first token is returned and the rest are kept for the next calls. The
+// tokens of each expression are read by the lexer itself, with their real
+// positions; the ones that are made up are positioned at the `${`.
 func (l *Lexer) lexString(start token.Position) token.Token {
 	l.advance() // opening quote
+
 	var sb strings.Builder
+	var parts []token.Token // Non-nil once a `${` was met
+	text := func(at token.Position) token.Token {
+		tok := token.NewToken(token.STRING, sb.String(), at, l.position())
+		sb.Reset()
+		return tok
+	}
+
 	for {
 		if l.pos >= len(l.src) || l.peek(0) == '\n' {
 			return token.NewToken(token.ILLEGAL, "unterminated string literal", start, l.position())
 		}
+
+		if l.peek(0) == '$' && l.peek(1) == '{' {
+			at := l.position()
+			made := func(typ token.TokenType, literal string) token.Token {
+				end := at
+				end.Col += 2
+				return token.NewToken(typ, literal, at, end)
+			}
+			if parts == nil {
+				// The text before comes first, even when empty: it is what
+				// makes the whole thing a text whatever follows
+				parts = []token.Token{token.NewToken(token.LPAREN, "(", start, start), text(start)}
+			} else if sb.Len() > 0 {
+				parts = append(parts, made(token.PLUS, "+"), text(at))
+			}
+			l.advance()
+			l.advance()
+
+			inner, problem := l.lexInterpolation(at)
+			if problem != "" {
+				// What is left of the line is part of the broken string:
+				// reading it as code would only add errors about nothing
+				end := at
+				end.Col += 2
+				for l.pos < len(l.src) && l.peek(0) != '\n' {
+					l.advance()
+				}
+				l.pending = nil
+				return token.NewToken(token.ILLEGAL, problem, at, end)
+			}
+			parts = append(parts, made(token.PLUS, "+"), made(token.IDENT, InterpolationFunction), made(token.LPAREN, "("))
+			parts = append(parts, inner...)
+			parts = append(parts, made(token.RPAREN, ")"))
+			continue
+		}
+
 		ch := l.advance()
 		if ch == '"' {
 			break
@@ -201,13 +276,65 @@ func (l *Lexer) lexString(start token.Position) token.Token {
 			sb.WriteRune('\r')
 		case '0':
 			sb.WriteRune(0)
-		case '\\', '"':
+		case '\\', '"', '$':
 			sb.WriteRune(esc)
 		default:
 			return token.NewToken(token.ILLEGAL, "invalid escape sequence '\\"+string(esc)+"'", start, l.position())
 		}
 	}
-	return token.NewToken(token.STRING, sb.String(), start, l.position())
+
+	if parts == nil {
+		return token.NewToken(token.STRING, sb.String(), start, l.position())
+	}
+
+	end := l.position()
+	if sb.Len() > 0 {
+		parts = append(parts, token.NewToken(token.PLUS, "+", end, end), text(end))
+	}
+	parts = append(parts, token.NewToken(token.RPAREN, ")", end, end))
+	l.pending = append(parts[1:], l.pending...)
+	return parts[0]
+}
+
+// lexInterpolation reads the tokens of the expression of a `${...}`, up to
+// the brace that closes it, and returns them without that brace. Braces
+// inside the expression (a struct literal, a lambda) are counted, and a
+// string inside it is read as any string. On a problem it returns the
+// message.
+func (l *Lexer) lexInterpolation(at token.Position) ([]token.Token, string) {
+	var tokens []token.Token
+	depth := 1
+	for {
+		tok := l.scan()
+		switch {
+		case tok.Type == token.EOF || tok.Pos.Line != at.Line:
+			return nil, "unterminated '${' in a string: expected '}' before the end of the line"
+		case tok.Type == token.ILLEGAL:
+			if strings.HasPrefix(tok.Literal, "unterminated string") {
+				// The quote that was taken for the start of a string is
+				// the end of this one: the brace is what is missing
+				return nil, "unterminated '${' in a string: expected '}' before the end of the line"
+			}
+			return nil, tok.Literal
+		case tok.Type == token.COMMENT:
+			continue
+		case tok.Type == token.LBRACE:
+			depth++
+		case tok.Type == token.RBRACE:
+			depth--
+			if depth == 0 {
+				if len(tokens) == 0 {
+					return nil, "nothing between '${' and '}' in a string"
+				}
+				return tokens, ""
+			}
+		}
+		tokens = append(tokens, tok)
+
+		// A string with `${` of its own left its tokens to be handed out
+		tokens = append(tokens, l.pending...)
+		l.pending = nil
+	}
 }
 
 var multiCharOps = []struct {

@@ -10,7 +10,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | a pipe operator for chaining, short lambdas, string interpolation, ranges, null operators |
+| Everyday syntax | a pipe operator for chaining, short lambdas, ranges, null operators |
 | Failures | a short way to pass one on (`?`), cleanup that always runs |
 | Types | traits as bounds on type parameters, generic traits, conditions and alternatives in `match` |
 | Structs as first-class containers | `for` over a struct, `list[i]`, methods as values |
@@ -175,7 +175,8 @@ The first two wait for generic traits, above.
 | A literal for dictionaries | `dict.empty<V>()` then `set`; there is no `{"a": 1}` |
 | Numbers | `Int` is 48 bits (±140 737 488 355 327), not 64; there are no unsigned or sized integers, and no bytes: a file is read as text only |
 | Characters | A character is a text of length 1; `strings.code` and `fromCode` go to and from its number |
-| String interpolation, multi-line strings, `\u` escapes | Not parsed |
+| Multi-line strings, `\u` escapes | Not parsed |
+| Formatting inside `${...}`: a width, a number of decimals | Call a function: `"${strings.padLeft(toString(n), 5)}"` |
 | Null operators: `a?.b`, `x!` | Not parsed. Test against `null`, or use `??` |
 | Anything concurrent: threads, async, timers | Nothing; a program is one sequence of steps |
 | Type aliases | Not parsed |
@@ -280,7 +281,7 @@ Function objects are reused, so calling a function by name allocates nothing for
 
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
-1.  **Chaining and less noise**: the pipe operator, short lambdas, string interpolation. Small, and they change how every program reads.
+1.  **Chaining and less noise**: the pipe operator and short lambdas. Small, and they change how every program reads.
 3.  **Syntax highlighting** for one editor.
 4.  **Traits with type parameters, and as bounds**: what `for` over a `List`, `list[i]` and generic code that compares its values all wait for.
 5.  **`match`**: conditions on cases, several patterns per case, `match` as an expression.

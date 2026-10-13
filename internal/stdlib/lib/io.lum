@@ -56,7 +56,7 @@ pub struct Error {
 impl Error {
     // In one sentence: cannot read notes.txt: no such file or directory
     pub fn describe() -> String {
-        return "cannot " + self.operation + " " + self.path + ": " + self.message;
+        return "cannot ${self.operation} ${self.path}: ${self.message}";
     }
 
     // The sentence, then where the program asked for the file and the

@@ -121,7 +121,7 @@ pub struct Location {
 impl Location {
     // On one line: main.lum:12:5 in function 'load'
     pub fn describe() -> String {
-        return self.file + ":" + toString(self.line) + ":" + toString(self.column) + " in function '" + self.function + "'";
+        return "${self.file}:${self.line}:${self.column} in function '${self.function}'";
     }
 }
 
@@ -183,7 +183,7 @@ pub struct Failure {
 impl Failure {
     // On one line: index out of bounds: 7 (length 3), at main.lum:12:5 in function 'load'
     pub fn describe() -> String {
-        return self.message + ", at " + self.at.describe();
+        return "${self.message}, at ${self.at.describe()}";
     }
 
     // Over several lines, with the calls that led there.

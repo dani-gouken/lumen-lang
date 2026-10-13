@@ -31,9 +31,9 @@ struct ConfigError {
 impl ConfigError {
     fn describe() -> String {
         match self.reason {
-            case Reason.Empty: { return self.key + " is empty"; }
-            case Reason.NotANumber(text): { return self.key + " should be a number, not '" + text + "'"; }
-            case Reason.OutOfRange(n): { return self.key + " should be from 1 to 100, not " + toString(n); }
+            case Reason.Empty: { return "${self.key} is empty"; }
+            case Reason.NotANumber(text): { return "${self.key} should be a number, not '${text}'"; }
+            case Reason.OutOfRange(n): { return "${self.key} should be from 1 to 100, not ${n}"; }
         }
     }
 }
@@ -87,8 +87,8 @@ fn main() -> Int {
     println("-- settings");
     for text in ["40", "", "lots", "250"] {
         match percent("volume", text) {
-            case Result.Ok(n): { println("volume set to", n); }
-            case Result.Err(error): { println("refused:", error.describe()); }
+            case Result.Ok(n): { println("volume set to ${n}"); }
+            case Result.Err(error): { println("refused: ${error.describe()}"); }
         }
     }
 
@@ -124,17 +124,17 @@ fn main() -> Int {
         // Without attempt, the second job would end the program
         match attempt(job) {
             case Result.Ok(n): {
-                println("job", i, "gave", n);
+                println("job ${i} gave ${n}");
                 completed++;
             }
             case Result.Err(failure): {
                 match failure.kind {
-                    case Kind.Panic: { println("job", i, "gave up:", failure.message); }
-                    default: { println("job", i, "broke:", failure.message, "in", failure.at.function); }
+                    case Kind.Panic: { println("job ${i} gave up: ${failure.message}"); }
+                    default: { println("job ${i} broke: ${failure.message} in ${failure.at.function}"); }
                 }
             }
         }
     }
-    println(completed, "of", arrays.len(jobs), "jobs completed");
+    println("${completed} of ${arrays.len(jobs)} jobs completed");
     return 0;
 }

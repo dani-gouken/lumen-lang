@@ -1561,3 +1561,134 @@ func TestGeneratedInstancesHaveAStableOrder(t *testing.T) {
 		t.Errorf("expected an instance per type, got %v", first)
 	}
 }
+
+func TestStringInterpolation(t *testing.T) {
+	expectOutput(t, `
+		struct Point { x: Int; y: Int; }
+		enum Shape { Circle(Float), Empty }
+		trait Named { fn name() -> String; }
+		impl Named for Point { fn name() -> String { return "point"; } }
+		impl Point { fn sum() -> Int { return self.x + self.y; } }
+
+		fn double(n: Int) -> Int { return n * 2; }
+		fn greet(name: String, age: Int?) -> String {
+			if age == null { return "${name}, age unknown"; }
+			return "${name} is ${age}, next year ${age + 1}";
+		}
+		const UNIT = "cm";
+		const LABEL = "size in ${UNIT}";
+	`, `
+		let n = 3;
+		let name = "ada";
+		let p = Point { x: 7, y: 2 };
+
+		// Variables, expressions, calls, fields and methods
+		println("n is ${n}");
+		println("${name} has ${strings.len(name)} letters; twice ${double(strings.len(name))}");
+		println("sum ${n + 4 * 2}, test ${n > 2 && name == "ada"}, half ${1.5}, nothing ${null}");
+		println("point ${p}, x ${p.x}, sum ${p.sum()}, named ${p.name()}");
+		println("made here: ${Point { x: 1, y: 1 }.sum()}, shapes ${Shape.Circle(2.0)} ${Shape.Empty}");
+		println("items ${[1, 2, 3]}, count ${arrays.len([1, 2])}, second ${[10, 20][1]}");
+
+		// Any position, any number, and none
+		println("${n}", "${n}${n}", "${n}-${n}", "[${""}]", "plain");
+		println("a" + "${n}" + "b", strings.len("${n}${name}"), "${n}" == "3", strings.upper("${name}!"));
+
+		// Strings and interpolation inside an interpolation
+		println("outer ${"inner ${n + 1} done"} end");
+		println("say ${"\"hi\""} twice: ${strings.repeat("ab", n)}");
+
+		// Lambdas, in and out
+		println("squares ${arrays.map([1, 2, 3], fn(v: Int) -> Int { return v * v; })}");
+		let label = fn(v: Int) -> String { return "<${v}/${n}>"; };
+		println(arrays.map([1, 2], label));
+
+		// What is not interpolation
+		println("price: $5, set {a, b}, escaped \${n}, at the end $");
+
+		// The value is worked out each time, left to right
+		let count = 0;
+		let next = fn() -> Int { count++; return count; };
+		println("${next()} ${next()} ${next()}", count);
+
+		// In constants, returns, conditions and optionals
+		println(LABEL, greet("bob", 41), greet("eve", null));
+		let maybe: Int? = null;
+		println("maybe ${maybe}, or ${maybe ?? 0}");
+		if "${n}" == "3" { println("as a condition"); }
+	`, `n is 3
+ada has 3 letters; twice 6
+sum 11, test true, half 1.5, nothing null
+point {x: 7, y: 2}, x 7, sum 9, named point
+made here: 2, shapes Circle(2) Empty
+items [1, 2, 3], count 2, second 20
+3 33 3-3 [] plain
+a3b 4 true ADA!
+outer inner 4 done end
+say "hi" twice: ababab
+squares [1, 4, 9]
+["<1/3>", "<2/3>"]
+price: $5, set {a, b}, escaped ${n}, at the end $
+1 2 3 3
+size in cm bob is 41, next year 42 eve, age unknown
+maybe null, or 0
+as a condition
+`)
+
+	// A program's own toString does not get in the way
+	out, _, err := runProgram(t, `fn main() -> Int { let toString = 5; println("v ${toString}"); return 0; }`)
+	if err != nil || out != "v 5\n" {
+		t.Errorf("expected a local named toString to be just a value, got %q, %v", out, err)
+	}
+}
+
+func TestStringInterpolationErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		code string
+		msg  string
+		col  int
+	}{
+		// What is inside is checked like any expression, and reported where it is
+		{"unknown name", `fn main() -> Int { println("a ${missing} b"); return 0; }`, "E1001", "undefined identifier 'missing'", 33},
+		{"type error", `fn main() -> Int { println("a ${1 + "x"} b"); return 0; }`, "E2006", "", 35},
+		{"optional used as a value", `fn f(n: Int?) -> String { return "v ${n + 1}"; }` + "\nfn main() -> Int { return 0; }", "E2017", "the value may be null", 39},
+		{"wrong argument", `fn half(n: Int) -> Int { return n / 2; }` + "\n" + `fn main() -> Int { println("${half("x")}"); return 0; }`, "E2010", "cannot use type string as argument of type int", 36},
+		// The result is a text
+		{"used as a number", `fn main() -> Int { let n: Int = "x ${1}"; return n; }`, "E2001", "cannot assign type string to int", 0},
+		// Mistakes in the form
+		{"nothing inside", `fn main() -> Int { println("a ${} b"); return 0; }`, "E0002", "nothing between '${' and '}' in a string", 31},
+		{"never closed", `fn main() -> Int { println("a ${1 + 2 b"); return 0; }`, "E0002", "unterminated '${' in a string", 31},
+		{"half an expression", `fn main() -> Int { println("a ${1 + } b"); return 0; }`, "E0001", "expected expression", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := errors.NewHandler()
+			Compile(tt.src, "test.lum", errs)
+			if !errs.HasErrors() {
+				t.Fatal("expected a diagnostic, got none")
+			}
+			d := errs.Diagnostics[0]
+			if d.Code != tt.code || !strings.Contains(d.Message, tt.msg) {
+				t.Errorf("expected %s containing %q, got %s: %s", tt.code, tt.msg, d.Code, d.Message)
+			}
+			if tt.col != 0 && d.Pos.Col != tt.col {
+				t.Errorf("expected the error at column %d, got %d", tt.col, d.Pos.Col)
+			}
+		})
+	}
+
+	// A broken one is a single error, with how to fix it
+	errs := errors.NewHandler()
+	Compile("fn main() -> Int {\n    println(\"a ${1 + 2 b\");\n    return 0;\n}\n", "test.lum", errs)
+	if len(errs.Diagnostics) != 1 || !strings.Contains(errs.Diagnostics[0].Suggestion, "Close the expression with '}'") {
+		t.Errorf("expected one error with a suggestion, got %v", errs.Diagnostics)
+	}
+
+	// A runtime error inside one is located like any other
+	_, _, err := runProgram(t, "fn main() -> Int {\n    let xs = [1];\n    println(\"third: ${xs[2]}\");\n    return 0;\n}\n")
+	if err == nil || !strings.Contains(err.Error(), "index out of bounds: 2 (length 1)") || !strings.Contains(err.Error(), "test.lum:3:") {
+		t.Errorf("expected an out-of-bounds error on line 3, got %v", err)
+	}
+}

@@ -1,6 +1,8 @@
 package parser
 
 import (
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/dani-gouken/lumen/internal/token"
@@ -115,5 +117,121 @@ func TestLexerErrors(t *testing.T) {
 				t.Errorf("expected %q, got %q", tt.want, tok.Literal)
 			}
 		})
+	}
+}
+
+// spell writes tokens back as text, to compare a string with `${...}` in it
+// with the expression it stands for.
+func spell(src string) string {
+	var parts []string
+	for _, tok := range NewLexer(src, "test.lum").Tokenize() {
+		switch tok.Type {
+		case token.EOF:
+		case token.STRING:
+			parts = append(parts, strconv.Quote(tok.Literal))
+		case token.ILLEGAL:
+			parts = append(parts, "<"+tok.Literal+">")
+		default:
+			parts = append(parts, tok.Literal)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func TestLexerStringInterpolation(t *testing.T) {
+	tests := []struct {
+		name string
+		src  string
+		want string
+	}{
+		// A string without ${ is one token, as before
+		{"plain", `"total"`, `"total"`},
+		{"dollar alone", `"cost: $5"`, `"cost: $5"`},
+		{"dollar at the end", `"cost $"`, `"cost $"`},
+		{"braces alone", `"{a} {}"`, `"{a} {}"`},
+		{"escaped", `"\${n}"`, `"${n}"`},
+		{"escaped dollar alone", `"\$5"`, `"$5"`},
+
+		// With one, it is the tokens of a concatenation
+		{"in the middle", `"total: ${n} items"`, `( "total: " + __text ( n ) + " items" )`},
+		{"at the start", `"${n} items"`, `( "" + __text ( n ) + " items" )`},
+		{"at the end", `"total: ${n}"`, `( "total: " + __text ( n ) )`},
+		{"alone", `"${n}"`, `( "" + __text ( n ) )`},
+		{"two in a row", `"${a}${b}"`, `( "" + __text ( a ) + __text ( b ) )`},
+		{"several", `"${a} and ${b}!"`, `( "" + __text ( a ) + " and " + __text ( b ) + "!" )`},
+		{"an expression", `"${a + b * 2}"`, `( "" + __text ( a + b * 2 ) )`},
+		{"a call", `"${f(x, y)}"`, `( "" + __text ( f ( x , y ) ) )`},
+		{"a member and an index", `"${p.items[0]}"`, `( "" + __text ( p . items [ 0 ] ) )`},
+		{"spaces inside", `"${  n  }"`, `( "" + __text ( n ) )`},
+		{"escapes around it", `"a\t${n}\n"`, `( "a\t" + __text ( n ) + "\n" )`},
+		{"an escaped one next to a real one", `"\${a} ${b}"`, `( "${a} " + __text ( b ) )`},
+
+		// Braces and strings inside the expression
+		{"a struct literal", `"${P { x: 1 }.x}"`, `( "" + __text ( P { x : 1 } . x ) )`},
+		{"a lambda", `"${fn() -> Int { return 1; }()}"`, `( "" + __text ( fn ( ) -> Int { return 1 ; } ( ) ) )`},
+		{"a string", `"${"in"}"`, `( "" + __text ( "in" ) )`},
+		{"a string with a quote", `"${"a\"b"}"`, `( "" + __text ( "a\"b" ) )`},
+		{"a string with one of its own", `"${"x ${n} y"}"`, `( "" + __text ( ( "x " + __text ( n ) + " y" ) ) )`},
+		{"three deep", `"${"${"${n}"}"}"`, `( "" + __text ( ( "" + __text ( ( "" + __text ( n ) ) ) ) ) )`},
+		{"a comment", `"${n /* which */}"`, `( "" + __text ( n ) )`},
+
+		// What follows the string is untouched
+		{"followed by code", `"${a}" + b;`, `( "" + __text ( a ) ) + b ;`},
+		{"two strings", `"${a}" "b"`, `( "" + __text ( a ) ) "b"`},
+
+		// Mistakes
+		{"nothing inside", `"a ${} b"`, `<nothing between '${' and '}' in a string>`},
+		{"only spaces inside", `"a ${  } b"`, `<nothing between '${' and '}' in a string>`},
+		{"never closed", `"a ${n b"`, `<unterminated '${' in a string: expected '}' before the end of the line>`},
+		{"closed on another line", "\"a ${n\n} b\"", `<unterminated '${' in a string: expected '}' before the end of the line>`},
+		{"a bad character inside", `"a ${n # 1} b"`, `<unexpected character '#'>`},
+		{"unclosed string after one", `"a ${n} b`, `<unterminated string literal>`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := spell(tt.src); got != tt.want {
+				t.Errorf("%s\n  want %s\n   got %s", tt.src, tt.want, got)
+			}
+		})
+	}
+}
+
+func TestLexerInterpolationPositions(t *testing.T) {
+	//          1         2
+	// 1234567890123456789012345
+	src := `x = "ab ${count + 1} cd";`
+	toks := NewLexer(src, "test.lum").Tokenize()
+
+	// The tokens of the expression are where they are written, so an
+	// error in it is shown under it
+	for _, tok := range toks {
+		switch tok.Literal {
+		case "count":
+			if tok.Pos.Col != 11 || tok.EndPos.Col != 16 {
+				t.Errorf("expected count at columns 11-16, got %d-%d", tok.Pos.Col, tok.EndPos.Col)
+			}
+		case "1":
+			if tok.Pos.Col != 19 {
+				t.Errorf("expected 1 at column 19, got %d", tok.Pos.Col)
+			}
+		case InterpolationFunction:
+			// What is made up is placed at the ${
+			if tok.Pos.Col != 9 || tok.EndPos.Col != 11 {
+				t.Errorf("expected the call at the ${, columns 9-11, got %d-%d", tok.Pos.Col, tok.EndPos.Col)
+			}
+		}
+	}
+	// The whole thing starts at the opening quote
+	if open := toks[2]; open.Type != token.LPAREN || open.Pos.Col != 5 {
+		t.Errorf("expected the expression to start at the quote, got %v at column %d", open.Type, open.Pos.Col)
+	}
+	// ...and what comes after the string is read from the right place
+	if last := toks[len(toks)-2]; last.Type != token.SEMICOLON || last.Pos.Col != 25 {
+		t.Errorf("expected the semicolon at column 25, got %v at %d", last.Type, last.Pos.Col)
+	}
+	for _, tok := range toks {
+		if tok.Pos.Line != 1 || tok.Pos.File != "test.lum" {
+			t.Errorf("token %q has position %v", tok.Literal, tok.Pos)
+		}
 	}
 }

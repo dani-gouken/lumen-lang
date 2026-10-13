@@ -12,7 +12,8 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Identifiers: `Letter {Letter | Digit | _}`, case-sensitive.
 - Keywords: `fn let const struct enum trait impl if else match case while for in break continue return true false null import as pub extern`, plus the type names `Int Float Bool String Any Void Self`.
 - Literals: ints (`123`), floats (`1.0`, `10e3`), strings (`"hi"`), bools, `null`. No char literal in v0. A leading `-` is the unary operator, so `-42` is the negation of `42`.
-- String literals stay on one line and support the escapes `\n \t \r \0 \\ \"`.
+- String literals stay on one line and support the escapes `\n \t \r \0 \\ \" \$`.
+- **Interpolation.** `${expr}` inside a string literal is replaced by the text of the expression's value, as `toString` gives it: `"total: ${n} items"`. The expression is any expression, including strings with interpolation of their own, and must close on the same line. The literal is then an expression of type `String`, equal to the concatenation of its parts; the expressions are evaluated left to right, each time the string is. `$` not followed by `{` and `{` not preceded by `$` are ordinary characters; `\$` writes a dollar sign that does not start an interpolation.
 - Comments: `// line`, `/* block */` (non-nested).
 
 ## 2. Types
@@ -277,6 +278,7 @@ known defects are inventoried in [missing.md](missing.md).
 | `Int`, `Float`, `Bool`, `String`, `null` | Supported | Ints are 48-bit signed; overflow is a runtime error |
 | Arithmetic, comparison, `!`, unary `-` | Supported | No implicit Int/Float conversion; strings compare by content |
 | String concatenation, indexing | Supported | Length is `strings.len(text)`; for an array, `arrays.len(items)` |
+| String interpolation: `"total: ${n}"` | Supported | Any expression; `\$` for a literal dollar before a brace |
 | `let`, `const`, assignment, `+=` and `++`, block scopes | Supported | `++`/`--` are statements |
 | `if`/`else`, `while`, `for in`, `break`, `continue` | Supported | `for in` over arrays and strings, optionally with the index |
 | `&&`, `||`, `??` | Supported | Short-circuit |

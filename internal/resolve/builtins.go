@@ -24,6 +24,13 @@ func Builtins() []*ast.FnDecl {
 			Params:     []*ast.Param{{Name: "value", Type: basic("Any")}},
 			ReturnType: basic("String"),
 		},
+		// What `${expr}` in a string calls: toString under a name no
+		// program writes
+		{
+			Name:       "__text",
+			Params:     []*ast.Param{{Name: "value", Type: basic("Any")}},
+			ReturnType: basic("String"),
+		},
 		// Stops the program with a message. It never returns.
 		{Name: "panic", Params: variadicAny("message"), ReturnType: basic("Void")},
 		{

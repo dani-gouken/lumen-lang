@@ -96,6 +96,18 @@ s == "foobar"               // compared by content
 toString(42) + "!"          // convert other values first
 ```
 
+A string can hold expressions, written `${...}`. Each is worked out and put in the text as `println` would write it:
+
+```lumen
+let name = "Ada";
+let items = [3, 4];
+println("Hello, ${name}!");                                  // Hello, Ada!
+println("${arrays.len(items)} items, total ${items[0] + items[1]}");  // 2 items, total 7
+println("point: ${Point { x: 1, y: 2 }}");                   // point: {x: 1, y: 2}
+```
+
+Anything that is an expression can go between the braces: calls, arithmetic, fields, another string with expressions of its own. A `$` that is not followed by `{` is just a dollar sign, and braces without a `$` are just braces. To write the characters `${` themselves, escape the dollar: `"\${name}"`.
+
 ### Control flow
 
 ```lumen

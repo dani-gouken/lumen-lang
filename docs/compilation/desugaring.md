@@ -333,17 +333,15 @@ Keeping the operators keeps the condition readable for the checker.
 The desugarer still warns (`E4004`) about operators nested five or more levels
 deep in a condition or a `let` initializer.
 
-### 5. String Interpolation (Future)
+### 5. String Interpolation
 
-**Goal**: Transform string interpolation into concatenation.
+`"Hello, ${name}! You are ${age}."` is concatenation, but it is not lowered here: it is the **lexer** that does it. A string with `${...}` in it is handed to the parser as the tokens of
 
 ```lumen
-// Before
-let msg = "Hello, {name}! You are {age} years old.";
-
-// After
-let msg = "Hello, " + toString(name) + "! You are " + toString(age) + " years old.";
+("Hello, " + __text(name) + "! You are " + __text(age) + ".")
 ```
+
+so the parser, the type checker and this stage see an ordinary expression and need no node for it. See [parsing.md](parsing.md#string-interpolation).
 
 ## Implementation Structure
 
