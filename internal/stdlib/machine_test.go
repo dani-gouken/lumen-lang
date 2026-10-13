@@ -1215,3 +1215,92 @@ func TestRangeRefusals(t *testing.T) {
 		t.Errorf("a step of 0: %v", err)
 	}
 }
+
+// The operators on bits, in programs: flags, masks, packed values and
+// what is refused.
+func TestBitwiseOperators(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+
+		const READ = 1;
+		const WRITE = 1 << 1;
+		const EXEC = 1 << 2;
+		const ALL = READ | WRITE | EXEC;
+		const NONE = ALL & ~ALL;
+
+		struct Color { r: Int; g: Int; b: Int; a: Int; }
+
+		fn pack(c: Color) -> Int { return c.r << 24 | c.g << 16 | c.b << 8 | c.a; }
+		fn unpack(n: Int) -> Color {
+			return Color { r: n >> 24 & 0xFF, g: n >> 16 & 0xFF, b: n >> 8 & 0xFF, a: n & 0xFF };
+		}
+		fn has(flags: Int, flag: Int) -> Bool { return flags & flag != 0; }
+		fn ones(n: Int) -> Int {
+			let count = 0;
+			while n != 0 { count += n & 1; n >>= 1; }
+			return count;
+		}
+		fn names(flags: Int) -> [String] {
+			let out: [String] = [];
+			if has(flags, READ) { push(out, "read"); }
+			if has(flags, WRITE) { push(out, "write"); }
+			if has(flags, EXEC) { push(out, "exec"); }
+			return out;
+		}
+
+		fn main() {
+			println(ALL, NONE, names(READ | EXEC), names(ALL & ~WRITE), names(NONE));
+
+			let flags = READ;
+			flags |= EXEC;
+			flags ^= READ | WRITE;
+			println(flags, names(flags));
+			flags &= ~EXEC;
+			flags <<= 3;
+			flags >>= 4;
+			println(flags);
+
+			let packed = pack(Color { r: 0x12, g: 0x34, b: 0x56, a: 0x78 });
+			let color = unpack(packed);
+			println(packed, packed == 0x12345678, color.r, color.g, color.b, color.a);
+
+			println(ones(0), ones(0b1011), ones(0xFFFF), ones(1 << 40));
+			println(6 & 3, 6 | 3, 6 ^ 3, ~6, 1 << 46, -1 >> 10, -256 >> 4, 7 >> 100);
+			// With signs: the bits of a negative number go on to the left for ever
+			println(-1 & 0xFF, -2 | 1, -1 ^ 0xF, ~-1, (-8) >> 1);
+			// Each binds tighter than a comparison
+			println(5 & 4 == 4, 1 | 2 == 3, 8 >> 1 > 3, [1, 2, 3, 4] |> arrays.filter(n -> n & 1 == 0));
+
+			match flags | WRITE {
+				case 1 | 2: println("one of the first two");
+				case 3: println("both");
+				default: println("more");
+			}
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out,
+		`7 0 ["read", "exec"] ["read", "exec"] []`,
+		`6 ["write", "exec"]`,
+		"1",
+		"305419896 true 18 52 86 120",
+		"0 3 16 1",
+		"2 7 5 -7 70368744177664 -1 -16 0",
+		"255 -1 -16 0 -4",
+		"true true true [2, 4]",
+		"both")
+
+	// A shift that would lose bits off the top, or by less than nothing, stops the program
+	for body, want := range map[string]string{
+		`println(1 << 47);`:            "overflow",
+		`let n = -1; println(1 << n);`: "non-negative",
+		`let n = -3; println(8 >> n);`: "non-negative",
+	} {
+		_, err := runWith(t, 16<<20, "fn main() { "+body+" }", nil)
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: expected a failure with %q, got %v", body, want, err)
+		}
+	}
+}

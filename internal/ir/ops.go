@@ -12,6 +12,14 @@ const (
 	OpMul // Dest = Src1 * Src2
 	OpDiv // Dest = Src1 / Src2
 	OpMod // Dest = Src1 % Src2
+
+	// On the bits of whole numbers
+	OpBitAnd // Dest = Src1 & Src2
+	OpBitOr  // Dest = Src1 | Src2
+	OpBitXor // Dest = Src1 ^ Src2
+	OpShl    // Dest = Src1 << Src2
+	OpShr    // Dest = Src1 >> Src2
+
 	OpNeg // Dest = -Src1
 	OpNot // Dest = !Src1
 	OpEq  // Dest = Src1 == Src2
@@ -77,6 +85,16 @@ func (op OpType) String() string {
 		return "DIV"
 	case OpMod:
 		return "MOD"
+	case OpBitAnd:
+		return "BIT_AND"
+	case OpBitOr:
+		return "BIT_OR"
+	case OpBitXor:
+		return "BIT_XOR"
+	case OpShl:
+		return "SHL"
+	case OpShr:
+		return "SHR"
 	case OpNeg:
 		return "NEG"
 	case OpNot:

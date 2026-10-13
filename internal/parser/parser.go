@@ -39,6 +39,10 @@ type Parser struct {
 	// The ranges read so far that no loop and no case took: values
 	keptRanges int
 
+	// In the pattern of a case a | separates patterns, and is not the
+	// operator on bits it is everywhere else.
+	noBitOr bool
+
 	// How many names were made up so far, for those to differ
 	made int
 
@@ -1161,7 +1165,12 @@ func (p *Parser) parseCasePattern() ast.Node {
 	if typ := p.tryTypePattern(); typ != nil {
 		return typ
 	}
-	return p.variantPattern(p.counted(p.parseHeaderExpr()), true)
+	// A | here starts the next pattern: case 1 | 2:
+	saved := p.noBitOr
+	p.noBitOr = true
+	expr := p.parseHeaderExpr()
+	p.noBitOr = saved
+	return p.variantPattern(p.counted(expr), true)
 }
 
 // counted marks a range written where numbers are gone through or
@@ -1228,10 +1237,22 @@ func (p *Parser) parseExprOrAssignment() (ast.Expr, bool) {
 
 	opTok := p.cur()
 	switch opTok.Type {
-	case token.ASSIGN, token.PLUS_ASSIGN, token.MINUS_ASSIGN, token.STAR_ASSIGN, token.SLASH_ASSIGN, token.PERCENT_ASSIGN:
+	case token.ASSIGN, token.PLUS_ASSIGN, token.MINUS_ASSIGN, token.STAR_ASSIGN, token.SLASH_ASSIGN, token.PERCENT_ASSIGN,
+		token.AMPERSAND_ASSIGN, token.PIPE_ASSIGN, token.CARET_ASSIGN:
 		p.checkAssignable(expr)
 		p.next()
 		return &ast.BinaryExpr{BaseNode: base(opTok), Left: expr, Op: opTok.Literal, Right: p.parseExpr()}, true
+
+	case token.LT, token.GT:
+		// a <<= n and a >>= n: the lexer reads < then <=
+		next := p.peekAt(1)
+		shifts := (opTok.Type == token.LT && next.Type == token.LTE) || (opTok.Type == token.GT && next.Type == token.GTE)
+		if shifts && adjacent(opTok, next) {
+			p.checkAssignable(expr)
+			p.next()
+			p.next()
+			return &ast.BinaryExpr{BaseNode: base(opTok), Left: expr, Op: opTok.Literal + next.Literal, Right: p.parseExpr()}, true
+		}
 
 	case token.INC, token.DEC:
 		p.checkAssignable(expr)
@@ -1267,10 +1288,10 @@ func (p *Parser) parseHeaderExpr() ast.Expr {
 // parseNestedExpr parses an expression inside delimiters, where struct
 // literals are unambiguous again.
 func (p *Parser) parseNestedExpr() ast.Expr {
-	saved := p.noStructLit
-	p.noStructLit = false
+	saved, savedOr := p.noStructLit, p.noBitOr
+	p.noStructLit, p.noBitOr = false, false
 	expr := p.parseExpr()
-	p.noStructLit = saved
+	p.noStructLit, p.noBitOr = saved, savedOr
 	return expr
 }
 
@@ -1331,21 +1352,54 @@ func binaryPrecedence(typ token.TokenType) int {
 	switch typ {
 	case token.OR, token.AND, token.QUESTION_QUESTION,
 		token.EQ, token.NEQ, token.LT, token.LTE, token.GT, token.GTE,
-		token.PLUS, token.MINUS, token.STAR, token.SLASH, token.PERCENT, token.PIPE_INTO:
+		token.PLUS, token.MINUS, token.STAR, token.SLASH, token.PERCENT, token.PIPE_INTO,
+		token.AMPERSAND, token.PIPE, token.CARET:
 		return typ.Precedence()
 	}
 	return 0
+}
+
+// adjacent reports whether a token starts right where another ends: the
+// two halves of << and >>, which the lexer leaves as two tokens.
+func adjacent(first, second token.Token) bool {
+	return first.EndPos.Line == second.Pos.Line && first.EndPos.Col == second.Pos.Col && first.Pos.Line == second.Pos.Line
+}
+
+// binaryOperator reads the binary operator at the current token without
+// taking it: its text, its precedence (0 when there is none) and how many
+// tokens it is made of.
+func (p *Parser) binaryOperator() (op string, prec, width int) {
+	tok := p.cur()
+	if tok.Type == token.LT || tok.Type == token.GT {
+		next := p.peekAt(1)
+		if adjacent(tok, next) {
+			if next.Type == tok.Type {
+				return tok.Literal + tok.Literal, token.PrecedenceOfShift, 2
+			}
+			// <<= and >>=: an assignment, for whoever parses those
+			if (tok.Type == token.LT && next.Type == token.LTE) || (tok.Type == token.GT && next.Type == token.GTE) {
+				return "", 0, 0
+			}
+		}
+	}
+	if tok.Type == token.PIPE && p.noBitOr {
+		// Between the patterns of a case: case 1 | 2:
+		return "", 0, 0
+	}
+	return tok.Literal, binaryPrecedence(tok.Type), 1
 }
 
 func (p *Parser) parseBinary(minPrec int) ast.Expr {
 	left := p.parseUnary()
 	for {
 		tok := p.cur()
-		prec := binaryPrecedence(tok.Type)
+		op, prec, width := p.binaryOperator()
 		if prec == 0 || prec < minPrec {
 			return left
 		}
-		p.next()
+		for ; width > 0; width-- {
+			p.next()
+		}
 		if tok.Type == token.PIPE_INTO {
 			// What follows is the call the value goes into, and no more:
 			// in value |> f(a) + 1 the 1 is added to what f returns
@@ -1353,13 +1407,13 @@ func (p *Parser) parseBinary(minPrec int) ast.Expr {
 			continue
 		}
 		right := p.parseBinary(prec + 1)
-		left = &ast.BinaryExpr{BaseNode: base(tok), Left: left, Op: tok.Literal, Right: right}
+		left = &ast.BinaryExpr{BaseNode: base(tok), Left: left, Op: op, Right: right}
 	}
 }
 
 func (p *Parser) parseUnary() ast.Expr {
 	tok := p.cur()
-	if tok.Type == token.MINUS || tok.Type == token.NOT {
+	if tok.Type == token.MINUS || tok.Type == token.NOT || tok.Type == token.TILDE {
 		p.next()
 		return &ast.UnaryExpr{BaseNode: base(tok), Op: tok.Literal, Expr: p.parseUnary()}
 	}

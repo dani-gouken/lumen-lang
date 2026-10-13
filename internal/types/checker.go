@@ -1107,7 +1107,7 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 	// Basic arithmetic
 	if left.Equals(Int) && right.Equals(Int) {
 		switch e.Op {
-		case "+", "-", "*", "/", "%":
+		case "+", "-", "*", "/", "%", "&", "|", "^", "<<", ">>":
 			return Int
 		case "<", "<=", ">", ">=":
 			return Bool
@@ -1210,6 +1210,10 @@ func (c *Checker) checkUnaryExpr(e *ast.UnaryExpr) Type {
 	} else if e.Op == "!" {
 		if operand.Equals(Bool) {
 			return Bool
+		}
+	} else if e.Op == "~" {
+		if operand.Equals(Int) {
+			return Int
 		}
 	}
 

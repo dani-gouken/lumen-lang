@@ -1515,3 +1515,85 @@ func TestParseRangesKeptAndCounted(t *testing.T) {
 		})
 	}
 }
+
+// The operators on the bits of whole numbers, and where they bind.
+func TestParseBitwise(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"and", `a & b`, `(a & b)`},
+		{"or", `a | b`, `(a | b)`},
+		{"xor", `a ^ b`, `(a ^ b)`},
+		{"shifts", `a << 2 >> b`, `((a << 2) >> b)`},
+		{"not", `~a`, `(~a)`},
+		{"not binds like a sign", `~a & -b`, `((~a) & (-b))`},
+		{"and before xor before or", `a | b ^ c & d`, `(a | (b ^ (c & d)))`},
+		{"shifts before and", `a & b << 2`, `(a & (b << 2))`},
+		{"sums before shifts", `a + 1 << b - 1`, `((a + 1) << (b - 1))`},
+		{"products before all of them", `a * 2 | b % 2`, `((a * 2) | (b % 2))`},
+		{"a mask is compared whole", `flags & MASK == 0`, `((flags & MASK) == 0)`},
+		{"on both sides of a comparison", `a | b != c & d`, `((a | b) != (c & d))`},
+		{"a shift beside a comparison", `a >> 1 > b << 1`, `((a >> 1) > (b << 1))`},
+		{"and smaller than", `a < b`, `(a < b)`},
+		{"apart, they are comparisons that do not chain", `a > (b > c)`, `(a > (b > c))`},
+		{"with && and ||", `a & 1 == 1 && b | c != 0 || d`, `((((a & 1) == 1) && ((b | c) != 0)) || d)`},
+		{"piped whole", `a | b |> show`, `show((a | b))`},
+		{"numbers by their bits", `0xFF & 0b1010 | 0x10`, `((255 & 10) | 16)`},
+		{"large and small", `0X7fffffffffff + 0B0 + 0x0`, `((140737488355327 + 0) + 0)`},
+		{"in a call", `f(a | b, c << 1)`, `f((a | b), (c << 1))`},
+		{"an array of them", `[a | b, ~c]`, `[(a | b), (~c)]`},
+		{"types that close twice are untouched", `make<List<List<Int>>>(a >> b)`, `make<List<List<Int>>>((a >> b))`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			prog := parseOK(t, "fn main() { let v = "+c.src+"; }")
+			let := prog.Decls[0].(*ast.FnDecl).Body.Stmts[0].(*ast.LetStmt)
+			if got := let.Value.String(); got != c.want {
+				t.Errorf("expected %s, got %s", c.want, got)
+			}
+		})
+	}
+
+	// Assignments
+	for op, want := range map[string]string{"&=": "&=", "|=": "|=", "^=": "^=", "<<=": "<<=", ">>=": ">>="} {
+		prog := parseOK(t, "fn main() { flags "+op+" MASK | 1; }")
+		stmt := prog.Decls[0].(*ast.FnDecl).Body.Stmts[0].(*ast.ExprStmt)
+		assign, ok := stmt.Expr.(*ast.BinaryExpr)
+		if !ok || assign.Op != want || assign.Right.String() != "(MASK | 1)" {
+			t.Errorf("%s: expected an assignment of (MASK | 1), got %s", op, stmt.Expr)
+		}
+		if base, compound := ast.CompoundOp(assign.Op); !compound || base != op[:len(op)-1] {
+			t.Errorf("%s: expected the operator %s behind it, got %q", op, op[:len(op)-1], base)
+		}
+	}
+
+	// In a case, | still separates patterns; in brackets it is the operator
+	prog := parseOK(t, `fn main() { match n { case 1 | 2 | 3: { } case (READ | WRITE): { } default: { } } }`)
+	match := prog.Decls[0].(*ast.FnDecl).Body.Stmts[0].(*ast.MatchStmt)
+	if got := len(match.Cases[0].Alternatives); got != 2 {
+		t.Errorf("expected three patterns in the first case, got %d", got+1)
+	}
+	if got := len(match.Cases[1].Alternatives); got != 0 {
+		t.Errorf("expected one pattern in the second case, got %d", got+1)
+	}
+}
+
+func TestParseBitwiseRefused(t *testing.T) {
+	cases := []struct{ name, src, msg string }{
+		{"hexadecimal without digits", `let v = 0x;`, "'0x' is not a number"},
+		{"hexadecimal with other letters", `let v = 0xFG;`, "'0xFG' is not a number"},
+		{"binary with other digits", `let v = 0b102;`, "'0b102' is not a number"},
+		{"a shift with a space in it", `let v = a < < b;`, "expected expression"},
+		{"an operator with nothing after", `let v = a & ;`, "expected expression"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			errs := errors.NewHandler()
+			Parse("fn main() { "+c.src+" }", "test.lum", errs)
+			if len(errs.Diagnostics) == 0 {
+				t.Fatal("expected a diagnostic, got none")
+			}
+			if d := errs.Diagnostics[0]; !strings.Contains(d.Message, c.msg) {
+				t.Errorf("expected a message containing %q, got %q", c.msg, d.Message)
+			}
+		})
+	}
+}

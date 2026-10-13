@@ -101,9 +101,16 @@ const (
 	INC            // ++
 	DEC            // --
 
-	// Bitwise (reserved for future)
-	AMPERSAND // &
-	PIPE      // |
+	// Bitwise. << and >> are not tokens: they are two < or two > in a
+	// row, which the parser reads as one operator where an operator can
+	// be, so that List<List<Int>> still closes twice
+	AMPERSAND        // &
+	PIPE             // |
+	CARET            // ^
+	TILDE            // ~
+	AMPERSAND_ASSIGN // &=
+	PIPE_ASSIGN      // |=
+	CARET_ASSIGN     // ^=
 
 	PIPE_INTO // |>: what is on its left becomes the first argument of the call on its right
 	operator_end
@@ -335,6 +342,16 @@ func (typ TokenType) String() string {
 		return "AMPERSAND"
 	case PIPE:
 		return "PIPE"
+	case CARET:
+		return "CARET"
+	case TILDE:
+		return "TILDE"
+	case AMPERSAND_ASSIGN:
+		return "AMPERSAND_ASSIGN"
+	case PIPE_ASSIGN:
+		return "PIPE_ASSIGN"
+	case CARET_ASSIGN:
+		return "CARET_ASSIGN"
 	case PIPE_INTO:
 		return "PIPE_INTO"
 
@@ -426,6 +443,10 @@ func LookupIdent(ident string) TokenType {
 	return IDENT
 }
 
+// PrecedenceOfShift is the precedence of << and >>, which are not tokens:
+// tighter than & ^ |, looser than + and -.
+const PrecedenceOfShift = 10
+
 // Precedence returns the operator precedence for the token type.
 // Higher number means higher precedence.
 func (typ TokenType) Precedence() int {
@@ -441,17 +462,20 @@ func (typ TokenType) Precedence() int {
 	case LT, LTE, GT, GTE:
 		return 5
 	case PIPE_INTO:
-		// Looser than arithmetic, so that a + b |> f is f(a + b); tighter
-		// than comparisons, so that xs |> count == 3 compares the count
+		// Looser than arithmetic and the operators on bits, so that
+		// a + b |> f is f(a + b); tighter than comparisons, so that
+		// xs |> count == 3 compares the count
 		return 6
-	case PLUS, MINUS:
-		return 7
-	case STAR, SLASH, PERCENT:
-		return 8
 	case PIPE:
-		return 9
+		return 7
+	case CARET:
+		return 8
 	case AMPERSAND:
-		return 10
+		return 9
+	case PLUS, MINUS:
+		return PrecedenceOfShift + 1
+	case STAR, SLASH, PERCENT:
+		return PrecedenceOfShift + 2
 	}
 	return 0
 }

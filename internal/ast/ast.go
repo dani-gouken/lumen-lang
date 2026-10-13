@@ -730,8 +730,8 @@ type BinaryExpr struct {
 // ("+" for "+="), and whether op is one.
 func CompoundOp(op string) (string, bool) {
 	switch op {
-	case "+=", "-=", "*=", "/=", "%=":
-		return op[:1], true
+	case "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<=", ">>=":
+		return op[:len(op)-1], true
 	}
 	return "", false
 }

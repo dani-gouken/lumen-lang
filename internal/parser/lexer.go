@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"math/big"
 	"strings"
 
 	"github.com/dani-gouken/lumen/internal/token"
@@ -167,6 +168,35 @@ func (l *Lexer) hasPrefix(s string) bool {
 func (l *Lexer) lexNumber(start token.Position) token.Token {
 	begin := l.pos
 	typ := token.INT
+
+	// 0xFF and 0b1010: a whole number by its bits. From here on it is
+	// the number, written in tens like any other.
+	if l.peek(0) == '0' {
+		base, isDigitOf := 0, isDigit
+		switch l.peek(1) {
+		case 'x', 'X':
+			base, isDigitOf = 16, isHexDigit
+		case 'b', 'B':
+			base, isDigitOf = 2, func(ch rune) bool { return ch == '0' || ch == '1' }
+		}
+		if base != 0 {
+			l.advance()
+			l.advance()
+			digits := l.pos
+			for isDigitOf(l.peek(0)) {
+				l.advance()
+			}
+			written := string(l.src[begin:l.pos])
+			value, ok := new(big.Int).SetString(string(l.src[digits:l.pos]), base)
+			if !ok || isLetter(l.peek(0)) || isDigit(l.peek(0)) {
+				for isLetter(l.peek(0)) || isDigit(l.peek(0)) {
+					l.advance()
+				}
+				return token.NewToken(token.ILLEGAL, "'"+string(l.src[begin:l.pos])+"' is not a number: after "+written[:2]+" come the digits of the number", start, l.position())
+			}
+			return token.NewToken(token.INT, value.String(), start, l.position())
+		}
+	}
 	for isDigit(l.peek(0)) {
 		l.advance()
 	}
@@ -441,6 +471,9 @@ var multiCharOps = []struct {
 	{"*=", token.STAR_ASSIGN},
 	{"/=", token.SLASH_ASSIGN},
 	{"%=", token.PERCENT_ASSIGN},
+	{"&=", token.AMPERSAND_ASSIGN},
+	{"|=", token.PIPE_ASSIGN},
+	{"^=", token.CARET_ASSIGN},
 	{"++", token.INC},
 	{"--", token.DEC},
 }
@@ -458,6 +491,8 @@ var singleCharOps = map[rune]token.TokenType{
 	'=': token.ASSIGN,
 	'&': token.AMPERSAND,
 	'|': token.PIPE,
+	'^': token.CARET,
+	'~': token.TILDE,
 	'(': token.LPAREN,
 	')': token.RPAREN,
 	'{': token.LBRACE,
@@ -472,6 +507,10 @@ var singleCharOps = map[rune]token.TokenType{
 
 func isLetter(ch rune) bool {
 	return ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z')
+}
+
+func isHexDigit(ch rune) bool {
+	return isDigit(ch) || (ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F')
 }
 
 func isDigit(ch rune) bool {

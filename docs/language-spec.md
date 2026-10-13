@@ -93,7 +93,9 @@ Full description: [enums.md](enums.md).
 - Primary: literals, identifiers, grouping `(expr)`, tuples `(a, b)`.
 - Text over several lines: `"""` ... `"""`. The line end after the opening quotes and the one before the closing quotes are dropped, and the indentation of the closing quotes is removed from every line. `"` needs no escape inside; escapes and `${...}` work.
 - Unary: `-` on `Int`/`Float`, `!` on `Bool`.
-- Binary precedence (high → low): `* / %`, `+ -`, `|>`, `< <= > >=`, `== !=`, `??`, `&&`, `||`.
+- Binary precedence (high → low): `* / %`, `+ -`, `<< >>`, `&`, `^`, `|`, `|>`, `< <= > >=`, `== !=`, `??`, `&&`, `||`.
+  - On bits: `& | ^ << >>` and unary `~`, on `Int` only, with `&= |= ^= <<= >>=`. They bind tighter than comparisons: `flags & MASK == 0` tests the mask. `>>` keeps the sign. A shift by a negative count, or one that pushes bits past the 48 an `Int` has, is a runtime error. In the pattern of a `case`, `|` separates patterns (`case 1 | 2:`); in brackets it is the operator.
+  - Whole numbers are also written by their bits: `0xFF`, `0b1010`.
   - Arithmetic: `Int`/`Float`; result matches operands (no implicit int↔float coercion).
   - Comparison: numbers or strings → `Bool`.
   - Equality: any type → `Bool`.
@@ -269,10 +271,14 @@ AndExpr      = NullCoalesceExpr { "&&" NullCoalesceExpr } ;
 NullCoalesceExpr = EqExpr { "??" EqExpr } ;
 EqExpr       = RelExpr { ("==" | "!=") RelExpr } ;
 RelExpr      = PipeExpr { ("<" | "<=" | ">" | ">=") PipeExpr } ;
-PipeExpr     = AddExpr { "|>" UnaryExpr } ;   (* what a pipe gives can be added to: n |> f + 1 *)
+PipeExpr     = BitOrExpr { "|>" UnaryExpr } ;
+BitOrExpr    = BitXorExpr { "|" BitXorExpr } ;
+BitXorExpr   = BitAndExpr { "^" BitAndExpr } ;
+BitAndExpr   = ShiftExpr { "&" ShiftExpr } ;
+ShiftExpr    = AddExpr { ("<<" | ">>") AddExpr } ;   (* what a pipe gives can be added to: n |> f + 1 *)
 AddExpr      = MulExpr { ("+" | "-") MulExpr } ;
 MulExpr      = UnaryExpr { ("*" | "/" | "%") UnaryExpr } ;
-UnaryExpr    = ( "-" | "!" ) UnaryExpr | CastExpr ;
+UnaryExpr    = ( "-" | "!" | "~" ) UnaryExpr | CastExpr ;
 CastExpr     = PostfixExpr { "as" OptType | "is" ( OptType | VariantPat | TuplePat ) } ;
 PostfixExpr  = Primary { Call | Index | Member | SafeAccess | "?" } ;
 SafeAccess   = "?." ( Ident [TypeArgs] | IntLit ) { Call | Index | Member } ;

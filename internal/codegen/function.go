@@ -590,6 +590,7 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 // their result, and write it once: their result can go anywhere.
 var direct = map[ir.OpType]bool{
 	ir.OpAdd: true, ir.OpSub: true, ir.OpMul: true, ir.OpDiv: true, ir.OpMod: true,
+	ir.OpBitAnd: true, ir.OpBitOr: true, ir.OpBitXor: true, ir.OpShl: true, ir.OpShr: true,
 	ir.OpEq: true, ir.OpNeq: true, ir.OpLt: true, ir.OpLte: true, ir.OpGt: true, ir.OpGte: true,
 	ir.OpNeg: true, ir.OpNot: true, ir.OpGetField: true, ir.OpGetIndex: true, ir.OpLen: true,
 	ir.OpGetMethod: true, ir.OpLoadUpvalue: true, ir.OpCall: true,
@@ -974,11 +975,12 @@ func (f *funcGen) generateBlock(bb, next *ir.BasicBlock) {
 }
 
 var binaryOps = map[ir.OpType]vm.OpCode{
-	ir.OpAdd: vm.OpADD,
-	ir.OpSub: vm.OpSUB,
-	ir.OpMul: vm.OpMUL,
-	ir.OpDiv: vm.OpDIV,
-	ir.OpMod: vm.OpMOD,
+	ir.OpAdd:    vm.OpADD,
+	ir.OpSub:    vm.OpSUB,
+	ir.OpMul:    vm.OpMUL,
+	ir.OpDiv:    vm.OpDIV,
+	ir.OpMod:    vm.OpMOD,
+	ir.OpBitAnd: vm.OpBAND, ir.OpBitOr: vm.OpBOR, ir.OpBitXor: vm.OpBXOR, ir.OpShl: vm.OpSHL, ir.OpShr: vm.OpSHR,
 	ir.OpEq:  vm.OpEQ,
 	ir.OpNeq: vm.OpNE,
 	ir.OpLt:  vm.OpLT,

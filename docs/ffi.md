@@ -121,7 +121,6 @@ The declaration is all lumen knows of a function. If it says `Int32` where the l
 *   **No functions that take any number of arguments** (`printf`).
 *   **A program that is not permitted everything is not permitted C.** The [sandbox](testing.md) refuses every function of a C library and all of `std.ffi`: a C function can do anything at all.
 *   **Speed.** A call costs about half a microsecond, ten times a call between functions of the program: thousands of calls for each picture are fine, a million are not. A function that returns a struct costs about twice that.
-*   **Flags.** The language has no `|` on whole numbers yet ([missing.md](missing.md)). Flags that are separate bits are added instead: `FLAG_VSYNC_HINT + FLAG_MSAA_4X_HINT`.
 
 ## How It Is Done
 

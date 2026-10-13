@@ -228,6 +228,23 @@ first<Int>([7, 8]);          // and can always be written out
 
 Functions are values: they can be stored in variables, passed and returned.
 
+### Bits
+
+Whole numbers have the operators on bits of C: `&`, `|`, `^`, `~`, `<<`, `>>`, and `&=`, `|=` and the rest. Numbers can be written by their bits: `0xFF`, `0b1010`.
+
+```rust
+const READ = 1;
+const WRITE = 1 << 1;
+const EXEC = 1 << 2;
+
+let flags = READ | EXEC;
+if flags & WRITE == 0 { ... }       // they bind tighter than a comparison
+flags |= WRITE;
+flags &= ~READ;
+
+let red = color >> 16 & 0xFF;
+```
+
 ### Chains of calls
 
 `value |> f(a, b)` is `f(value, a, b)`: what is on the left of `|>` becomes the first argument of the call on its right. Calls that would nest, and read inside out, read in the order they happen:

@@ -149,6 +149,8 @@ func (fc *FunctionCompiler) compileBinaryExpr(expr *ast.BinaryExpr) *ir.Register
 		fc.builder.Emit(ir.OpDiv, dest, left, right)
 	case "%":
 		fc.builder.Emit(ir.OpMod, dest, left, right)
+	case "&", "|", "^", "<<", ">>":
+		fc.builder.Emit(arithmeticOps[expr.Op], dest, left, right)
 	case "==":
 		fc.builder.Emit(ir.OpEq, dest, left, right)
 	case "!=":
@@ -317,6 +319,7 @@ var arithmeticOps = map[string]ir.OpType{
 	"*": ir.OpMul,
 	"/": ir.OpDiv,
 	"%": ir.OpMod,
+	"&": ir.OpBitAnd, "|": ir.OpBitOr, "^": ir.OpBitXor, "<<": ir.OpShl, ">>": ir.OpShr,
 }
 
 // compileCompoundAssignment compiles `target op= value`. The target is
@@ -400,6 +403,10 @@ func (fc *FunctionCompiler) compileUnaryExpr(expr *ast.UnaryExpr) *ir.Register {
 		fc.builder.Emit(ir.OpNeg, dest, operand)
 	case "!":
 		fc.builder.Emit(ir.OpNot, dest, operand)
+	case "~":
+		// Every bit turned: what differs from a number that is all ones
+		ones := fc.builder.CreateMov(ir.Constant{Val: int64(-1), Type: "Int"})
+		fc.builder.Emit(ir.OpBitXor, dest, operand, ones)
 	default:
 		fc.gen.errorAt(expr, ErrUnsupportedConstruct, "Unsupported unary operator: "+expr.Op, "")
 	}

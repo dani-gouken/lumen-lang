@@ -214,8 +214,7 @@ fn main() -> Int {
     if demo && arrays.len(arguments) > 1 { pictures = strings.parseInt(arguments[1]) ?? 0; }
 
     raylib.SetTraceLogLevel(raylib.LOG_WARNING);
-    // Flags are bits that C joins with |: adding them does the same
-    raylib.SetConfigFlags(raylib.FLAG_VSYNC_HINT + raylib.FLAG_MSAA_4X_HINT);
+    raylib.SetConfigFlags(raylib.FLAG_VSYNC_HINT | raylib.FLAG_MSAA_4X_HINT);
     raylib.InitWindow(WIDTH, HEIGHT, "Breakout, in Lumen");
     defer raylib.CloseWindow();
     raylib.SetTargetFPS(60);

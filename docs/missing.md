@@ -132,10 +132,6 @@ Requirements on type parameters, traits with type parameters, methods with a bod
 *   `fn inner() { ... }` inside a function body is a syntax error. Use `let inner = fn() { ... };`.
 *   A lambda cannot call itself: in `let f = fn(n: Int) -> Int { ... f(n - 1) ... };` the name `f` is not in scope inside the body (`E1001`). Use a top-level function for recursion.
 
-### Bitwise operators — S
-
-`&`, `|`, `^`, `<<`, `>>`. The tokens `&` and `|` are lexed and the VM has `BAND`, `BOR`, `BXOR`, `SHL`, `SHR`; the parser and the stages in between do not handle them.
-
 ### Loop variables are read-only — by design
 
 `for i, item in items` does not allow `i = ...` or `item = ...` (`E2026`). Neither would do what it looks like: the loop keeps its own position, and `item` is a copy of the element. Change the collection with `items[i] = ...`, and use `while` to control the position.
