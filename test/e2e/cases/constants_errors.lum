@@ -4,7 +4,7 @@ const FIRST = SECOND + 1;
 const SECOND = THIRD * 2;
 const THIRD = FIRST - 1;
 
-const NAMES = ["ada", "bob"];
+const NAMES = [1, clock()];
 const NOW = clock();
 const COUNT: Int = "three";
 const LIMIT = 10;
