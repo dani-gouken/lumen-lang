@@ -4,6 +4,9 @@
 // with a `match` on types, or with a cast (`as`), which stops the program
 // if the value is something else.
 
+import std.arrays;
+import std.strings;
+
 trait Shape {
     fn area() -> Int;
 }
@@ -23,8 +26,8 @@ impl Shape for Circle {
 fn describe(value: Any) -> String {
     match value {
         case Int: { return "the number " + toString(value + 0); }
-        case String: { return "a text of " + toString(value.length) + " characters"; }
-        case [Int]: { return toString(value.length) + " numbers"; }
+        case String: { return "a text of " + toString(strings.len(value)) + " characters"; }
+        case [Int]: { return toString(arrays.len(value)) + " numbers"; }
         case Square: { return "a square of side " + toString(value.side); }
         case Shape: { return "a shape of area " + toString(value.area()); }
         case fn(Int) -> Int: { return "a function; f(2) = " + toString(value(2)); }

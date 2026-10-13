@@ -182,7 +182,7 @@ func TestGenericEnums(t *testing.T) {
 
 		fn fromArray<T>(items: [T]) -> List<T> {
 			let list: List<T> = List.Nil;
-			let i = items.length - 1;
+			let i = arrays.len(items) - 1;
 			while i >= 0 { list = List.Cons(items[i], list); i--; }
 			return list;
 		}
@@ -220,7 +220,7 @@ func TestGenericEnums(t *testing.T) {
 			let r = divide(pair[0], pair[1]);
 			match r {
 				case Result.Ok(v): { println("ok", v, r.ok()); }
-				case Result.Err(message): { println("err", message, r.ok(), r.mapErr(fn(m: String) -> Int { return m.length; })); }
+				case Result.Err(message): { println("err", message, r.ok(), r.mapErr(fn(m: String) -> Int { return strings.len(m); })); }
 			}
 		}
 
@@ -297,7 +297,7 @@ func TestEnumsWithTraitsStructsAndClosures(t *testing.T) {
 		impl Order {
 			// The status an order may move to from the one it is in
 			fn advance(to: Status) -> Bool {
-				let current = self.history[self.history.length - 1];
+				let current = self.history[arrays.len(self.history) - 1];
 				match current {
 					case Status.Delivered: { return false; }
 					case Status.Cancelled(_): { return false; }
@@ -398,13 +398,13 @@ func TestMatchOnEnumsInControlFlow(t *testing.T) {
 		let steps = [Step.Go(1), Step.Skip, Step.Go(5), Step.Stop, Step.Go(100)];
 		let position = 0;
 		let i = 0;
-		while i < steps.length {
+		while i < arrays.len(steps) {
 			let step = steps[i];
 			i++;
 			match step {
 				case Step.Go(by): { position += by; }
 				case Step.Skip: { }
-				case Step.Stop: { i = steps.length; }
+				case Step.Stop: { i = arrays.len(steps); }
 			}
 		}
 		println(position, i);
@@ -479,7 +479,7 @@ func TestConstants(t *testing.T) {
 	`, `
 		println(WIDTH, HEIGHT, AREA, HALF, TITLE, WIDE, NEGATIVE, LAST);
 		let grid = newGrid();
-		println(grid.cells.length, grid.row(0), grid.row(HEIGHT - 1), scaled("x"), scaled(1.5));
+		println(arrays.len(grid.cells), grid.row(0), grid.row(HEIGHT - 1), scaled("x"), scaled(1.5));
 
 		// In closures, conditions, patterns' bodies and array literals
 		let add = fn(n: Int) -> Int { return n + WIDTH; };

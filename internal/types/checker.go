@@ -40,6 +40,7 @@ const (
 	ErrIntOutOfRange     = "E2025"
 	ErrAssignToLoopVar   = "E2026"
 	ErrPrivateMethod     = "E2027"
+	ErrNoMembers         = "E2033" // `.length` on an array or a text
 )
 
 type Checker struct {
@@ -1180,6 +1181,7 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 
 	case *ArrayType:
 		if e.Name == "length" {
+			c.checkLengthMember(e, "arrays.len", "std.arrays")
 			return Int
 		}
 
@@ -1188,6 +1190,7 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 			return Unknown
 		}
 		if t.Equals(String) && e.Name == "length" {
+			c.checkLengthMember(e, "strings.len", "std.strings")
 			return Int
 		}
 
@@ -1225,6 +1228,47 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 
 	c.errorf(e.Token(), ErrUnknownField, "%s has no field '%s'", recv, e.Name)
 	return Unknown
+}
+
+// checkLengthMember reports `.length` on an array or a text. Only structs
+// and enums have members; the length of an array or a text is asked with a
+// function of the standard library. Those functions are written with
+// `.length` themselves, which is why it still exists inside the library:
+// it is the primitive they are made of.
+func (c *Checker) checkLengthMember(e *ast.MemberExpr, function, module string) {
+	if c.currentFn != nil && (c.currentFn.Module == "std" || strings.HasPrefix(c.currentFn.Module, "std.")) {
+		return
+	}
+	what := "an array"
+	if function == "strings.len" {
+		what = "a text"
+	}
+	c.errorfWithSuggestion(e.Token(), ErrNoMembers,
+		fmt.Sprintf("Write %s(%s), with: import %s;", function, asWritten(e.Expr), module),
+		"%s has no members: '.length' is not part of the language", what)
+}
+
+// asWritten returns an expression as the program has it, for a suggestion
+// to copy, or "..." when it is not known any more: names of other modules
+// were replaced by their full names when the modules were loaded.
+func asWritten(expr ast.Expr) string {
+	switch e := expr.(type) {
+	case *ast.Ident:
+		if !strings.Contains(e.Name, ".") {
+			return e.Name
+		}
+	case *ast.MemberExpr:
+		if inner := asWritten(e.Expr); inner != "..." {
+			return inner + "." + e.Name
+		}
+	case *ast.Literal:
+		return e.String()
+	case *ast.IndexExpr:
+		if inner, index := asWritten(e.Expr), asWritten(e.Index); inner != "..." && index != "..." {
+			return inner + "[" + index + "]"
+		}
+	}
+	return "..."
 }
 
 // checkIndexExpr types `expr[index]`.

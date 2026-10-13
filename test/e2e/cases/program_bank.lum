@@ -2,6 +2,9 @@
 // optionals, closures, generics, match on types and compound assignment
 // working together.
 
+import std.arrays;
+import std.strings;
+
 trait Transaction {
     fn apply(balance: Int) -> Int;
     fn label() -> String;
@@ -159,7 +162,7 @@ fn main() -> Int {
     statement(bank.open("eve", null));
 
     let rich = filter(bank.accounts, fn(a: Account) -> Bool { return a.balance > 100; });
-    println("accounts:", bank.accounts.length, "rich:", rich.length, "total:", bank.total(), "rejected:", bank.rejected);
+    println("accounts:", arrays.len(bank.accounts), "rich:", arrays.len(rich), "total:", bank.total(), "rejected:", bank.rejected);
 
     // A counter shared between a closure and the loop that calls it
     let fees = 0;

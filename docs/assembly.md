@@ -571,9 +571,10 @@ Get the length of an array or a string.
 **Behavior:**
 - Array: the number of elements
 - String: the number of characters (Unicode code points)
-- Object: the value of its field named `length`, or null if it has none. This
-  lets the compiler lower `value.length` to one instruction without knowing
-  whether `value` is an array or a struct that happens to have such a field
+- Object: the value of its field named `length`, or null if it has none. The
+  compiler does not rely on this: it emits `ARRLEN` only for calls of
+  `arrays.len` and `strings.len`, and reads a struct's field named `length`
+  as it reads any field
 
 **Example:**
 ```assembly

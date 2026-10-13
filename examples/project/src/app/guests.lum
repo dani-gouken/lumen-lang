@@ -1,3 +1,4 @@
+import std.arrays;
 import textkit.format.pad;
 
 pub fn invited() -> [String] {
@@ -5,5 +6,5 @@ pub fn invited() -> [String] {
 }
 
 pub fn count(names: [String]) -> String {
-    return pad.left(toString(names.length), 5);
+    return pad.left(toString(arrays.len(names)), 5);
 }

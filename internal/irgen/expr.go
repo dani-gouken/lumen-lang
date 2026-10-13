@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/ir"
@@ -371,10 +372,28 @@ func (fc *FunctionCompiler) compileCallExpr(expr *ast.CallExpr) *ir.Register {
 		}
 	}
 
+	// The length of an array or a text is one instruction, not a call
+	if ident, ok := expr.Func.(*ast.Ident); ok && len(expr.Args) == 1 && isLengthFunction(ident.Name) {
+		if _, hidden := fc.lookup(ident.Name); !hidden {
+			value := fc.compileExpr(expr.Args[0])
+			fc.setPos(expr)
+			dest := fc.builder.NewRegister()
+			fc.builder.Emit(ir.OpLen, dest, value)
+			return dest
+		}
+	}
+
 	fn := fc.compileExpr(expr.Func)
 	args := fc.compileArgs(expr)
 	fc.setPos(expr)
 	return fc.builder.CreateCall(fn, args...)
+}
+
+// isLengthFunction reports whether a function is one of the standard
+// library's two length functions: strings.len, and arrays.len, which is
+// generic and so has one name per type it is used with.
+func isLengthFunction(name string) bool {
+	return name == "std.strings.len" || name == "std.arrays.len" || strings.HasPrefix(name, "std.arrays.len_")
 }
 
 // compileMethodCall compiles `receiver.method(args)`. The receiver is passed

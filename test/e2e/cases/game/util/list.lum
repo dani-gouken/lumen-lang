@@ -1,3 +1,5 @@
+import std.arrays;
+
 pub struct List<T> { items: [T]; }
 
 pub fn newList<T>() -> List<T> {
@@ -7,7 +9,7 @@ pub fn newList<T>() -> List<T> {
 impl<T> List<T> {
     pub fn add(value: T) { push(self.items, value); }
 
-    pub fn size() -> Int { return self.items.length; }
+    pub fn size() -> Int { return arrays.len(self.items); }
 
     pub fn map<U>(f: fn(T) -> U) -> List<U> {
         let out = newList<U>();

@@ -191,6 +191,7 @@ func TestMath(t *testing.T) {
 
 func TestStrings(t *testing.T) {
 	expect(t, "import std.strings;", `
+		println(strings.len("lumen"), strings.len(""), strings.len("héλ"), strings.len(strings.repeat("ab", 50)), strings.len("a b\n"));
 		println(strings.substring("lumen", 1, 3), strings.from("lumen", 2), strings.first("lumen", 2), strings.last("lumen", 2));
 		println("[" + strings.first("ab", 9) + "]", "[" + strings.last("ab", 9) + "]", "[" + strings.first("ab", -1) + "]", "[" + strings.from("ab", 2) + "]");
 		println(strings.split("a,b,,c", ","), strings.chars("héλ"), strings.split("", ","));
@@ -227,6 +228,7 @@ func TestStrings(t *testing.T) {
 			println(strings.first(line, at), "/", strings.from(line, at + 1));
 		}
 	`,
+		"5 0 3 100 4",
 		"um men lu en",
 		"[ab] [ab] [] []",
 		`["a", "b", "", "c"] ["h", "é", "λ"] [""]`,
@@ -259,8 +261,9 @@ func TestStrings(t *testing.T) {
 }
 
 func TestArrays(t *testing.T) {
-	expect(t, "import std.arrays;\nstruct City { name: String; people: Int; }", `
+	expect(t, "import std.arrays;\nimport std.strings;\nstruct City { name: String; people: Int; }", `
 		let n = arrays.range(1, 8);
+		println(arrays.len(n), arrays.len<Int>([]), arrays.len(["a", "b"]), arrays.len([[1, 2], [3]]), arrays.len(arrays.fill(40, true)));
 		println(n, arrays.range(3, 3), arrays.range(5, 2), arrays.range(-2, 1));
 		println(arrays.fill(3, "x"), arrays.fill(0, 1), arrays.fill(2, [1]));
 		println(arrays.slice(n, 2, 4), arrays.slice(n, -3, 2), arrays.slice(n, 5, 99), arrays.slice(n, 4, 2));
@@ -275,7 +278,7 @@ func TestArrays(t *testing.T) {
 		println(arrays.filter(n, even), arrays.filter(n, big), arrays.count(n, even), arrays.count(n, big));
 		println(arrays.any(n, even), arrays.any(n, big), arrays.all(n, even), arrays.all(n, fn(x: Int) -> Bool { return x > 0; }), arrays.all<Int>([], big));
 		println(arrays.find(n, even), arrays.find(n, big), arrays.findIndex(n, even), arrays.findIndex(n, big));
-		println(arrays.map(n, fn(x: Int) -> String { return "#" + toString(x); }), arrays.map(["a", "bcd"], fn(s: String) -> Int { return s.length; }));
+		println(arrays.map(n, fn(x: Int) -> String { return "#" + toString(x); }), arrays.map(["a", "bcd"], fn(s: String) -> Int { return strings.len(s); }));
 		println(arrays.fold(n, 0, fn(a: Int, x: Int) -> Int { return a + x; }), arrays.fold(["a", "b"], "", fn(a: String, s: String) -> String { return s + a; }), arrays.fold<Int, Int>([], 7, fn(a: Int, x: Int) -> Int { return a + x; }));
 
 		// each calls a function for its effect
@@ -315,8 +318,9 @@ func TestArrays(t *testing.T) {
 		for j, v in ordered {
 			if j > 0 && ordered[j - 1] > v { inOrder = false; }
 		}
-		println(ordered.length, inOrder, arrays.sum(ordered) == arrays.sum(many), ordered[0], ordered[1999]);
+		println(arrays.len(ordered), inOrder, arrays.sum(ordered) == arrays.sum(many), ordered[0], ordered[1999]);
 	`,
+		"7 0 2 2 40",
 		"[1, 2, 3, 4, 5, 6, 7] [] [] [-2, -1, 0]",
 		`["x", "x", "x"] [] [[1], [1]]`,
 		"[3, 4] [1, 2] [6, 7] []",
@@ -418,7 +422,7 @@ func TestList(t *testing.T) {
 }
 
 func TestMap(t *testing.T) {
-	expect(t, "import std.map;\nimport std.map.{Map};\nstruct Point { x: Int; y: Int; }", `
+	expect(t, "import std.map;\nimport std.arrays;\nimport std.map.{Map};\nstruct Point { x: Int; y: Int; }", `
 		let ages = map.empty<Int>();
 		println(ages.size(), ages.isEmpty(), ages.get("ada"), ages.has("ada"), ages.remove("ada"), ages.keys(), ages.values());
 
@@ -450,7 +454,7 @@ func TestMap(t *testing.T) {
 		i = 0;
 		while i < 3000 { if i % 3 == 0 { big.remove("key" + toString(i)); } i++; }
 		while i < 3500 { big.set("key" + toString(i), i * 2); i++; }
-		println(big.size(), big.get("key0"), big.get("key1"), big.get("key2999"), big.get("key3499"), big.keys().length, big.values().length);
+		println(big.size(), big.get("key0"), big.get("key1"), big.get("key2999"), big.get("key3499"), arrays.len(big.keys()), arrays.len(big.values()));
 		let sum = 0;
 		big.each(fn(key: String, value: Int) -> Void { sum += value; });
 		let expected = 0;
@@ -555,7 +559,7 @@ fn double(n: Int) -> Int { return n * 2; }`, `
 		// With structs and arrays as the values
 		let first = option.map(arrays.first([User { name: "Zed", manager: null }]), fn(u: User) -> String { return u.name; });
 		let none = option.map(arrays.first<User>([]), fn(u: User) -> String { return u.name; });
-		println(first, none, option.mapOr(arrays.last([[1, 2], [3]]), 0, fn(row: [Int]) -> Int { return row.length; }));
+		println(first, none, option.mapOr(arrays.last([[1, 2], [3]]), 0, fn(row: [Int]) -> Int { return arrays.len(row); }));
 	`,
 		"42 null 4",
 		"42 null null",
@@ -616,7 +620,7 @@ func TestRandom(t *testing.T) {
 		println(random.pick([5]), random.pick<Int>([]), arrays.contains([1, 2, 3], random.pick([1, 2, 3]) ?? 0));
 		let deck = arrays.range(0, 52);
 		random.shuffle(deck);
-		println(deck.length, arrays.sum(deck), arrays.sortedNumbers(deck)[0], arrays.sortedNumbers(deck)[51], arrays.sortedNumbers(deck)[30]);
+		println(arrays.len(deck), arrays.sum(deck), arrays.sortedNumbers(deck)[0], arrays.sortedNumbers(deck)[51], arrays.sortedNumbers(deck)[30]);
 		let empty: [Int] = [];
 		random.shuffle(empty);
 		println(empty);

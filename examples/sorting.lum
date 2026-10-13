@@ -6,16 +6,20 @@
 // Shows: generic functions, functions as arguments, closures, recursion,
 // arrays changed in place, optionals.
 
+import std.arrays;
+import std.strings;
+
 // --- Merge sort: returns a new, sorted array ---
 
 // `before(a, b)` says whether a must come before b.
+
 fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
-    if items.length < 2 {
+    if arrays.len(items) < 2 {
         return items;
     }
-    let middle = items.length / 2;
+    let middle = arrays.len(items) / 2;
     let left = sorted<T>(slice<T>(items, 0, middle), before);
-    let right = sorted<T>(slice<T>(items, middle, items.length), before);
+    let right = sorted<T>(slice<T>(items, middle, arrays.len(items)), before);
     return merge<T>(left, right, before);
 }
 
@@ -33,7 +37,7 @@ fn merge<T>(left: [T], right: [T], before: fn(T, T) -> Bool) -> [T] {
     let out: [T] = [];
     let l = 0;
     let r = 0;
-    while l < left.length && r < right.length {
+    while l < arrays.len(left) && r < arrays.len(right) {
         // Taking from the left on a tie keeps equal items in their
         // original order
         if before(right[r], left[l]) {
@@ -44,15 +48,15 @@ fn merge<T>(left: [T], right: [T], before: fn(T, T) -> Bool) -> [T] {
             l++;
         }
     }
-    while l < left.length { push(out, left[l]); l++; }
-    while r < right.length { push(out, right[r]); r++; }
+    while l < arrays.len(left) { push(out, left[l]); l++; }
+    while r < arrays.len(right) { push(out, right[r]); r++; }
     return out;
 }
 
 // --- Quicksort: sorts the array itself ---
 
 fn quicksort<T>(items: [T], before: fn(T, T) -> Bool) {
-    sortRange<T>(items, 0, items.length - 1, before);
+    sortRange<T>(items, 0, arrays.len(items) - 1, before);
 }
 
 fn sortRange<T>(items: [T], low: Int, high: Int, before: fn(T, T) -> Bool) {
@@ -87,7 +91,7 @@ fn swap<T>(items: [T], a: Int, b: Int) {
 // is too big.
 fn search<T>(items: [T], compare: fn(T) -> Int) -> Int? {
     let low = 0;
-    let high = items.length - 1;
+    let high = arrays.len(items) - 1;
     while low <= high {
         let middle = (low + high) / 2;
         let order = compare(items[middle]);
@@ -127,7 +131,7 @@ fn main() -> Int {
     // Texts compare alphabetically with <
     let words = ["pear", "fig", "banana", "kiwi", "apple"];
     println("alphabetic:", sorted(words, fn(a: String, b: String) -> Bool { return a < b; }));
-    println("by length: ", sorted(words, fn(a: String, b: String) -> Bool { return a.length < b.length; }));
+    println("by length: ", sorted(words, fn(a: String, b: String) -> Bool { return strings.len(a) < strings.len(b); }));
 
     // Structs, by whichever field
     let cities = [

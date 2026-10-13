@@ -3,6 +3,11 @@
 // Positions count characters from 0, like text[i]. A range `from, to`
 // includes from and stops before to.
 
+// How many characters a text has.
+pub fn len(text: String) -> Int {
+    return text.length;
+}
+
 // --- Taking apart ---
 
 // The characters from `from` up to, not including, `to`. Fails if the

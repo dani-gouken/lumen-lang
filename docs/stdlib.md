@@ -54,7 +54,7 @@ Runtime error: std.strings.substring: range 0..5 is outside a text of 3 characte
 
 **Arrays are not changed** by the functions of `std.arrays`; they return new ones. The exceptions say so (`swap`, `random.shuffle`). A `List` is the reverse: its methods change it, unless they return a new list.
 
-**Ranges** are given as `from, to`: `from` is included, `to` is not. Positions count from 0. In texts they count characters, not bytes, like `text[i]` and `text.length`.
+**Ranges** are given as `from, to`: `from` is included, `to` is not. Positions count from 0. In texts they count characters, not bytes, like `text[i]` and `strings.len(text)`.
 
 ---
 
@@ -108,6 +108,10 @@ let diagonal = math.sqrt(math.toFloat(a * a + b * b));    // 5.0
 ---
 
 ## `std.strings`
+
+| Function | Result |
+|----------|--------|
+| `len(text) -> Int` | How many characters the text has. This is the only way to ask: a text has no `.length` |
 
 **Taking apart**
 
@@ -184,6 +188,10 @@ if at != null {
 ## `std.arrays`
 
 Generic functions on plain arrays. Type arguments are inferred: `arrays.reversed([1, 2, 3])`. Where there is nothing to infer from, write them: `arrays.first<Int>([])`.
+
+| Function | Result |
+|----------|--------|
+| `len<T>(items) -> Int` | How many items the array holds. This is the only way to ask: an array has no `.length` |
 
 **Making**
 
@@ -264,7 +272,7 @@ import std.list;
 
 let names = list.of(["ada", "linus"]);
 names.add("grace");
-let long = names.filter(fn(n: String) -> Bool { return n.length > 3; }).sorted(alphabetical);
+let long = names.filter(fn(n: String) -> Bool { return strings.len(n) > 3; }).sorted(alphabetical);
 ```
 
 | Function | Result |
@@ -302,7 +310,7 @@ let long = names.filter(fn(n: String) -> Bool { return n.length > 3; }).sorted(a
 
 `map<U>(convert)`, `filter(wanted)`, `sorted(before)`, `reversed()`, `slice(from, to)`.
 
-`map` and `fold` have a type parameter of their own, for what they produce. It is worked out from the function passed, or can be written: `names.map<Int>(fn(n: String) -> Int { return n.length; })`.
+`map` and `fold` have a type parameter of their own, for what they produce. It is worked out from the function passed, or can be written: `names.map<Int>(fn(n: String) -> Int { return strings.len(n); })`.
 
 The field `items` is the array itself, for a `for` loop: `for name in names.items { ... }`.
 

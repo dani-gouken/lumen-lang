@@ -18,6 +18,7 @@ func checkSource(t *testing.T, src string) ([]string, *Info, *ast.Program) {
 
 	errs := errors.NewHandler()
 	prog := parser.Parse(src, "test.lum", errs)
+	asLibrary(prog)
 	table := resolve.NewResolver(errs).Resolve(prog)
 	if errs.HasErrors() {
 		t.Fatalf("test source is invalid: %s", errs.Diagnostics[0].Message)
@@ -40,6 +41,7 @@ func checkSourceLoose(src string) ([]string, bool) {
 	if errs.HasErrors() {
 		return nil, false
 	}
+	asLibrary(prog)
 	table := resolve.NewResolver(errs).Resolve(prog)
 	NewChecker(prog, table, errs).Check()
 
@@ -59,6 +61,7 @@ func checkSourceDiagnostics(t *testing.T, src string) []errors.Diagnostic {
 	if errs.HasErrors() {
 		t.Fatalf("test source does not parse: %s", errs.Diagnostics[0].Message)
 	}
+	asLibrary(prog)
 	table := resolve.NewResolver(errs).Resolve(prog)
 	NewChecker(prog, table, errs).Check()
 	return errs.Diagnostics
@@ -701,6 +704,7 @@ func TestUnreachableCodeIsAWarning(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			errs := errors.NewHandler()
 			prog := parser.Parse(tt.src, "test.lum", errs)
+			asLibrary(prog)
 			table := resolve.NewResolver(errs).Resolve(prog)
 			NewChecker(prog, table, errs).Check()
 
@@ -763,6 +767,7 @@ func TestInferredTypeArgumentsAreWrittenIntoTheProgram(t *testing.T) {
 			src := decls + "fn main() -> Void { let r = " + tt.call + "; }"
 			errs := errors.NewHandler()
 			prog := parser.Parse(src, "test.lum", errs)
+			asLibrary(prog)
 			table := resolve.NewResolver(errs).Resolve(prog)
 			NewChecker(prog, table, errs).Check()
 
@@ -845,6 +850,7 @@ func TestLoopVariableAssignmentSuggestsTheFix(t *testing.T) {
 	for _, tt := range tests {
 		errs := errors.NewHandler()
 		prog := parser.Parse(tt.src, "test.lum", errs)
+		asLibrary(prog)
 		table := resolve.NewResolver(errs).Resolve(prog)
 		NewChecker(prog, table, errs).Check()
 
@@ -855,6 +861,23 @@ func TestLoopVariableAssignmentSuggestsTheFix(t *testing.T) {
 		d := errs.Diagnostics[0]
 		if d.Code != ErrAssignToLoopVar || !strings.Contains(d.Suggestion, tt.want) {
 			t.Errorf("%s: expected %s with a suggestion containing %q, got %s: %q", tt.src, ErrAssignToLoopVar, tt.want, d.Code, d.Suggestion)
+		}
+	}
+}
+
+// asLibrary marks every function of a program as part of the standard
+// library. The tests of this stage work on snippets that never go through
+// module loading, and use `.length`, the primitive the library's length
+// functions are written with; it is only allowed in library code.
+func asLibrary(prog *ast.Program) {
+	for _, decl := range prog.Decls {
+		switch d := decl.(type) {
+		case *ast.FnDecl:
+			d.Module = "std.test"
+		case *ast.ImplDecl:
+			for _, m := range d.Methods {
+				m.Module = "std.test"
+			}
 		}
 	}
 }

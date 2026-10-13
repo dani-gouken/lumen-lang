@@ -112,6 +112,7 @@ that detects the problem.
 | `E2025` | Integer literal outside the 48-bit range of an `Int` |
 | `E2026` | Assignment to the index or the element variable of a `for` loop. The suggestion names what works instead |
 | `E2027` | Method that is not `pub`, called from another module |
+| `E2033` | `.length` on an array or a text; the suggestion names the function of the standard library to call |
 | `E2028` | `match` on an enum that leaves values out; the message names one as a pattern |
 | `E2029` | Pattern that cannot match: unknown variant, wrong number of values, variant of another enum, literal of the wrong type |
 | `E2030` | Enum used wrongly: unknown variant, wrong number of values, type argument nothing determines, the enum as a value |

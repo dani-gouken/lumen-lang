@@ -159,7 +159,7 @@ locations and recovering to report several per file.
     *   Type inference for variables.
     *   Check function call arguments against signatures, including variadic ones.
     *   Check binary/unary operator compatibility and assignments.
-    *   Type member access (struct fields, `.length`), indexing and lambdas.
+    *   Type member access (struct fields), indexing and lambdas.
     *   Type method calls: the method must exist on the receiver's struct or
         trait, arguments are checked against its signature, and `Self` is the
         receiver's type.

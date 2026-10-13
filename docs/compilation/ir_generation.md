@@ -45,6 +45,7 @@ b2:
 | Logic and comparison | `NOT` `EQ` `NEQ` `LT` `LTE` `GT` `GTE` |
 | Control flow | `JMP block`, `BR cond, then, else`, `RET [value]`, `CALL fn, args...` |
 | Structs | `NEW_STRUCT name`, `GET_FIELD obj, name`, `SET_FIELD obj, name, value` |
+| Length | `LEN value`, for an array or a string. Emitted in place of a call of `std.arrays.len` or `std.strings.len`, so that asking for a length in a loop condition is one instruction; the two functions exist as functions too, for when one is passed as a value |
 | Enums | `NEW_VARIANT "Enum.Variant"`, its values set with `SET_FIELD obj, "0", value`, ... |
 | Casts and type tests | no operation of their own: a call of the `__cast` / `__is` host function |
 | Arrays | `NEW_ARRAY capacity`, `GET_INDEX arr, i`, `SET_INDEX arr, i, value`, `LEN value`, `PUSH arr, value` |

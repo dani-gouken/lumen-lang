@@ -190,7 +190,7 @@ In a pattern the type arguments are those of the value being matched; the names 
 fn first(r: Result<[Int], String>) -> Int {
     match r {
         case Result.Ok(items): { return items[0]; }       // items: [Int]
-        case Result.Err(message): { return message.length; }  // message: String
+        case Result.Err(message): { return strings.len(message); }  // message: String
     }
 }
 ```

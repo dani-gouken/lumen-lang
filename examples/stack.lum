@@ -1,5 +1,7 @@
 // A generic container with methods, optionals and casts.
 
+import std.arrays;
+
 struct Stack<T> {
     items: [T];
 }
@@ -11,7 +13,7 @@ impl<T> Stack<T> {
     }
 
     fn size() -> Int {
-        return self.items.length;
+        return arrays.len(self.items);
     }
 
     // A method can add type parameters of its own: U is chosen at the call.
@@ -25,10 +27,10 @@ impl<T> Stack<T> {
 
     // Returns null when the stack is empty.
     fn peek() -> T? {
-        if self.items.length == 0 {
+        if arrays.len(self.items) == 0 {
             return null;
         }
-        return self.items[self.items.length - 1];
+        return self.items[arrays.len(self.items) - 1];
     }
 }
 

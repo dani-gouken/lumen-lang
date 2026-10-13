@@ -34,7 +34,7 @@ The lexer turns characters into `token.Token` values. Each token records its typ
 | Comments | `// to end of line` and `/* block */` (not nested). Dropped by `Tokenize` |
 | Identifiers | A letter or `_`, then letters, digits and `_`. Keywords and builtin type names are recognized by `token.LookupIdent` |
 | Integers | Digits: `42` |
-| Floats | Digits with a fraction and/or exponent: `3.14`, `10e3`, `1.5e-2`. A `.` only starts a fraction when a digit follows, so `xs.length` and `1.x` are not floats |
+| Floats | Digits with a fraction and/or exponent: `3.14`, `10e3`, `1.5e-2`. A `.` only starts a fraction when a digit follows, so `xs.size` and `1.x` are not floats |
 | Strings | `"..."` on one line, with escapes `\n \t \r \0 \\ \"` |
 | Operators | Longest match first: `...`, `->`, `==`, `!=`, `<=`, `>=`, `&&`, `||`, `??`, `+=`, `-=`, `*=`, `/=`, `%=`, `++`, `--` before the single-character ones. As a consequence `a--b` is `a`, `--`, `b`; write `a - -b` |
 

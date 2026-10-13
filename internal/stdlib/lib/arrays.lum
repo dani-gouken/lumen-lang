@@ -3,6 +3,11 @@
 // The functions here return new arrays and leave the ones they are given
 // alone, unless their description says otherwise.
 
+// How many items an array holds.
+pub fn len<T>(items: [T]) -> Int {
+    return items.length;
+}
+
 // --- Making ---
 
 // The whole numbers from `from` up to, not including, `to`.

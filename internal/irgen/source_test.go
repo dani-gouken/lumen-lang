@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/dani-gouken/lumen/internal/analysis"
+	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/errors"
 	"github.com/dani-gouken/lumen/internal/ir"
 	"github.com/dani-gouken/lumen/internal/parser"
@@ -18,6 +19,18 @@ func generateSource(t *testing.T, src string) (*ir.Program, *errors.Handler) {
 
 	errs := errors.NewHandler()
 	prog := parser.Parse(src, "test.lum", errs)
+	// Checked as library code, where `.length` is allowed: it is the
+	// primitive behind arrays.len and strings.len
+	for _, decl := range prog.Decls {
+		switch d := decl.(type) {
+		case *ast.FnDecl:
+			d.Module = "std.test"
+		case *ast.ImplDecl:
+			for _, m := range d.Methods {
+				m.Module = "std.test"
+			}
+		}
+	}
 	table := resolve.NewResolver(errs).Resolve(prog)
 	typeInfo := types.NewChecker(prog, table, errs).Check()
 	if errs.HasErrors() {

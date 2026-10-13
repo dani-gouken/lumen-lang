@@ -39,7 +39,9 @@ func runProgram(t *testing.T, src string) (string, vm.Value, error) {
 func expectOutput(t *testing.T, decls, body, want string) {
 	t.Helper()
 
-	src := decls + "\nfn main() -> Int {\n" + body + "\nreturn 0;\n}\n"
+	// The lengths of arrays and texts come from the standard library, and
+	// most programs want one of them
+	src := "import std.arrays;\nimport std.strings;\n" + decls + "\nfn main() -> Int {\n" + body + "\nreturn 0;\n}\n"
 	out, _, err := runProgram(t, src)
 	if err != nil {
 		t.Fatalf("runtime error: %v", err)
@@ -72,7 +74,7 @@ func TestArithmeticAndComparison(t *testing.T) {
 func TestStrings(t *testing.T) {
 	expectOutput(t, "", `
 		let s = "foo" + "bar";
-		println(s, s.length, s[0], s[5]);
+		println(s, strings.len(s), s[0], s[5]);
 		println(s == "foobar", s != "foobar", "a" < "b", "b" <= "a");
 		println("tab\there", "quote\"d", toString(42) + toString(true) + toString(null));
 		for c in "héy" { print(c, ""); }
@@ -179,9 +181,9 @@ func TestArrays(t *testing.T) {
 		let xs = [10, 20, 30];
 		xs[1] = 25;
 		push(xs, 40);
-		println(xs, xs.length, xs[3]);
+		println(xs, arrays.len(xs), xs[3]);
 		let empty: [String] = [];
-		println(empty, empty.length);
+		println(empty, arrays.len(empty));
 		let alias = xs;
 		alias[0] = 0;
 		println(xs[0]);
@@ -322,7 +324,7 @@ func TestNullChecksNarrowOptionals(t *testing.T) {
 		}
 
 		fn label(name: String?) -> String {
-			if name != null && name.length > 0 { return "<" + name + ">"; }
+			if name != null && strings.len(name) > 0 { return "<" + name + ">"; }
 			return "<none>";
 		}
 
@@ -357,12 +359,12 @@ func TestGenericStructMethods(t *testing.T) {
 		impl<T> Stack<T> {
 			fn push(item: T) -> Void { push(self.items, item); }
 			fn peek() -> T? {
-				if self.items.length == 0 { return null; }
-				return self.items[self.items.length - 1];
+				if arrays.len(self.items) == 0 { return null; }
+				return self.items[arrays.len(self.items) - 1];
 			}
 			fn reversed() -> Stack<T> {
 				let out = Stack<T> { items: [] };
-				let i = self.items.length;
+				let i = arrays.len(self.items);
 				while i > 0 {
 					i = i - 1;
 					out.push(self.items[i]);
@@ -372,7 +374,7 @@ func TestGenericStructMethods(t *testing.T) {
 		}
 
 		impl<T> Sized for Stack<T> {
-			fn size() -> Int { return self.items.length; }
+			fn size() -> Int { return arrays.len(self.items); }
 		}
 
 		fn sizeOf(s: Sized) -> Int { return s.size(); }
@@ -431,7 +433,7 @@ func TestGenericMethods(t *testing.T) {
 		let numbers = Stack<Int> { items: [1, 2, 3] };
 
 		let labels = numbers.map<String>(fn(n: Int) -> String { return "#" + toString(n); });
-		println(labels.items, labels.map<Int>(fn(s: String) -> Int { return s.length; }).items);
+		println(labels.items, labels.map<Int>(fn(s: String) -> Int { return strings.len(s); }).items);
 
 		println(numbers.fold<Int>(0, fn(acc: Int, n: Int) -> Int { return acc + n; }));
 		println(numbers.fold<String>(">", fn(acc: String, n: Int) -> String { return acc + toString(n); }));
@@ -514,8 +516,8 @@ func TestTypeTestsAndMatchOnTypes(t *testing.T) {
 		fn describe(v: Any) -> String {
 			match v {
 				case Int: { return "int " + toString(v + 1); }
-				case String: { return "string of " + toString(v.length); }
-				case [Int]: { return toString(v.length) + " ints"; }
+				case String: { return "string of " + toString(strings.len(v)); }
+				case [Int]: { return toString(arrays.len(v)) + " ints"; }
 				case Box<String>: { return "box of " + v.value; }
 				case Square: { return "square " + toString(v.diagonalSquared()); }
 				case Shape: { return "shape " + toString(v.area()); }
@@ -544,7 +546,7 @@ func TestTypeTestsAndMatchOnTypes(t *testing.T) {
 
 		let v: Any = "text";
 		println(v is String, v is Int, v is String?, v is [String], !(v is Int));
-		if v is String && v.length == 4 { println("four letters"); }
+		if v is String && strings.len(v) == 4 { println("four letters"); }
 	`, "int 2\nstring of 3\n2 ints\nbox of text\nsomething else\nsquare 8\nshape 3\nfunction giving 10\n"+
 		"something else something else something else\n4 0\ntrue false true false true\nfour letters\n")
 }
@@ -622,12 +624,12 @@ func TestTypeArgumentsAreInferred(t *testing.T) {
 		fn orElse<T>(value: T?, fallback: T) -> T { return value ?? fallback; }
 		fn top<T>(s: Stack<T>) -> T { return first(s.items); }
 		fn none<T>() -> [T] { return []; }
-		fn count(flags: [Bool]) -> Int { return flags.length; }
+		fn count(flags: [Bool]) -> Int { return arrays.len(flags); }
 		fn emptyInts() -> [Int] { return none(); }
 	`
 	expectOutput(t, decls, `
-		println(first([7, 8]) + 1, first(["a", "b"]).length, first([[1, 2]]).length);
-		println(map([1, 2, 3], toString), map(["a", "bb"], fn(s: String) -> Int { return s.length; }));
+		println(first([7, 8]) + 1, strings.len(first(["a", "b"])), arrays.len(first([[1, 2]])));
+		println(map([1, 2, 3], toString), map(["a", "bb"], fn(s: String) -> Int { return strings.len(s); }));
 		println(collect(1, 2, 3), collect("x"));
 
 		let missing: Int? = null;
@@ -642,7 +644,7 @@ func TestTypeArgumentsAreInferred(t *testing.T) {
 		println(names, count(none()), emptyInts());
 
 		// Written out where nothing at all determines it, and allowed anywhere
-		println(none<String>().length, first<Int>([4]));
+		println(arrays.len(none<String>()), first<Int>([4]));
 	`, "8 1 2\n[\"1\", \"2\", \"3\"] [1, 2]\n[1, 2, 3] [\"x\"]\n5 set\n[\"#1\", \"#2\"] 1\n[\"ada\"] 0 []\n0 4\n")
 }
 
@@ -818,7 +820,7 @@ func TestCasts(t *testing.T) {
 		println(twice(boxed), twice(4));
 
 		let text: Any = "hello";
-		println((text as String).length, (text as String?) ?? "none");
+		println(strings.len(text as String), (text as String?) ?? "none");
 
 		let shape: Shape = Square { side: 5 };
 		println(side(shape), back(shape).area(), back(Circle { r: 1 }).area());
@@ -827,7 +829,7 @@ func TestCasts(t *testing.T) {
 		println((maybe as Int) + 1);
 
 		let list: Any = [1, 2, 3];
-		println((list as [Int]).length);
+		println(arrays.len((list as [Int])));
 	`, "42 8\n5 hello\n5 25 3\n8\n3\n")
 }
 
@@ -918,7 +920,7 @@ func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
 			if square == 4 { continue; }
 			push(squares, fn() -> Int { return square; });
 		}
-		println(squares[0](), squares[1](), squares[2](), squares[3](), squares.length);
+		println(squares[0](), squares[1](), squares[2](), squares[3](), arrays.len(squares));
 
 		// break leaves the closures made so far intact
 		let early: [fn() -> String] = [];
@@ -926,7 +928,7 @@ func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
 			push(early, fn() -> String { return word + "!"; });
 			if word == "b" { break; }
 		}
-		println(early[0](), early[1](), early.length);
+		println(early[0](), early[1](), arrays.len(early));
 
 		// A variable changed after the closure was made, in the same iteration, is shared
 		let late: [fn() -> Int] = [];
@@ -1001,6 +1003,7 @@ func TestDeepRecursion(t *testing.T) {
 
 func TestLargeArraysStayFast(t *testing.T) {
 	src := `
+		import std.arrays;
 		struct Point { x: Int; y: Int; }
 
 		fn main() -> Int {
@@ -1020,8 +1023,8 @@ func TestLargeArraysStayFast(t *testing.T) {
 
 			let sum = 0;
 			for n in numbers { sum += n % 7; }
-			let last = points[points.length - 1];
-			println(numbers.length, labels.length, labels[1999], last.x + last.y, sum);
+			let last = points[arrays.len(points) - 1];
+			println(arrays.len(numbers), arrays.len(labels), labels[1999], last.x + last.y, sum);
 			return 0;
 		}
 	`
@@ -1083,7 +1086,7 @@ func TestGenericsAndVariadics(t *testing.T) {
 		fn sum(label: String, nums: ...Int) -> Int {
 			let total = 0;
 			for n in nums { total = total + n; }
-			println(label, total, nums.length);
+			println(label, total, arrays.len(nums));
 			return total;
 		}
 	`
@@ -1235,7 +1238,7 @@ func TestCompileErrors(t *testing.T) {
 		{"missing return", "fn f(n: Int) -> Int { if n > 0 { return 1; } }\nfn main() -> Int { return f(1); }", "E2004", "can reach its end without returning"},
 		{"impossible cast", "fn main() -> Int { let s = 1 as String; return 0; }", "E2021", "cannot cast int to string"},
 		{"generic impl without parameters", "struct Box<T> { value: T; }\nimpl Box { fn get() -> T { return self.value; } }\nfn main() -> Int { return 0; }", "E1001", "undefined type 'T'"},
-		{"method type argument nothing determines", "struct U { n: Int; }\nimpl U { fn none<T>() -> [T] { return []; } }\nfn main() -> Int { let u = U { n: 1 }; return u.none().length; }", "E2024", "cannot infer the type arguments of method 'none'"},
+		{"method type argument nothing determines", "struct U { n: Int; }\nimpl U { fn none<T>() -> [T] { return []; } }\nfn size<V>(items: [V]) -> Int { return 0; }\nfn main() -> Int { let u = U { n: 1 }; return size(u.none()); }", "E2024", "cannot infer the type arguments of method 'none'"},
 		{"trait type parameter count", "trait C { fn conv<T>(v: T) -> T; }\nstruct W { n: Int; }\nimpl C for W { fn conv<A, B>(v: A) -> A { return v; } }\nfn main() -> Int { return 0; }", "E2013", "has 2 type parameters, trait requires 1"},
 		{"field used after a call that may change it", "struct P { x: Int?; }\nfn touch(p: P) -> Void { p.x = null; }\nfn main() -> Int { let p = P { x: 1 }; if p.x != null { touch(p); return p.x + 1; } return 0; }", "E2017", "the value may be null"},
 		{"type test that can never succeed", "fn main() -> Int { let n = 1; if n is String { return 1; } return 0; }", "E2021", "int can never be string"},
@@ -1252,7 +1255,7 @@ func TestCompileErrors(t *testing.T) {
 		{"missing main", "fn helper() -> Int { return 1; }", "E6006", "no 'main' function"},
 		{"main with parameters", "fn main(a: Int) -> Int { return a; }", "E6006", "must not take parameters"},
 		{"missing module", "import nowhere; fn main() -> Int { return 0; }", "E8001", "module 'nowhere' not found"},
-		{"uninferred generic", "fn none<T>() -> [T] { return []; }\nfn main() -> Int { return none().length; }", "E3001", "Cannot infer type arguments"},
+		{"uninferred generic", "fn none<T>() -> [T] { return []; }\nfn size<U>(items: [U]) -> Int { return 0; }\nfn main() -> Int { return size(none()); }", "E3001", "Cannot infer type arguments"},
 		{"type pattern that can never match", "fn main() -> Int { match 1 { case String: { return 1; } default: { return 0; } } }", "E2021", "int can never be string"},
 		{"unsupported pattern", "fn main() -> Int { let limit = 1; match 1 { case limit: { return 1; } default: { return 0; } } }", "E7001", "this kind of match pattern is not supported yet"},
 	}
@@ -1331,7 +1334,7 @@ func TestCompileFileMissing(t *testing.T) {
 // source and what the program prints.
 func largeProgram(count int) (string, string) {
 	var sb strings.Builder
-	sb.WriteString("trait Shape {\n    fn area() -> Int;\n    fn name() -> String;\n}\n\n")
+	sb.WriteString("import std.strings;\nimport std.arrays;\n\ntrait Shape {\n    fn area() -> Int;\n    fn name() -> String;\n}\n\n")
 
 	for i := 0; i < count; i++ {
 		fmt.Fprintf(&sb, "struct S%d { w%d: Int; h%d: Int; }\n", i, i, i)
@@ -1362,10 +1365,10 @@ func largeProgram(count int) (string, string) {
     let letters = 0;
     for i, shape in shapes {
         area += shape.area();
-        letters += shape.name().length;
+        letters += strings.len(shape.name());
         if i == ` + fmt.Sprint(count-1) + ` { println(shape.name(), shape.area()); }
     }
-    println(shapes.length, area, letters, wide(3));
+    println(arrays.len(shapes), area, letters, wide(3));
     return 0;
 }
 `)
@@ -1466,13 +1469,13 @@ func TestRecursiveGenericFunctions(t *testing.T) {
 	// each other: the instances are the same ones again, not new ones
 	decls := `
 		fn count<T>(items: [T], from: Int) -> Int {
-			if from >= items.length { return 0; }
+			if from >= arrays.len(items) { return 0; }
 			return 1 + count<T>(items, from + 1);
 		}
 
 		fn reversed<T>(items: [T]) -> [T] {
 			let out: [T] = [];
-			collect<T>(items, items.length - 1, out);
+			collect<T>(items, arrays.len(items) - 1, out);
 			return out;
 		}
 		fn collect<T>(items: [T], at: Int, out: [T]) {
@@ -1483,21 +1486,21 @@ func TestRecursiveGenericFunctions(t *testing.T) {
 
 		// Two functions that need each other
 		fn evens<T>(items: [T], at: Int) -> [T] {
-			if at >= items.length { return []; }
+			if at >= arrays.len(items) { return []; }
 			let rest = odds<T>(items, at + 1);
 			let out: [T] = [items[at]];
 			for item in rest { push(out, item); }
 			return out;
 		}
 		fn odds<T>(items: [T], at: Int) -> [T] {
-			if at >= items.length { return []; }
+			if at >= arrays.len(items) { return []; }
 			return evens<T>(items, at + 1);
 		}
 
 		// An instance that needs another one with a bigger type, once
 		fn pair<T>(value: T) -> [T] { return [value, value]; }
 		fn nested<T>(value: T) -> [[T]] { return pair<[T]>(pair<T>(value)); }
-		fn deeper<T>(value: T) -> Int { return nested<[T]>([value]).length; }
+		fn deeper<T>(value: T) -> Int { return arrays.len(nested<[T]>([value])); }
 	`
 	expectOutput(t, decls, `
 		println(count([1, 2, 3], 0), count(["a", "b"], 0), count<Bool>([], 0));

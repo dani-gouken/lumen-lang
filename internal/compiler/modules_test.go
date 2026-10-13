@@ -211,13 +211,15 @@ var shop = sources{
 		}
 	`,
 	"util/list.lum": `
+		import std.arrays;
+
 		pub struct List<T> { items: [T]; }
 
 		pub fn newList<T>() -> List<T> { return List<T> { items: [] }; }
 
 		impl<T> List<T> {
 			pub fn add(value: T) { push(self.items, value); }
-			pub fn size() -> Int { return self.items.length; }
+			pub fn size() -> Int { return arrays.len(self.items); }
 			pub fn first(wanted: fn(T) -> Bool) -> T? {
 				for item in self.items {
 					if wanted(item) { return item; }
@@ -715,4 +717,112 @@ func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
 			return 0;
 		}
 	`}, "7 7 7\n19 [\"ada\", \"bob\"] 2\npear 2 [\"fig\", \"pear\"]\n12 false\n3 3 [1, 4, 9]\n")
+}
+
+func TestLengthIsAFunctionOfTheLibrary(t *testing.T) {
+	// Arrays and texts have no members; their length is asked with a function
+	entry := func(body string) sources {
+		return sources{"main.lum": "import std.arrays;\nimport std.strings;\nstruct Rope { length: Int; items: [Int]; }\nfn main() -> Int {\n" + body + "\nreturn 0;\n}\n"}
+	}
+
+	rejected := []struct{ name, body, msg, suggestion string }{
+		{"array", `let xs = [1, 2]; println(xs.length);`,
+			"an array has no members: '.length' is not part of the language", "Write arrays.len(xs), with: import std.arrays;"},
+		{"text", `let name = "ada"; println(name.length);`,
+			"a text has no members: '.length' is not part of the language", "Write strings.len(name), with: import std.strings;"},
+		{"array in a field", `let r = Rope { length: 1, items: [1] }; println(r.items.length);`,
+			"an array has no members", "Write arrays.len(r.items)"},
+		{"result of a call", `println(strings.words("a b").length);`,
+			"an array has no members", "Write arrays.len(...), with: import std.arrays;"},
+		{"literal", `println("abc".length);`,
+			"a text has no members", `Write strings.len("abc")`},
+		{"in a condition", `let xs = [1]; let i = 0; while i < xs.length { i++; }`,
+			"an array has no members", "Write arrays.len(xs)"},
+		{"in a lambda", `let f = fn(s: String) -> Int { return s.length; };`,
+			"a text has no members", "Write strings.len(s)"},
+	}
+	for _, tt := range rejected {
+		t.Run(tt.name, func(t *testing.T) {
+			_, errs := compileModules(entry(tt.body))
+			if len(errs.Diagnostics) != 1 {
+				t.Fatalf("expected one diagnostic, got %v", errs.Diagnostics)
+			}
+			d := errs.Diagnostics[0]
+			if d.Code != "E2033" || !strings.Contains(d.Message, tt.msg) || !strings.Contains(d.Suggestion, tt.suggestion) {
+				t.Errorf("expected E2033 %q with suggestion %q, got %s: %s (%s)", tt.msg, tt.suggestion, d.Code, d.Message, d.Suggestion)
+			}
+		})
+	}
+
+	// A module of the program is no more allowed than its entry file
+	expectModulesError(t, sources{
+		"main.lum": "import util;\nfn main() -> Int { return util.size([1]); }",
+		"util.lum": "pub fn size(xs: [Int]) -> Int { return xs.length; }",
+	}, "E2033", "util.lum", "an array has no members")
+
+	// A struct's own field called length is a field like any other
+	expectModulesOutput(t, entry(`
+		let r = Rope { length: 7, items: [1, 2, 3] };
+		r.length = r.length + 1;
+		println(r.length, arrays.len(r.items));
+	`), "8 3\n")
+
+	// The functions, on every kind of value they take, and as values
+	expectModulesOutput(t, entry(`
+		let rows = [[1, 2, 3], [], [4]];
+		println(arrays.len(rows), arrays.len(rows[0]), arrays.len<Int>([]), arrays.len(["a"]), arrays.len([1.5, 2.5]));
+		println(strings.len("lumen"), strings.len(""), strings.len("héλ"), strings.len("a" + "b"));
+		println(arrays.map(rows, fn(row: [Int]) -> Int { return arrays.len(row); }), arrays.map(["a", "bcd"], strings.len));
+		let count = strings.len;
+		println(count("four"), arrays.len(strings.chars("abc")));
+
+		// In the places a length is most used
+		let total = 0;
+		let i = 0;
+		while i < arrays.len(rows) {
+			let j = 0;
+			while j < arrays.len(rows[i]) { total += rows[i][j]; j++; }
+			i++;
+		}
+		println(total, rows[arrays.len(rows) - 1]);
+	`), "3 3 0 1 2\n5 0 3 2\n[3, 0, 1] [1, 3]\n4 3\n10 [4]\n")
+
+	// A local called arrays or strings hides the module, as any local does
+	expectModulesError(t, entry(`let arrays = 5; println(arrays.len([1]));`), "E2015", "main.lum", "")
+}
+
+func TestLengthCompilesToOneInstruction(t *testing.T) {
+	// Asking for a length is as cheap as it was when it was a member: the
+	// call is replaced by the instruction, in loops included
+	result, errs := compileModules(sources{"main.lum": `
+		import std.arrays;
+		import std.strings;
+		fn main() -> Int {
+			let xs = [1, 2, 3];
+			let i = 0;
+			while i < arrays.len(xs) { i++; }
+			return i + strings.len("ab") + arrays.len(["x"]);
+		}
+	`})
+	if errs.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", errs.Diagnostics)
+	}
+
+	var main string
+	for _, fn := range result.IR.Functions {
+		if fn.Name == "main" {
+			main = fn.Dump()
+		}
+	}
+	if strings.Count(main, "LEN") != 3 {
+		t.Errorf("expected three length instructions in main, got:\n%s", main)
+	}
+	if strings.Contains(main, "std.arrays.len") || strings.Contains(main, "std.strings.len") {
+		t.Errorf("expected no call of the length functions in main, got:\n%s", main)
+	}
+
+	value, err := vm.NewVM().Exec(result.Chunk)
+	if err != nil || !value.IsInt() || value.AsInt() != 6 {
+		t.Errorf("expected 6, got %s, %v", vm.FormatValue(value), err)
+	}
 }

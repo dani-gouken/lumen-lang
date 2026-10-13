@@ -1,5 +1,7 @@
 // Functions, recursion, loops and arrays.
 
+import std.arrays;
+
 fn fib(n: Int) -> Int {
     if n < 2 {
         return n;
@@ -27,7 +29,7 @@ fn main() -> Int {
     println("fib(20) =", fib(20));
 
     let seq = fibSequence(10);
-    println("first", seq.length, "numbers:", seq);
+    println("first", arrays.len(seq), "numbers:", seq);
 
     let total = 0;
     for n in seq {

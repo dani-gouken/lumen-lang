@@ -1,5 +1,7 @@
 // Step 1: cut the text into tokens.
 
+import std.strings;
+
 pub struct Token {
     kind: String;     // "number", "name", "symbol", "end" or "unknown"
     text: String;
@@ -9,7 +11,7 @@ pub struct Token {
 pub fn tokenize(source: String) -> [Token] {
     let tokens: [Token] = [];
     let i = 0;
-    while i < source.length {
+    while i < strings.len(source) {
         let c = source[i];
 
         if c == " " {
@@ -17,7 +19,7 @@ pub fn tokenize(source: String) -> [Token] {
         } else if isDigit(c) {
             let value = 0;
             let text = "";
-            while i < source.length && isDigit(source[i]) {
+            while i < strings.len(source) && isDigit(source[i]) {
                 value = value * 10 + digit(source[i]);
                 text += source[i];
                 i++;
@@ -25,7 +27,7 @@ pub fn tokenize(source: String) -> [Token] {
             push(tokens, Token { kind: "number", text: text, value: value });
         } else if isLetter(c) {
             let text = "";
-            while i < source.length && (isLetter(source[i]) || isDigit(source[i])) {
+            while i < strings.len(source) && (isLetter(source[i]) || isDigit(source[i])) {
                 text += source[i];
                 i++;
             }

@@ -1,6 +1,8 @@
 // One program touching every supported feature, as a regression net for
 // the whole pipeline.
 
+import std.arrays;
+
 struct Account {
     owner: String;
     balance: Int;
@@ -85,7 +87,7 @@ fn main() -> Int {
     let account = open("ada", 50, 120, 30);
     log(account.describe());
     log("largest deposit " + toString(account.largest()));
-    log(toString(account.history) + " / " + toString(account.history.length));
+    log(toString(account.history) + " / " + toString(arrays.len(account.history)));
 
     let empty = open("bob");
     log(empty.describe());

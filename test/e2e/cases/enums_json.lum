@@ -66,12 +66,12 @@ impl Json {
         let close = strings.repeat(INDENT, depth);
         match self {
             case Json.Array(items): {
-                if items.length == 0 || depth >= MAX_DEPTH { return self.compact(); }
+                if arrays.len(items) == 0 || depth >= MAX_DEPTH { return self.compact(); }
                 let lines = arrays.map(items, fn(j: Json) -> String { return pad + j.pretty(depth + 1); });
                 return "[\n" + strings.join(lines, ",\n") + "\n" + close + "]";
             }
             case Json.Object(members): {
-                if members.length == 0 || depth >= MAX_DEPTH { return self.compact(); }
+                if arrays.len(members) == 0 || depth >= MAX_DEPTH { return self.compact(); }
                 let lines = arrays.map(members, fn(m: Member) -> String {
                     return pad + "\"" + m.key + "\": " + m.value.pretty(depth + 1);
                 });

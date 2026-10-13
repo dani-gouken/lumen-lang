@@ -89,7 +89,7 @@ An `Int` holds 48 bits, from -140737488355328 to 140737488355327. Arithmetic tha
 
 ```lumen
 let s = "foo" + "bar";      // concatenation
-s.length                    // 6
+strings.len(s)              // 6, with: import std.strings;
 s[0]                        // "f" (a one-character string)
 s == "foobar"               // compared by content
 "a" < "b"                   // ordered
@@ -130,7 +130,7 @@ fn add(a: Int, b: Int) -> Int {
 }
 
 fn log(prefix: String, values: ...Int) -> Void {     // variadic
-    println(prefix, values.length, values);
+    println(prefix, arrays.len(values), values);
 }
 
 fn first<T>(items: [T]) -> T {                       // generic
@@ -150,8 +150,10 @@ Functions are values: they can be stored in variables, passed and returned.
 let xs = [10, 20, 30];
 xs[0] = 11;                 // replace an element
 push(xs, 40);               // grow
-xs.length                   // 4
+arrays.len(xs)              // 4, with: import std.arrays;
 ```
+
+Arrays and texts have no members of their own: a dot reaches into a struct or an enum, nothing else. Their length, and everything else done to them, is a function of the standard library.
 
 All elements have the same type. Reading or writing an index that does not exist is a runtime error; `xs[i] = v` replaces an element and never grows the array, `push` does.
 
@@ -263,8 +265,8 @@ struct Stack<T> { items: [T]; }
 impl<T> Stack<T> {                       // T is the struct's parameter
     fn push(item: T) -> Void { push(self.items, item); }
     fn peek() -> T? {
-        if self.items.length == 0 { return null; }
-        return self.items[self.items.length - 1];
+        if arrays.len(self.items) == 0 { return null; }
+        return self.items[arrays.len(self.items) - 1];
     }
     fn map<U>(f: fn(T) -> U) -> Stack<U> {   // U is the method's own parameter
         let out = Stack<U> { items: [] };
@@ -284,7 +286,7 @@ let texts = numbers.map(toString);       // Stack<String>; U is inferred
 ```lumen
 fn length(name: String?) -> Int {
     if name == null { return 0; }        // from here on, name is a String
-    return name.length;
+    return strings.len(name);
 }
 
 let boxed: Any = 41;
@@ -301,7 +303,7 @@ fn side(shape: Shape) -> Int {
 fn describe(value: Any) -> String {
     match value {                        // a match on types reads best
         case Int: { return "number " + toString(value + 1); }
-        case String: { return "text of " + toString(value.length); }
+        case String: { return "text of " + toString(strings.len(value)); }
         case Shape: { return "shape of area " + toString(value.area()); }
         default: { return "something else"; }
     }

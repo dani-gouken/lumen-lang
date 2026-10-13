@@ -89,7 +89,7 @@ Full description: [enums.md](enums.md).
   - Equality: any type → `Bool`.
   - Null-coalescing `a ?? b`: `a: T?`, `b: T|T?`, result `T`.
 - Member/index: `user.name`, `items[0]` (`Int` index; OOB is runtime error). Indexing a string yields a one-character string.
-- Length: `items.length` and `text.length` give the number of elements of an array and of characters of a string.
+- Length: `arrays.len(items)` and `strings.len(text)`, from the standard library, give the number of elements of an array and of characters of a string. Arrays and strings have no members: `items.length` is an error (`E2033`) that names the function to use. A dot only reaches a field or a method of a struct or an enum.
 - Calls: `callee(args...)` with arity/type check. Method calls: `value.method(args...)`.
 - Array literals: `[1, 2, 3]`, `[]`. All elements have the same type.
 - Struct literals: `Point { x: 1, y: 2 }`. In the header of `if`, `while`, `for` and `match`, a `{` after a name starts the body, so a struct literal there needs parentheses: `if (Point { x: 1 }).x == 1 { ... }`.
@@ -275,7 +275,7 @@ known defects are inventoried in [missing.md](missing.md).
 |---------|--------|-------|
 | `Int`, `Float`, `Bool`, `String`, `null` | Supported | Ints are 48-bit signed; overflow is a runtime error |
 | Arithmetic, comparison, `!`, unary `-` | Supported | No implicit Int/Float conversion; strings compare by content |
-| String concatenation, indexing, `.length` | Supported | |
+| String concatenation, indexing | Supported | Length is `strings.len(text)`; for an array, `arrays.len(items)` |
 | `let`, `const`, assignment, `+=` and `++`, block scopes | Supported | `++`/`--` are statements |
 | `if`/`else`, `while`, `for in`, `break`, `continue` | Supported | `for in` over arrays and strings, optionally with the index |
 | `&&`, `||`, `??` | Supported | Short-circuit |

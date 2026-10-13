@@ -3,6 +3,9 @@
 // with an index, optionals for "no result", recursion through traits,
 // generic containers and casts.
 
+import std.arrays;
+import std.strings;
+
 struct Token {
     kind: String;      // "num", "op", "(", ")", "end"
     text: String;
@@ -24,7 +27,7 @@ fn digitValue(ch: String) -> Int {
 fn tokenize(input: String) -> [Token]? {
     let tokens: [Token] = [];
     let i = 0;
-    while i < input.length {
+    while i < strings.len(input) {
         let ch = input[i];
         if ch == " " {
             i++;
@@ -33,7 +36,7 @@ fn tokenize(input: String) -> [Token]? {
         if isDigit(ch) {
             let value = 0;
             let text = "";
-            while i < input.length && isDigit(input[i]) {
+            while i < strings.len(input) && isDigit(input[i]) {
                 value = value * 10 + digitValue(input[i]);
                 text += input[i];
                 i++;
@@ -182,7 +185,7 @@ fn calculate(input: String) -> Outcome<Int> {
     if parser.peek().kind != "end" {
         parser.fail("unexpected input");
     }
-    if parser.errors.length > 0 {
+    if arrays.len(parser.errors) > 0 {
         return Outcome<Int> { input: input, value: null, note: parser.errors[0] };
     }
 
@@ -235,6 +238,6 @@ fn main() -> Int {
     let tokens = tokenize("1 + 2 * -(3 - 4)") as [Token];
     let parser = Parser { tokens: tokens, pos: 0, errors: [] };
     let tree = parser.expr();
-    println(tree.show(), "has", countNodes(tree), "nodes and", tokens.length, "tokens");
+    println(tree.show(), "has", countNodes(tree), "nodes and", arrays.len(tokens), "tokens");
     return failures;
 }

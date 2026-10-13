@@ -1,5 +1,5 @@
 [ERROR] E2017: cannot read 'name' of User?: the value may be null
-null_safety.lum:8:24
-[ERROR] E2017: cannot read 'length' of string?: the value may be null
-null_safety.lum:12:16
+null_safety.lum:11:24
 Suggestion: Test it against null first, or provide a fallback with '??'
+[ERROR] E2010: cannot use type string? as argument of type string
+null_safety.lum:15:24

@@ -1,4 +1,7 @@
 // Using an optional without ruling out null is a compile error.
+
+import std.strings;
+
 struct User {
     name: String;
     manager: User?;
@@ -9,7 +12,7 @@ fn managerName(user: User) -> String {
 }
 
 fn length(text: String?) -> Int {
-    return text.length;
+    return strings.len(text);
 }
 
 fn main() -> Int {

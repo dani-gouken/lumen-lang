@@ -1,5 +1,8 @@
 // An array of a million and a half numbers: building it has to take time
 // proportional to its size, not to its square.
+
+import std.arrays;
+
 fn main() -> Int {
     let numbers: [Int] = [];
     let i = 0;
@@ -12,6 +15,6 @@ fn main() -> Int {
     for n in numbers {
         total += n;
     }
-    println(numbers.length, total);
+    println(arrays.len(numbers), total);
     return 0;
 }

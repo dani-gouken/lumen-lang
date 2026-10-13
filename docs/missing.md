@@ -10,11 +10,14 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | ranges, null operators, short lambdas, string interpolation |
-| Correctness | unused variables |
-| Types | conditions and alternatives in `match`, array literals of mixed structs |
+| Everyday syntax | a pipe operator for chaining, short lambdas, string interpolation, ranges, null operators |
+| Failing on purpose | a way to stop with a message, `Result` in the standard library, a call stack in runtime errors |
+| Types | traits as bounds on type parameters, generic traits, conditions and alternatives in `match` |
+| Structs as first-class containers | `for` over a struct, `list[i]`, methods as values |
+| Correctness | unused variables, bytecode checked before it runs |
 | Runtime | register allocation per call, method dispatch cost |
 | Program structure | native code from outside (shared libraries), a way to install packages, variables outside functions |
+| Tooling | syntax highlighting, a test runner, a formatter |
 
 ---
 
@@ -26,7 +29,38 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 for i in 0..10 { ... }
 ```
 
-**Today**: not parsed. Use `while` with a counter.
+**Today**: not parsed. Use `while` with a counter, or `for i in arrays.range(0, 10)`, which builds the array first.
+
+### Chaining calls — S
+
+```lumen
+numbers |> arrays.filter(isEven) |> arrays.map(double) |> arrays.sum()
+```
+
+**Today**: calls nest, and read inside out: `arrays.sum(arrays.map(arrays.filter(numbers, isEven), double))`. The same goes for steps on optionals with `std.option`.
+
+**Notes**: `x |> f(a)` meaning `f(x, a)` is one rewrite in the desugarer. It was preferred over giving optionals and arrays methods of their own, which would make the dot mean something other than "a field or method of a struct or enum you declared".
+
+### Members on arrays and texts — by design
+
+Arrays and texts have no members. `items.length` is an error (`E2033`); the length is `arrays.len(items)` or `strings.len(text)`, and everything else done to them is likewise a function of the standard library. A dot reaches a field or a method of a struct or an enum, and nothing else.
+
+The cost is an `import std.arrays;` in almost every program. Calls of the two functions are compiled to the same single instruction `.length` was, so there is none at runtime.
+
+### Short lambdas — S
+
+```lumen
+arrays.map(numbers, n => n * 2)
+```
+
+**Today**: `fn(n: Int) -> Int { return n * 2; }`, with the types written even where the call already says what they are. This is most of the noise in code that uses `map`, `filter` and `std.option`.
+
+### Stopping with a message, and saying why something failed — S / M
+
+*   **There is no way to fail on purpose.** A program cannot stop itself with a message: no `panic("...")`, no `assert`. The only runtime errors are the ones the VM raises (index out of bounds, a failed cast, division by zero), and code that reaches a state it cannot handle has to return something. (S: a builtin that raises a runtime error.)
+*   **No way to catch a runtime error.** Once raised it ends the program.
+*   **Failure has no reason.** Functions that can fail return an optional, and `null` does not say what went wrong: `io.readFile` gives the same `null` for a missing file and for one that may not be read. A `Result<T, E>` enum is now possible ([enums.md](enums.md)) and the standard library does not have one yet. (M: the enum, and the functions that should return it.)
+*   **Runtime errors show one place.** The message has the line and function where it happened, not the calls that led there. A failure inside a library function names the library's line; the caller's is not shown.
 
 ### Arrays with a fixed size — L
 
@@ -34,7 +68,7 @@ for i in 0..10 { ... }
 
 ### The standard library has gaps — S to M each
 
-There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, maps, files, time, random numbers. Its own list of [what is missing](stdlib.md#what-is-missing) covers dates, number formatting, maps with other keys, sets, folders, program arguments and networking.
+There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, maps, optionals, files, time, random numbers. Its own list of [what is missing](stdlib.md#what-is-missing) covers dates, number formatting, maps with other keys, sets, folders, program arguments and networking.
 
 Adding a function written in Lumen means editing a file in `internal/stdlib/lib/`. Adding a native one means an `extern fn` there and a Go function in `internal/vm/native_*.go`; a test fails if the two do not match.
 
@@ -84,6 +118,28 @@ Patterns on literals, on types and on the variants of an enum (with names, liter
 
 **Notes**: Needs storage that lives for the whole run (global slots in the VM) and an order in which initializers run across modules.
 
+### Traits and generics do not meet — M / L
+
+*   **A type parameter cannot be required to implement a trait.** `fn largest<T: Ordered>(items: [T])` is not parsed, and inside `fn f<T>(x: T)` nothing can be called on `x` (`E2015`): a `T` is opaque. Generic code that needs to compare or print its values takes a function for it, as `arrays.sorted(items, before)` does. (L)
+*   **A trait cannot have type parameters**: `trait Source<T> { fn next() -> T?; }` is not parsed. This is what an iteration trait needs. (M)
+*   **No operators on structs**: `a + b` on two vectors, `a < b`, `==` by content. (M)
+
+### Structs are not containers yet — M
+
+A `List` or a `Map` from the standard library is a struct, and a struct cannot take part in the syntax of arrays:
+
+| Missing | Today |
+|---------|-------|
+| `for item in list` | `E2011`; write `for item in list.items`, `for key in map.keys()` |
+| `list[i]`, `map["key"]` | `E2006`; write `list.get(i)`, `map.get("key")` |
+| A method as a value: `arrays.map(keys, users.get)` | `E2014`; wrap it: `fn(k: String) -> User? { return users.get(k); }` |
+
+The first two wait for generic traits, above.
+
+### Functions: defaults and names for arguments — S
+
+`fn open(path: String, mode: String = "r")` and `open(path: "a.txt")` are not parsed. Every argument is given, in order.
+
 ### Nested and recursive local functions — S / M
 
 *   `fn inner() { ... }` inside a function body is a syntax error. Use `let inner = fn() { ... };`.
@@ -110,9 +166,12 @@ Patterns on literals, on types and on the variants of an enum (with names, liter
 | Missing | Today |
 |---------|-------|
 | `%` on floats | `E2006`, although the VM implements it |
-| Maps / dictionaries | No syntax; the VM's object type is only used for structs |
+| A literal for maps | `map.empty<V>()` then `set`; there is no `{"a": 1}` |
+| Numbers | `Int` is 48 bits (±140 737 488 355 327), not 64; there are no unsigned or sized integers, and no bytes: a file is read as text only |
+| Characters | A character is a text of length 1; `strings.code` and `fromCode` go to and from its number |
 | String interpolation, multi-line strings, `\u` escapes | Not parsed |
-| Optional chaining `a?.b` | Not parsed |
+| Null operators: `a?.b`, `x!` | Not parsed. Test against `null`, or use `??` |
+| Anything concurrent: threads, async, timers | Nothing; a program is one sequence of steps |
 | Type aliases | Not parsed |
 | Methods on builtin types (`"abc".upper()`) | `impl Trait for Int` parses, but calls are not dispatched |
 | Struct field defaults | Not parsed |
@@ -142,7 +201,7 @@ These are conservative choices, not holes. The third could be made more precise 
 
 Type arguments are inferred from the arguments of a call (`first([1, 2])`, `stack.map(toString)`) and, for what those leave open, from the type the result is expected to have (`let xs: [Int] = none();`, `return none();`, `size(none())`). Not covered:
 
-*   a call whose result goes nowhere typed: `let xs = none();` and `none().length` still need `none<Int>()`;
+*   a call whose result goes nowhere typed: `let xs = none();` still needs `none<Int>()`;
 *   the first argument that mentions a parameter decides it; there is no search for a type common to several arguments (`same(1, 2.5)` is an error, not `T = Any`);
 *   inference does not look further than one call: in `first(none())`, nothing determines the inner call.
 
@@ -161,6 +220,7 @@ A cast to a function type is checked against the signature recorded when the fun
 | Unused variables, parameters, functions | No warning |
 | Variadic function called through a variable | Arguments are not packed into an array; only direct calls by name are |
 | Shadowing a function with a local | Allowed silently |
+| Bytecode before it runs | A `.lc` or `.lasm` file is trusted: an instruction that names a register the function does not have stops `lumen` itself with a Go panic, not with an error. Bytecode from the compiler never does this; a file written by hand or damaged can |
 | A variable passed as an argument, changed by a later argument of the same call | The call receives the new value: in `f(count, bump())`, where `bump` is a closure that increments `count`, `f` sees the incremented count. Arguments that are plain variables are read when the call is made, not when their turn comes. Assign the variable to a `let` first if the order matters |
 
 ---
@@ -202,7 +262,9 @@ Function objects are reused, so calling a function by name allocates nothing for
 | Machine-readable diagnostics | No `--format=json` |
 | Source-level debugging | `lumdbg` steps bytecode instructions and shows registers by number; it has no statement stepping and no variable names |
 | Compiler flags | `--heap-mb` and `--max-depth` exist; no optimization level, no warnings-as-errors |
-| Formatter, language server, syntax highlighting | None |
+| Syntax highlighting, formatter, language server | None. Highlighting is the cheapest of the three and the most visible |
+| A way to run tests | No `lumen test`, no `assert`; a program is tested by comparing what it prints |
+| Documentation from comments | None |
 | Optimization | None: no constant folding, no dead code elimination beyond unreachable blocks, every jump uses the 3-word long form |
 | `Instr.String()` | Still renders every operand as a register; the debugger and disassembler use `asm.FormatInstruction` instead |
 
@@ -212,10 +274,12 @@ Function objects are reused, so calling a function by name allocates nothing for
 
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
-1.  **Null operators**: `x!`, `a?.b`, and rejecting a value known to be null.
-2.  **Everyday syntax**: short lambdas (`n => n * 2`), string interpolation, ranges.
-3.  **`for` over a struct**: an iteration trait, so that a `List` or a `Map` can be looped over directly.
-4.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
+1.  **Chaining and less noise**: the pipe operator, short lambdas, string interpolation. Small, and they change how every program reads.
+2.  **Failing on purpose**: a builtin to stop with a message, `Result<T, E>` in the standard library, the call stack in runtime errors.
+3.  **Syntax highlighting** for one editor.
+4.  **Traits with type parameters, and as bounds**: what `for` over a `List`, `list[i]` and generic code that compares its values all wait for.
 5.  **`match`**: conditions on cases, several patterns per case, `match` as an expression.
+6.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
+7.  **Null operators**: `x!`, `a?.b`.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

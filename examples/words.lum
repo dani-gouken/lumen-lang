@@ -50,24 +50,24 @@ fn main() -> Int {
     }
     table.sort(fn(a: Count, b: Count) -> Bool { return a.times > b.times; });
 
-    println(words.length, "words,", counts.size(), "different");
+    println(arrays.len(words), "words,", counts.size(), "different");
     println();
     for row in table.slice(0, 6).toArray() {
         println(strings.padRight(row.word, 8), strings.padLeft(toString(row.times), 3), strings.repeat("#", row.times));
     }
 
     // Numbers about the words
-    let lengths = arrays.map(words, fn(w: String) -> Int { return w.length; });
-    let average = math.toFloat(arrays.sum(lengths)) / math.toFloat(lengths.length);
+    let lengths = arrays.map(words, fn(w: String) -> Int { return strings.len(w); });
+    let average = math.toFloat(arrays.sum(lengths)) / math.toFloat(arrays.len(lengths));
     println();
     println("average length:", math.toFloat(math.round(average * 100.0)) / 100.0);
-    println("longest:", arrays.sorted(counts.keys(), fn(a: String, b: String) -> Bool { return a.length > b.length; })[0]);
+    println("longest:", arrays.sorted(counts.keys(), fn(a: String, b: String) -> Bool { return strings.len(a) > strings.len(b); })[0]);
 
     let once = table.filter(fn(row: Count) -> Bool { return row.times == 1; });
     println("used once:", strings.join(once.map<String>(fn(row: Count) -> String { return row.word; }).toArray(), ", "));
 
     // Taking a sentence apart and putting it back differently
-    let first = strings.first(text, strings.indexOf(text, ",") ?? text.length);
+    let first = strings.first(text, strings.indexOf(text, ",") ?? strings.len(text));
     println(strings.join(arrays.reversed(strings.words(first)), " "));
     println(strings.join(arrays.map(strings.words(first), strings.capitalize), " "));
     return 0;
