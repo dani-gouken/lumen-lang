@@ -368,16 +368,51 @@ func (p *Parser) parseConstDecl() *ast.ConstDecl {
 	return decl
 }
 
-// parseExternDecl parses `extern fn name(params) -> Type;`: a function the
-// runtime provides. It has a signature and no body.
-func (p *Parser) parseExternDecl() *ast.FnDecl {
+// parseExternDecl parses what a program declares without writing it:
+//
+//	extern fn name(params) -> Type;          a function the runtime provides
+//	extern "library" fn name(params) -> Type; a function of a C library
+//	extern struct Name { field: Type; }       a struct of a C library
+//
+// In the last two the types are those of C (see ast.ForeignTypes).
+func (p *Parser) parseExternDecl() ast.Decl {
 	p.expect(token.EXTERN, "'extern'")
+	if p.at(token.STRUCT) {
+		decl := p.parseStructDecl()
+		decl.Extern = true
+		if len(decl.TypeParams) > 0 {
+			p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+				"a struct of a C library cannot have type parameters",
+				"Give each field the C type it has: Int32, Float32, Pointer, ...", decl.Token(), p.sourceLines)
+		}
+		for _, field := range decl.Fields {
+			field.Type.Foreign()
+		}
+		return decl
+	}
+
+	library, foreign := "", false
+	if p.at(token.STRING) {
+		library, foreign = p.cur().Literal, true
+		if library == "" {
+			p.failWith(ErrUnexpectedToken, "Name the library the function is in: extern \"raylib\" fn ...",
+				"the name of the library is empty")
+		}
+		p.next()
+	}
+	if !p.at(token.FN) {
+		p.failWith(ErrUnexpectedToken, "extern fn name(...);  extern \"library\" fn name(...);  extern struct Name { ... }",
+			"expected 'fn', 'struct' or the name of a library after 'extern', found %s", describe(p.cur()))
+	}
 	tok := p.expect(token.FN, "'fn' after 'extern'")
-	decl := &ast.FnDecl{BaseNode: base(tok), Extern: true}
+	decl := &ast.FnDecl{BaseNode: base(tok), Extern: true, Library: library}
 
 	nameTok := p.expect(token.IDENT, "function name")
 	decl.Name = nameTok.Literal
 	decl.BaseNode = base(nameTok)
+	if foreign {
+		decl.Symbol = decl.Name
+	}
 	if p.at(token.LT) {
 		p.failWith(ErrUnexpectedToken, "Give the parameters concrete types, or 'Any'",
 			"an extern function cannot have type parameters")
@@ -385,6 +420,12 @@ func (p *Parser) parseExternDecl() *ast.FnDecl {
 	decl.Params = p.parseParams()
 	if p.accept(token.ARROW) {
 		decl.ReturnType = p.parseType()
+	}
+	if foreign {
+		for _, param := range decl.Params {
+			param.Type.Foreign()
+		}
+		decl.ReturnType.Foreign()
 	}
 	if p.at(token.LBRACE) {
 		p.failWith(ErrUnexpectedToken, "Remove 'extern' to write the function here, or end the declaration with ';'",

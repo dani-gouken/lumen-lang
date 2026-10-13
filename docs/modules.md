@@ -167,7 +167,9 @@ extern fn readLine() -> String?;
 
 It is called, passed around and exported like any function, and calls to it are type checked against the declaration. It cannot have type parameters.
 
-Which function it is depends on its full name: `extern fn sqrt` in the module `std.math` is the native function `std.math.sqrt` of the virtual machine. This is how the [standard library](stdlib.md) reaches the machine, and for now it is the only use: the runtime has no functions other than the library's, so an `extern fn` anywhere else is rejected when the program is compiled (`E7002`), not when it runs. Declaring `extern fn sqrt` in a module of your own does not give you the library's: the name would be `yourmodule.sqrt`.
+Which function it is depends on its full name: `extern fn sqrt` in the module `std.math` is the native function `std.math.sqrt` of the virtual machine. This is how the [standard library](stdlib.md) reaches the machine. The runtime has no functions other than the library's, so an `extern fn` anywhere else is rejected when the program is compiled (`E7002`), not when it runs. Declaring `extern fn sqrt` in a module of your own does not give you the library's: the name would be `yourmodule.sqrt`.
+
+Native code of your own comes from C libraries instead: `extern "raylib" fn InitWindow(width: Int32, height: Int32, title: CString);` declares a function of a library found when the program runs. See [ffi.md](ffi.md).
 
 ## The Entry Point
 
@@ -202,6 +204,7 @@ Names of the entry file are kept as written. This is what appears in:
 | `E8006` | An import that cannot work: the entry file, or a whole module after `pub` | `pub import physics.body;` |
 | `E2027` | A method that is not `pub`, called from another module | `world.keepInside(thing)` |
 | `E7002` | An `extern fn` the runtime does not provide | `extern fn launch();` |
+| `E7003` | A type C does not have, in a declaration made for a C library | `extern "c" fn abs(n: Int) -> Int32;` |
 
 Suggestions name the fix where there is an obvious one: the file that was expected, `Did you mean 'new'?`, `Declare it with 'pub' in physics/body.lum`, `import b.util as other;`. Writing `import physics.body.new;` for a name of a module is a common slip; the message gives the import that was meant: `import physics.body.{new};`.
 
@@ -210,7 +213,6 @@ A diagnostic shows the file it is about and quotes that file's line, wherever in
 ## What Is Not There
 
 *   **Getting packages.** [`lumen.json`](project.md) can say where a package is; nothing downloads, installs or versions one. The one package that needs no telling is the [standard library](stdlib.md), `std`, which is inside `lumen`.
-*   **Native code of your own.** `extern fn` only reaches the functions built into `lumen`; a package cannot bring a shared library.
 *   **Variables shared between modules.** A module exports functions, constants and types; there are no variables outside functions.
 *   **Per-field privacy.** A `pub struct` exposes all its fields.
 *   **A check that a `pub` signature only uses `pub` types.** `pub fn f() -> Secret` compiles; callers get a value they cannot name the type of.

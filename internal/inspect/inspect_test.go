@@ -670,3 +670,85 @@ fn after() -> Int { return shelf().first().pages; }
 	expect("no dot", typed(34, "    "), []string{"return", "names", "api", "shelf"}, "text")
 	expect("a number", typed(34, "    let x = 3."), nil, "return", "text")
 }
+
+// A file of declarations for a C library: the functions it only declares
+// are part of what it declares, said with the types of C they were
+// written with.
+const foreignSample = `// A color.
+extern struct Color { r: UInt8; g: UInt8; b: UInt8; a: UInt8; }
+
+// Opens a window.
+extern "raylib" fn InitWindow(width: Int32, height: Int32, title: CString);
+// Fills it.
+pub extern "raylib" fn ClearBackground(color: Color);
+extern "raylib" fn GetTime() -> Float64;
+
+
+fn main() {
+    InitWindow(800, 450, "hello");
+    ClearBackground(Color { r: 1, g: 2, b: 3, a: 4 });
+}
+`
+
+func TestOutlineOfForeignDeclarations(t *testing.T) {
+	var got []string
+	for _, s := range Outline("main.lum", foreignSample) {
+		line := s.Kind + " " + s.Name
+		if s.Container != "" {
+			line = s.Kind + " " + s.Container + "." + s.Name
+		}
+		if s.Detail != "" {
+			line += " | " + s.Detail
+		}
+		got = append(got, line)
+	}
+	want := []string{
+		"struct Color",
+		"field Color.r | UInt8",
+		"field Color.g | UInt8",
+		"field Color.b | UInt8",
+		"field Color.a | UInt8",
+		`function InitWindow | extern "raylib" fn InitWindow(width: Int32, height: Int32, title: CString)`,
+		`function ClearBackground | extern "raylib" fn ClearBackground(color: Color)`,
+		`function GetTime | extern "raylib" fn GetTime() -> Float64`,
+		"function main | fn main()",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("unexpected outline:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestDescribeForeignDeclarations(t *testing.T) {
+	cases := []struct {
+		name         string
+		line, column int
+		signature    string
+		doc          string
+		declaredLine int
+	}{
+		{"a function where it is declared", 5, 20, `extern "raylib" fn InitWindow(width: Int32, height: Int32, title: CString)`, "Opens a window.", 5},
+		{"a parameter of it", 5, 31, "(parameter) width: Int32", "", 5},
+		{"a struct among its parameters", 7, 47, "extern struct Color {\n    r: UInt8;\n    g: UInt8;\n    b: UInt8;\n    a: UInt8;\n}", "A color.", 2},
+		{"the struct where it is declared", 2, 16, "extern struct Color {\n    r: UInt8;\n    g: UInt8;\n    b: UInt8;\n    a: UInt8;\n}", "A color.", 2},
+		{"a field of it", 2, 23, "(field) Color.r: UInt8", "", 2},
+		{"a function where it is called", 12, 6, `extern "raylib" fn InitWindow(width: Int32, height: Int32, title: CString)`, "Opens a window.", 5},
+		{"another, with a struct", 13, 6, `extern "raylib" fn ClearBackground(color: Color)`, "Fills it.", 7},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			d := Describe("main.lum", foreignSample, c.line, c.column)
+			if d == nil {
+				t.Fatal("expected a description, got none")
+			}
+			if d.Signature != c.signature {
+				t.Errorf("expected %q, got %q", c.signature, d.Signature)
+			}
+			if c.doc != "" && d.Doc != c.doc {
+				t.Errorf("expected the comment %q, got %q", c.doc, d.Doc)
+			}
+			if d.Line != c.declaredLine {
+				t.Errorf("expected it declared on line %d, got %d", c.declaredLine, d.Line)
+			}
+		})
+	}
+}

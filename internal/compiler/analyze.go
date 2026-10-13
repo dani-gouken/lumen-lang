@@ -45,6 +45,7 @@ func Analyze(src, file string, opts Options, errs *errors.Handler) *Analysis {
 	giveDefaultMethods(prog)
 	checkSupported(prog, errs, lines)
 	checkExterns(prog, opts.Hosted, errs, lines)
+	foreignFunctions(prog, errs, lines)
 	if errs.HasErrors() {
 		return analysis
 	}

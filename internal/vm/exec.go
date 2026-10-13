@@ -234,6 +234,9 @@ func (vm *VM) externObject(name string) (Value, error) {
 	if cached, ok := vm.externObjs[name]; ok {
 		return cached, nil
 	}
+	if IsForeign(name) {
+		return vm.foreignObject(name)
+	}
 	externFunc, ok := vm.externFuncs[name]
 	if !ok {
 		return NewNull(), vm.runtimeError(fmt.Sprintf("unknown extern function: %s", name))

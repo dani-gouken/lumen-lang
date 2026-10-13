@@ -214,6 +214,10 @@ func TestExamples(t *testing.T) {
 	}
 }
 
+// opensAWindow lists the examples that are not run by the tests: they open
+// a window and wait for somebody to play.
+var opensAWindow = map[string]bool{"raylib": true}
+
 // TestExampleProjects runs every example that is a folder with a project
 // file, and compares its output with examples/expected/<folder>.out.
 func TestExampleProjects(t *testing.T) {
@@ -223,6 +227,10 @@ func TestExampleProjects(t *testing.T) {
 	}
 	for _, config := range configs {
 		name := filepath.Base(filepath.Dir(config))
+		if opensAWindow[name] {
+			// Compiled by TestWindowedExamplesCompile, and not run
+			continue
+		}
 
 		t.Run(name, func(t *testing.T) {
 			res := runLumen(t, "run", filepath.Join("examples", name))

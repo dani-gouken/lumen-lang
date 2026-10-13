@@ -15,7 +15,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Types | patterns on structs and arrays, names in a case with several patterns, traits for arrays |
 | Correctness | unused variables |
 | Runtime | method dispatch cost, tasks on several processors |
-| Program structure | native code from outside (shared libraries), a way to install packages, variables outside functions |
+| Program structure | a way to install packages, variables outside functions, C functions that call back |
 | Tooling | a `lumen test` command, a formatter, renaming and finding uses in the editor |
 
 ---
@@ -80,11 +80,11 @@ Most of this list has since been added, and the library and the examples rewritt
 | **A `Result` with nothing in it** | `fs.makeDir` gives back the path it was given, for want of a `Result<Void, Error>` |
 | **Keywords as names** | `for case in cases` is a syntax error; so are `match`, `in`, `is` as names of variables |
 
-### Getting packages, and native code from outside — L
+### Getting packages — L
 
 **Today**: [`lumen.json`](project.md) can name folders of modules kept elsewhere (`"packages"`). Nothing downloads or versions a package, and a package cannot name its own dependencies; the program lists them all.
 
-`extern fn` declares a function the runtime provides, but the only functions the runtime has are the ones compiled into `lumen` for the standard library. A package cannot bring native code of its own: there is no loading of shared libraries, so no binding to a C library such as raylib or SQLite. That needs calling conventions for C types (`i32`, `f32`, structs passed by value) and a way to say which library a function is in.
+A package can bring native code: the functions of a C library are declared in Lumen and found when the program runs ([ffi.md](ffi.md)). What is missing there: giving C a function of the program to call back, functions that take any number of arguments, calling C from a task, and Windows.
 
 ### Gaps in modules — S each
 
@@ -290,6 +290,5 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
 1.  **Chaining**: the pipe operator. Small, and it changes how nested calls read.
-6.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

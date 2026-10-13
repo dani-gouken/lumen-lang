@@ -41,6 +41,9 @@ type Generator struct {
 
 	// Names of host-provided functions that may be referenced
 	externs map[string]bool
+	// The functions of C libraries among them, and how each is described
+	// to the VM (see vm.Foreign)
+	foreign map[string]string
 
 	protoIndex map[string]int // Function name -> prototype index
 	// The functions that capture no variable: one value of each is all
@@ -246,10 +249,22 @@ func (g *Generator) stringConstant(s string, pos token.Position) uint16 {
 func (g *Generator) extern(name string) uint16 {
 	idx, ok := g.externIndex[name]
 	if !ok {
-		idx = g.chunk.AddExtern(name)
+		// A function of a C library goes by its whole description: the
+		// VM has no function of that name to find
+		named := name
+		if described, ok := g.foreign[name]; ok {
+			named = described
+		}
+		idx = g.chunk.AddExtern(named)
 		g.externIndex[name] = idx
 	}
 	return uint16(idx)
+}
+
+// SetForeign says which of the host functions are functions of C
+// libraries, and the extern name each has in the chunk.
+func (g *Generator) SetForeign(described map[string]string) {
+	g.foreign = described
 }
 
 // place is what a debug record is made from.

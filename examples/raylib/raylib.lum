@@ -1,0 +1,2315 @@
+// raylib, for Lumen: every function, struct and constant of raylib.h.
+//
+// Written by generate.py from the header of raylib 5.5; change that, not this.
+//
+//   import raylib;
+//
+//   raylib.InitWindow(800, 450, "hello");
+//   while !raylib.WindowShouldClose() {
+//       raylib.BeginDrawing();
+//       raylib.ClearBackground(raylib.rayWhite());
+//       raylib.DrawText("hello from Lumen", 190, 200, 20, raylib.darkGray());
+//       raylib.EndDrawing();
+//   }
+//   raylib.CloseWindow();
+//
+// The names are those of C, so what is written about raylib anywhere
+// applies. The types are those of C too: an Int32 is an Int to the
+// program, a Float32 a Float, a CString a String. A Pointer is an address,
+// an Int: see std.ffi for the functions that want one. A struct is passed
+// and returned by value, as raylib does.
+//
+// The library is found by its name: libraylib.dylib or libraylib.so, in
+// the usual places or in a folder listed in LUMEN_LIBRARY_PATH.
+
+// --- Structs ---
+
+// Vector2, 2 components
+pub extern struct Vector2 {
+    x: Float32;
+    y: Float32;
+}
+
+// Vector3, 3 components
+pub extern struct Vector3 {
+    x: Float32;
+    y: Float32;
+    z: Float32;
+}
+
+// Vector4, 4 components
+pub extern struct Vector4 {
+    x: Float32;
+    y: Float32;
+    z: Float32;
+    w: Float32;
+}
+
+// Matrix, 4x4 components, column major, OpenGL style, right-handed
+pub extern struct Matrix {
+    m0: Float32;
+    m4: Float32;
+    m8: Float32;
+    m12: Float32;
+    m1: Float32;
+    m5: Float32;
+    m9: Float32;
+    m13: Float32;
+    m2: Float32;
+    m6: Float32;
+    m10: Float32;
+    m14: Float32;
+    m3: Float32;
+    m7: Float32;
+    m11: Float32;
+    m15: Float32;
+}
+
+// Color, 4 components, R8G8B8A8 (32bit)
+pub extern struct Color {
+    r: UInt8;
+    g: UInt8;
+    b: UInt8;
+    a: UInt8;
+}
+
+// Rectangle, 4 components
+pub extern struct Rectangle {
+    x: Float32;
+    y: Float32;
+    width: Float32;
+    height: Float32;
+}
+
+// Image, pixel data stored in CPU memory (RAM)
+pub extern struct Image {
+    data: Pointer;
+    width: Int32;
+    height: Int32;
+    mipmaps: Int32;
+    format: Int32;
+}
+
+// Texture, tex data stored in GPU memory (VRAM)
+pub extern struct Texture {
+    id: UInt32;
+    width: Int32;
+    height: Int32;
+    mipmaps: Int32;
+    format: Int32;
+}
+
+// RenderTexture, fbo for texture rendering
+pub extern struct RenderTexture {
+    id: UInt32;
+    texture: Texture;
+    depth: Texture;
+}
+
+// NPatchInfo, n-patch layout info
+pub extern struct NPatchInfo {
+    source: Rectangle;
+    left: Int32;
+    top: Int32;
+    right: Int32;
+    bottom: Int32;
+    layout: Int32;
+}
+
+// GlyphInfo, font characters glyphs info
+pub extern struct GlyphInfo {
+    value: Int32;
+    offsetX: Int32;
+    offsetY: Int32;
+    advanceX: Int32;
+    image: Image;
+}
+
+// Font, font texture and GlyphInfo array data
+pub extern struct Font {
+    baseSize: Int32;
+    glyphCount: Int32;
+    glyphPadding: Int32;
+    texture: Texture;
+    recs: Pointer;
+    glyphs: Pointer;
+}
+
+// Camera, defines position/orientation in 3d space
+pub extern struct Camera3D {
+    position: Vector3;
+    target: Vector3;
+    up: Vector3;
+    fovy: Float32;
+    projection: Int32;
+}
+
+// Camera2D, defines position/orientation in 2d space
+pub extern struct Camera2D {
+    offset: Vector2;
+    target: Vector2;
+    rotation: Float32;
+    zoom: Float32;
+}
+
+// Mesh, vertex data and vao/vbo
+pub extern struct Mesh {
+    vertexCount: Int32;
+    triangleCount: Int32;
+    vertices: Pointer;
+    texcoords: Pointer;
+    texcoords2: Pointer;
+    normals: Pointer;
+    tangents: Pointer;
+    colors: Pointer;
+    indices: Pointer;
+    animVertices: Pointer;
+    animNormals: Pointer;
+    boneIds: Pointer;
+    boneWeights: Pointer;
+    boneMatrices: Pointer;
+    boneCount: Int32;
+    vaoId: UInt32;
+    vboId: Pointer;
+}
+
+// Shader
+pub extern struct Shader {
+    id: UInt32;
+    locs: Pointer;
+}
+
+// MaterialMap
+pub extern struct MaterialMap {
+    texture: Texture;
+    color: Color;
+    value: Float32;
+}
+
+// Material, includes shader and maps
+pub extern struct Material {
+    shader: Shader;
+    maps: Pointer;
+    params0: Float32;
+    params1: Float32;
+    params2: Float32;
+    params3: Float32;
+}
+
+// Transform, vertex transformation data
+pub extern struct Transform {
+    translation: Vector3;
+    rotation: Vector4;
+    scale: Vector3;
+}
+
+// Bone, skeletal animation bone
+pub extern struct BoneInfo {
+    name0: Int8;
+    name1: Int8;
+    name2: Int8;
+    name3: Int8;
+    name4: Int8;
+    name5: Int8;
+    name6: Int8;
+    name7: Int8;
+    name8: Int8;
+    name9: Int8;
+    name10: Int8;
+    name11: Int8;
+    name12: Int8;
+    name13: Int8;
+    name14: Int8;
+    name15: Int8;
+    name16: Int8;
+    name17: Int8;
+    name18: Int8;
+    name19: Int8;
+    name20: Int8;
+    name21: Int8;
+    name22: Int8;
+    name23: Int8;
+    name24: Int8;
+    name25: Int8;
+    name26: Int8;
+    name27: Int8;
+    name28: Int8;
+    name29: Int8;
+    name30: Int8;
+    name31: Int8;
+    parent: Int32;
+}
+
+// Model, meshes, materials and animation data
+pub extern struct Model {
+    transform: Matrix;
+    meshCount: Int32;
+    materialCount: Int32;
+    meshes: Pointer;
+    materials: Pointer;
+    meshMaterial: Pointer;
+    boneCount: Int32;
+    bones: Pointer;
+    bindPose: Pointer;
+}
+
+// ModelAnimation
+pub extern struct ModelAnimation {
+    boneCount: Int32;
+    frameCount: Int32;
+    bones: Pointer;
+    framePoses: Pointer;
+    name0: Int8;
+    name1: Int8;
+    name2: Int8;
+    name3: Int8;
+    name4: Int8;
+    name5: Int8;
+    name6: Int8;
+    name7: Int8;
+    name8: Int8;
+    name9: Int8;
+    name10: Int8;
+    name11: Int8;
+    name12: Int8;
+    name13: Int8;
+    name14: Int8;
+    name15: Int8;
+    name16: Int8;
+    name17: Int8;
+    name18: Int8;
+    name19: Int8;
+    name20: Int8;
+    name21: Int8;
+    name22: Int8;
+    name23: Int8;
+    name24: Int8;
+    name25: Int8;
+    name26: Int8;
+    name27: Int8;
+    name28: Int8;
+    name29: Int8;
+    name30: Int8;
+    name31: Int8;
+}
+
+// Ray, ray for raycasting
+pub extern struct Ray {
+    position: Vector3;
+    direction: Vector3;
+}
+
+// RayCollision, ray hit information
+pub extern struct RayCollision {
+    hit: Bool;
+    distance: Float32;
+    point: Vector3;
+    normal: Vector3;
+}
+
+// BoundingBox
+pub extern struct BoundingBox {
+    min: Vector3;
+    max: Vector3;
+}
+
+// Wave, audio wave data
+pub extern struct Wave {
+    frameCount: UInt32;
+    sampleRate: UInt32;
+    sampleSize: UInt32;
+    channels: UInt32;
+    data: Pointer;
+}
+
+// AudioStream, custom audio stream
+pub extern struct AudioStream {
+    buffer: Pointer;
+    processor: Pointer;
+    sampleRate: UInt32;
+    sampleSize: UInt32;
+    channels: UInt32;
+}
+
+// Sound
+pub extern struct Sound {
+    stream: AudioStream;
+    frameCount: UInt32;
+}
+
+// Music, audio stream, anything longer than ~10 seconds should be streamed
+pub extern struct Music {
+    stream: AudioStream;
+    frameCount: UInt32;
+    looping: Bool;
+    ctxType: Int32;
+    ctxData: Pointer;
+}
+
+// VrDeviceInfo, Head-Mounted-Display device parameters
+pub extern struct VrDeviceInfo {
+    hResolution: Int32;
+    vResolution: Int32;
+    hScreenSize: Float32;
+    vScreenSize: Float32;
+    eyeToScreenDistance: Float32;
+    lensSeparationDistance: Float32;
+    interpupillaryDistance: Float32;
+    lensDistortionValues0: Float32;
+    lensDistortionValues1: Float32;
+    lensDistortionValues2: Float32;
+    lensDistortionValues3: Float32;
+    chromaAbCorrection0: Float32;
+    chromaAbCorrection1: Float32;
+    chromaAbCorrection2: Float32;
+    chromaAbCorrection3: Float32;
+}
+
+// VrStereoConfig, VR stereo rendering configuration for simulator
+pub extern struct VrStereoConfig {
+    projection0: Matrix;
+    projection1: Matrix;
+    viewOffset0: Matrix;
+    viewOffset1: Matrix;
+    leftLensCenter0: Float32;
+    leftLensCenter1: Float32;
+    rightLensCenter0: Float32;
+    rightLensCenter1: Float32;
+    leftScreenCenter0: Float32;
+    leftScreenCenter1: Float32;
+    rightScreenCenter0: Float32;
+    rightScreenCenter1: Float32;
+    scale0: Float32;
+    scale1: Float32;
+    scaleIn0: Float32;
+    scaleIn1: Float32;
+}
+
+// File path list
+pub extern struct FilePathList {
+    capacity: UInt32;
+    count: UInt32;
+    paths: Pointer;
+}
+
+// Automation event
+pub extern struct AutomationEvent {
+    frame: UInt32;
+    type: UInt32;
+    params0: Int32;
+    params1: Int32;
+    params2: Int32;
+    params3: Int32;
+}
+
+// Automation event list
+pub extern struct AutomationEventList {
+    capacity: UInt32;
+    count: UInt32;
+    events: Pointer;
+}
+
+// Quaternion is another name of Vector4 in C: use Vector4.
+// Texture2D is another name of Texture in C: use Texture.
+// TextureCubemap is another name of Texture in C: use Texture.
+// RenderTexture2D is another name of RenderTexture in C: use RenderTexture.
+// Camera is another name of Camera3D in C: use Camera3D.
+
+// --- Colors ---
+
+// LIGHTGRAY: Light Gray
+pub fn lightGray() -> Color { return Color { r: 200, g: 200, b: 200, a: 255 }; }
+// GRAY: Gray
+pub fn gray() -> Color { return Color { r: 130, g: 130, b: 130, a: 255 }; }
+// DARKGRAY: Dark Gray
+pub fn darkGray() -> Color { return Color { r: 80, g: 80, b: 80, a: 255 }; }
+// YELLOW: Yellow
+pub fn yellow() -> Color { return Color { r: 253, g: 249, b: 0, a: 255 }; }
+// GOLD: Gold
+pub fn gold() -> Color { return Color { r: 255, g: 203, b: 0, a: 255 }; }
+// ORANGE: Orange
+pub fn orange() -> Color { return Color { r: 255, g: 161, b: 0, a: 255 }; }
+// PINK: Pink
+pub fn pink() -> Color { return Color { r: 255, g: 109, b: 194, a: 255 }; }
+// RED: Red
+pub fn red() -> Color { return Color { r: 230, g: 41, b: 55, a: 255 }; }
+// MAROON: Maroon
+pub fn maroon() -> Color { return Color { r: 190, g: 33, b: 55, a: 255 }; }
+// GREEN: Green
+pub fn green() -> Color { return Color { r: 0, g: 228, b: 48, a: 255 }; }
+// LIME: Lime
+pub fn lime() -> Color { return Color { r: 0, g: 158, b: 47, a: 255 }; }
+// DARKGREEN: Dark Green
+pub fn darkGreen() -> Color { return Color { r: 0, g: 117, b: 44, a: 255 }; }
+// SKYBLUE: Sky Blue
+pub fn skyBlue() -> Color { return Color { r: 102, g: 191, b: 255, a: 255 }; }
+// BLUE: Blue
+pub fn blue() -> Color { return Color { r: 0, g: 121, b: 241, a: 255 }; }
+// DARKBLUE: Dark Blue
+pub fn darkBlue() -> Color { return Color { r: 0, g: 82, b: 172, a: 255 }; }
+// PURPLE: Purple
+pub fn purple() -> Color { return Color { r: 200, g: 122, b: 255, a: 255 }; }
+// VIOLET: Violet
+pub fn violet() -> Color { return Color { r: 135, g: 60, b: 190, a: 255 }; }
+// DARKPURPLE: Dark Purple
+pub fn darkPurple() -> Color { return Color { r: 112, g: 31, b: 126, a: 255 }; }
+// BEIGE: Beige
+pub fn beige() -> Color { return Color { r: 211, g: 176, b: 131, a: 255 }; }
+// BROWN: Brown
+pub fn brown() -> Color { return Color { r: 127, g: 106, b: 79, a: 255 }; }
+// DARKBROWN: Dark Brown
+pub fn darkBrown() -> Color { return Color { r: 76, g: 63, b: 47, a: 255 }; }
+// WHITE: White
+pub fn white() -> Color { return Color { r: 255, g: 255, b: 255, a: 255 }; }
+// BLACK: Black
+pub fn black() -> Color { return Color { r: 0, g: 0, b: 0, a: 255 }; }
+// BLANK: Blank (Transparent)
+pub fn blank() -> Color { return Color { r: 0, g: 0, b: 0, a: 0 }; }
+// MAGENTA: Magenta
+pub fn magenta() -> Color { return Color { r: 255, g: 0, b: 255, a: 255 }; }
+// RAYWHITE: My own White (raylib logo)
+pub fn rayWhite() -> Color { return Color { r: 245, g: 245, b: 245, a: 255 }; }
+
+// --- Constants ---
+
+// ConfigFlags: By default all flags are set to 0
+pub const FLAG_VSYNC_HINT = 64;  // Set to try enabling V-Sync on GPU
+pub const FLAG_FULLSCREEN_MODE = 2;  // Set to run program in fullscreen
+pub const FLAG_WINDOW_RESIZABLE = 4;  // Set to allow resizable window
+pub const FLAG_WINDOW_UNDECORATED = 8;  // Set to disable window decoration (frame and buttons)
+pub const FLAG_WINDOW_HIDDEN = 128;  // Set to hide window
+pub const FLAG_WINDOW_MINIMIZED = 512;  // Set to minimize window (iconify)
+pub const FLAG_WINDOW_MAXIMIZED = 1024;  // Set to maximize window (expanded to monitor)
+pub const FLAG_WINDOW_UNFOCUSED = 2048;  // Set to window non focused
+pub const FLAG_WINDOW_TOPMOST = 4096;  // Set to window always on top
+pub const FLAG_WINDOW_ALWAYS_RUN = 256;  // Set to allow windows running while minimized
+pub const FLAG_WINDOW_TRANSPARENT = 16;  // Set to allow transparent framebuffer
+pub const FLAG_WINDOW_HIGHDPI = 8192;  // Set to support HighDPI
+pub const FLAG_WINDOW_MOUSE_PASSTHROUGH = 16384;  // Set to support mouse passthrough, only supported when FLAG_WINDOW_UNDECORATED
+pub const FLAG_BORDERLESS_WINDOWED_MODE = 32768;  // Set to run program in borderless windowed mode
+pub const FLAG_MSAA_4X_HINT = 32;  // Set to try enabling MSAA 4X
+pub const FLAG_INTERLACED_HINT = 65536;  // Set to try enabling interlaced video format (for V3D)
+
+// TraceLogLevel: NOTE: Organized by priority level
+pub const LOG_ALL = 0;  // Display all logs
+pub const LOG_TRACE = 1;  // Trace logging, intended for internal use only
+pub const LOG_DEBUG = 2;  // Debug logging, used for internal debugging, it should be disabled on release builds
+pub const LOG_INFO = 3;  // Info logging, used for program execution info
+pub const LOG_WARNING = 4;  // Warning logging, used on recoverable failures
+pub const LOG_ERROR = 5;  // Error logging, used on unrecoverable failures
+pub const LOG_FATAL = 6;  // Fatal logging, used to abort program: exit(EXIT_FAILURE)
+pub const LOG_NONE = 7;  // Disable logging
+
+// KeyboardKey: required keys for alternative layouts
+pub const KEY_NULL = 0;  // Key: NULL, used for no key pressed
+pub const KEY_APOSTROPHE = 39;  // Key: '
+pub const KEY_COMMA = 44;  // Key: ,
+pub const KEY_MINUS = 45;  // Key: -
+pub const KEY_PERIOD = 46;  // Key: .
+pub const KEY_SLASH = 47;  // Key: /
+pub const KEY_ZERO = 48;  // Key: 0
+pub const KEY_ONE = 49;  // Key: 1
+pub const KEY_TWO = 50;  // Key: 2
+pub const KEY_THREE = 51;  // Key: 3
+pub const KEY_FOUR = 52;  // Key: 4
+pub const KEY_FIVE = 53;  // Key: 5
+pub const KEY_SIX = 54;  // Key: 6
+pub const KEY_SEVEN = 55;  // Key: 7
+pub const KEY_EIGHT = 56;  // Key: 8
+pub const KEY_NINE = 57;  // Key: 9
+pub const KEY_SEMICOLON = 59;  // Key: ;
+pub const KEY_EQUAL = 61;  // Key: =
+pub const KEY_A = 65;  // Key: A | a
+pub const KEY_B = 66;  // Key: B | b
+pub const KEY_C = 67;  // Key: C | c
+pub const KEY_D = 68;  // Key: D | d
+pub const KEY_E = 69;  // Key: E | e
+pub const KEY_F = 70;  // Key: F | f
+pub const KEY_G = 71;  // Key: G | g
+pub const KEY_H = 72;  // Key: H | h
+pub const KEY_I = 73;  // Key: I | i
+pub const KEY_J = 74;  // Key: J | j
+pub const KEY_K = 75;  // Key: K | k
+pub const KEY_L = 76;  // Key: L | l
+pub const KEY_M = 77;  // Key: M | m
+pub const KEY_N = 78;  // Key: N | n
+pub const KEY_O = 79;  // Key: O | o
+pub const KEY_P = 80;  // Key: P | p
+pub const KEY_Q = 81;  // Key: Q | q
+pub const KEY_R = 82;  // Key: R | r
+pub const KEY_S = 83;  // Key: S | s
+pub const KEY_T = 84;  // Key: T | t
+pub const KEY_U = 85;  // Key: U | u
+pub const KEY_V = 86;  // Key: V | v
+pub const KEY_W = 87;  // Key: W | w
+pub const KEY_X = 88;  // Key: X | x
+pub const KEY_Y = 89;  // Key: Y | y
+pub const KEY_Z = 90;  // Key: Z | z
+pub const KEY_LEFT_BRACKET = 91;  // Key: [
+pub const KEY_BACKSLASH = 92;  // Key: '\'
+pub const KEY_RIGHT_BRACKET = 93;  // Key: ]
+pub const KEY_GRAVE = 96;  // Key: `
+pub const KEY_SPACE = 32;  // Key: Space
+pub const KEY_ESCAPE = 256;  // Key: Esc
+pub const KEY_ENTER = 257;  // Key: Enter
+pub const KEY_TAB = 258;  // Key: Tab
+pub const KEY_BACKSPACE = 259;  // Key: Backspace
+pub const KEY_INSERT = 260;  // Key: Ins
+pub const KEY_DELETE = 261;  // Key: Del
+pub const KEY_RIGHT = 262;  // Key: Cursor right
+pub const KEY_LEFT = 263;  // Key: Cursor left
+pub const KEY_DOWN = 264;  // Key: Cursor down
+pub const KEY_UP = 265;  // Key: Cursor up
+pub const KEY_PAGE_UP = 266;  // Key: Page up
+pub const KEY_PAGE_DOWN = 267;  // Key: Page down
+pub const KEY_HOME = 268;  // Key: Home
+pub const KEY_END = 269;  // Key: End
+pub const KEY_CAPS_LOCK = 280;  // Key: Caps lock
+pub const KEY_SCROLL_LOCK = 281;  // Key: Scroll down
+pub const KEY_NUM_LOCK = 282;  // Key: Num lock
+pub const KEY_PRINT_SCREEN = 283;  // Key: Print screen
+pub const KEY_PAUSE = 284;  // Key: Pause
+pub const KEY_F1 = 290;  // Key: F1
+pub const KEY_F2 = 291;  // Key: F2
+pub const KEY_F3 = 292;  // Key: F3
+pub const KEY_F4 = 293;  // Key: F4
+pub const KEY_F5 = 294;  // Key: F5
+pub const KEY_F6 = 295;  // Key: F6
+pub const KEY_F7 = 296;  // Key: F7
+pub const KEY_F8 = 297;  // Key: F8
+pub const KEY_F9 = 298;  // Key: F9
+pub const KEY_F10 = 299;  // Key: F10
+pub const KEY_F11 = 300;  // Key: F11
+pub const KEY_F12 = 301;  // Key: F12
+pub const KEY_LEFT_SHIFT = 340;  // Key: Shift left
+pub const KEY_LEFT_CONTROL = 341;  // Key: Control left
+pub const KEY_LEFT_ALT = 342;  // Key: Alt left
+pub const KEY_LEFT_SUPER = 343;  // Key: Super left
+pub const KEY_RIGHT_SHIFT = 344;  // Key: Shift right
+pub const KEY_RIGHT_CONTROL = 345;  // Key: Control right
+pub const KEY_RIGHT_ALT = 346;  // Key: Alt right
+pub const KEY_RIGHT_SUPER = 347;  // Key: Super right
+pub const KEY_KB_MENU = 348;  // Key: KB menu
+pub const KEY_KP_0 = 320;  // Key: Keypad 0
+pub const KEY_KP_1 = 321;  // Key: Keypad 1
+pub const KEY_KP_2 = 322;  // Key: Keypad 2
+pub const KEY_KP_3 = 323;  // Key: Keypad 3
+pub const KEY_KP_4 = 324;  // Key: Keypad 4
+pub const KEY_KP_5 = 325;  // Key: Keypad 5
+pub const KEY_KP_6 = 326;  // Key: Keypad 6
+pub const KEY_KP_7 = 327;  // Key: Keypad 7
+pub const KEY_KP_8 = 328;  // Key: Keypad 8
+pub const KEY_KP_9 = 329;  // Key: Keypad 9
+pub const KEY_KP_DECIMAL = 330;  // Key: Keypad .
+pub const KEY_KP_DIVIDE = 331;  // Key: Keypad /
+pub const KEY_KP_MULTIPLY = 332;  // Key: Keypad *
+pub const KEY_KP_SUBTRACT = 333;  // Key: Keypad -
+pub const KEY_KP_ADD = 334;  // Key: Keypad +
+pub const KEY_KP_ENTER = 335;  // Key: Keypad Enter
+pub const KEY_KP_EQUAL = 336;  // Key: Keypad =
+pub const KEY_BACK = 4;  // Key: Android back button
+pub const KEY_MENU = 5;  // Key: Android menu button
+pub const KEY_VOLUME_UP = 24;  // Key: Android volume up button
+pub const KEY_VOLUME_DOWN = 25;  // Key: Android volume down button
+
+// MouseButton: Mouse buttons
+pub const MOUSE_BUTTON_LEFT = 0;  // Mouse button left
+pub const MOUSE_BUTTON_RIGHT = 1;  // Mouse button right
+pub const MOUSE_BUTTON_MIDDLE = 2;  // Mouse button middle (pressed wheel)
+pub const MOUSE_BUTTON_SIDE = 3;  // Mouse button side (advanced mouse device)
+pub const MOUSE_BUTTON_EXTRA = 4;  // Mouse button extra (advanced mouse device)
+pub const MOUSE_BUTTON_FORWARD = 5;  // Mouse button forward (advanced mouse device)
+pub const MOUSE_BUTTON_BACK = 6;  // Mouse button back (advanced mouse device)
+
+// MouseCursor: Mouse cursor
+pub const MOUSE_CURSOR_DEFAULT = 0;  // Default pointer shape
+pub const MOUSE_CURSOR_ARROW = 1;  // Arrow shape
+pub const MOUSE_CURSOR_IBEAM = 2;  // Text writing cursor shape
+pub const MOUSE_CURSOR_CROSSHAIR = 3;  // Cross shape
+pub const MOUSE_CURSOR_POINTING_HAND = 4;  // Pointing hand cursor
+pub const MOUSE_CURSOR_RESIZE_EW = 5;  // Horizontal resize/move arrow shape
+pub const MOUSE_CURSOR_RESIZE_NS = 6;  // Vertical resize/move arrow shape
+pub const MOUSE_CURSOR_RESIZE_NWSE = 7;  // Top-left to bottom-right diagonal resize/move arrow shape
+pub const MOUSE_CURSOR_RESIZE_NESW = 8;  // The top-right to bottom-left diagonal resize/move arrow shape
+pub const MOUSE_CURSOR_RESIZE_ALL = 9;  // The omnidirectional resize/move cursor shape
+pub const MOUSE_CURSOR_NOT_ALLOWED = 10;  // The operation-not-allowed shape
+
+// GamepadButton: Gamepad buttons
+pub const GAMEPAD_BUTTON_UNKNOWN = 0;  // Unknown button, just for error checking
+pub const GAMEPAD_BUTTON_LEFT_FACE_UP = 1;  // Gamepad left DPAD up button
+pub const GAMEPAD_BUTTON_LEFT_FACE_RIGHT = 2;  // Gamepad left DPAD right button
+pub const GAMEPAD_BUTTON_LEFT_FACE_DOWN = 3;  // Gamepad left DPAD down button
+pub const GAMEPAD_BUTTON_LEFT_FACE_LEFT = 4;  // Gamepad left DPAD left button
+pub const GAMEPAD_BUTTON_RIGHT_FACE_UP = 5;  // Gamepad right button up (i.e. PS3: Triangle, Xbox: Y)
+pub const GAMEPAD_BUTTON_RIGHT_FACE_RIGHT = 6;  // Gamepad right button right (i.e. PS3: Circle, Xbox: B)
+pub const GAMEPAD_BUTTON_RIGHT_FACE_DOWN = 7;  // Gamepad right button down (i.e. PS3: Cross, Xbox: A)
+pub const GAMEPAD_BUTTON_RIGHT_FACE_LEFT = 8;  // Gamepad right button left (i.e. PS3: Square, Xbox: X)
+pub const GAMEPAD_BUTTON_LEFT_TRIGGER_1 = 9;  // Gamepad top/back trigger left (first), it could be a trailing button
+pub const GAMEPAD_BUTTON_LEFT_TRIGGER_2 = 10;  // Gamepad top/back trigger left (second), it could be a trailing button
+pub const GAMEPAD_BUTTON_RIGHT_TRIGGER_1 = 11;  // Gamepad top/back trigger right (first), it could be a trailing button
+pub const GAMEPAD_BUTTON_RIGHT_TRIGGER_2 = 12;  // Gamepad top/back trigger right (second), it could be a trailing button
+pub const GAMEPAD_BUTTON_MIDDLE_LEFT = 13;  // Gamepad center buttons, left one (i.e. PS3: Select)
+pub const GAMEPAD_BUTTON_MIDDLE = 14;  // Gamepad center buttons, middle one (i.e. PS3: PS, Xbox: XBOX)
+pub const GAMEPAD_BUTTON_MIDDLE_RIGHT = 15;  // Gamepad center buttons, right one (i.e. PS3: Start)
+pub const GAMEPAD_BUTTON_LEFT_THUMB = 16;  // Gamepad joystick pressed button left
+pub const GAMEPAD_BUTTON_RIGHT_THUMB = 17;  // Gamepad joystick pressed button right
+
+// GamepadAxis: Gamepad axis
+pub const GAMEPAD_AXIS_LEFT_X = 0;  // Gamepad left stick X axis
+pub const GAMEPAD_AXIS_LEFT_Y = 1;  // Gamepad left stick Y axis
+pub const GAMEPAD_AXIS_RIGHT_X = 2;  // Gamepad right stick X axis
+pub const GAMEPAD_AXIS_RIGHT_Y = 3;  // Gamepad right stick Y axis
+pub const GAMEPAD_AXIS_LEFT_TRIGGER = 4;  // Gamepad back trigger left, pressure level: [1..-1]
+pub const GAMEPAD_AXIS_RIGHT_TRIGGER = 5;  // Gamepad back trigger right, pressure level: [1..-1]
+
+// MaterialMapIndex: Material map index
+pub const MATERIAL_MAP_ALBEDO = 0;  // Albedo material (same as: MATERIAL_MAP_DIFFUSE)
+pub const MATERIAL_MAP_METALNESS = 1;  // Metalness material (same as: MATERIAL_MAP_SPECULAR)
+pub const MATERIAL_MAP_NORMAL = 2;  // Normal material
+pub const MATERIAL_MAP_ROUGHNESS = 3;  // Roughness material
+pub const MATERIAL_MAP_OCCLUSION = 4;  // Ambient occlusion material
+pub const MATERIAL_MAP_EMISSION = 5;  // Emission material
+pub const MATERIAL_MAP_HEIGHT = 6;  // Heightmap material
+pub const MATERIAL_MAP_CUBEMAP = 7;  // Cubemap material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
+pub const MATERIAL_MAP_IRRADIANCE = 8;  // Irradiance material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
+pub const MATERIAL_MAP_PREFILTER = 9;  // Prefilter material (NOTE: Uses GL_TEXTURE_CUBE_MAP)
+pub const MATERIAL_MAP_BRDF = 10;  // Brdf material
+
+// ShaderLocationIndex: Shader location index
+pub const SHADER_LOC_VERTEX_POSITION = 0;  // Shader location: vertex attribute: position
+pub const SHADER_LOC_VERTEX_TEXCOORD01 = 1;  // Shader location: vertex attribute: texcoord01
+pub const SHADER_LOC_VERTEX_TEXCOORD02 = 2;  // Shader location: vertex attribute: texcoord02
+pub const SHADER_LOC_VERTEX_NORMAL = 3;  // Shader location: vertex attribute: normal
+pub const SHADER_LOC_VERTEX_TANGENT = 4;  // Shader location: vertex attribute: tangent
+pub const SHADER_LOC_VERTEX_COLOR = 5;  // Shader location: vertex attribute: color
+pub const SHADER_LOC_MATRIX_MVP = 6;  // Shader location: matrix uniform: model-view-projection
+pub const SHADER_LOC_MATRIX_VIEW = 7;  // Shader location: matrix uniform: view (camera transform)
+pub const SHADER_LOC_MATRIX_PROJECTION = 8;  // Shader location: matrix uniform: projection
+pub const SHADER_LOC_MATRIX_MODEL = 9;  // Shader location: matrix uniform: model (transform)
+pub const SHADER_LOC_MATRIX_NORMAL = 10;  // Shader location: matrix uniform: normal
+pub const SHADER_LOC_VECTOR_VIEW = 11;  // Shader location: vector uniform: view
+pub const SHADER_LOC_COLOR_DIFFUSE = 12;  // Shader location: vector uniform: diffuse color
+pub const SHADER_LOC_COLOR_SPECULAR = 13;  // Shader location: vector uniform: specular color
+pub const SHADER_LOC_COLOR_AMBIENT = 14;  // Shader location: vector uniform: ambient color
+pub const SHADER_LOC_MAP_ALBEDO = 15;  // Shader location: sampler2d texture: albedo (same as: SHADER_LOC_MAP_DIFFUSE)
+pub const SHADER_LOC_MAP_METALNESS = 16;  // Shader location: sampler2d texture: metalness (same as: SHADER_LOC_MAP_SPECULAR)
+pub const SHADER_LOC_MAP_NORMAL = 17;  // Shader location: sampler2d texture: normal
+pub const SHADER_LOC_MAP_ROUGHNESS = 18;  // Shader location: sampler2d texture: roughness
+pub const SHADER_LOC_MAP_OCCLUSION = 19;  // Shader location: sampler2d texture: occlusion
+pub const SHADER_LOC_MAP_EMISSION = 20;  // Shader location: sampler2d texture: emission
+pub const SHADER_LOC_MAP_HEIGHT = 21;  // Shader location: sampler2d texture: height
+pub const SHADER_LOC_MAP_CUBEMAP = 22;  // Shader location: samplerCube texture: cubemap
+pub const SHADER_LOC_MAP_IRRADIANCE = 23;  // Shader location: samplerCube texture: irradiance
+pub const SHADER_LOC_MAP_PREFILTER = 24;  // Shader location: samplerCube texture: prefilter
+pub const SHADER_LOC_MAP_BRDF = 25;  // Shader location: sampler2d texture: brdf
+pub const SHADER_LOC_VERTEX_BONEIDS = 26;  // Shader location: vertex attribute: boneIds
+pub const SHADER_LOC_VERTEX_BONEWEIGHTS = 27;  // Shader location: vertex attribute: boneWeights
+pub const SHADER_LOC_BONE_MATRICES = 28;  // Shader location: array of matrices uniform: boneMatrices
+
+// ShaderUniformDataType: Shader uniform data type
+pub const SHADER_UNIFORM_FLOAT = 0;  // Shader uniform type: float
+pub const SHADER_UNIFORM_VEC2 = 1;  // Shader uniform type: vec2 (2 float)
+pub const SHADER_UNIFORM_VEC3 = 2;  // Shader uniform type: vec3 (3 float)
+pub const SHADER_UNIFORM_VEC4 = 3;  // Shader uniform type: vec4 (4 float)
+pub const SHADER_UNIFORM_INT = 4;  // Shader uniform type: int
+pub const SHADER_UNIFORM_IVEC2 = 5;  // Shader uniform type: ivec2 (2 int)
+pub const SHADER_UNIFORM_IVEC3 = 6;  // Shader uniform type: ivec3 (3 int)
+pub const SHADER_UNIFORM_IVEC4 = 7;  // Shader uniform type: ivec4 (4 int)
+pub const SHADER_UNIFORM_SAMPLER2D = 8;  // Shader uniform type: sampler2d
+
+// ShaderAttributeDataType: Shader attribute data types
+pub const SHADER_ATTRIB_FLOAT = 0;  // Shader attribute type: float
+pub const SHADER_ATTRIB_VEC2 = 1;  // Shader attribute type: vec2 (2 float)
+pub const SHADER_ATTRIB_VEC3 = 2;  // Shader attribute type: vec3 (3 float)
+pub const SHADER_ATTRIB_VEC4 = 3;  // Shader attribute type: vec4 (4 float)
+
+// PixelFormat: NOTE: Support depends on OpenGL version and platform
+pub const PIXELFORMAT_UNCOMPRESSED_GRAYSCALE = 1;  // 8 bit per pixel (no alpha)
+pub const PIXELFORMAT_UNCOMPRESSED_GRAY_ALPHA = 2;  // 8*2 bpp (2 channels)
+pub const PIXELFORMAT_UNCOMPRESSED_R5G6B5 = 3;  // 16 bpp
+pub const PIXELFORMAT_UNCOMPRESSED_R8G8B8 = 4;  // 24 bpp
+pub const PIXELFORMAT_UNCOMPRESSED_R5G5B5A1 = 5;  // 16 bpp (1 bit alpha)
+pub const PIXELFORMAT_UNCOMPRESSED_R4G4B4A4 = 6;  // 16 bpp (4 bit alpha)
+pub const PIXELFORMAT_UNCOMPRESSED_R8G8B8A8 = 7;  // 32 bpp
+pub const PIXELFORMAT_UNCOMPRESSED_R32 = 8;  // 32 bpp (1 channel - float)
+pub const PIXELFORMAT_UNCOMPRESSED_R32G32B32 = 9;  // 32*3 bpp (3 channels - float)
+pub const PIXELFORMAT_UNCOMPRESSED_R32G32B32A32 = 10;  // 32*4 bpp (4 channels - float)
+pub const PIXELFORMAT_UNCOMPRESSED_R16 = 11;  // 16 bpp (1 channel - half float)
+pub const PIXELFORMAT_UNCOMPRESSED_R16G16B16 = 12;  // 16*3 bpp (3 channels - half float)
+pub const PIXELFORMAT_UNCOMPRESSED_R16G16B16A16 = 13;  // 16*4 bpp (4 channels - half float)
+pub const PIXELFORMAT_COMPRESSED_DXT1_RGB = 14;  // 4 bpp (no alpha)
+pub const PIXELFORMAT_COMPRESSED_DXT1_RGBA = 15;  // 4 bpp (1 bit alpha)
+pub const PIXELFORMAT_COMPRESSED_DXT3_RGBA = 16;  // 8 bpp
+pub const PIXELFORMAT_COMPRESSED_DXT5_RGBA = 17;  // 8 bpp
+pub const PIXELFORMAT_COMPRESSED_ETC1_RGB = 18;  // 4 bpp
+pub const PIXELFORMAT_COMPRESSED_ETC2_RGB = 19;  // 4 bpp
+pub const PIXELFORMAT_COMPRESSED_ETC2_EAC_RGBA = 20;  // 8 bpp
+pub const PIXELFORMAT_COMPRESSED_PVRT_RGB = 21;  // 4 bpp
+pub const PIXELFORMAT_COMPRESSED_PVRT_RGBA = 22;  // 4 bpp
+pub const PIXELFORMAT_COMPRESSED_ASTC_4x4_RGBA = 23;  // 8 bpp
+pub const PIXELFORMAT_COMPRESSED_ASTC_8x8_RGBA = 24;  // 2 bpp
+
+// TextureFilter: NOTE 2: Filter is accordingly set for minification and magnification
+pub const TEXTURE_FILTER_POINT = 0;  // No filter, just pixel approximation
+pub const TEXTURE_FILTER_BILINEAR = 1;  // Linear filtering
+pub const TEXTURE_FILTER_TRILINEAR = 2;  // Trilinear filtering (linear with mipmaps)
+pub const TEXTURE_FILTER_ANISOTROPIC_4X = 3;  // Anisotropic filtering 4x
+pub const TEXTURE_FILTER_ANISOTROPIC_8X = 4;  // Anisotropic filtering 8x
+pub const TEXTURE_FILTER_ANISOTROPIC_16X = 5;  // Anisotropic filtering 16x
+
+// TextureWrap: Texture parameters: wrap mode
+pub const TEXTURE_WRAP_REPEAT = 0;  // Repeats texture in tiled mode
+pub const TEXTURE_WRAP_CLAMP = 1;  // Clamps texture to edge pixel in tiled mode
+pub const TEXTURE_WRAP_MIRROR_REPEAT = 2;  // Mirrors and repeats the texture in tiled mode
+pub const TEXTURE_WRAP_MIRROR_CLAMP = 3;  // Mirrors and clamps to border the texture in tiled mode
+
+// CubemapLayout: Cubemap layouts
+pub const CUBEMAP_LAYOUT_AUTO_DETECT = 0;  // Automatically detect layout type
+pub const CUBEMAP_LAYOUT_LINE_VERTICAL = 1;  // Layout is defined by a vertical line with faces
+pub const CUBEMAP_LAYOUT_LINE_HORIZONTAL = 2;  // Layout is defined by a horizontal line with faces
+pub const CUBEMAP_LAYOUT_CROSS_THREE_BY_FOUR = 3;  // Layout is defined by a 3x4 cross with cubemap faces
+pub const CUBEMAP_LAYOUT_CROSS_FOUR_BY_THREE = 4;  // Layout is defined by a 4x3 cross with cubemap faces
+
+// FontType: Font type, defines generation method
+pub const FONT_DEFAULT = 0;  // Default font generation, anti-aliased
+pub const FONT_BITMAP = 1;  // Bitmap font generation, no anti-aliasing
+pub const FONT_SDF = 2;  // SDF font generation, requires external shader
+
+// BlendMode: Color blending modes (pre-defined)
+pub const BLEND_ALPHA = 0;  // Blend textures considering alpha (default)
+pub const BLEND_ADDITIVE = 1;  // Blend textures adding colors
+pub const BLEND_MULTIPLIED = 2;  // Blend textures multiplying colors
+pub const BLEND_ADD_COLORS = 3;  // Blend textures adding colors (alternative)
+pub const BLEND_SUBTRACT_COLORS = 4;  // Blend textures subtracting colors (alternative)
+pub const BLEND_ALPHA_PREMULTIPLY = 5;  // Blend premultiplied textures considering alpha
+pub const BLEND_CUSTOM = 6;  // Blend textures using custom src/dst factors (use rlSetBlendFactors())
+pub const BLEND_CUSTOM_SEPARATE = 7;  // Blend textures using custom rgb/alpha separate src/dst factors (use rlSetBlendFactorsSeparate())
+
+// Gesture: NOTE: Provided as bit-wise flags to enable only desired gestures
+pub const GESTURE_NONE = 0;  // No gesture
+pub const GESTURE_TAP = 1;  // Tap gesture
+pub const GESTURE_DOUBLETAP = 2;  // Double tap gesture
+pub const GESTURE_HOLD = 4;  // Hold gesture
+pub const GESTURE_DRAG = 8;  // Drag gesture
+pub const GESTURE_SWIPE_RIGHT = 16;  // Swipe right gesture
+pub const GESTURE_SWIPE_LEFT = 32;  // Swipe left gesture
+pub const GESTURE_SWIPE_UP = 64;  // Swipe up gesture
+pub const GESTURE_SWIPE_DOWN = 128;  // Swipe down gesture
+pub const GESTURE_PINCH_IN = 256;  // Pinch in gesture
+pub const GESTURE_PINCH_OUT = 512;  // Pinch out gesture
+
+// CameraMode: Camera system modes
+pub const CAMERA_CUSTOM = 0;  // Camera custom, controlled by user (UpdateCamera() does nothing)
+pub const CAMERA_FREE = 1;  // Camera free mode
+pub const CAMERA_ORBITAL = 2;  // Camera orbital, around target, zoom supported
+pub const CAMERA_FIRST_PERSON = 3;  // Camera first person
+pub const CAMERA_THIRD_PERSON = 4;  // Camera third person
+
+// CameraProjection: Camera projection
+pub const CAMERA_PERSPECTIVE = 0;  // Perspective projection
+pub const CAMERA_ORTHOGRAPHIC = 1;  // Orthographic projection
+
+// NPatchLayout: N-patch layout
+pub const NPATCH_NINE_PATCH = 0;  // Npatch layout: 3x3 tiles
+pub const NPATCH_THREE_PATCH_VERTICAL = 1;  // Npatch layout: 1x3 tiles
+pub const NPATCH_THREE_PATCH_HORIZONTAL = 2;  // Npatch layout: 3x1 tiles
+
+// --- Functions ---
+
+// Function specifiers in case library is build/used as a shared library
+
+// Some basic Defines
+
+// Allow custom memory allocators
+
+// NOTE: Require recompiling raylib sources
+
+// So, give a more clear error stating how to fix this
+
+// NOTE: We set some defines with some data types declared by raylib
+
+// Other modules (raymath, rlgl) also require some of those types, so,
+
+// Some Basic Colors
+
+// NOTE: Custom raylib color palette for amazing visuals on WHITE background
+
+// Structures Definition
+
+// Boolean type
+
+// Vector2, 2 components
+
+// Vector3, 3 components
+
+// Vector4, 4 components
+
+// Quaternion, 4 components (Vector4 alias)
+
+// Matrix, 4x4 components, column major, OpenGL style, right-handed
+
+// Color, 4 components, R8G8B8A8 (32bit)
+
+// Rectangle, 4 components
+
+// Image, pixel data stored in CPU memory (RAM)
+
+// Texture, tex data stored in GPU memory (VRAM)
+
+// Texture2D, same as Texture
+
+// TextureCubemap, same as Texture
+
+// RenderTexture, fbo for texture rendering
+
+// RenderTexture2D, same as RenderTexture
+
+// NPatchInfo, n-patch layout info
+
+// GlyphInfo, font characters glyphs info
+
+// Font, font texture and GlyphInfo array data
+
+// Camera, defines position/orientation in 3d space
+
+// Camera2D, defines position/orientation in 2d space
+
+// Mesh, vertex data and vao/vbo
+
+// Shader
+
+// MaterialMap
+
+// Material, includes shader and maps
+
+// Transform, vertex transformation data
+
+// Bone, skeletal animation bone
+
+// Model, meshes, materials and animation data
+
+// ModelAnimation
+
+// Ray, ray for raycasting
+
+// RayCollision, ray hit information
+
+// BoundingBox
+
+// Wave, audio wave data
+
+// Opaque structs declaration
+
+// NOTE: Actual structs are defined internally in raudio module
+
+// AudioStream, custom audio stream
+
+// Sound
+
+// VrDeviceInfo, Head-Mounted-Display device parameters
+
+// VrStereoConfig, VR stereo rendering configuration for simulator
+
+// File path list
+
+// Automation event
+
+// Automation event list
+
+// Enumerators Definition
+
+// System/Window config flags
+
+// NOTE: Every bit registers one state (use it with bit masks)
+
+// By default all flags are set to 0
+
+// Trace log level
+
+// NOTE: Organized by priority level
+
+// Keyboard keys (US keyboard layout)
+
+// NOTE: Use GetKeyPressed() to allow redefining
+
+// Add backwards compatibility support for deprecated names
+
+// Mouse buttons
+
+// Mouse cursor
+
+// Gamepad buttons
+
+// Gamepad axis
+
+// Material map index
+
+// Shader location index
+
+// Shader uniform data type
+
+// Shader attribute data types
+
+// Pixel formats
+
+// NOTE: Support depends on OpenGL version and platform
+
+// Texture parameters: filter mode
+
+// NOTE 1: Filtering considers mipmaps if available in the texture
+
+// NOTE 2: Filter is accordingly set for minification and magnification
+
+// Texture parameters: wrap mode
+
+// Cubemap layouts
+
+// Font type, defines generation method
+
+// Color blending modes (pre-defined)
+
+// Gesture
+
+// NOTE: Provided as bit-wise flags to enable only desired gestures
+
+// Camera system modes
+
+// Camera projection
+
+// N-patch layout
+
+// Callbacks to hook some internal functions
+
+// WARNING: These callbacks are intended for advanced users
+
+// Global Variables Definition
+
+// Window and Graphics Device Functions (Module: core)
+
+// Window-related functions
+
+// Initialize window and OpenGL context
+pub extern "raylib" fn InitWindow(width: Int32, height: Int32, title: CString);
+// Close window and unload OpenGL context
+pub extern "raylib" fn CloseWindow();
+// Check if application should close (KEY_ESCAPE pressed or windows close icon clicked)
+pub extern "raylib" fn WindowShouldClose() -> Bool;
+// Check if window has been initialized successfully
+pub extern "raylib" fn IsWindowReady() -> Bool;
+// Check if window is currently fullscreen
+pub extern "raylib" fn IsWindowFullscreen() -> Bool;
+// Check if window is currently hidden
+pub extern "raylib" fn IsWindowHidden() -> Bool;
+// Check if window is currently minimized
+pub extern "raylib" fn IsWindowMinimized() -> Bool;
+// Check if window is currently maximized
+pub extern "raylib" fn IsWindowMaximized() -> Bool;
+// Check if window is currently focused
+pub extern "raylib" fn IsWindowFocused() -> Bool;
+// Check if window has been resized last frame
+pub extern "raylib" fn IsWindowResized() -> Bool;
+// Check if one specific window flag is enabled
+pub extern "raylib" fn IsWindowState(flag: UInt32) -> Bool;
+// Set window configuration state using flags
+pub extern "raylib" fn SetWindowState(flags: UInt32);
+// Clear window configuration state flags
+pub extern "raylib" fn ClearWindowState(flags: UInt32);
+// Toggle window state: fullscreen/windowed, resizes monitor to match window resolution
+pub extern "raylib" fn ToggleFullscreen();
+// Toggle window state: borderless windowed, resizes window to match monitor resolution
+pub extern "raylib" fn ToggleBorderlessWindowed();
+// Set window state: maximized, if resizable
+pub extern "raylib" fn MaximizeWindow();
+// Set window state: minimized, if resizable
+pub extern "raylib" fn MinimizeWindow();
+// Set window state: not minimized/maximized
+pub extern "raylib" fn RestoreWindow();
+// Set icon for window (single image, RGBA 32bit)
+pub extern "raylib" fn SetWindowIcon(image: Image);
+// Set icon for window (multiple images, RGBA 32bit)
+pub extern "raylib" fn SetWindowIcons(images: Pointer, count: Int32);
+// Set title for window
+pub extern "raylib" fn SetWindowTitle(title: CString);
+// Set window position on screen
+pub extern "raylib" fn SetWindowPosition(x: Int32, y: Int32);
+// Set monitor for the current window
+pub extern "raylib" fn SetWindowMonitor(monitor: Int32);
+// Set window minimum dimensions (for FLAG_WINDOW_RESIZABLE)
+pub extern "raylib" fn SetWindowMinSize(width: Int32, height: Int32);
+// Set window maximum dimensions (for FLAG_WINDOW_RESIZABLE)
+pub extern "raylib" fn SetWindowMaxSize(width: Int32, height: Int32);
+// Set window dimensions
+pub extern "raylib" fn SetWindowSize(width: Int32, height: Int32);
+// Set window opacity [0.0f..1.0f]
+pub extern "raylib" fn SetWindowOpacity(opacity: Float32);
+// Set window focused
+pub extern "raylib" fn SetWindowFocused();
+// Get native window handle
+pub extern "raylib" fn GetWindowHandle() -> Pointer;
+// Get current screen width
+pub extern "raylib" fn GetScreenWidth() -> Int32;
+// Get current screen height
+pub extern "raylib" fn GetScreenHeight() -> Int32;
+// Get current render width (it considers HiDPI)
+pub extern "raylib" fn GetRenderWidth() -> Int32;
+// Get current render height (it considers HiDPI)
+pub extern "raylib" fn GetRenderHeight() -> Int32;
+// Get number of connected monitors
+pub extern "raylib" fn GetMonitorCount() -> Int32;
+// Get current monitor where window is placed
+pub extern "raylib" fn GetCurrentMonitor() -> Int32;
+// Get specified monitor position
+pub extern "raylib" fn GetMonitorPosition(monitor: Int32) -> Vector2;
+// Get specified monitor width (current video mode used by monitor)
+pub extern "raylib" fn GetMonitorWidth(monitor: Int32) -> Int32;
+// Get specified monitor height (current video mode used by monitor)
+pub extern "raylib" fn GetMonitorHeight(monitor: Int32) -> Int32;
+// Get specified monitor physical width in millimetres
+pub extern "raylib" fn GetMonitorPhysicalWidth(monitor: Int32) -> Int32;
+// Get specified monitor physical height in millimetres
+pub extern "raylib" fn GetMonitorPhysicalHeight(monitor: Int32) -> Int32;
+// Get specified monitor refresh rate
+pub extern "raylib" fn GetMonitorRefreshRate(monitor: Int32) -> Int32;
+// Get window position XY on monitor
+pub extern "raylib" fn GetWindowPosition() -> Vector2;
+// Get window scale DPI factor
+pub extern "raylib" fn GetWindowScaleDPI() -> Vector2;
+// Get the human-readable, UTF-8 encoded name of the specified monitor
+pub extern "raylib" fn GetMonitorName(monitor: Int32) -> CString;
+// Set clipboard text content
+pub extern "raylib" fn SetClipboardText(text: CString);
+// Get clipboard text content
+pub extern "raylib" fn GetClipboardText() -> CString;
+// Get clipboard image content
+pub extern "raylib" fn GetClipboardImage() -> Image;
+// Enable waiting for events on EndDrawing(), no automatic event polling
+pub extern "raylib" fn EnableEventWaiting();
+// Disable waiting for events on EndDrawing(), automatic events polling
+pub extern "raylib" fn DisableEventWaiting();
+
+// Cursor-related functions
+
+// Shows cursor
+pub extern "raylib" fn ShowCursor();
+// Hides cursor
+pub extern "raylib" fn HideCursor();
+// Check if cursor is not visible
+pub extern "raylib" fn IsCursorHidden() -> Bool;
+// Enables cursor (unlock cursor)
+pub extern "raylib" fn EnableCursor();
+// Disables cursor (lock cursor)
+pub extern "raylib" fn DisableCursor();
+// Check if cursor is on the screen
+pub extern "raylib" fn IsCursorOnScreen() -> Bool;
+
+// Drawing-related functions
+
+// Set background color (framebuffer clear color)
+pub extern "raylib" fn ClearBackground(color: Color);
+// Setup canvas (framebuffer) to start drawing
+pub extern "raylib" fn BeginDrawing();
+// End canvas drawing and swap buffers (double buffering)
+pub extern "raylib" fn EndDrawing();
+// Begin 2D mode with custom camera (2D)
+pub extern "raylib" fn BeginMode2D(camera: Camera2D);
+// Ends 2D mode with custom camera
+pub extern "raylib" fn EndMode2D();
+// Begin 3D mode with custom camera (3D)
+pub extern "raylib" fn BeginMode3D(camera: Camera3D);
+// Ends 3D mode and returns to default 2D orthographic mode
+pub extern "raylib" fn EndMode3D();
+// Begin drawing to render texture
+pub extern "raylib" fn BeginTextureMode(target: RenderTexture);
+// Ends drawing to render texture
+pub extern "raylib" fn EndTextureMode();
+// Begin custom shader drawing
+pub extern "raylib" fn BeginShaderMode(shader: Shader);
+// End custom shader drawing (use default shader)
+pub extern "raylib" fn EndShaderMode();
+// Begin blending mode (alpha, additive, multiplied, subtract, custom)
+pub extern "raylib" fn BeginBlendMode(mode: Int32);
+// End blending mode (reset to default: alpha blending)
+pub extern "raylib" fn EndBlendMode();
+// Begin scissor mode (define screen area for following drawing)
+pub extern "raylib" fn BeginScissorMode(x: Int32, y: Int32, width: Int32, height: Int32);
+// End scissor mode
+pub extern "raylib" fn EndScissorMode();
+// Begin stereo rendering (requires VR simulator)
+pub extern "raylib" fn BeginVrStereoMode(config: VrStereoConfig);
+// End stereo rendering (requires VR simulator)
+pub extern "raylib" fn EndVrStereoMode();
+
+// VR stereo config functions for VR simulator
+
+// Load VR stereo config for VR simulator device parameters
+pub extern "raylib" fn LoadVrStereoConfig(device: VrDeviceInfo) -> VrStereoConfig;
+// Unload VR stereo config
+pub extern "raylib" fn UnloadVrStereoConfig(config: VrStereoConfig);
+
+// Shader management functions
+
+// Load shader from files and bind default locations
+pub extern "raylib" fn LoadShader(vsFileName: CString, fsFileName: CString) -> Shader;
+// Load shader from code strings and bind default locations
+pub extern "raylib" fn LoadShaderFromMemory(vsCode: CString, fsCode: CString) -> Shader;
+// Check if a shader is valid (loaded on GPU)
+pub extern "raylib" fn IsShaderValid(shader: Shader) -> Bool;
+// Get shader uniform location
+pub extern "raylib" fn GetShaderLocation(shader: Shader, uniformName: CString) -> Int32;
+// Get shader attribute location
+pub extern "raylib" fn GetShaderLocationAttrib(shader: Shader, attribName: CString) -> Int32;
+// Set shader uniform value
+pub extern "raylib" fn SetShaderValue(shader: Shader, locIndex: Int32, value: Pointer, uniformType: Int32);
+// Set shader uniform value vector
+pub extern "raylib" fn SetShaderValueV(shader: Shader, locIndex: Int32, value: Pointer, uniformType: Int32, count: Int32);
+// Set shader uniform value (matrix 4x4)
+pub extern "raylib" fn SetShaderValueMatrix(shader: Shader, locIndex: Int32, mat: Matrix);
+// Set shader uniform value for texture (sampler2d)
+pub extern "raylib" fn SetShaderValueTexture(shader: Shader, locIndex: Int32, texture: Texture);
+// Unload shader from GPU memory (VRAM)
+pub extern "raylib" fn UnloadShader(shader: Shader);
+
+// Screen-space-related functions
+
+// Get a ray trace from screen position (i.e mouse)
+pub extern "raylib" fn GetScreenToWorldRay(position: Vector2, camera: Camera3D) -> Ray;
+// Get a ray trace from screen position (i.e mouse) in a viewport
+pub extern "raylib" fn GetScreenToWorldRayEx(position: Vector2, camera: Camera3D, width: Int32, height: Int32) -> Ray;
+// Get the screen space position for a 3d world space position
+pub extern "raylib" fn GetWorldToScreen(position: Vector3, camera: Camera3D) -> Vector2;
+// Get size position for a 3d world space position
+pub extern "raylib" fn GetWorldToScreenEx(position: Vector3, camera: Camera3D, width: Int32, height: Int32) -> Vector2;
+// Get the screen space position for a 2d camera world space position
+pub extern "raylib" fn GetWorldToScreen2D(position: Vector2, camera: Camera2D) -> Vector2;
+// Get the world space position for a 2d camera screen space position
+pub extern "raylib" fn GetScreenToWorld2D(position: Vector2, camera: Camera2D) -> Vector2;
+// Get camera transform matrix (view matrix)
+pub extern "raylib" fn GetCameraMatrix(camera: Camera3D) -> Matrix;
+// Get camera 2d transform matrix
+pub extern "raylib" fn GetCameraMatrix2D(camera: Camera2D) -> Matrix;
+
+// Timing-related functions
+
+// Set target FPS (maximum)
+pub extern "raylib" fn SetTargetFPS(fps: Int32);
+// Get time in seconds for last frame drawn (delta time)
+pub extern "raylib" fn GetFrameTime() -> Float32;
+// Get elapsed time in seconds since InitWindow()
+pub extern "raylib" fn GetTime() -> Float64;
+// Get current FPS
+pub extern "raylib" fn GetFPS() -> Int32;
+
+// Custom frame control functions
+
+// NOTE: Those functions are intended for advanced users that want full control over the frame processing
+
+// Swap back buffer with front buffer (screen drawing)
+pub extern "raylib" fn SwapScreenBuffer();
+// Register all input events
+pub extern "raylib" fn PollInputEvents();
+// Wait for some time (halt program execution)
+pub extern "raylib" fn WaitTime(seconds: Float64);
+
+// Random values generation functions
+
+// Set the seed for the random number generator
+pub extern "raylib" fn SetRandomSeed(seed: UInt32);
+// Get a random value between min and max (both included)
+pub extern "raylib" fn GetRandomValue(min: Int32, max: Int32) -> Int32;
+// Load random values sequence, no values repeated
+pub extern "raylib" fn LoadRandomSequence(count: UInt32, min: Int32, max: Int32) -> Pointer;
+// Unload random values sequence
+pub extern "raylib" fn UnloadRandomSequence(sequence: Pointer);
+// Takes a screenshot of current screen (filename extension defines format)
+pub extern "raylib" fn TakeScreenshot(fileName: CString);
+// Setup init configuration flags (view FLAGS)
+pub extern "raylib" fn SetConfigFlags(flags: UInt32);
+// Open URL with default system browser (if available)
+pub extern "raylib" fn OpenURL(url: CString);
+// Set the current threshold (minimum) log level
+pub extern "raylib" fn SetTraceLogLevel(logLevel: Int32);
+// Internal memory allocator
+pub extern "raylib" fn MemAlloc(size: UInt32) -> Pointer;
+// Internal memory reallocator
+pub extern "raylib" fn MemRealloc(ptr: Pointer, size: UInt32) -> Pointer;
+// Internal memory free
+pub extern "raylib" fn MemFree(ptr: Pointer);
+
+// Set custom callbacks
+
+// WARNING: Callbacks setup is intended for advanced users
+
+// Files management functions
+
+// Load file data as byte array (read)
+pub extern "raylib" fn LoadFileData(fileName: CString, dataSize: Pointer) -> Pointer;
+// Unload file data allocated by LoadFileData()
+pub extern "raylib" fn UnloadFileData(data: Pointer);
+// Save data to file from byte array (write), returns true on success
+pub extern "raylib" fn SaveFileData(fileName: CString, data: Pointer, dataSize: Int32) -> Bool;
+// Export data to code (.h), returns true on success
+pub extern "raylib" fn ExportDataAsCode(data: Pointer, dataSize: Int32, fileName: CString) -> Bool;
+// Load text data from file (read), returns a '\0' terminated string
+pub extern "raylib" fn LoadFileText(fileName: CString) -> Pointer;
+// Unload file text data allocated by LoadFileText()
+pub extern "raylib" fn UnloadFileText(text: Pointer);
+// Save text data to file (write), string must be '\0' terminated, returns true on success
+pub extern "raylib" fn SaveFileText(fileName: CString, text: Pointer) -> Bool;
+
+// File system functions
+
+// Check if file exists
+pub extern "raylib" fn FileExists(fileName: CString) -> Bool;
+// Check if a directory path exists
+pub extern "raylib" fn DirectoryExists(dirPath: CString) -> Bool;
+// Check file extension (including point: .png, .wav)
+pub extern "raylib" fn IsFileExtension(fileName: CString, ext: CString) -> Bool;
+// Get file length in bytes (NOTE: GetFileSize() conflicts with windows.h)
+pub extern "raylib" fn GetFileLength(fileName: CString) -> Int32;
+// Get pointer to extension for a filename string (includes dot: '.png')
+pub extern "raylib" fn GetFileExtension(fileName: CString) -> CString;
+// Get pointer to filename for a path string
+pub extern "raylib" fn GetFileName(filePath: CString) -> CString;
+// Get filename string without extension (uses static string)
+pub extern "raylib" fn GetFileNameWithoutExt(filePath: CString) -> CString;
+// Get full path for a given fileName with path (uses static string)
+pub extern "raylib" fn GetDirectoryPath(filePath: CString) -> CString;
+// Get previous directory path for a given path (uses static string)
+pub extern "raylib" fn GetPrevDirectoryPath(dirPath: CString) -> CString;
+// Get current working directory (uses static string)
+pub extern "raylib" fn GetWorkingDirectory() -> CString;
+// Get the directory of the running application (uses static string)
+pub extern "raylib" fn GetApplicationDirectory() -> CString;
+// Create directories (including full path requested), returns 0 on success
+pub extern "raylib" fn MakeDirectory(dirPath: CString) -> Int32;
+// Change working directory, return true on success
+pub extern "raylib" fn ChangeDirectory(dir: CString) -> Bool;
+// Check if a given path is a file or a directory
+pub extern "raylib" fn IsPathFile(path: CString) -> Bool;
+// Check if fileName is valid for the platform/OS
+pub extern "raylib" fn IsFileNameValid(fileName: CString) -> Bool;
+// Load directory filepaths
+pub extern "raylib" fn LoadDirectoryFiles(dirPath: CString) -> FilePathList;
+// Load directory filepaths with extension filtering and recursive directory scan. Use 'DIR' in the filter string to include directories in the result
+pub extern "raylib" fn LoadDirectoryFilesEx(basePath: CString, filter: CString, scanSubdirs: Bool) -> FilePathList;
+// Unload filepaths
+pub extern "raylib" fn UnloadDirectoryFiles(files: FilePathList);
+// Check if a file has been dropped into window
+pub extern "raylib" fn IsFileDropped() -> Bool;
+// Load dropped filepaths
+pub extern "raylib" fn LoadDroppedFiles() -> FilePathList;
+// Unload dropped filepaths
+pub extern "raylib" fn UnloadDroppedFiles(files: FilePathList);
+// Get file modification time (last write time)
+pub extern "raylib" fn GetFileModTime(fileName: CString) -> Int64;
+
+// Compression/Encoding functionality
+
+// Compress data (DEFLATE algorithm), memory must be MemFree()
+pub extern "raylib" fn CompressData(data: Pointer, dataSize: Int32, compDataSize: Pointer) -> Pointer;
+// Decompress data (DEFLATE algorithm), memory must be MemFree()
+pub extern "raylib" fn DecompressData(compData: Pointer, compDataSize: Int32, dataSize: Pointer) -> Pointer;
+// Encode data to Base64 string, memory must be MemFree()
+pub extern "raylib" fn EncodeDataBase64(data: Pointer, dataSize: Int32, outputSize: Pointer) -> Pointer;
+// Decode Base64 string data, memory must be MemFree()
+pub extern "raylib" fn DecodeDataBase64(data: Pointer, outputSize: Pointer) -> Pointer;
+// Compute CRC32 hash code
+pub extern "raylib" fn ComputeCRC32(data: Pointer, dataSize: Int32) -> UInt32;
+// Compute MD5 hash code, returns static int[4] (16 bytes)
+pub extern "raylib" fn ComputeMD5(data: Pointer, dataSize: Int32) -> Pointer;
+// Compute SHA1 hash code, returns static int[5] (20 bytes)
+pub extern "raylib" fn ComputeSHA1(data: Pointer, dataSize: Int32) -> Pointer;
+
+// Automation events functionality
+
+// Load automation events list from file, NULL for empty list, capacity = MAX_AUTOMATION_EVENTS
+pub extern "raylib" fn LoadAutomationEventList(fileName: CString) -> AutomationEventList;
+// Unload automation events list from file
+pub extern "raylib" fn UnloadAutomationEventList(list: AutomationEventList);
+// Export automation events list as text file
+pub extern "raylib" fn ExportAutomationEventList(list: AutomationEventList, fileName: CString) -> Bool;
+// Set automation event list to record to
+pub extern "raylib" fn SetAutomationEventList(list: Pointer);
+// Set automation event internal base frame to start recording
+pub extern "raylib" fn SetAutomationEventBaseFrame(frame: Int32);
+// Start recording automation events (AutomationEventList must be set)
+pub extern "raylib" fn StartAutomationEventRecording();
+// Stop recording automation events
+pub extern "raylib" fn StopAutomationEventRecording();
+// Play a recorded automation event
+pub extern "raylib" fn PlayAutomationEvent(event: AutomationEvent);
+
+// Input Handling Functions (Module: core)
+
+// Input-related functions: keyboard
+
+// Check if a key has been pressed once
+pub extern "raylib" fn IsKeyPressed(key: Int32) -> Bool;
+// Check if a key has been pressed again
+pub extern "raylib" fn IsKeyPressedRepeat(key: Int32) -> Bool;
+// Check if a key is being pressed
+pub extern "raylib" fn IsKeyDown(key: Int32) -> Bool;
+// Check if a key has been released once
+pub extern "raylib" fn IsKeyReleased(key: Int32) -> Bool;
+// Check if a key is NOT being pressed
+pub extern "raylib" fn IsKeyUp(key: Int32) -> Bool;
+// Get key pressed (keycode), call it multiple times for keys queued, returns 0 when the queue is empty
+pub extern "raylib" fn GetKeyPressed() -> Int32;
+// Get char pressed (unicode), call it multiple times for chars queued, returns 0 when the queue is empty
+pub extern "raylib" fn GetCharPressed() -> Int32;
+// Set a custom key to exit program (default is ESC)
+pub extern "raylib" fn SetExitKey(key: Int32);
+
+// Input-related functions: gamepads
+
+// Check if a gamepad is available
+pub extern "raylib" fn IsGamepadAvailable(gamepad: Int32) -> Bool;
+// Get gamepad internal name id
+pub extern "raylib" fn GetGamepadName(gamepad: Int32) -> CString;
+// Check if a gamepad button has been pressed once
+pub extern "raylib" fn IsGamepadButtonPressed(gamepad: Int32, button: Int32) -> Bool;
+// Check if a gamepad button is being pressed
+pub extern "raylib" fn IsGamepadButtonDown(gamepad: Int32, button: Int32) -> Bool;
+// Check if a gamepad button has been released once
+pub extern "raylib" fn IsGamepadButtonReleased(gamepad: Int32, button: Int32) -> Bool;
+// Check if a gamepad button is NOT being pressed
+pub extern "raylib" fn IsGamepadButtonUp(gamepad: Int32, button: Int32) -> Bool;
+// Get the last gamepad button pressed
+pub extern "raylib" fn GetGamepadButtonPressed() -> Int32;
+// Get gamepad axis count for a gamepad
+pub extern "raylib" fn GetGamepadAxisCount(gamepad: Int32) -> Int32;
+// Get axis movement value for a gamepad axis
+pub extern "raylib" fn GetGamepadAxisMovement(gamepad: Int32, axis: Int32) -> Float32;
+// Set internal gamepad mappings (SDL_GameControllerDB)
+pub extern "raylib" fn SetGamepadMappings(mappings: CString) -> Int32;
+// Set gamepad vibration for both motors (duration in seconds)
+pub extern "raylib" fn SetGamepadVibration(gamepad: Int32, leftMotor: Float32, rightMotor: Float32, duration: Float32);
+
+// Input-related functions: mouse
+
+// Check if a mouse button has been pressed once
+pub extern "raylib" fn IsMouseButtonPressed(button: Int32) -> Bool;
+// Check if a mouse button is being pressed
+pub extern "raylib" fn IsMouseButtonDown(button: Int32) -> Bool;
+// Check if a mouse button has been released once
+pub extern "raylib" fn IsMouseButtonReleased(button: Int32) -> Bool;
+// Check if a mouse button is NOT being pressed
+pub extern "raylib" fn IsMouseButtonUp(button: Int32) -> Bool;
+// Get mouse position X
+pub extern "raylib" fn GetMouseX() -> Int32;
+// Get mouse position Y
+pub extern "raylib" fn GetMouseY() -> Int32;
+// Get mouse position XY
+pub extern "raylib" fn GetMousePosition() -> Vector2;
+// Get mouse delta between frames
+pub extern "raylib" fn GetMouseDelta() -> Vector2;
+// Set mouse position XY
+pub extern "raylib" fn SetMousePosition(x: Int32, y: Int32);
+// Set mouse offset
+pub extern "raylib" fn SetMouseOffset(offsetX: Int32, offsetY: Int32);
+// Set mouse scaling
+pub extern "raylib" fn SetMouseScale(scaleX: Float32, scaleY: Float32);
+// Get mouse wheel movement for X or Y, whichever is larger
+pub extern "raylib" fn GetMouseWheelMove() -> Float32;
+// Get mouse wheel movement for both X and Y
+pub extern "raylib" fn GetMouseWheelMoveV() -> Vector2;
+// Set mouse cursor
+pub extern "raylib" fn SetMouseCursor(cursor: Int32);
+
+// Input-related functions: touch
+
+// Get touch position X for touch point 0 (relative to screen size)
+pub extern "raylib" fn GetTouchX() -> Int32;
+// Get touch position Y for touch point 0 (relative to screen size)
+pub extern "raylib" fn GetTouchY() -> Int32;
+// Get touch position XY for a touch point index (relative to screen size)
+pub extern "raylib" fn GetTouchPosition(index: Int32) -> Vector2;
+// Get touch point identifier for given index
+pub extern "raylib" fn GetTouchPointId(index: Int32) -> Int32;
+// Get number of touch points
+pub extern "raylib" fn GetTouchPointCount() -> Int32;
+
+// Gestures and Touch Handling Functions (Module: rgestures)
+
+// Enable a set of gestures using flags
+pub extern "raylib" fn SetGesturesEnabled(flags: UInt32);
+// Check if a gesture have been detected
+pub extern "raylib" fn IsGestureDetected(gesture: UInt32) -> Bool;
+// Get latest detected gesture
+pub extern "raylib" fn GetGestureDetected() -> Int32;
+// Get gesture hold time in seconds
+pub extern "raylib" fn GetGestureHoldDuration() -> Float32;
+// Get gesture drag vector
+pub extern "raylib" fn GetGestureDragVector() -> Vector2;
+// Get gesture drag angle
+pub extern "raylib" fn GetGestureDragAngle() -> Float32;
+// Get gesture pinch delta
+pub extern "raylib" fn GetGesturePinchVector() -> Vector2;
+// Get gesture pinch angle
+pub extern "raylib" fn GetGesturePinchAngle() -> Float32;
+
+// Camera System Functions (Module: rcamera)
+
+// Update camera position for selected mode
+pub extern "raylib" fn UpdateCamera(camera: Pointer, mode: Int32);
+// Update camera movement/rotation
+pub extern "raylib" fn UpdateCameraPro(camera: Pointer, movement: Vector3, rotation: Vector3, zoom: Float32);
+
+// Basic Shapes Drawing Functions (Module: shapes)
+
+// Set texture and rectangle to be used on shapes drawing
+
+// NOTE: It can be useful when using basic shapes and one single font,
+
+// Set texture and rectangle to be used on shapes drawing
+pub extern "raylib" fn SetShapesTexture(texture: Texture, source: Rectangle);
+// Get texture that is used for shapes drawing
+pub extern "raylib" fn GetShapesTexture() -> Texture;
+// Get texture source rectangle that is used for shapes drawing
+pub extern "raylib" fn GetShapesTextureRectangle() -> Rectangle;
+
+// Basic shapes drawing functions
+
+// Draw a pixel using geometry [Can be slow, use with care]
+pub extern "raylib" fn DrawPixel(posX: Int32, posY: Int32, color: Color);
+// Draw a pixel using geometry (Vector version) [Can be slow, use with care]
+pub extern "raylib" fn DrawPixelV(position: Vector2, color: Color);
+// Draw a line
+pub extern "raylib" fn DrawLine(startPosX: Int32, startPosY: Int32, endPosX: Int32, endPosY: Int32, color: Color);
+// Draw a line (using gl lines)
+pub extern "raylib" fn DrawLineV(startPos: Vector2, endPos: Vector2, color: Color);
+// Draw a line (using triangles/quads)
+pub extern "raylib" fn DrawLineEx(startPos: Vector2, endPos: Vector2, thick: Float32, color: Color);
+// Draw lines sequence (using gl lines)
+pub extern "raylib" fn DrawLineStrip(points: Pointer, pointCount: Int32, color: Color);
+// Draw line segment cubic-bezier in-out interpolation
+pub extern "raylib" fn DrawLineBezier(startPos: Vector2, endPos: Vector2, thick: Float32, color: Color);
+// Draw a color-filled circle
+pub extern "raylib" fn DrawCircle(centerX: Int32, centerY: Int32, radius: Float32, color: Color);
+// Draw a piece of a circle
+pub extern "raylib" fn DrawCircleSector(center: Vector2, radius: Float32, startAngle: Float32, endAngle: Float32, segments: Int32, color: Color);
+// Draw circle sector outline
+pub extern "raylib" fn DrawCircleSectorLines(center: Vector2, radius: Float32, startAngle: Float32, endAngle: Float32, segments: Int32, color: Color);
+// Draw a gradient-filled circle
+pub extern "raylib" fn DrawCircleGradient(centerX: Int32, centerY: Int32, radius: Float32, inner: Color, outer: Color);
+// Draw a color-filled circle (Vector version)
+pub extern "raylib" fn DrawCircleV(center: Vector2, radius: Float32, color: Color);
+// Draw circle outline
+pub extern "raylib" fn DrawCircleLines(centerX: Int32, centerY: Int32, radius: Float32, color: Color);
+// Draw circle outline (Vector version)
+pub extern "raylib" fn DrawCircleLinesV(center: Vector2, radius: Float32, color: Color);
+// Draw ellipse
+pub extern "raylib" fn DrawEllipse(centerX: Int32, centerY: Int32, radiusH: Float32, radiusV: Float32, color: Color);
+// Draw ellipse outline
+pub extern "raylib" fn DrawEllipseLines(centerX: Int32, centerY: Int32, radiusH: Float32, radiusV: Float32, color: Color);
+// Draw ring
+pub extern "raylib" fn DrawRing(center: Vector2, innerRadius: Float32, outerRadius: Float32, startAngle: Float32, endAngle: Float32, segments: Int32, color: Color);
+// Draw ring outline
+pub extern "raylib" fn DrawRingLines(center: Vector2, innerRadius: Float32, outerRadius: Float32, startAngle: Float32, endAngle: Float32, segments: Int32, color: Color);
+// Draw a color-filled rectangle
+pub extern "raylib" fn DrawRectangle(posX: Int32, posY: Int32, width: Int32, height: Int32, color: Color);
+// Draw a color-filled rectangle (Vector version)
+pub extern "raylib" fn DrawRectangleV(position: Vector2, size: Vector2, color: Color);
+// Draw a color-filled rectangle
+pub extern "raylib" fn DrawRectangleRec(rec: Rectangle, color: Color);
+// Draw a color-filled rectangle with pro parameters
+pub extern "raylib" fn DrawRectanglePro(rec: Rectangle, origin: Vector2, rotation: Float32, color: Color);
+// Draw a vertical-gradient-filled rectangle
+pub extern "raylib" fn DrawRectangleGradientV(posX: Int32, posY: Int32, width: Int32, height: Int32, top: Color, bottom: Color);
+// Draw a horizontal-gradient-filled rectangle
+pub extern "raylib" fn DrawRectangleGradientH(posX: Int32, posY: Int32, width: Int32, height: Int32, left: Color, right: Color);
+// Draw a gradient-filled rectangle with custom vertex colors
+pub extern "raylib" fn DrawRectangleGradientEx(rec: Rectangle, topLeft: Color, bottomLeft: Color, topRight: Color, bottomRight: Color);
+// Draw rectangle outline
+pub extern "raylib" fn DrawRectangleLines(posX: Int32, posY: Int32, width: Int32, height: Int32, color: Color);
+// Draw rectangle outline with extended parameters
+pub extern "raylib" fn DrawRectangleLinesEx(rec: Rectangle, lineThick: Float32, color: Color);
+// Draw rectangle with rounded edges
+pub extern "raylib" fn DrawRectangleRounded(rec: Rectangle, roundness: Float32, segments: Int32, color: Color);
+// Draw rectangle lines with rounded edges
+pub extern "raylib" fn DrawRectangleRoundedLines(rec: Rectangle, roundness: Float32, segments: Int32, color: Color);
+// Draw rectangle with rounded edges outline
+pub extern "raylib" fn DrawRectangleRoundedLinesEx(rec: Rectangle, roundness: Float32, segments: Int32, lineThick: Float32, color: Color);
+// Draw a color-filled triangle (vertex in counter-clockwise order!)
+pub extern "raylib" fn DrawTriangle(v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
+// Draw triangle outline (vertex in counter-clockwise order!)
+pub extern "raylib" fn DrawTriangleLines(v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
+// Draw a triangle fan defined by points (first vertex is the center)
+pub extern "raylib" fn DrawTriangleFan(points: Pointer, pointCount: Int32, color: Color);
+// Draw a triangle strip defined by points
+pub extern "raylib" fn DrawTriangleStrip(points: Pointer, pointCount: Int32, color: Color);
+// Draw a regular polygon (Vector version)
+pub extern "raylib" fn DrawPoly(center: Vector2, sides: Int32, radius: Float32, rotation: Float32, color: Color);
+// Draw a polygon outline of n sides
+pub extern "raylib" fn DrawPolyLines(center: Vector2, sides: Int32, radius: Float32, rotation: Float32, color: Color);
+// Draw a polygon outline of n sides with extended parameters
+pub extern "raylib" fn DrawPolyLinesEx(center: Vector2, sides: Int32, radius: Float32, rotation: Float32, lineThick: Float32, color: Color);
+
+// Splines drawing functions
+
+// Draw spline: Linear, minimum 2 points
+pub extern "raylib" fn DrawSplineLinear(points: Pointer, pointCount: Int32, thick: Float32, color: Color);
+// Draw spline: B-Spline, minimum 4 points
+pub extern "raylib" fn DrawSplineBasis(points: Pointer, pointCount: Int32, thick: Float32, color: Color);
+// Draw spline: Catmull-Rom, minimum 4 points
+pub extern "raylib" fn DrawSplineCatmullRom(points: Pointer, pointCount: Int32, thick: Float32, color: Color);
+// Draw spline: Quadratic Bezier, minimum 3 points (1 control point): [p1, c2, p3, c4...]
+pub extern "raylib" fn DrawSplineBezierQuadratic(points: Pointer, pointCount: Int32, thick: Float32, color: Color);
+// Draw spline: Cubic Bezier, minimum 4 points (2 control points): [p1, c2, c3, p4, c5, c6...]
+pub extern "raylib" fn DrawSplineBezierCubic(points: Pointer, pointCount: Int32, thick: Float32, color: Color);
+// Draw spline segment: Linear, 2 points
+pub extern "raylib" fn DrawSplineSegmentLinear(p1: Vector2, p2: Vector2, thick: Float32, color: Color);
+// Draw spline segment: B-Spline, 4 points
+pub extern "raylib" fn DrawSplineSegmentBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, thick: Float32, color: Color);
+// Draw spline segment: Catmull-Rom, 4 points
+pub extern "raylib" fn DrawSplineSegmentCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, thick: Float32, color: Color);
+// Draw spline segment: Quadratic Bezier, 2 points, 1 control point
+pub extern "raylib" fn DrawSplineSegmentBezierQuadratic(p1: Vector2, c2: Vector2, p3: Vector2, thick: Float32, color: Color);
+// Draw spline segment: Cubic Bezier, 2 points, 2 control points
+pub extern "raylib" fn DrawSplineSegmentBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, thick: Float32, color: Color);
+// Get (evaluate) spline point: Linear
+pub extern "raylib" fn GetSplinePointLinear(startPos: Vector2, endPos: Vector2, t: Float32) -> Vector2;
+// Get (evaluate) spline point: B-Spline
+pub extern "raylib" fn GetSplinePointBasis(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: Float32) -> Vector2;
+// Get (evaluate) spline point: Catmull-Rom
+pub extern "raylib" fn GetSplinePointCatmullRom(p1: Vector2, p2: Vector2, p3: Vector2, p4: Vector2, t: Float32) -> Vector2;
+// Get (evaluate) spline point: Quadratic Bezier
+pub extern "raylib" fn GetSplinePointBezierQuad(p1: Vector2, c2: Vector2, p3: Vector2, t: Float32) -> Vector2;
+// Get (evaluate) spline point: Cubic Bezier
+pub extern "raylib" fn GetSplinePointBezierCubic(p1: Vector2, c2: Vector2, c3: Vector2, p4: Vector2, t: Float32) -> Vector2;
+
+// Basic shapes collision detection functions
+
+// Check collision between two rectangles
+pub extern "raylib" fn CheckCollisionRecs(rec1: Rectangle, rec2: Rectangle) -> Bool;
+// Check collision between two circles
+pub extern "raylib" fn CheckCollisionCircles(center1: Vector2, radius1: Float32, center2: Vector2, radius2: Float32) -> Bool;
+// Check collision between circle and rectangle
+pub extern "raylib" fn CheckCollisionCircleRec(center: Vector2, radius: Float32, rec: Rectangle) -> Bool;
+// Check if circle collides with a line created betweeen two points [p1] and [p2]
+pub extern "raylib" fn CheckCollisionCircleLine(center: Vector2, radius: Float32, p1: Vector2, p2: Vector2) -> Bool;
+// Check if point is inside rectangle
+pub extern "raylib" fn CheckCollisionPointRec(point: Vector2, rec: Rectangle) -> Bool;
+// Check if point is inside circle
+pub extern "raylib" fn CheckCollisionPointCircle(point: Vector2, center: Vector2, radius: Float32) -> Bool;
+// Check if point is inside a triangle
+pub extern "raylib" fn CheckCollisionPointTriangle(point: Vector2, p1: Vector2, p2: Vector2, p3: Vector2) -> Bool;
+// Check if point belongs to line created between two points [p1] and [p2] with defined margin in pixels [threshold]
+pub extern "raylib" fn CheckCollisionPointLine(point: Vector2, p1: Vector2, p2: Vector2, threshold: Int32) -> Bool;
+// Check if point is within a polygon described by array of vertices
+pub extern "raylib" fn CheckCollisionPointPoly(point: Vector2, points: Pointer, pointCount: Int32) -> Bool;
+// Check the collision between two lines defined by two points each, returns collision point by reference
+pub extern "raylib" fn CheckCollisionLines(startPos1: Vector2, endPos1: Vector2, startPos2: Vector2, endPos2: Vector2, collisionPoint: Pointer) -> Bool;
+// Get collision rectangle for two rectangles collision
+pub extern "raylib" fn GetCollisionRec(rec1: Rectangle, rec2: Rectangle) -> Rectangle;
+
+// Texture Loading and Drawing Functions (Module: textures)
+
+// Image loading functions
+
+// NOTE: These functions do not require GPU access
+
+// Load image from file into CPU memory (RAM)
+pub extern "raylib" fn LoadImage(fileName: CString) -> Image;
+// Load image from RAW file data
+pub extern "raylib" fn LoadImageRaw(fileName: CString, width: Int32, height: Int32, format: Int32, headerSize: Int32) -> Image;
+// Load image sequence from file (frames appended to image.data)
+pub extern "raylib" fn LoadImageAnim(fileName: CString, frames: Pointer) -> Image;
+// Load image sequence from memory buffer
+pub extern "raylib" fn LoadImageAnimFromMemory(fileType: CString, fileData: Pointer, dataSize: Int32, frames: Pointer) -> Image;
+// Load image from memory buffer, fileType refers to extension: i.e. '.png'
+pub extern "raylib" fn LoadImageFromMemory(fileType: CString, fileData: Pointer, dataSize: Int32) -> Image;
+// Load image from GPU texture data
+pub extern "raylib" fn LoadImageFromTexture(texture: Texture) -> Image;
+// Load image from screen buffer and (screenshot)
+pub extern "raylib" fn LoadImageFromScreen() -> Image;
+// Check if an image is valid (data and parameters)
+pub extern "raylib" fn IsImageValid(image: Image) -> Bool;
+// Unload image from CPU memory (RAM)
+pub extern "raylib" fn UnloadImage(image: Image);
+// Export image data to file, returns true on success
+pub extern "raylib" fn ExportImage(image: Image, fileName: CString) -> Bool;
+// Export image to memory buffer
+pub extern "raylib" fn ExportImageToMemory(image: Image, fileType: CString, fileSize: Pointer) -> Pointer;
+// Export image as code file defining an array of bytes, returns true on success
+pub extern "raylib" fn ExportImageAsCode(image: Image, fileName: CString) -> Bool;
+
+// Image generation functions
+
+// Generate image: plain color
+pub extern "raylib" fn GenImageColor(width: Int32, height: Int32, color: Color) -> Image;
+// Generate image: linear gradient, direction in degrees [0..360], 0=Vertical gradient
+pub extern "raylib" fn GenImageGradientLinear(width: Int32, height: Int32, direction: Int32, start: Color, end: Color) -> Image;
+// Generate image: radial gradient
+pub extern "raylib" fn GenImageGradientRadial(width: Int32, height: Int32, density: Float32, inner: Color, outer: Color) -> Image;
+// Generate image: square gradient
+pub extern "raylib" fn GenImageGradientSquare(width: Int32, height: Int32, density: Float32, inner: Color, outer: Color) -> Image;
+// Generate image: checked
+pub extern "raylib" fn GenImageChecked(width: Int32, height: Int32, checksX: Int32, checksY: Int32, col1: Color, col2: Color) -> Image;
+// Generate image: white noise
+pub extern "raylib" fn GenImageWhiteNoise(width: Int32, height: Int32, factor: Float32) -> Image;
+// Generate image: perlin noise
+pub extern "raylib" fn GenImagePerlinNoise(width: Int32, height: Int32, offsetX: Int32, offsetY: Int32, scale: Float32) -> Image;
+// Generate image: cellular algorithm, bigger tileSize means bigger cells
+pub extern "raylib" fn GenImageCellular(width: Int32, height: Int32, tileSize: Int32) -> Image;
+// Generate image: grayscale image from text data
+pub extern "raylib" fn GenImageText(width: Int32, height: Int32, text: CString) -> Image;
+
+// Image manipulation functions
+
+// Create an image duplicate (useful for transformations)
+pub extern "raylib" fn ImageCopy(image: Image) -> Image;
+// Create an image from another image piece
+pub extern "raylib" fn ImageFromImage(image: Image, rec: Rectangle) -> Image;
+// Create an image from a selected channel of another image (GRAYSCALE)
+pub extern "raylib" fn ImageFromChannel(image: Image, selectedChannel: Int32) -> Image;
+// Create an image from text (default font)
+pub extern "raylib" fn ImageText(text: CString, fontSize: Int32, color: Color) -> Image;
+// Create an image from text (custom sprite font)
+pub extern "raylib" fn ImageTextEx(font: Font, text: CString, fontSize: Float32, spacing: Float32, tint: Color) -> Image;
+// Convert image data to desired format
+pub extern "raylib" fn ImageFormat(image: Pointer, newFormat: Int32);
+// Convert image to POT (power-of-two)
+pub extern "raylib" fn ImageToPOT(image: Pointer, fill: Color);
+// Crop an image to a defined rectangle
+pub extern "raylib" fn ImageCrop(image: Pointer, crop: Rectangle);
+// Crop image depending on alpha value
+pub extern "raylib" fn ImageAlphaCrop(image: Pointer, threshold: Float32);
+// Clear alpha channel to desired color
+pub extern "raylib" fn ImageAlphaClear(image: Pointer, color: Color, threshold: Float32);
+// Apply alpha mask to image
+pub extern "raylib" fn ImageAlphaMask(image: Pointer, alphaMask: Image);
+// Premultiply alpha channel
+pub extern "raylib" fn ImageAlphaPremultiply(image: Pointer);
+// Apply Gaussian blur using a box blur approximation
+pub extern "raylib" fn ImageBlurGaussian(image: Pointer, blurSize: Int32);
+// Apply custom square convolution kernel to image
+pub extern "raylib" fn ImageKernelConvolution(image: Pointer, kernel: Pointer, kernelSize: Int32);
+// Resize image (Bicubic scaling algorithm)
+pub extern "raylib" fn ImageResize(image: Pointer, newWidth: Int32, newHeight: Int32);
+// Resize image (Nearest-Neighbor scaling algorithm)
+pub extern "raylib" fn ImageResizeNN(image: Pointer, newWidth: Int32, newHeight: Int32);
+// Resize canvas and fill with color
+pub extern "raylib" fn ImageResizeCanvas(image: Pointer, newWidth: Int32, newHeight: Int32, offsetX: Int32, offsetY: Int32, fill: Color);
+// Compute all mipmap levels for a provided image
+pub extern "raylib" fn ImageMipmaps(image: Pointer);
+// Dither image data to 16bpp or lower (Floyd-Steinberg dithering)
+pub extern "raylib" fn ImageDither(image: Pointer, rBpp: Int32, gBpp: Int32, bBpp: Int32, aBpp: Int32);
+// Flip image vertically
+pub extern "raylib" fn ImageFlipVertical(image: Pointer);
+// Flip image horizontally
+pub extern "raylib" fn ImageFlipHorizontal(image: Pointer);
+// Rotate image by input angle in degrees (-359 to 359)
+pub extern "raylib" fn ImageRotate(image: Pointer, degrees: Int32);
+// Rotate image clockwise 90deg
+pub extern "raylib" fn ImageRotateCW(image: Pointer);
+// Rotate image counter-clockwise 90deg
+pub extern "raylib" fn ImageRotateCCW(image: Pointer);
+// Modify image color: tint
+pub extern "raylib" fn ImageColorTint(image: Pointer, color: Color);
+// Modify image color: invert
+pub extern "raylib" fn ImageColorInvert(image: Pointer);
+// Modify image color: grayscale
+pub extern "raylib" fn ImageColorGrayscale(image: Pointer);
+// Modify image color: contrast (-100 to 100)
+pub extern "raylib" fn ImageColorContrast(image: Pointer, contrast: Float32);
+// Modify image color: brightness (-255 to 255)
+pub extern "raylib" fn ImageColorBrightness(image: Pointer, brightness: Int32);
+// Modify image color: replace color
+pub extern "raylib" fn ImageColorReplace(image: Pointer, color: Color, replace: Color);
+// Load color data from image as a Color array (RGBA - 32bit)
+pub extern "raylib" fn LoadImageColors(image: Image) -> Pointer;
+// Load colors palette from image as a Color array (RGBA - 32bit)
+pub extern "raylib" fn LoadImagePalette(image: Image, maxPaletteSize: Int32, colorCount: Pointer) -> Pointer;
+// Unload color data loaded with LoadImageColors()
+pub extern "raylib" fn UnloadImageColors(colors: Pointer);
+// Unload colors palette loaded with LoadImagePalette()
+pub extern "raylib" fn UnloadImagePalette(colors: Pointer);
+// Get image alpha border rectangle
+pub extern "raylib" fn GetImageAlphaBorder(image: Image, threshold: Float32) -> Rectangle;
+// Get image pixel color at (x, y) position
+pub extern "raylib" fn GetImageColor(image: Image, x: Int32, y: Int32) -> Color;
+
+// Image drawing functions
+
+// NOTE: Image software-rendering functions (CPU)
+
+// Clear image background with given color
+pub extern "raylib" fn ImageClearBackground(dst: Pointer, color: Color);
+// Draw pixel within an image
+pub extern "raylib" fn ImageDrawPixel(dst: Pointer, posX: Int32, posY: Int32, color: Color);
+// Draw pixel within an image (Vector version)
+pub extern "raylib" fn ImageDrawPixelV(dst: Pointer, position: Vector2, color: Color);
+// Draw line within an image
+pub extern "raylib" fn ImageDrawLine(dst: Pointer, startPosX: Int32, startPosY: Int32, endPosX: Int32, endPosY: Int32, color: Color);
+// Draw line within an image (Vector version)
+pub extern "raylib" fn ImageDrawLineV(dst: Pointer, start: Vector2, end: Vector2, color: Color);
+// Draw a line defining thickness within an image
+pub extern "raylib" fn ImageDrawLineEx(dst: Pointer, start: Vector2, end: Vector2, thick: Int32, color: Color);
+// Draw a filled circle within an image
+pub extern "raylib" fn ImageDrawCircle(dst: Pointer, centerX: Int32, centerY: Int32, radius: Int32, color: Color);
+// Draw a filled circle within an image (Vector version)
+pub extern "raylib" fn ImageDrawCircleV(dst: Pointer, center: Vector2, radius: Int32, color: Color);
+// Draw circle outline within an image
+pub extern "raylib" fn ImageDrawCircleLines(dst: Pointer, centerX: Int32, centerY: Int32, radius: Int32, color: Color);
+// Draw circle outline within an image (Vector version)
+pub extern "raylib" fn ImageDrawCircleLinesV(dst: Pointer, center: Vector2, radius: Int32, color: Color);
+// Draw rectangle within an image
+pub extern "raylib" fn ImageDrawRectangle(dst: Pointer, posX: Int32, posY: Int32, width: Int32, height: Int32, color: Color);
+// Draw rectangle within an image (Vector version)
+pub extern "raylib" fn ImageDrawRectangleV(dst: Pointer, position: Vector2, size: Vector2, color: Color);
+// Draw rectangle within an image
+pub extern "raylib" fn ImageDrawRectangleRec(dst: Pointer, rec: Rectangle, color: Color);
+// Draw rectangle lines within an image
+pub extern "raylib" fn ImageDrawRectangleLines(dst: Pointer, rec: Rectangle, thick: Int32, color: Color);
+// Draw triangle within an image
+pub extern "raylib" fn ImageDrawTriangle(dst: Pointer, v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
+// Draw triangle with interpolated colors within an image
+pub extern "raylib" fn ImageDrawTriangleEx(dst: Pointer, v1: Vector2, v2: Vector2, v3: Vector2, c1: Color, c2: Color, c3: Color);
+// Draw triangle outline within an image
+pub extern "raylib" fn ImageDrawTriangleLines(dst: Pointer, v1: Vector2, v2: Vector2, v3: Vector2, color: Color);
+// Draw a triangle fan defined by points within an image (first vertex is the center)
+pub extern "raylib" fn ImageDrawTriangleFan(dst: Pointer, points: Pointer, pointCount: Int32, color: Color);
+// Draw a triangle strip defined by points within an image
+pub extern "raylib" fn ImageDrawTriangleStrip(dst: Pointer, points: Pointer, pointCount: Int32, color: Color);
+// Draw a source image within a destination image (tint applied to source)
+pub extern "raylib" fn ImageDraw(dst: Pointer, src: Image, srcRec: Rectangle, dstRec: Rectangle, tint: Color);
+// Draw text (using default font) within an image (destination)
+pub extern "raylib" fn ImageDrawText(dst: Pointer, text: CString, posX: Int32, posY: Int32, fontSize: Int32, color: Color);
+// Draw text (custom sprite font) within an image (destination)
+pub extern "raylib" fn ImageDrawTextEx(dst: Pointer, font: Font, text: CString, position: Vector2, fontSize: Float32, spacing: Float32, tint: Color);
+
+// Texture loading functions
+
+// NOTE: These functions require GPU access
+
+// Load texture from file into GPU memory (VRAM)
+pub extern "raylib" fn LoadTexture(fileName: CString) -> Texture;
+// Load texture from image data
+pub extern "raylib" fn LoadTextureFromImage(image: Image) -> Texture;
+// Load cubemap from image, multiple image cubemap layouts supported
+pub extern "raylib" fn LoadTextureCubemap(image: Image, layout: Int32) -> Texture;
+// Load texture for rendering (framebuffer)
+pub extern "raylib" fn LoadRenderTexture(width: Int32, height: Int32) -> RenderTexture;
+// Check if a texture is valid (loaded in GPU)
+pub extern "raylib" fn IsTextureValid(texture: Texture) -> Bool;
+// Unload texture from GPU memory (VRAM)
+pub extern "raylib" fn UnloadTexture(texture: Texture);
+// Check if a render texture is valid (loaded in GPU)
+pub extern "raylib" fn IsRenderTextureValid(target: RenderTexture) -> Bool;
+// Unload render texture from GPU memory (VRAM)
+pub extern "raylib" fn UnloadRenderTexture(target: RenderTexture);
+// Update GPU texture with new data
+pub extern "raylib" fn UpdateTexture(texture: Texture, pixels: Pointer);
+// Update GPU texture rectangle with new data
+pub extern "raylib" fn UpdateTextureRec(texture: Texture, rec: Rectangle, pixels: Pointer);
+
+// Texture configuration functions
+
+// Generate GPU mipmaps for a texture
+pub extern "raylib" fn GenTextureMipmaps(texture: Pointer);
+// Set texture scaling filter mode
+pub extern "raylib" fn SetTextureFilter(texture: Texture, filter: Int32);
+// Set texture wrapping mode
+pub extern "raylib" fn SetTextureWrap(texture: Texture, wrap: Int32);
+
+// Texture drawing functions
+
+// Draw a Texture2D
+pub extern "raylib" fn DrawTexture(texture: Texture, posX: Int32, posY: Int32, tint: Color);
+// Draw a Texture2D with position defined as Vector2
+pub extern "raylib" fn DrawTextureV(texture: Texture, position: Vector2, tint: Color);
+// Draw a Texture2D with extended parameters
+pub extern "raylib" fn DrawTextureEx(texture: Texture, position: Vector2, rotation: Float32, scale: Float32, tint: Color);
+// Draw a part of a texture defined by a rectangle
+pub extern "raylib" fn DrawTextureRec(texture: Texture, source: Rectangle, position: Vector2, tint: Color);
+// Draw a part of a texture defined by a rectangle with 'pro' parameters
+pub extern "raylib" fn DrawTexturePro(texture: Texture, source: Rectangle, dest: Rectangle, origin: Vector2, rotation: Float32, tint: Color);
+// Draws a texture (or part of it) that stretches or shrinks nicely
+pub extern "raylib" fn DrawTextureNPatch(texture: Texture, nPatchInfo: NPatchInfo, dest: Rectangle, origin: Vector2, rotation: Float32, tint: Color);
+
+// Color/pixel related functions
+
+// Check if two colors are equal
+pub extern "raylib" fn ColorIsEqual(col1: Color, col2: Color) -> Bool;
+// Get color with alpha applied, alpha goes from 0.0f to 1.0f
+pub extern "raylib" fn Fade(color: Color, alpha: Float32) -> Color;
+// Get hexadecimal value for a Color (0xRRGGBBAA)
+pub extern "raylib" fn ColorToInt(color: Color) -> Int32;
+// Get Color normalized as float [0..1]
+pub extern "raylib" fn ColorNormalize(color: Color) -> Vector4;
+// Get Color from normalized values [0..1]
+pub extern "raylib" fn ColorFromNormalized(normalized: Vector4) -> Color;
+// Get HSV values for a Color, hue [0..360], saturation/value [0..1]
+pub extern "raylib" fn ColorToHSV(color: Color) -> Vector3;
+// Get a Color from HSV values, hue [0..360], saturation/value [0..1]
+pub extern "raylib" fn ColorFromHSV(hue: Float32, saturation: Float32, value: Float32) -> Color;
+// Get color multiplied with another color
+pub extern "raylib" fn ColorTint(color: Color, tint: Color) -> Color;
+// Get color with brightness correction, brightness factor goes from -1.0f to 1.0f
+pub extern "raylib" fn ColorBrightness(color: Color, factor: Float32) -> Color;
+// Get color with contrast correction, contrast values between -1.0f and 1.0f
+pub extern "raylib" fn ColorContrast(color: Color, contrast: Float32) -> Color;
+// Get color with alpha applied, alpha goes from 0.0f to 1.0f
+pub extern "raylib" fn ColorAlpha(color: Color, alpha: Float32) -> Color;
+// Get src alpha-blended into dst color with tint
+pub extern "raylib" fn ColorAlphaBlend(dst: Color, src: Color, tint: Color) -> Color;
+// Get color lerp interpolation between two colors, factor [0.0f..1.0f]
+pub extern "raylib" fn ColorLerp(color1: Color, color2: Color, factor: Float32) -> Color;
+// Get Color structure from hexadecimal value
+pub extern "raylib" fn GetColor(hexValue: UInt32) -> Color;
+// Get Color from a source pixel pointer of certain format
+pub extern "raylib" fn GetPixelColor(srcPtr: Pointer, format: Int32) -> Color;
+// Set color formatted into destination pixel pointer
+pub extern "raylib" fn SetPixelColor(dstPtr: Pointer, color: Color, format: Int32);
+// Get pixel data size in bytes for certain format
+pub extern "raylib" fn GetPixelDataSize(width: Int32, height: Int32, format: Int32) -> Int32;
+
+// Font Loading and Text Drawing Functions (Module: text)
+
+// Font loading/unloading functions
+
+// Get the default Font
+pub extern "raylib" fn GetFontDefault() -> Font;
+// Load font from file into GPU memory (VRAM)
+pub extern "raylib" fn LoadFont(fileName: CString) -> Font;
+// Load font from file with extended parameters, use NULL for codepoints and 0 for codepointCount to load the default character set, font size is provided in pixels height
+pub extern "raylib" fn LoadFontEx(fileName: CString, fontSize: Int32, codepoints: Pointer, codepointCount: Int32) -> Font;
+// Load font from Image (XNA style)
+pub extern "raylib" fn LoadFontFromImage(image: Image, key: Color, firstChar: Int32) -> Font;
+// Load font from memory buffer, fileType refers to extension: i.e. '.ttf'
+pub extern "raylib" fn LoadFontFromMemory(fileType: CString, fileData: Pointer, dataSize: Int32, fontSize: Int32, codepoints: Pointer, codepointCount: Int32) -> Font;
+// Check if a font is valid (font data loaded, WARNING: GPU texture not checked)
+pub extern "raylib" fn IsFontValid(font: Font) -> Bool;
+// Load font data for further use
+pub extern "raylib" fn LoadFontData(fileData: Pointer, dataSize: Int32, fontSize: Int32, codepoints: Pointer, codepointCount: Int32, type: Int32) -> Pointer;
+// Generate image font atlas using chars info
+pub extern "raylib" fn GenImageFontAtlas(glyphs: Pointer, glyphRecs: Pointer, glyphCount: Int32, fontSize: Int32, padding: Int32, packMethod: Int32) -> Image;
+// Unload font chars info data (RAM)
+pub extern "raylib" fn UnloadFontData(glyphs: Pointer, glyphCount: Int32);
+// Unload font from GPU memory (VRAM)
+pub extern "raylib" fn UnloadFont(font: Font);
+// Export font as code file, returns true on success
+pub extern "raylib" fn ExportFontAsCode(font: Font, fileName: CString) -> Bool;
+
+// Text drawing functions
+
+// Draw current FPS
+pub extern "raylib" fn DrawFPS(posX: Int32, posY: Int32);
+// Draw text (using default font)
+pub extern "raylib" fn DrawText(text: CString, posX: Int32, posY: Int32, fontSize: Int32, color: Color);
+// Draw text using font and additional parameters
+pub extern "raylib" fn DrawTextEx(font: Font, text: CString, position: Vector2, fontSize: Float32, spacing: Float32, tint: Color);
+// Draw text using Font and pro parameters (rotation)
+pub extern "raylib" fn DrawTextPro(font: Font, text: CString, position: Vector2, origin: Vector2, rotation: Float32, fontSize: Float32, spacing: Float32, tint: Color);
+// Draw one character (codepoint)
+pub extern "raylib" fn DrawTextCodepoint(font: Font, codepoint: Int32, position: Vector2, fontSize: Float32, tint: Color);
+// Draw multiple character (codepoint)
+pub extern "raylib" fn DrawTextCodepoints(font: Font, codepoints: Pointer, codepointCount: Int32, position: Vector2, fontSize: Float32, spacing: Float32, tint: Color);
+
+// Text font info functions
+
+// Set vertical line spacing when drawing with line-breaks
+pub extern "raylib" fn SetTextLineSpacing(spacing: Int32);
+// Measure string width for default font
+pub extern "raylib" fn MeasureText(text: CString, fontSize: Int32) -> Int32;
+// Measure string size for Font
+pub extern "raylib" fn MeasureTextEx(font: Font, text: CString, fontSize: Float32, spacing: Float32) -> Vector2;
+// Get glyph index position in font for a codepoint (unicode character), fallback to '?' if not found
+pub extern "raylib" fn GetGlyphIndex(font: Font, codepoint: Int32) -> Int32;
+// Get glyph font info data for a codepoint (unicode character), fallback to '?' if not found
+pub extern "raylib" fn GetGlyphInfo(font: Font, codepoint: Int32) -> GlyphInfo;
+// Get glyph rectangle in font atlas for a codepoint (unicode character), fallback to '?' if not found
+pub extern "raylib" fn GetGlyphAtlasRec(font: Font, codepoint: Int32) -> Rectangle;
+
+// Text codepoints management functions (unicode characters)
+
+// Load UTF-8 text encoded from codepoints array
+pub extern "raylib" fn LoadUTF8(codepoints: Pointer, length: Int32) -> Pointer;
+// Unload UTF-8 text encoded from codepoints array
+pub extern "raylib" fn UnloadUTF8(text: Pointer);
+// Load all codepoints from a UTF-8 text string, codepoints count returned by parameter
+pub extern "raylib" fn LoadCodepoints(text: CString, count: Pointer) -> Pointer;
+// Unload codepoints data from memory
+pub extern "raylib" fn UnloadCodepoints(codepoints: Pointer);
+// Get total number of codepoints in a UTF-8 encoded string
+pub extern "raylib" fn GetCodepointCount(text: CString) -> Int32;
+// Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
+pub extern "raylib" fn GetCodepoint(text: CString, codepointSize: Pointer) -> Int32;
+// Get next codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
+pub extern "raylib" fn GetCodepointNext(text: CString, codepointSize: Pointer) -> Int32;
+// Get previous codepoint in a UTF-8 encoded string, 0x3f('?') is returned on failure
+pub extern "raylib" fn GetCodepointPrevious(text: CString, codepointSize: Pointer) -> Int32;
+// Encode one codepoint into UTF-8 byte array (array length returned as parameter)
+pub extern "raylib" fn CodepointToUTF8(codepoint: Int32, utf8Size: Pointer) -> CString;
+
+// Text strings management functions (no UTF-8 strings, only byte chars)
+
+// Copy one string to another, returns bytes copied
+pub extern "raylib" fn TextCopy(dst: Pointer, src: CString) -> Int32;
+// Check if two text string are equal
+pub extern "raylib" fn TextIsEqual(text1: CString, text2: CString) -> Bool;
+// Get text length, checks for '\0' ending
+pub extern "raylib" fn TextLength(text: CString) -> UInt32;
+// Get a piece of a text string
+pub extern "raylib" fn TextSubtext(text: CString, position: Int32, length: Int32) -> CString;
+// Replace text string (WARNING: memory must be freed!)
+pub extern "raylib" fn TextReplace(text: CString, replace: CString, by: CString) -> Pointer;
+// Insert text in a position (WARNING: memory must be freed!)
+pub extern "raylib" fn TextInsert(text: CString, insert: CString, position: Int32) -> Pointer;
+// Join text strings with delimiter
+pub extern "raylib" fn TextJoin(textList: Pointer, count: Int32, delimiter: CString) -> CString;
+// Split text into multiple strings
+pub extern "raylib" fn TextSplit(text: CString, delimiter: Int8, count: Pointer) -> Pointer;
+// Append text at specific position and move cursor!
+pub extern "raylib" fn TextAppend(text: Pointer, append: CString, position: Pointer);
+// Find first text occurrence within a string
+pub extern "raylib" fn TextFindIndex(text: CString, find: CString) -> Int32;
+// Get upper case version of provided string
+pub extern "raylib" fn TextToUpper(text: CString) -> CString;
+// Get lower case version of provided string
+pub extern "raylib" fn TextToLower(text: CString) -> CString;
+// Get Pascal case notation version of provided string
+pub extern "raylib" fn TextToPascal(text: CString) -> CString;
+// Get Snake case notation version of provided string
+pub extern "raylib" fn TextToSnake(text: CString) -> CString;
+// Get Camel case notation version of provided string
+pub extern "raylib" fn TextToCamel(text: CString) -> CString;
+// Get integer value from text (negative values not supported)
+pub extern "raylib" fn TextToInteger(text: CString) -> Int32;
+// Get float value from text (negative values not supported)
+pub extern "raylib" fn TextToFloat(text: CString) -> Float32;
+
+// Basic 3d Shapes Drawing Functions (Module: models)
+
+// Basic geometric 3D shapes drawing functions
+
+// Draw a line in 3D world space
+pub extern "raylib" fn DrawLine3D(startPos: Vector3, endPos: Vector3, color: Color);
+// Draw a point in 3D space, actually a small line
+pub extern "raylib" fn DrawPoint3D(position: Vector3, color: Color);
+// Draw a circle in 3D world space
+pub extern "raylib" fn DrawCircle3D(center: Vector3, radius: Float32, rotationAxis: Vector3, rotationAngle: Float32, color: Color);
+// Draw a color-filled triangle (vertex in counter-clockwise order!)
+pub extern "raylib" fn DrawTriangle3D(v1: Vector3, v2: Vector3, v3: Vector3, color: Color);
+// Draw a triangle strip defined by points
+pub extern "raylib" fn DrawTriangleStrip3D(points: Pointer, pointCount: Int32, color: Color);
+// Draw cube
+pub extern "raylib" fn DrawCube(position: Vector3, width: Float32, height: Float32, length: Float32, color: Color);
+// Draw cube (Vector version)
+pub extern "raylib" fn DrawCubeV(position: Vector3, size: Vector3, color: Color);
+// Draw cube wires
+pub extern "raylib" fn DrawCubeWires(position: Vector3, width: Float32, height: Float32, length: Float32, color: Color);
+// Draw cube wires (Vector version)
+pub extern "raylib" fn DrawCubeWiresV(position: Vector3, size: Vector3, color: Color);
+// Draw sphere
+pub extern "raylib" fn DrawSphere(centerPos: Vector3, radius: Float32, color: Color);
+// Draw sphere with extended parameters
+pub extern "raylib" fn DrawSphereEx(centerPos: Vector3, radius: Float32, rings: Int32, slices: Int32, color: Color);
+// Draw sphere wires
+pub extern "raylib" fn DrawSphereWires(centerPos: Vector3, radius: Float32, rings: Int32, slices: Int32, color: Color);
+// Draw a cylinder/cone
+pub extern "raylib" fn DrawCylinder(position: Vector3, radiusTop: Float32, radiusBottom: Float32, height: Float32, slices: Int32, color: Color);
+// Draw a cylinder with base at startPos and top at endPos
+pub extern "raylib" fn DrawCylinderEx(startPos: Vector3, endPos: Vector3, startRadius: Float32, endRadius: Float32, sides: Int32, color: Color);
+// Draw a cylinder/cone wires
+pub extern "raylib" fn DrawCylinderWires(position: Vector3, radiusTop: Float32, radiusBottom: Float32, height: Float32, slices: Int32, color: Color);
+// Draw a cylinder wires with base at startPos and top at endPos
+pub extern "raylib" fn DrawCylinderWiresEx(startPos: Vector3, endPos: Vector3, startRadius: Float32, endRadius: Float32, sides: Int32, color: Color);
+// Draw a capsule with the center of its sphere caps at startPos and endPos
+pub extern "raylib" fn DrawCapsule(startPos: Vector3, endPos: Vector3, radius: Float32, slices: Int32, rings: Int32, color: Color);
+// Draw capsule wireframe with the center of its sphere caps at startPos and endPos
+pub extern "raylib" fn DrawCapsuleWires(startPos: Vector3, endPos: Vector3, radius: Float32, slices: Int32, rings: Int32, color: Color);
+// Draw a plane XZ
+pub extern "raylib" fn DrawPlane(centerPos: Vector3, size: Vector2, color: Color);
+// Draw a ray line
+pub extern "raylib" fn DrawRay(ray: Ray, color: Color);
+// Draw a grid (centered at (0, 0, 0))
+pub extern "raylib" fn DrawGrid(slices: Int32, spacing: Float32);
+
+// Model 3d Loading and Drawing Functions (Module: models)
+
+// Model management functions
+
+// Load model from files (meshes and materials)
+pub extern "raylib" fn LoadModel(fileName: CString) -> Model;
+// Load model from generated mesh (default material)
+pub extern "raylib" fn LoadModelFromMesh(mesh: Mesh) -> Model;
+// Check if a model is valid (loaded in GPU, VAO/VBOs)
+pub extern "raylib" fn IsModelValid(model: Model) -> Bool;
+// Unload model (including meshes) from memory (RAM and/or VRAM)
+pub extern "raylib" fn UnloadModel(model: Model);
+// Compute model bounding box limits (considers all meshes)
+pub extern "raylib" fn GetModelBoundingBox(model: Model) -> BoundingBox;
+
+// Model drawing functions
+
+// Draw a model (with texture if set)
+pub extern "raylib" fn DrawModel(model: Model, position: Vector3, scale: Float32, tint: Color);
+// Draw a model with extended parameters
+pub extern "raylib" fn DrawModelEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: Float32, scale: Vector3, tint: Color);
+// Draw a model wires (with texture if set)
+pub extern "raylib" fn DrawModelWires(model: Model, position: Vector3, scale: Float32, tint: Color);
+// Draw a model wires (with texture if set) with extended parameters
+pub extern "raylib" fn DrawModelWiresEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: Float32, scale: Vector3, tint: Color);
+// Draw a model as points
+pub extern "raylib" fn DrawModelPoints(model: Model, position: Vector3, scale: Float32, tint: Color);
+// Draw a model as points with extended parameters
+pub extern "raylib" fn DrawModelPointsEx(model: Model, position: Vector3, rotationAxis: Vector3, rotationAngle: Float32, scale: Vector3, tint: Color);
+// Draw bounding box (wires)
+pub extern "raylib" fn DrawBoundingBox(box: BoundingBox, color: Color);
+// Draw a billboard texture
+pub extern "raylib" fn DrawBillboard(camera: Camera3D, texture: Texture, position: Vector3, scale: Float32, tint: Color);
+// Draw a billboard texture defined by source
+pub extern "raylib" fn DrawBillboardRec(camera: Camera3D, texture: Texture, source: Rectangle, position: Vector3, size: Vector2, tint: Color);
+// Draw a billboard texture defined by source and rotation
+pub extern "raylib" fn DrawBillboardPro(camera: Camera3D, texture: Texture, source: Rectangle, position: Vector3, up: Vector3, size: Vector2, origin: Vector2, rotation: Float32, tint: Color);
+
+// Mesh management functions
+
+// Upload mesh vertex data in GPU and provide VAO/VBO ids
+pub extern "raylib" fn UploadMesh(mesh: Pointer, dynamic: Bool);
+// Update mesh vertex data in GPU for a specific buffer index
+pub extern "raylib" fn UpdateMeshBuffer(mesh: Mesh, index: Int32, data: Pointer, dataSize: Int32, offset: Int32);
+// Unload mesh data from CPU and GPU
+pub extern "raylib" fn UnloadMesh(mesh: Mesh);
+// Draw a 3d mesh with material and transform
+pub extern "raylib" fn DrawMesh(mesh: Mesh, material: Material, transform: Matrix);
+// Draw multiple mesh instances with material and different transforms
+pub extern "raylib" fn DrawMeshInstanced(mesh: Mesh, material: Material, transforms: Pointer, instances: Int32);
+// Compute mesh bounding box limits
+pub extern "raylib" fn GetMeshBoundingBox(mesh: Mesh) -> BoundingBox;
+// Compute mesh tangents
+pub extern "raylib" fn GenMeshTangents(mesh: Pointer);
+// Export mesh data to file, returns true on success
+pub extern "raylib" fn ExportMesh(mesh: Mesh, fileName: CString) -> Bool;
+// Export mesh as code file (.h) defining multiple arrays of vertex attributes
+pub extern "raylib" fn ExportMeshAsCode(mesh: Mesh, fileName: CString) -> Bool;
+
+// Mesh generation functions
+
+// Generate polygonal mesh
+pub extern "raylib" fn GenMeshPoly(sides: Int32, radius: Float32) -> Mesh;
+// Generate plane mesh (with subdivisions)
+pub extern "raylib" fn GenMeshPlane(width: Float32, length: Float32, resX: Int32, resZ: Int32) -> Mesh;
+// Generate cuboid mesh
+pub extern "raylib" fn GenMeshCube(width: Float32, height: Float32, length: Float32) -> Mesh;
+// Generate sphere mesh (standard sphere)
+pub extern "raylib" fn GenMeshSphere(radius: Float32, rings: Int32, slices: Int32) -> Mesh;
+// Generate half-sphere mesh (no bottom cap)
+pub extern "raylib" fn GenMeshHemiSphere(radius: Float32, rings: Int32, slices: Int32) -> Mesh;
+// Generate cylinder mesh
+pub extern "raylib" fn GenMeshCylinder(radius: Float32, height: Float32, slices: Int32) -> Mesh;
+// Generate cone/pyramid mesh
+pub extern "raylib" fn GenMeshCone(radius: Float32, height: Float32, slices: Int32) -> Mesh;
+// Generate torus mesh
+pub extern "raylib" fn GenMeshTorus(radius: Float32, size: Float32, radSeg: Int32, sides: Int32) -> Mesh;
+// Generate trefoil knot mesh
+pub extern "raylib" fn GenMeshKnot(radius: Float32, size: Float32, radSeg: Int32, sides: Int32) -> Mesh;
+// Generate heightmap mesh from image data
+pub extern "raylib" fn GenMeshHeightmap(heightmap: Image, size: Vector3) -> Mesh;
+// Generate cubes-based map mesh from image data
+pub extern "raylib" fn GenMeshCubicmap(cubicmap: Image, cubeSize: Vector3) -> Mesh;
+
+// Material loading/unloading functions
+
+// Load materials from model file
+pub extern "raylib" fn LoadMaterials(fileName: CString, materialCount: Pointer) -> Pointer;
+// Load default material (Supports: DIFFUSE, SPECULAR, NORMAL maps)
+pub extern "raylib" fn LoadMaterialDefault() -> Material;
+// Check if a material is valid (shader assigned, map textures loaded in GPU)
+pub extern "raylib" fn IsMaterialValid(material: Material) -> Bool;
+// Unload material from GPU memory (VRAM)
+pub extern "raylib" fn UnloadMaterial(material: Material);
+// Set texture for a material map type (MATERIAL_MAP_DIFFUSE, MATERIAL_MAP_SPECULAR...)
+pub extern "raylib" fn SetMaterialTexture(material: Pointer, mapType: Int32, texture: Texture);
+// Set material for a mesh
+pub extern "raylib" fn SetModelMeshMaterial(model: Pointer, meshId: Int32, materialId: Int32);
+
+// Model animations loading/unloading functions
+
+// Load model animations from file
+pub extern "raylib" fn LoadModelAnimations(fileName: CString, animCount: Pointer) -> Pointer;
+// Update model animation pose (CPU)
+pub extern "raylib" fn UpdateModelAnimation(model: Model, anim: ModelAnimation, frame: Int32);
+// Update model animation mesh bone matrices (GPU skinning)
+pub extern "raylib" fn UpdateModelAnimationBones(model: Model, anim: ModelAnimation, frame: Int32);
+// Unload animation data
+pub extern "raylib" fn UnloadModelAnimation(anim: ModelAnimation);
+// Unload animation array data
+pub extern "raylib" fn UnloadModelAnimations(animations: Pointer, animCount: Int32);
+// Check model animation skeleton match
+pub extern "raylib" fn IsModelAnimationValid(model: Model, anim: ModelAnimation) -> Bool;
+
+// Collision detection functions
+
+// Check collision between two spheres
+pub extern "raylib" fn CheckCollisionSpheres(center1: Vector3, radius1: Float32, center2: Vector3, radius2: Float32) -> Bool;
+// Check collision between two bounding boxes
+pub extern "raylib" fn CheckCollisionBoxes(box1: BoundingBox, box2: BoundingBox) -> Bool;
+// Check collision between box and sphere
+pub extern "raylib" fn CheckCollisionBoxSphere(box: BoundingBox, center: Vector3, radius: Float32) -> Bool;
+// Get collision info between ray and sphere
+pub extern "raylib" fn GetRayCollisionSphere(ray: Ray, center: Vector3, radius: Float32) -> RayCollision;
+// Get collision info between ray and box
+pub extern "raylib" fn GetRayCollisionBox(ray: Ray, box: BoundingBox) -> RayCollision;
+// Get collision info between ray and mesh
+pub extern "raylib" fn GetRayCollisionMesh(ray: Ray, mesh: Mesh, transform: Matrix) -> RayCollision;
+// Get collision info between ray and triangle
+pub extern "raylib" fn GetRayCollisionTriangle(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3) -> RayCollision;
+// Get collision info between ray and quad
+pub extern "raylib" fn GetRayCollisionQuad(ray: Ray, p1: Vector3, p2: Vector3, p3: Vector3, p4: Vector3) -> RayCollision;
+
+// Audio Loading and Playing Functions (Module: audio)
+
+// Audio device management functions
+
+// Initialize audio device and context
+pub extern "raylib" fn InitAudioDevice();
+// Close the audio device and context
+pub extern "raylib" fn CloseAudioDevice();
+// Check if audio device has been initialized successfully
+pub extern "raylib" fn IsAudioDeviceReady() -> Bool;
+// Set master volume (listener)
+pub extern "raylib" fn SetMasterVolume(volume: Float32);
+// Get master volume (listener)
+pub extern "raylib" fn GetMasterVolume() -> Float32;
+
+// Wave/Sound loading/unloading functions
+
+// Load wave data from file
+pub extern "raylib" fn LoadWave(fileName: CString) -> Wave;
+// Load wave from memory buffer, fileType refers to extension: i.e. '.wav'
+pub extern "raylib" fn LoadWaveFromMemory(fileType: CString, fileData: Pointer, dataSize: Int32) -> Wave;
+// Checks if wave data is valid (data loaded and parameters)
+pub extern "raylib" fn IsWaveValid(wave: Wave) -> Bool;
+// Load sound from file
+pub extern "raylib" fn LoadSound(fileName: CString) -> Sound;
+// Load sound from wave data
+pub extern "raylib" fn LoadSoundFromWave(wave: Wave) -> Sound;
+// Create a new sound that shares the same sample data as the source sound, does not own the sound data
+pub extern "raylib" fn LoadSoundAlias(source: Sound) -> Sound;
+// Checks if a sound is valid (data loaded and buffers initialized)
+pub extern "raylib" fn IsSoundValid(sound: Sound) -> Bool;
+// Update sound buffer with new data
+pub extern "raylib" fn UpdateSound(sound: Sound, data: Pointer, sampleCount: Int32);
+// Unload wave data
+pub extern "raylib" fn UnloadWave(wave: Wave);
+// Unload sound
+pub extern "raylib" fn UnloadSound(sound: Sound);
+// Unload a sound alias (does not deallocate sample data)
+pub extern "raylib" fn UnloadSoundAlias(alias: Sound);
+// Export wave data to file, returns true on success
+pub extern "raylib" fn ExportWave(wave: Wave, fileName: CString) -> Bool;
+// Export wave sample data to code (.h), returns true on success
+pub extern "raylib" fn ExportWaveAsCode(wave: Wave, fileName: CString) -> Bool;
+
+// Wave/Sound management functions
+
+// Play a sound
+pub extern "raylib" fn PlaySound(sound: Sound);
+// Stop playing a sound
+pub extern "raylib" fn StopSound(sound: Sound);
+// Pause a sound
+pub extern "raylib" fn PauseSound(sound: Sound);
+// Resume a paused sound
+pub extern "raylib" fn ResumeSound(sound: Sound);
+// Check if a sound is currently playing
+pub extern "raylib" fn IsSoundPlaying(sound: Sound) -> Bool;
+// Set volume for a sound (1.0 is max level)
+pub extern "raylib" fn SetSoundVolume(sound: Sound, volume: Float32);
+// Set pitch for a sound (1.0 is base level)
+pub extern "raylib" fn SetSoundPitch(sound: Sound, pitch: Float32);
+// Set pan for a sound (0.5 is center)
+pub extern "raylib" fn SetSoundPan(sound: Sound, pan: Float32);
+// Copy a wave to a new wave
+pub extern "raylib" fn WaveCopy(wave: Wave) -> Wave;
+// Crop a wave to defined frames range
+pub extern "raylib" fn WaveCrop(wave: Pointer, initFrame: Int32, finalFrame: Int32);
+// Convert wave data to desired format
+pub extern "raylib" fn WaveFormat(wave: Pointer, sampleRate: Int32, sampleSize: Int32, channels: Int32);
+// Load samples data from wave as a 32bit float data array
+pub extern "raylib" fn LoadWaveSamples(wave: Wave) -> Pointer;
+// Unload samples data loaded with LoadWaveSamples()
+pub extern "raylib" fn UnloadWaveSamples(samples: Pointer);
+
+// Music management functions
+
+// Load music stream from file
+pub extern "raylib" fn LoadMusicStream(fileName: CString) -> Music;
+// Load music stream from data
+pub extern "raylib" fn LoadMusicStreamFromMemory(fileType: CString, data: Pointer, dataSize: Int32) -> Music;
+// Checks if a music stream is valid (context and buffers initialized)
+pub extern "raylib" fn IsMusicValid(music: Music) -> Bool;
+// Unload music stream
+pub extern "raylib" fn UnloadMusicStream(music: Music);
+// Start music playing
+pub extern "raylib" fn PlayMusicStream(music: Music);
+// Check if music is playing
+pub extern "raylib" fn IsMusicStreamPlaying(music: Music) -> Bool;
+// Updates buffers for music streaming
+pub extern "raylib" fn UpdateMusicStream(music: Music);
+// Stop music playing
+pub extern "raylib" fn StopMusicStream(music: Music);
+// Pause music playing
+pub extern "raylib" fn PauseMusicStream(music: Music);
+// Resume playing paused music
+pub extern "raylib" fn ResumeMusicStream(music: Music);
+// Seek music to a position (in seconds)
+pub extern "raylib" fn SeekMusicStream(music: Music, position: Float32);
+// Set volume for music (1.0 is max level)
+pub extern "raylib" fn SetMusicVolume(music: Music, volume: Float32);
+// Set pitch for a music (1.0 is base level)
+pub extern "raylib" fn SetMusicPitch(music: Music, pitch: Float32);
+// Set pan for a music (0.5 is center)
+pub extern "raylib" fn SetMusicPan(music: Music, pan: Float32);
+// Get music time length (in seconds)
+pub extern "raylib" fn GetMusicTimeLength(music: Music) -> Float32;
+// Get current music time played (in seconds)
+pub extern "raylib" fn GetMusicTimePlayed(music: Music) -> Float32;
+
+// AudioStream management functions
+
+// Load audio stream (to stream raw audio pcm data)
+pub extern "raylib" fn LoadAudioStream(sampleRate: UInt32, sampleSize: UInt32, channels: UInt32) -> AudioStream;
+// Checks if an audio stream is valid (buffers initialized)
+pub extern "raylib" fn IsAudioStreamValid(stream: AudioStream) -> Bool;
+// Unload audio stream and free memory
+pub extern "raylib" fn UnloadAudioStream(stream: AudioStream);
+// Update audio stream buffers with data
+pub extern "raylib" fn UpdateAudioStream(stream: AudioStream, data: Pointer, frameCount: Int32);
+// Check if any audio stream buffers requires refill
+pub extern "raylib" fn IsAudioStreamProcessed(stream: AudioStream) -> Bool;
+// Play audio stream
+pub extern "raylib" fn PlayAudioStream(stream: AudioStream);
+// Pause audio stream
+pub extern "raylib" fn PauseAudioStream(stream: AudioStream);
+// Resume audio stream
+pub extern "raylib" fn ResumeAudioStream(stream: AudioStream);
+// Check if audio stream is playing
+pub extern "raylib" fn IsAudioStreamPlaying(stream: AudioStream) -> Bool;
+// Stop audio stream
+pub extern "raylib" fn StopAudioStream(stream: AudioStream);
+// Set volume for audio stream (1.0 is max level)
+pub extern "raylib" fn SetAudioStreamVolume(stream: AudioStream, volume: Float32);
+// Set pitch for audio stream (1.0 is base level)
+pub extern "raylib" fn SetAudioStreamPitch(stream: AudioStream, pitch: Float32);
+// Set pan for audio stream (0.5 is centered)
+pub extern "raylib" fn SetAudioStreamPan(stream: AudioStream, pan: Float32);
+// Default size for new audio streams
+pub extern "raylib" fn SetAudioStreamBufferSizeDefault(size: Int32);
+
+// --- Left out ---
+//
+//   TraceLog: takes any number of arguments
+//   SetTraceLogCallback: takes a function
+//   SetLoadFileDataCallback: takes a function
+//   SetSaveFileDataCallback: takes a function
+//   SetLoadFileTextCallback: takes a function
+//   SetSaveFileTextCallback: takes a function
+//   TextFormat: takes any number of arguments
+//   SetAudioStreamCallback: takes a function
+//   AttachAudioStreamProcessor: takes a function
+//   DetachAudioStreamProcessor: takes a function
+//   AttachAudioMixedProcessor: takes a function
+//   DetachAudioMixedProcessor: takes a function

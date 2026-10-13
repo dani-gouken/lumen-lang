@@ -26,6 +26,7 @@ import (
 const (
 	ErrUnsupportedFeature = "E7001" // Language feature the pipeline cannot compile yet
 	ErrUnknownExtern      = "E7002" // extern fn that the runtime does not provide
+	ErrForeignType        = "E7003" // A type C does not have, in the declaration of a function or a struct of a C library
 )
 
 // Result holds what each stage of a compilation produced. Stages that did
@@ -126,6 +127,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	giveDefaultMethods(prog)
 	checkSupported(prog, errs, lines)
 	checkExterns(prog, opts.Hosted, errs, lines)
+	foreign := foreignFunctions(prog, errs, lines)
 	if failed() {
 		return result
 	}
@@ -183,6 +185,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	// 8. Bytecode generation
 	backend := codegen.NewGenerator(result.IR, hostFunctions(prog), errs)
 	backend.SetSourceLines(lines)
+	backend.SetForeign(foreign)
 	chunk := backend.Generate()
 	if failed() {
 		return result
@@ -284,7 +287,9 @@ func withStandardLibrary(opts Options) Options {
 // that was given a native function of that name.
 func checkExterns(prog *ast.Program, hosted func(string) bool, errs *errors.Handler, lines map[int]string) {
 	for _, fn := range prog.Externs {
-		if vm.IsNative(fn.Name) || (hosted != nil && hosted(fn.Name)) {
+		if fn.Library != "" || vm.IsNative(fn.Name) || (hosted != nil && hosted(fn.Name)) {
+			// Of a C library: whether it has the function is only known
+			// where the program runs
 			continue
 		}
 		errs.ReportErrorWithSuggestion(ErrUnknownExtern,

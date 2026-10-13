@@ -1,0 +1,237 @@
+// Breakout, drawn by raylib: a window, the keyboard, sixty pictures a
+// second, from a program in Lumen and a C library found when it starts.
+//
+//   raylib.lum     the declarations of raylib, written by generate.py
+//
+//   lumen run examples/raylib             plays: left and right, space to launch
+//   lumen run examples/raylib demo 300    plays by itself for 300 pictures
+//   lumen run examples/raylib demo 300 shot.png   and keeps the last one
+//
+// It needs raylib where libraries are looked for: brew install raylib, or
+// the package of the system, or its folder in LUMEN_LIBRARY_PATH.
+
+import std.arrays;
+import std.math;
+import std.os;
+import std.strings;
+import raylib;
+import raylib.{Color, Rectangle, Vector2};
+
+const WIDTH = 800;
+const HEIGHT = 520;
+const ROWS = 6;
+const COLUMNS = 12;
+const BRICK_WIDTH = 60.0;
+const BRICK_HEIGHT = 20.0;
+const PADDLE_WIDTH = 110.0;
+const PADDLE_SPEED = 520.0;
+const BALL_RADIUS = 8.0;
+
+enum Phase {
+    Ready,          // The ball waits on the paddle
+    Playing,
+    Won,
+    Lost,
+}
+
+struct Brick {
+    box: Rectangle;
+    color: Color;
+    points: Int;
+    alive: Bool = true;
+}
+
+struct Game {
+    phase: Phase;
+    paddle: Rectangle;
+    ball: Vector2;
+    speed: Vector2;
+    bricks: [Brick];
+    score: Int = 0;
+    lives: Int = 3;
+}
+
+// The rows from the top: worth more the higher they are
+fn rowColor(row: Int) -> Color {
+    return match row {
+        case 0: raylib.red();
+        case 1: raylib.orange();
+        case 2: raylib.gold();
+        case 3: raylib.lime();
+        case 4: raylib.skyBlue();
+        default: raylib.violet();
+    };
+}
+
+fn wall() -> [Brick] {
+    let bricks: [Brick] = [];
+    let left = (math.toFloat(WIDTH) - math.toFloat(COLUMNS) * (BRICK_WIDTH + 4.0)) / 2.0;
+    for row in 0..ROWS {
+        for column in 0..COLUMNS {
+            push(bricks, Brick {
+                box: Rectangle {
+                    x: left + math.toFloat(column) * (BRICK_WIDTH + 4.0),
+                    y: 60.0 + math.toFloat(row) * (BRICK_HEIGHT + 4.0),
+                    width: BRICK_WIDTH,
+                    height: BRICK_HEIGHT,
+                },
+                color: rowColor(row),
+                points: (ROWS - row) * 10,
+            });
+        }
+    }
+    return bricks;
+}
+
+fn newGame() -> Game {
+    return Game {
+        phase: Phase.Ready,
+        paddle: Rectangle { x: (math.toFloat(WIDTH) - PADDLE_WIDTH) / 2.0, y: math.toFloat(HEIGHT) - 40.0, width: PADDLE_WIDTH, height: 14.0 },
+        ball: Vector2 { x: 0.0, y: 0.0 },
+        speed: Vector2 { x: 0.0, y: 0.0 },
+        bricks: wall(),
+    };
+}
+
+impl Game {
+    // Where the paddle is asked to go: -1 left, 1 right. In a demo it
+    // follows the ball.
+    fn steer(demo: Bool) -> Float {
+        if demo {
+            let middle = self.paddle.x + self.paddle.width / 2.0;
+            if self.ball.x < middle - 10.0 { return -1.0; }
+            if self.ball.x > middle + 10.0 { return 1.0; }
+            return 0.0;
+        }
+        let direction = 0.0;
+        if raylib.IsKeyDown(raylib.KEY_LEFT) || raylib.IsKeyDown(raylib.KEY_A) { direction -= 1.0; }
+        if raylib.IsKeyDown(raylib.KEY_RIGHT) || raylib.IsKeyDown(raylib.KEY_D) { direction += 1.0; }
+        return direction;
+    }
+
+    fn update(elapsed: Float, demo: Bool) {
+        let launch = demo || raylib.IsKeyPressed(raylib.KEY_SPACE);
+        match self.phase {
+            case Phase.Won | Phase.Lost: {
+                if launch && !demo { self.restart(); }
+                return;
+            }
+            default: {}
+        }
+
+        self.paddle.x = math.fmax(0.0, math.fmin(math.toFloat(WIDTH) - self.paddle.width,
+            self.paddle.x + self.steer(demo) * PADDLE_SPEED * elapsed));
+
+        if self.phase == Phase.Ready {
+            self.ball = Vector2 { x: self.paddle.x + self.paddle.width / 2.0, y: self.paddle.y - BALL_RADIUS - 1.0 };
+            if launch {
+                self.speed = Vector2 { x: 190.0, y: -330.0 };
+                self.phase = Phase.Playing;
+            }
+            return;
+        }
+
+        self.ball.x += self.speed.x * elapsed;
+        self.ball.y += self.speed.y * elapsed;
+
+        // The walls
+        if self.ball.x < BALL_RADIUS { self.ball.x = BALL_RADIUS; self.speed.x = -self.speed.x; }
+        if self.ball.x > math.toFloat(WIDTH) - BALL_RADIUS { self.ball.x = math.toFloat(WIDTH) - BALL_RADIUS; self.speed.x = -self.speed.x; }
+        if self.ball.y < BALL_RADIUS { self.ball.y = BALL_RADIUS; self.speed.y = -self.speed.y; }
+
+        // The paddle sends the ball back where it was hit: to the side at its ends
+        if self.speed.y > 0.0 && raylib.CheckCollisionCircleRec(self.ball, BALL_RADIUS, self.paddle) {
+            let where = (self.ball.x - (self.paddle.x + self.paddle.width / 2.0)) / (self.paddle.width / 2.0);
+            self.speed = Vector2 { x: where * 340.0, y: -math.fabs(self.speed.y) * 1.02 };
+            self.ball.y = self.paddle.y - BALL_RADIUS;
+        }
+
+        // One brick at most each time
+        for brick in self.bricks {
+            if brick.alive && raylib.CheckCollisionCircleRec(self.ball, BALL_RADIUS, brick.box) {
+                brick.alive = false;
+                self.score += brick.points;
+                // From the side if the ball is beside the brick, else from above or below
+                if self.ball.x < brick.box.x || self.ball.x > brick.box.x + brick.box.width {
+                    self.speed.x = -self.speed.x;
+                } else {
+                    self.speed.y = -self.speed.y;
+                }
+                break;
+            }
+        }
+
+        if arrays.all(self.bricks, brick -> !brick.alive) {
+            self.phase = Phase.Won;
+        } else if self.ball.y > math.toFloat(HEIGHT) + BALL_RADIUS {
+            self.lives--;
+            self.phase = Phase.Ready;
+            if self.lives == 0 { self.phase = Phase.Lost; }
+        }
+    }
+
+    fn restart() {
+        let fresh = newGame();
+        self.phase = fresh.phase;
+        self.paddle = fresh.paddle;
+        self.bricks = fresh.bricks;
+        self.score = 0;
+        self.lives = 3;
+    }
+
+    fn draw() {
+        raylib.ClearBackground(Color { r: 18, g: 20, b: 30, a: 255 });
+        for brick in self.bricks {
+            if brick.alive {
+                raylib.DrawRectangleRounded(brick.box, 0.3, 4, brick.color);
+            }
+        }
+        raylib.DrawRectangleRounded(self.paddle, 0.6, 6, raylib.rayWhite());
+        raylib.DrawCircleV(self.ball, BALL_RADIUS, raylib.yellow());
+
+        raylib.DrawText("SCORE ${self.score}", 20, 16, 22, raylib.rayWhite());
+        raylib.DrawText("LIVES ${self.lives}", WIDTH - 120, 16, 22, raylib.rayWhite());
+        raylib.DrawFPS(WIDTH / 2 - 40, 18);
+
+        let message = match self.phase {
+            case Phase.Ready: "SPACE to launch";
+            case Phase.Won: "You cleared the wall!  SPACE to play again";
+            case Phase.Lost: "Game over.  SPACE to play again";
+            case Phase.Playing: "";
+        };
+        if message != "" {
+            let width = raylib.MeasureText(message, 24);
+            raylib.DrawText(message, (WIDTH - width) / 2, HEIGHT / 2 + 40, 24, raylib.lightGray());
+        }
+    }
+}
+
+fn main() -> Int {
+    // demo N: the paddle follows the ball, and the program ends after N pictures
+    let arguments = os.args();
+    let demo = arrays.len(arguments) > 0 && arguments[0] == "demo";
+    let pictures = 0;
+    if demo && arrays.len(arguments) > 1 { pictures = strings.parseInt(arguments[1]) ?? 0; }
+
+    raylib.SetTraceLogLevel(raylib.LOG_WARNING);
+    // Flags are bits that C joins with |: adding them does the same
+    raylib.SetConfigFlags(raylib.FLAG_VSYNC_HINT + raylib.FLAG_MSAA_4X_HINT);
+    raylib.InitWindow(WIDTH, HEIGHT, "Breakout, in Lumen");
+    defer raylib.CloseWindow();
+    raylib.SetTargetFPS(60);
+
+    let game = newGame();
+    let drawn = 0;
+    while !raylib.WindowShouldClose() && (pictures == 0 || drawn < pictures) {
+        // A picture that took long (the window was dragged) moves the ball no further than one at 30 a second
+        game.update(math.fmin(raylib.GetFrameTime(), 1.0 / 30.0), demo);
+
+        raylib.BeginDrawing();
+        game.draw();
+        raylib.EndDrawing();
+        drawn++;
+        if drawn == pictures && arrays.len(arguments) > 2 { raylib.TakeScreenshot(arguments[2]); }
+    }
+    if demo { println("score ${game.score} after ${drawn} pictures"); }
+    return 0;
+}

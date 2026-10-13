@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -158,6 +159,14 @@ func newVM() *vm.VM {
 	}
 	machine.SetProgram(programFile)
 	return machine
+}
+
+// A program runs on the thread lumen started on, and stays there: a
+// library that opens a window wants every call about it made from the main
+// thread of the process (macOS allows no other), and a function of a C
+// library is called from the thread the program is running on.
+func init() {
+	runtime.LockOSThread()
 }
 
 func main() {

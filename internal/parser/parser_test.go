@@ -527,7 +527,13 @@ func TestParseErrors(t *testing.T) {
 		{"unclosed variant", "enum E { A(Int }", ErrUnexpectedToken, "expected ')'", 1},
 		{"extern with a body", "extern fn f() -> Int { return 1; }", ErrUnexpectedToken, "an extern function has no body", 1},
 		{"extern with type parameters", "extern fn f<T>(v: T) -> T;", ErrUnexpectedToken, "an extern function cannot have type parameters", 1},
-		{"extern without fn", "extern struct P { x: Int; }", ErrUnexpectedToken, "expected 'fn' after 'extern'", 1},
+		{"extern without fn", "extern enum P { A }", ErrUnexpectedToken, "expected 'fn', 'struct' or the name of a library after 'extern', found 'enum'", 1},
+		{"extern with an empty library", "extern \"\" fn f();", ErrUnexpectedToken, "the name of the library is empty", 1},
+		{"extern library without fn", "extern \"c\" struct P { x: Int32; }", ErrUnexpectedToken, "expected 'fn', 'struct' or the name of a library after 'extern', found 'struct'", 1},
+		{"extern library with a body", "extern \"c\" fn f() -> Int32 { return 1; }", ErrUnexpectedToken, "an extern function has no body", 1},
+		{"extern library with type parameters", "extern \"c\" fn f<T>(v: T);", ErrUnexpectedToken, "an extern function cannot have type parameters", 1},
+		{"extern struct with type parameters", "extern struct P<T> { x: T; }", ErrUnexpectedToken, "a struct of a C library cannot have type parameters", 1},
+		{"extern struct without a name", "extern struct { x: Int32; }", ErrUnexpectedToken, "expected struct name", 1},
 		{"extern without semicolon", "extern fn f() -> Int\nfn main() -> Int { return 0; }", ErrMissingSemicolon, "expected ';'", 1},
 		{"extern in an impl", "impl P {\n  extern fn f();\n}", ErrUnexpectedToken, "expected 'fn'", 2},
 		{"pub on nothing", "pub let x = 1;", ErrUnexpectedToken, "expected declaration", 1},
@@ -1289,5 +1295,101 @@ func TestParseIsPatternsInHeaders(t *testing.T) {
 	}
 	if got := len(ast.Conjuncts(cond)); got != 3 {
 		t.Errorf("expected a chain of 3, got %d", got)
+	}
+}
+
+func TestParseForeign(t *testing.T) {
+	prog := parseOK(t, `
+		extern struct Color { r: UInt8; g: UInt8; b: UInt8; a: UInt8 = 255; }
+		pub extern struct Sprite { at: Vec2; tint: Color; texture: Pointer; scale: Float32; shown: Bool; }
+		struct Plain { n: Int; }
+		extern "raylib" fn InitWindow(width: Int32, height: Int32, title: CString);
+		pub extern "/opt/lib/libfoo.dylib" fn measure(sprite: Sprite, by: Float64) -> UInt64;
+		extern "c" fn getenv(name: CString) -> CString;
+		extern fn now() -> Int;
+	`)
+
+	color := prog.Decls[0].(*ast.StructDecl)
+	if !color.Extern || color.Pub || len(color.Fields) != 4 {
+		t.Fatalf("expected a struct of C with four fields, got %s", color)
+	}
+	for _, field := range color.Fields {
+		// A byte to C, a whole number to the program
+		if field.Type.Name != "Int" || field.Type.C != "UInt8" {
+			t.Errorf("field %s: expected an Int written UInt8, got %s written %q", field.Name, field.Type.Name, field.Type.C)
+		}
+	}
+	if color.Fields[3].Default == nil {
+		t.Errorf("expected the last field to keep what it holds when a literal does not say")
+	}
+
+	sprite := prog.Decls[1].(*ast.StructDecl)
+	if !sprite.Extern || !sprite.Pub {
+		t.Errorf("expected a public struct of C, got %s", sprite)
+	}
+	wantFields := []struct{ name, lumen, c string }{
+		{"at", "Vec2", ""}, {"tint", "Color", ""}, {"texture", "Int", "Pointer"},
+		{"scale", "Float", "Float32"}, {"shown", "Bool", ""},
+	}
+	for i, w := range wantFields {
+		field := sprite.Fields[i]
+		if field.Name != w.name || field.Type.Name != w.lumen || field.Type.C != w.c {
+			t.Errorf("field %d: expected %+v, got %s: %s written %q", i, w, field.Name, field.Type.Name, field.Type.C)
+		}
+	}
+
+	// A struct of the program is not touched
+	if plain := prog.Decls[2].(*ast.StructDecl); plain.Extern || plain.Fields[0].Type.C != "" {
+		t.Errorf("expected an ordinary struct, got %s", plain)
+	}
+
+	open := prog.Decls[3].(*ast.FnDecl)
+	if !open.Extern || open.Library != "raylib" || open.Symbol != "InitWindow" || open.Name != "InitWindow" || open.ReturnType != nil {
+		t.Errorf("expected a function of raylib, got %s (library %q, symbol %q)", open, open.Library, open.Symbol)
+	}
+	wantParams := []struct{ lumen, c string }{{"Int", "Int32"}, {"Int", "Int32"}, {"String", "CString"}}
+	for i, w := range wantParams {
+		if got := open.Params[i].Type; got.Name != w.lumen || got.C != w.c {
+			t.Errorf("parameter %d: expected %+v, got %s written %q", i, w, got.Name, got.C)
+		}
+	}
+
+	measure := prog.Decls[4].(*ast.FnDecl)
+	if !measure.Pub || measure.Library != "/opt/lib/libfoo.dylib" || measure.Symbol != "measure" {
+		t.Errorf("expected a public function of a library given by its path, got %s (library %q)", measure, measure.Library)
+	}
+	if got := measure.Params[0].Type; got.Name != "Sprite" || got.C != "" {
+		t.Errorf("expected a struct as first parameter, got %s written %q", got.Name, got.C)
+	}
+	if got := measure.ReturnType; got.Name != "Int" || got.C != "UInt64" {
+		t.Errorf("expected an Int written UInt64 as result, got %s written %q", got.Name, got.C)
+	}
+	if got := prog.Decls[5].(*ast.FnDecl).ReturnType; got.Name != "String" || got.C != "CString" {
+		t.Errorf("expected a String written CString, got %s written %q", got.Name, got.C)
+	}
+
+	// A function of the runtime has no library, and its types are the
+	// program's
+	now := prog.Decls[6].(*ast.FnDecl)
+	if !now.Extern || now.Library != "" || now.Symbol != "" || now.ReturnType.C != "" {
+		t.Errorf("expected a function of the runtime, got %s (library %q)", now, now.Library)
+	}
+}
+
+// The names of C types mean nothing outside a declaration made for a C
+// library: they stay names, for the program to give a meaning to or not.
+func TestCTypesAreOnlyForForeignDeclarations(t *testing.T) {
+	prog := parseOK(t, `
+		struct Int32 { n: Int; }
+		fn f(a: Int32, b: Pointer) -> Float32 { return b; }
+		extern fn g(a: Int32) -> CString;
+	`)
+	f := prog.Decls[1].(*ast.FnDecl)
+	if f.Params[0].Type.Name != "Int32" || f.Params[1].Type.Name != "Pointer" || f.ReturnType.Name != "Float32" || f.Params[0].Type.C != "" {
+		t.Errorf("expected the names as written, got %s", f)
+	}
+	g := prog.Decls[2].(*ast.FnDecl)
+	if g.Params[0].Type.Name != "Int32" || g.ReturnType.Name != "CString" {
+		t.Errorf("expected the names as written in a function of the runtime, got %s", g)
 	}
 }

@@ -1,12 +1,13 @@
 module github.com/dani-gouken/lumen
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/charmbracelet/bubbles v0.21.0
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/term v0.2.1
+	github.com/ebitengine/purego v0.11.1
 	github.com/mattn/go-runewidth v0.0.16
 )
 

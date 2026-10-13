@@ -56,6 +56,10 @@ var pure = []string{
 // Permitted reports whether a sandboxed program may use a native function:
 // the builtins (print, toString, the casts) and those of the pure modules.
 func Permitted(name string) bool {
+	if vm.IsForeign(name) {
+		// A function of a C library can do anything at all
+		return false
+	}
 	if !strings.HasPrefix(name, "std.") {
 		return true
 	}

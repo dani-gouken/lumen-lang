@@ -277,6 +277,10 @@ func Outline(path, src string) []Symbol {
 			}
 		}
 	}
+	// The functions the program only declares are kept apart from the rest
+	for _, extern := range analysis.Program.Externs {
+		add("function", extern.Name, signature(extern, extern.Name), "", extern)
+	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Line < out[j].Line })
 	return out
 }
@@ -804,6 +808,9 @@ func typeAt(prog *ast.Program, file string, lines []string, line, column int) *n
 			}
 		}
 	}
+	for _, extern := range prog.Externs {
+		function(extern)
+	}
 	eachBody(prog, func(node ast.Node) {
 		types.WalkStmts(node, func(stmt ast.Stmt) {
 			if let, ok := stmt.(*ast.LetStmt); ok {
@@ -924,7 +931,7 @@ func declaredAt(analysis *compiler.Analysis, file string, lines []string, line, 
 	function := func(fn *ast.FnDecl, shown string) {
 		consider(fn, fn.Name, signature(fn, shown))
 		for _, param := range fn.Params {
-			consider(param, param.Name, "(parameter) "+shortNames(param.String()))
+			consider(param, param.Name, "(parameter) "+paramText(param))
 		}
 	}
 	for _, decl := range analysis.Program.Decls {
@@ -962,6 +969,9 @@ func declaredAt(analysis *compiler.Analysis, file string, lines []string, line, 
 			}
 		}
 	}
+	for _, extern := range analysis.Program.Externs {
+		function(extern, extern.Name)
+	}
 	// The type of a variable that is not declared with one is the type
 	// the checker gave its uses
 	typeOfUses := func(decl ast.Node) string {
@@ -986,7 +996,7 @@ func declaredAt(analysis *compiler.Analysis, file string, lines []string, line, 
 			if fn, ok := expr.(*ast.FnExpr); ok {
 				for _, param := range fn.Params {
 					if param.Type != nil {
-						consider(param, param.Name, "(parameter) "+shortNames(param.String()))
+						consider(param, param.Name, "(parameter) "+paramText(param))
 					} else {
 						variable(param, param.Name, "parameter")
 					}
@@ -1916,13 +1926,17 @@ func localsAt(analysis *compiler.Analysis, file string, line int) map[string]typ
 // signature writes a function as it is declared, without its body.
 func signature(fn *ast.FnDecl, name string) string {
 	var sb strings.Builder
+	if fn.Library != "" {
+		// Of a C library: said with it, as it is declared
+		sb.WriteString("extern \"" + fn.Library + "\" ")
+	}
 	sb.WriteString("fn " + name)
 	if len(fn.TypeParams) > 0 {
 		sb.WriteString("<" + strings.Join(fn.TypeParams, ", ") + ">")
 	}
 	params := make([]string, 0, len(fn.Params))
 	for _, p := range fn.Params {
-		params = append(params, shortNames(p.String()))
+		params = append(params, paramText(p))
 	}
 	sb.WriteString("(" + strings.Join(params, ", ") + ")")
 	if fn.ReturnType != nil {
@@ -1939,6 +1953,9 @@ func structText(d *ast.StructDecl) string {
 		fields = append(fields, "    "+field.Name+": "+typeText(field.Type)+";")
 	}
 	head := "struct " + displayName(d.Name) + typeParams(d.TypeParams)
+	if d.Extern {
+		head = "extern " + head
+	}
 	if len(fields) == 0 {
 		return head + " { }"
 	}
@@ -1976,7 +1993,19 @@ func typeText(t *ast.Type) string {
 	if t == nil {
 		return ""
 	}
+	if t.C != "" {
+		// A type of C: Int32, where the program has an Int
+		return t.C
+	}
 	return shortNames(t.String())
+}
+
+// paramText writes a parameter as the program wrote it.
+func paramText(p *ast.Param) string {
+	if p.Type == nil {
+		return p.Name
+	}
+	return p.Name + ": " + typeText(p.Type)
 }
 
 // typeName writes a type the checker worked out, the way a program

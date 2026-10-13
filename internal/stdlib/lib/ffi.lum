@@ -1,0 +1,111 @@
+// Memory for the functions of C libraries.
+//
+// A function of a C library is declared where it is used, with the library
+// it is in and its C types:
+//
+//   extern struct Color { r: UInt8; g: UInt8; b: UInt8; a: UInt8; }
+//   extern "raylib" fn ClearBackground(color: Color);
+//
+// and most are called like any other function. This module is for the
+// ones that want an address: of memory they fill, of numbers in a row, of
+// a text they keep.
+//
+//   let event = ffi.alloc(56);          // An SDL_Event
+//   defer ffi.free(event);
+//   while SDL_PollEvent(event) != 0 {
+//       if ffi.readUInt32(event, 0) == SDL_QUIT { ... }
+//   }
+//
+// An address is an Int, and a Pointer in a declaration. Nothing checks
+// one: reading or writing where there is nothing ends the program at
+// once, as it would a C program. What alloc and cstring return stays until
+// it is freed; nothing frees it for the program.
+
+import std.arrays;
+
+// The address of a number of bytes, all 0.
+pub extern fn alloc(bytes: Int) -> Int;
+
+// Gives back what alloc or cstring returned. Freeing 0 does nothing.
+pub extern fn free(address: Int);
+
+// A copy of a text as C wants it, for a function that keeps the text it
+// is given: a CString argument only lasts for the call. To be freed.
+pub extern fn cstring(text: String) -> Int;
+
+// The text of C at an address: what is there up to the first 0.
+pub extern fn text(address: Int) -> String;
+
+// --- Reading what is at an address, a number of bytes further ---
+
+pub extern fn readInt8(address: Int, offset: Int) -> Int;
+pub extern fn readUInt8(address: Int, offset: Int) -> Int;
+pub extern fn readInt16(address: Int, offset: Int) -> Int;
+pub extern fn readUInt16(address: Int, offset: Int) -> Int;
+pub extern fn readInt32(address: Int, offset: Int) -> Int;
+pub extern fn readUInt32(address: Int, offset: Int) -> Int;
+pub extern fn readInt64(address: Int, offset: Int) -> Int;
+pub extern fn readFloat32(address: Int, offset: Int) -> Float;
+pub extern fn readFloat64(address: Int, offset: Int) -> Float;
+pub extern fn readPointer(address: Int, offset: Int) -> Int;
+
+// --- Writing there. A number that does not fit is refused ---
+
+pub extern fn writeInt8(address: Int, offset: Int, value: Int);
+pub extern fn writeUInt8(address: Int, offset: Int, value: Int);
+pub extern fn writeInt16(address: Int, offset: Int, value: Int);
+pub extern fn writeUInt16(address: Int, offset: Int, value: Int);
+pub extern fn writeInt32(address: Int, offset: Int, value: Int);
+pub extern fn writeUInt32(address: Int, offset: Int, value: Int);
+pub extern fn writeInt64(address: Int, offset: Int, value: Int);
+pub extern fn writeFloat32(address: Int, offset: Int, value: Float);
+pub extern fn writeFloat64(address: Int, offset: Int, value: Float);
+pub extern fn writePointer(address: Int, offset: Int, value: Int);
+
+// --- Numbers in a row ---
+
+// The address of a copy of whole numbers as 32-bit ones: an int * in C.
+// To be freed.
+pub fn int32s(values: [Int]) -> Int {
+    let address = alloc(arrays.len(values) * 4);
+    let i = 0;
+    for value in values {
+        writeInt32(address, i * 4, value);
+        i++;
+    }
+    return address;
+}
+
+// The whole numbers at an address, read as 32-bit ones.
+pub fn readInt32s(address: Int, count: Int) -> [Int] {
+    let out: [Int] = [];
+    let i = 0;
+    while i < count {
+        push(out, readInt32(address, i * 4));
+        i++;
+    }
+    return out;
+}
+
+// The address of a copy of numbers as 32-bit floats: a float * in C. To
+// be freed.
+pub fn float32s(values: [Float]) -> Int {
+    let address = alloc(arrays.len(values) * 4);
+    let i = 0;
+    for value in values {
+        writeFloat32(address, i * 4, value);
+        i++;
+    }
+    return address;
+}
+
+// The numbers at an address, read as 32-bit floats.
+pub fn readFloat32s(address: Int, count: Int) -> [Float] {
+    let out: [Float] = [];
+    let i = 0;
+    while i < count {
+        push(out, readFloat32(address, i * 4));
+        i++;
+    }
+    return out;
+}

@@ -140,6 +140,33 @@ type Type struct {
 	// For Function
 	ParamTypes []*Type
 	ReturnType *Type
+
+	// C is the C type this was written as, in the declaration of a
+	// function or of a struct of a C library: Int32 there is an Int to the
+	// program (Name), and 32 bits to the library. See ForeignTypes.
+	C string
+}
+
+// ForeignTypes are the types of C a declaration made for a C library can
+// name, and what a value of each is to the program.
+var ForeignTypes = map[string]string{
+	"Int8": "Int", "UInt8": "Int", "Int16": "Int", "UInt16": "Int",
+	"Int32": "Int", "UInt32": "Int", "Int64": "Int", "UInt64": "Int",
+	"Float32": "Float", "Float64": "Float",
+	"CString": "String", // char *: a text, copied on its way in and out
+	"Pointer": "Int",    // Any other pointer: an address
+}
+
+// Foreign marks the types of a declaration made for a C library: the
+// names of C types become those the program knows, and remember what they
+// were.
+func (t *Type) Foreign() {
+	if t == nil || t.Kind != TypeBasic || len(t.Generics) > 0 {
+		return
+	}
+	if lumen, ok := ForeignTypes[t.Name]; ok {
+		t.C, t.Name = t.Name, lumen
+	}
 }
 
 func (t *Type) String() string {
@@ -205,6 +232,13 @@ type FnDecl struct {
 
 	// Extern marks a function the runtime provides: `extern fn name(...);`
 	Extern bool
+
+	// Library is where a function of a C library is to be found:
+	// `extern "raylib" fn InitWindow(...);`. Symbol is its name there,
+	// which the name of the declaration stops being once its module is
+	// part of it.
+	Library string
+	Symbol  string
 }
 
 func (d *FnDecl) declNode() {}
@@ -212,6 +246,9 @@ func (d *FnDecl) String() string {
 	var sb strings.Builder
 	if d.Extern {
 		sb.WriteString("extern ")
+		if d.Library != "" {
+			sb.WriteString("\"" + d.Library + "\" ")
+		}
 	}
 	sb.WriteString("fn " + d.Name)
 	if len(d.TypeParams) > 0 {
@@ -256,11 +293,19 @@ type StructDecl struct {
 	Bounds     map[string][]*Type // See FnDecl.Bounds
 	Fields     []*Field
 	Pub        bool
+
+	// Extern marks a struct of a C library, `extern struct Color { ... }`:
+	// its fields have C types, and functions of C libraries take and
+	// return it by value. To the program it is a struct like any other.
+	Extern bool
 }
 
 func (d *StructDecl) declNode() {}
 func (d *StructDecl) String() string {
 	var sb strings.Builder
+	if d.Extern {
+		sb.WriteString("extern ")
+	}
 	sb.WriteString("struct " + d.Name)
 	if len(d.TypeParams) > 0 {
 		sb.WriteString("<" + strings.Join(d.TypeParams, ", ") + ">")

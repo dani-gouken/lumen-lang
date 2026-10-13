@@ -109,6 +109,18 @@ The same form when compiling and when running: what went wrong, where, what usua
    = Suggestion: Did you mean 'count'?
 ```
 
+### C libraries, without a C compiler
+
+A function of a C library is declared in Lumen and found when the program runs: no bindings to compile, nothing to install with `lumen`.
+
+```lumen
+extern struct Color { r: UInt8; g: UInt8; b: UInt8; a: UInt8 = 255; }
+extern "raylib" fn InitWindow(width: Int32, height: Int32, title: CString);
+extern "raylib" fn ClearBackground(color: Color);
+```
+
+All of raylib is declared in [examples/raylib](examples/raylib), with a Breakout that runs at sixty pictures a second: `lumen run examples/raylib`. More in [docs/ffi.md](docs/ffi.md).
+
 ### Programs that look at programs
 
 - **Reflection** ([`std.reflect`](docs/stdlib.md#stdreflect)): a value asked at run time for its type, its fields by name, the variant of its enum. Enough to write a serializer that was never told about your structs.
@@ -133,6 +145,7 @@ Variables, functions and types stay from one line to the next, a declaration typ
 - **Getting started and language tour**: [docs/guide.md](docs/guide.md)
 - **The standard library**: [docs/stdlib.md](docs/stdlib.md)
 - **Tasks and channels**: [docs/tasks.md](docs/tasks.md)
+- **Calling C libraries**: [docs/ffi.md](docs/ffi.md)
 - **Editor support**: [docs/editor.md](docs/editor.md)
 - **The REPL**: [docs/repl.md](docs/repl.md)
 - **Syntax and semantics**: [docs/language-spec.md](docs/language-spec.md) (draft, with an implementation status table)

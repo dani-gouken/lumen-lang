@@ -43,6 +43,7 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.task`](#stdtask) | Doing several things at once: tasks and channels |
 | [`std.reflect`](#stdreflect) | Asking a value what it is while the program runs: its type, its fields |
 | [`std.compiler`](#stdcompiler) | Asking the compiler about a program: its mistakes, its declarations, what a name is |
+| [`std.ffi`](#stdffi) | Memory for the functions of C libraries |
 | [`std.test`](#stdtest) | Tests and checks |
 | [`std.ops`](#stdops) | The traits behind operators, loops and brackets; `sorted`, `max`, `join` for any type that has them |
 
@@ -1079,6 +1080,33 @@ for problem in compiler.check("main.lum", source) {
 Lines and columns count from 1, columns in characters. `describe` answers `null` for a program with errors that keep it from being understood; `complete` then works from the file without the line being typed.
 
 It is what the [language server](editor.md) is written with, and serves as well for a linter or a documentation generator: [`internal/lsp/server.lum`](../internal/lsp/server.lum) is the longest example.
+
+---
+
+## `std.ffi`
+
+Memory outside the program, for the functions of C libraries that want an address ([ffi.md](ffi.md)). An address is an `Int`. Nothing checks one: reading where there is nothing ends the program at once.
+
+| Function | What it does |
+|----------|--------------|
+| `alloc(bytes: Int) -> Int` | The address of that many bytes, all 0 |
+| `free(address: Int)` | Gives back what `alloc`, `cstring`, `int32s` or `float32s` returned. Freeing 0 does nothing |
+| `cstring(text: String) -> Int` | A copy of a text as C wants it, that stays until freed |
+| `text(address: Int) -> String` | The text of C at an address |
+| `readInt8`, `readUInt8`, `readInt16`, `readUInt16`, `readInt32`, `readUInt32`, `readInt64`, `readPointer` `(address, offset) -> Int` | The whole number that many bytes after the address |
+| `readFloat32`, `readFloat64` `(address, offset) -> Float` | The same for a float |
+| `writeInt8` ... `writeFloat64`, `writePointer` `(address, offset, value)` | Writes one. A number that does not fit is refused |
+| `int32s(values: [Int]) -> Int`, `float32s(values: [Float]) -> Int` | The address of a copy of an array, as an `int *` or a `float *`. To be freed |
+| `readInt32s(address, count) -> [Int]`, `readFloat32s(address, count) -> [Float]` | An array read from there |
+
+```lumen
+let squares = ffi.alloc(6 * 4);
+defer ffi.free(squares);
+fillSquares(squares, 6);                 // extern "mylib" fn fillSquares(out: Pointer, count: Int32);
+println(ffi.readInt32s(squares, 6));     // [0, 1, 4, 9, 16, 25]
+```
+
+A program run in the sandbox is not permitted this module.
 
 ---
 
