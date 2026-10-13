@@ -157,6 +157,7 @@ Before a function's instructions are written, `shorten` (in `function.go`) decid
 | A test read only by the branch after it | `JNLT a b else`, `JNLE`, `JNEQ`, `JNNE` (go to `else` unless the test holds; greater-than swaps the registers) | the test, then `JMPIFNOT` |
 | The same against a number in 0..65535 | `JNLTI a k else`, `JNLEI`, `JNGTI`, `JNGEI`, `JNEQI`, `JNNEI` | `LOADI`, the test, `JMPIFNOT` |
 | A call of `__is` with a descriptor naming one struct or variant (`{Shape.Circle}`), which is what a case of a `match` on an enum is | `JNTYPE value name else` when a branch reads it, `ISTYPE dest value name` otherwise | `NEWSTR` of the descriptor, `MOV`, a call of the host function, `JMPIFNOT` |
+| Three or more such tests of one value in a row, each going on to the next when it fails: a `match` on an enum | `SWITCH value count else`, then one `CASE name target` word per type: one jump to the case of the value's type | a `JNTYPE` per case, tried in order |
 | Adding or subtracting a number in 0..65535 | `ADDI dest a k`, `SUBI dest a k` | `LOADI`, then `ADD` or `SUB` |
 | The first argument of a function that calls nothing | stays in `r0` | `MOV home r0` on entry |
 

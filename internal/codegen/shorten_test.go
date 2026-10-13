@@ -591,3 +591,61 @@ func TestMethodsFoundOnTheValue(t *testing.T) {
 		t.Errorf("functions kept: %s", got)
 	}
 }
+
+// A match on an enum is a run of tests of what one value is, each going
+// on to the next when it fails. Three or more are one SWITCH.
+func TestARunOfTypeTestsIsASwitch(t *testing.T) {
+	// classify(value): 1, 2, 3, 4 for A, B, C, D and 0 for anything else
+	build := func(names []string, made string, another bool) *vm.Chunk {
+		f := ir.NewBuilder("main")
+		value := f.NewRegister()
+		f.Emit(ir.OpNewVariant, value, stringConst(made))
+		other := f.NewRegister()
+		f.Emit(ir.OpNewVariant, other, stringConst("E.B"))
+
+		for i, name := range names {
+			yes, no := f.NewBlock(), f.NewBlock()
+			asked := ir.Value(value)
+			if another && i == 2 {
+				asked = other // The third test is of another value
+			}
+			f.CreateBr(f.CreateCall(f.CreateMov(funcRef("__is")), asked, f.CreateMov(stringConst("{"+name+"}"))), yes, no)
+			f.SetBlock(yes)
+			f.CreateRet(f.CreateMov(intConst(int64(i + 1))))
+			f.SetBlock(no)
+		}
+		f.CreateRet(f.CreateMov(intConst(0)))
+
+		errs := errors.NewHandler()
+		chunk := NewGenerator(&ir.Program{Functions: []*ir.Function{f.Func}}, []string{"__is"}, errs).Generate()
+		if errs.HasErrors() {
+			t.Fatalf("%v", errs.Diagnostics)
+		}
+		if err := vm.Verify(chunk); err != nil {
+			t.Fatal(err)
+		}
+		return chunk
+	}
+
+	four := []string{"E.A", "E.B", "E.C", "E.D"}
+	for made, want := range map[string]int64{"E.A": 1, "E.B": 2, "E.C": 3, "E.D": 4, "E.Z": 0} {
+		chunk := build(four, made, false)
+		expectInt(t, run(t, chunk), want)
+		expectCount(t, chunk, "main", 1, vm.OpSWITCH)
+		expectCount(t, chunk, "main", 4, vm.OpCASE)
+	}
+
+	// Two tests are asked one after the other
+	chunk := build(four[:2], "E.B", false)
+	expectInt(t, run(t, chunk), 2)
+	expectCount(t, chunk, "main", 0, vm.OpSWITCH)
+	expectCount(t, chunk, "main", 2, vm.OpJNTYPE)
+
+	// A run ends where another value is asked about: A and B of one
+	// value are too few, and so are C and D of what follows
+	chunk = build(four, "E.D", true)
+	expectInt(t, run(t, chunk), 4)
+	expectCount(t, chunk, "main", 0, vm.OpSWITCH)
+	chunk = build(four, "E.A", true)
+	expectInt(t, run(t, chunk), 1)
+}

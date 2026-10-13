@@ -53,11 +53,19 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 	starts := make([]bool, size)
 	for ip := start; ip < end; ip++ {
 		starts[ip-start] = true
-		if chunk.Code[ip].Op == OpLONG {
+		switch chunk.Code[ip].Op {
+		case OpLONG:
 			if ip+2 >= end {
 				return fmt.Errorf("instruction %d: LONG is cut short by the end of the function", ip)
 			}
 			ip += 2
+		case OpSWITCH:
+			// Its cases are words of its own, not instructions
+			cases := int(chunk.Code[ip].B)
+			if cases > end-ip-1 {
+				return fmt.Errorf("instruction %d: SWITCH with %d cases is cut short by the end of the function", ip, cases)
+			}
+			ip += cases
 		}
 	}
 	jump := func(ip, target int) error {
@@ -173,6 +181,26 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 		case OpADDI, OpSUBI:
 			err = v.registers(instr.A, instr.B)
 
+		case OpSWITCH:
+			if err = v.registers(instr.A); err == nil {
+				err = jump(ip, int(instr.C))
+			}
+			for i := 1; err == nil && i <= int(instr.B); i++ {
+				option := chunk.Code[ip+i]
+				if option.Op != OpCASE {
+					err = fmt.Errorf("SWITCH is followed by %v where a CASE is expected", option.Op)
+				} else if err = v.pooledString(option.A); err == nil {
+					err = jump(ip, int(option.B))
+				}
+			}
+			if err == nil {
+				ip += int(instr.B)
+				continue
+			}
+
+		case OpCASE:
+			err = fmt.Errorf("CASE without SWITCH before it")
+
 		case OpISTYPE, OpGETMETHOD:
 			if err = v.registers(instr.A, instr.B); err == nil {
 				err = v.pooledString(instr.C)
@@ -233,7 +261,7 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 		last--
 	}
 	switch op := chunk.Code[last].Op; {
-	case op == OpRET, op == OpJMP, op == OpRETHROW:
+	case op == OpRET, op == OpJMP, op == OpRETHROW, op == OpSWITCH:
 	case op == OpLONG && chunk.Code[last+1].Op == OpJMP32:
 	case end == len(chunk.Code):
 		// Nothing follows: the program ends there

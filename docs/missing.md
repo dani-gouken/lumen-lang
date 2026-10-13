@@ -263,7 +263,6 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 | Float formatting | `println(3.0)` prints `3`, indistinguishable from an Int; infinity prints as `+Inf` |
 | A value compared with itself | Equal without being looked into, so a value of an enum that holds NaN equals itself, though NaN does not. Compare the numbers themselves where that matters |
 | Limits of a built program | A `.lc` file does not carry the `max_depth` and `heap_mb` of its project: `lumen run program.lc` needs them given again (`--max-depth=N`) |
-| `match` on an enum | Tries the variants one after the other, in the order of the cases: the last of twelve costs twelve tests |
 
 ---
 

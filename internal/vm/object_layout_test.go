@@ -425,3 +425,94 @@ func TestAMethodThatIsNotThere(t *testing.T) {
 		}
 	}
 }
+
+// switched is a program that makes a value of each of four types and asks
+// a SWITCH with cases for three of them where each goes: it returns the
+// numbers the cases give, in an array, over two rounds.
+func switched() *Chunk {
+	chunk := NewChunk()
+	chunk.StringPool = []string{"Shape.Circle", "Shape.Square", "Shape.Dot", "Other"}
+	chunk.Constants = []Value{NewInt(0), NewInt(1), NewInt(2), NewInt(3)}
+	chunk.Code = []Instr{
+		NewInstr(OpNEWARRAY, 0, 8, 0),             // 0
+		NewInstr(OpLOADI, 5, 0, 0),                // 1: turn
+		NewInstr(OpNEWOBJ, 1, 0, ObjectIsVariant), // 2: a Circle...
+		NewInstr(OpJNEQI, 5, 1, 5),                // 3
+		NewInstr(OpNEWOBJ, 1, 1, ObjectIsVariant), // 4: ...a Square on turn 1
+		NewInstr(OpJNEQI, 5, 2, 7),                // 5
+		NewInstr(OpNEWOBJ, 1, 2, ObjectIsVariant), // 6: a Dot on turn 2
+		NewInstr(OpJNEQI, 5, 3, 9),                // 7
+		NewInstr(OpNEWOBJ, 1, 3, ObjectIsNamed),   // 8: something else on turn 3
+		NewInstr(OpJNEQI, 5, 4, 11),               // 9
+		NewInstr(OpLOADI, 1, 77, 0),               // 10: a number on turn 4
+		NewInstr(OpSWITCH, 1, 3, 21),              // 11
+		NewInstr(OpCASE, 0, 15, 0),                // 12: Circle
+		NewInstr(OpCASE, 1, 17, 0),                // 13: Square
+		NewInstr(OpCASE, 2, 19, 0),                // 14: Dot
+		NewInstr(OpLOADI, 2, 10, 0),               // 15
+		NewInstr(OpJMP, 22, 0, 0),                 // 16
+		NewInstr(OpLOADI, 2, 20, 0),               // 17
+		NewInstr(OpJMP, 22, 0, 0),                 // 18
+		NewInstr(OpLOADI, 2, 30, 0),               // 19
+		NewInstr(OpJMP, 22, 0, 0),                 // 20
+		NewInstr(OpLOADI, 2, 99, 0),               // 21: none of them
+		NewInstr(OpARRPUSH, 0, 2, 0),              // 22
+		NewInstr(OpADDI, 5, 5, 1),                 // 23
+		NewInstr(OpJNEQI, 5, 10, 26),              // 24: ten turns: five kinds, twice
+		NewInstr(OpRET, 0, 0, 0),                  // 25
+		NewInstr(OpJNLTI, 5, 5, 28),               // 26: the second five as the first
+		NewInstr(OpJMP, 2, 0, 0),                  // 27
+		NewInstr(OpSUBI, 5, 5, 5),                 // 28
+		NewInstr(OpNEWOBJ, 1, 0, ObjectIsVariant), // 29
+		NewInstr(OpJNEQI, 5, 1, 32),               // 30
+		NewInstr(OpNEWOBJ, 1, 1, ObjectIsVariant), // 31
+		NewInstr(OpJNEQI, 5, 2, 34),               // 32
+		NewInstr(OpNEWOBJ, 1, 2, ObjectIsVariant), // 33
+		NewInstr(OpJNEQI, 5, 3, 36),               // 34
+		NewInstr(OpNEWOBJ, 1, 3, ObjectIsNamed),   // 35
+		NewInstr(OpJNEQI, 5, 4, 38),               // 36
+		NewInstr(OpLOADI, 1, 77, 0),               // 37
+		NewInstr(OpADDI, 5, 5, 5),                 // 38
+		NewInstr(OpJMP, 11, 0, 0),                 // 39: back to the same SWITCH
+	}
+	chunk.Prototypes = []FunctionPrototype{{Name: "main", CodeSize: len(chunk.Code), RegisterCount: 6}}
+	return chunk
+}
+
+// A SWITCH goes to the case of the type of its value, and to the place for
+// none of them for a value of another type or one that is not an object:
+// the first time it meets a type, and every time after.
+func TestASwitchGoesToTheCaseOfTheType(t *testing.T) {
+	chunk := switched()
+	if err := Verify(chunk); err != nil {
+		t.Fatal(err)
+	}
+	machine := NewVM()
+	for round := 0; round < 2; round++ {
+		result, err := machine.Exec(chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := FormatValue(result); got != "[10, 20, 30, 99, 99, 10, 20, 30, 99, 99]" {
+			t.Errorf("round %d: %s", round, got)
+		}
+	}
+
+	for name, change := range map[string]func(*Chunk){
+		"a case that is not one":          func(c *Chunk) { c.Code[13] = NewInstr(OpNOP, 0, 0, 0) },
+		"more cases than there are":       func(c *Chunk) { c.Code[11].B = 60 },
+		"a case outside the function":     func(c *Chunk) { c.Code[14].B = 500 },
+		"a case into the cases":           func(c *Chunk) { c.Code[12].B = 13 },
+		"a name that is not a text":       func(c *Chunk) { c.Constants[1] = NewNumber(2.5) },
+		"nowhere to go for none of them":  func(c *Chunk) { c.Code[11].C = 500 },
+		"a value in a register not there": func(c *Chunk) { c.Code[11].A = 9 },
+		"a case without a switch":         func(c *Chunk) { c.Code[21] = NewInstr(OpCASE, 0, 22, 0) },
+		"a jump into the cases":           func(c *Chunk) { c.Code[16].A = 13 },
+	} {
+		damaged := switched()
+		change(damaged)
+		if err := Verify(damaged); err == nil || !strings.Contains(err.Error(), "invalid bytecode") {
+			t.Errorf("%s: expected the chunk to be refused, got %v", name, err)
+		}
+	}
+}

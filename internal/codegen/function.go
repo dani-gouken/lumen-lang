@@ -52,6 +52,8 @@ type funcGen struct {
 	unread   map[int]bool                        // Temporaries nothing reads
 	inReturn map[int]bool                        // Results of calls read where the call left them, in r0
 	typeTest map[*ir.Instruction]string          // A call that asks whether a value is of one type -> its name
+	switches map[*ir.Instruction]*typeSwitch     // The branch that starts a run of such tests on one value -> the run
+	inSwitch map[*ir.Instruction]bool            // The branches further down a run
 	fields   map[*ir.Instruction]uint16          // A struct or enum value being made -> how many fields it is given
 	constant map[*ir.Instruction]bool            // Values of an enum that hold nothing and are never given anything
 }
@@ -62,6 +64,19 @@ type fixup struct {
 	target *ir.BasicBlock
 	field  byte // Which operand holds an address ('A', 'B', 'C'); 0 for the offset word of a long jump
 }
+
+// typeSwitch is a run of tests of what one value is, each going on to the
+// next when it fails: what a match on an enum is.
+type typeSwitch struct {
+	value     ir.Value
+	names     []string
+	targets   []*ir.BasicBlock
+	otherwise *ir.BasicBlock
+}
+
+// minSwitch is how many cases make a SWITCH worth its table: fewer are
+// asked one after the other.
+const minSwitch = 3
 
 // directCall is a call of a function that needs no function value.
 type directCall struct {
@@ -461,6 +476,8 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 	f.unread = make(map[int]bool)
 	f.inReturn = make(map[int]bool)
 	f.typeTest = make(map[*ir.Instruction]string)
+	f.switches = make(map[*ir.Instruction]*typeSwitch)
+	f.inSwitch = make(map[*ir.Instruction]bool)
 	f.fields = make(map[*ir.Instruction]uint16)
 	f.constant = make(map[*ir.Instruction]bool)
 	for id, u := range uses {
@@ -553,6 +570,78 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 					f.small[test] = smallOperand{operand: 0, value: n}
 				}
 			}
+		}
+	}
+	if !f.long {
+		f.findSwitches()
+	}
+}
+
+// asksType returns the test a block ends with, if it asks whether a value
+// is of one type and branches on the answer: the type's name, the value,
+// the branch. A block further down a run must do nothing else: whatever
+// it did besides would be skipped by going straight to a case.
+func (f *funcGen) asksType(bb *ir.BasicBlock, first bool) (string, ir.Value, *ir.Instruction, bool) {
+	instrs := body(bb)
+	if len(instrs) == 0 || instrs[len(instrs)-1].Op != ir.OpBr {
+		return "", nil, nil, false
+	}
+	branch := instrs[len(instrs)-1]
+	for _, instr := range instrs[:len(instrs)-1] {
+		if !first && !f.folded[instr] {
+			return "", nil, nil, false
+		}
+	}
+	test, fused := f.fused[branch]
+	name, isType := f.typeTest[test]
+	if !fused || !isType || len(branch.Operands) != 3 {
+		return "", nil, nil, false
+	}
+	return name, test.Operands[1], branch, true
+}
+
+// findSwitches finds the runs of tests of what one value is, where each
+// test that fails leads to a block that is only the next test. A match on
+// an enum compiles to such a run, one test per case. A run of minSwitch
+// tests or more is written as one SWITCH, which goes straight to the case
+// of the value's type.
+//
+// The blocks further down the run keep their own test: a case with a
+// condition that fails goes on at the next one.
+func (f *funcGen) findSwitches() {
+	for _, bb := range f.blocks {
+		name, value, branch, ok := f.asksType(bb, true)
+		if !ok || f.inSwitch[branch] {
+			continue
+		}
+		subject, _ := regID(value)
+		run := &typeSwitch{value: value}
+		var links []*ir.Instruction
+		seen := map[*ir.BasicBlock]bool{}
+		for at := bb; ok && !seen[at]; {
+			seen[at] = true
+			thenBlock, _ := branch.Operands[1].(*ir.BasicBlock)
+			elseBlock, _ := branch.Operands[2].(*ir.BasicBlock)
+			if thenBlock == nil || elseBlock == nil {
+				break
+			}
+			run.names = append(run.names, name)
+			run.targets = append(run.targets, thenBlock)
+			run.otherwise = elseBlock
+			links = append(links, branch)
+
+			at = elseBlock
+			name, value, branch, ok = f.asksType(at, false)
+			if id, isReg := regID(value); ok && (!isReg || id != subject) {
+				ok = false // Another value is asked about from there on
+			}
+		}
+		if len(run.names) < minSwitch || len(run.names) > vm.MaxOperand {
+			continue
+		}
+		f.switches[links[0]] = run
+		for _, link := range links[1:] {
+			f.inSwitch[link] = true
 		}
 	}
 }
@@ -780,6 +869,17 @@ func (f *funcGen) emitJump(op vm.OpCode, cond uint16, target *ir.BasicBlock) {
 	f.emit(vm.OpNOP, 0, 0, 0) // Offset word, patched later
 }
 
+// emitSwitch emits a jump to the case of a value's type: SWITCH, then one
+// CASE word per type.
+func (f *funcGen) emitSwitch(run *typeSwitch) {
+	f.fixups = append(f.fixups, fixup{idx: len(f.g.chunk.Code), target: run.otherwise, field: 'C'})
+	f.emit(vm.OpSWITCH, f.reg(run.value), uint16(len(run.names)), 0)
+	for i, name := range run.names {
+		f.fixups = append(f.fixups, fixup{idx: len(f.g.chunk.Code), target: run.targets[i], field: 'B'})
+		f.emit(vm.OpCASE, f.g.stringConstant(name, f.pos), 0, 0)
+	}
+}
+
 // emitTest emits a test that jumps to a block unless it holds, in place
 // of the test and the branch on its result.
 func (f *funcGen) emitTest(test *ir.Instruction, otherwise *ir.BasicBlock) {
@@ -877,6 +977,10 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 		thenBlock, ok1 := f.blockOperand(instr, 1)
 		elseBlock, ok2 := f.blockOperand(instr, 2)
 		if !ok1 || !ok2 {
+			return
+		}
+		if run, ok := f.switches[instr]; ok {
+			f.emitSwitch(run)
 			return
 		}
 		if test, ok := f.fused[instr]; ok {

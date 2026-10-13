@@ -48,6 +48,9 @@ type chunkCache struct {
 	// a first method is looked for.
 	byName      map[string]int
 	methodNames map[uint16]int32
+
+	// How many SWITCH instructions have been given a number (see switchTo)
+	switches int32
 }
 
 // noMethod is what is remembered of a type that has no method of a name.
@@ -107,6 +110,31 @@ func (kept *chunkCache) method(chunk *Chunk, root *Shape, number int32, nameCons
 	}
 	root.methods[number] = index + 2
 	return index
+}
+
+// switchTo finds where a SWITCH goes on for the values of a type: the
+// target of the CASE that names the type, or the one for none of them.
+// The cases are gone through once per type; what is found is kept with the
+// type, by the number of the SWITCH.
+func (kept *chunkCache) switchTo(chunk *Chunk, at int, number int32, root *Shape) int32 {
+	if root.casesOf != kept {
+		root.cases, root.casesOf = nil, kept
+	}
+	if int(number) >= len(root.cases) {
+		root.cases = append(root.cases, make([]int32, int(number)+1-len(root.cases))...)
+	}
+
+	instr := chunk.Code[at]
+	target := int32(instr.C)
+	for i := 1; i <= int(instr.B); i++ {
+		option := chunk.Code[at+i]
+		if chunk.StringPool[intOf(chunk.Constants[option.A])] == root.typeName {
+			target = int32(option.B)
+			break
+		}
+	}
+	root.cases[number] = target + 1
+	return target
 }
 
 // methodOf finds the method of a name on a value: the function object to
@@ -1039,6 +1067,30 @@ func (vm *VM) execute(base int) (Value, error) {
 				return NewNull(), vm.runtimeError("integer overflow")
 			}
 			regs[instr.A] = NewInt(diff)
+
+		case OpSWITCH:
+			// A = the value, B = the number of CASE words that follow,
+			// C = where to go on for a value none of them names
+			target := int(instr.C)
+			if h := header(regs[instr.A]); h != nil && h.Type == ObjTypeObject {
+				root := (*ObjectObj)(unsafe.Pointer(h)).shape.root
+				known := &cache[ip]
+				if known.other == 0 {
+					kept.switches++
+					known.other = kept.switches
+				}
+				number := known.other - 1
+				if root.casesOf == kept && int(number) < len(root.cases) && root.cases[number] != 0 {
+					target = int(root.cases[number]) - 1
+				} else {
+					target = int(kept.switchTo(chunk, ip, number, root))
+				}
+			}
+			if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+				return NewNull(), vm.stopped()
+			}
+			ip = target
+			continue
 
 		case OpGETMETHOD:
 			method, err := vm.methodOf(regs[instr.B], chunk, kept, &cache[ip], instr.C)

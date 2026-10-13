@@ -196,6 +196,12 @@ type Shape struct {
 	// not looked for yet.
 	methods   []int32
 	methodsOf *chunkCache
+
+	// On a root, where each SWITCH that met a value of the type goes on
+	// for it, by the number the chunk gave the SWITCH, plus one, and 0
+	// for one that has not met the type yet.
+	cases   []int32
+	casesOf *chunkCache
 }
 
 // newRootShape makes the shape of the values of a type before they are

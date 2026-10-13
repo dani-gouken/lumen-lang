@@ -158,6 +158,7 @@ type Chunk struct {
 - `DIV r_dest r_a r_b` - Division
 - `MOD r_dest r_a r_b` - Remainder
 - `NEG r_dest r_a` - Negation
+- `SWITCH r_value count else` followed by `count` words `CASE name target` - Go on at the target of the case that names the type of the value, or at `else` for a value of none of them
 - `ISTYPE r_dest r_value name`, `JNTYPE r_value name target` - Whether a value is of a struct or a variant, by the name it carries; the second goes on at `target` unless it is
 - `ADDI r_dest r_a k`, `SUBI r_dest r_a k` - Addition and subtraction of a number `k` (0 to 65535) written in the instruction
 - `NOT r_dest r_a` - Boolean negation
@@ -432,6 +433,9 @@ Asking what a value is, as every case of a `match` on an enum does, is
 `JNTYPE value name target` (or `ISTYPE dest value name`): it compares the
 name the value's shape carries. The instruction remembers the shapes it
 answered yes and no for, so the names themselves are compared once each.
+A `match` with three cases or more is one `SWITCH`: the cases are gone
+through the first time a type is met, and where its values go on is kept
+with the type, so that the twelfth variant costs what the first does.
 
 A call through a trait finds its method the same way (`CALLM window nargs
 name`, or `GETMETHOD dest value name`): the method `area` of a value of
