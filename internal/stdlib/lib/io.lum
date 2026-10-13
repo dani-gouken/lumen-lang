@@ -1,8 +1,13 @@
 // Input, files and the environment.
 //
-// Output goes through the builtins print and println. The functions here
-// that can fail for reasons outside the program (a file that is not there)
-// say so in what they return, and do not stop the program.
+// Output goes through the builtins print and println. Reading or writing
+// a file can fail for reasons outside the program (the file is not there,
+// may not be touched); those functions return a Result, which holds what
+// was asked for or the reason there is none, and never stop the program.
+
+import std.result;
+import std.result.{Result, Location};
+import std.strings;
 
 // A line typed by the user, or the next line of the input when it comes
 // from a file or another program; without its line end. Null at the end
@@ -26,16 +31,109 @@ pub fn readLines() -> [String] {
     return out;
 }
 
-// The whole content of a file, or null if it cannot be read.
-pub extern fn readFile(path: String) -> String?;
+// --- Files ---
 
-// Writes a text to a file, replacing what was in it. Returns whether it
-// worked.
-pub extern fn writeFile(path: String, text: String) -> Bool;
+// Why a file could not be read or written.
+pub enum ErrorKind {
+    NotFound,           // there is no file at that path
+    PermissionDenied,   // the file may not be read, or written
+    IsDirectory,        // the path is a folder
+    NotDirectory,       // part of the path is a file, where a folder is needed
+    AlreadyExists,
+    Other,              // anything else; the message says what
+}
 
-// Adds a text to the end of a file, creating it if needed. Returns
-// whether it worked.
-pub extern fn appendFile(path: String, text: String) -> Bool;
+// A failure to read or write a file: what kind it is, for the program to
+// act on, and the rest for telling a person.
+pub struct Error {
+    kind: ErrorKind;
+    operation: String;      // "read", "write" or "append"
+    path: String;
+    message: String;        // as the operating system puts it: "no such file or directory"
+    stack: [Location];      // where it was asked for: the call of readFile, then the calls that led to it
+}
+
+impl Error {
+    // In one sentence: cannot read notes.txt: no such file or directory
+    pub fn describe() -> String {
+        return "cannot " + self.operation + " " + self.path + ": " + self.message;
+    }
+
+    // The sentence, then where the program asked for the file and the
+    // calls that led there.
+    pub fn trace() -> String {
+        return result.trace(self.describe(), self.stack);
+    }
+}
+
+// The whole content of a file, or why it cannot be read.
+//
+//     match io.readFile("notes.txt") {
+//         case Result.Ok(text): { ... }
+//         case Result.Err(error): {
+//             match error.kind {
+//                 case ErrorKind.NotFound: { ... }       // start with an empty one
+//                 default: { println(error.describe()); }
+//             }
+//         }
+//     }
+pub fn readFile(path: String) -> Result<String, Error> {
+    let text = readText(path);
+    if text == null {
+        return Result.Err(failed("read", path));
+    }
+    return Result.Ok(text);
+}
+
+// Writes a text to a file, replacing what was in it. Gives how many
+// characters were written, or why it could not be done.
+pub fn writeFile(path: String, text: String) -> Result<Int, Error> {
+    if writeText(path, text) {
+        return Result.Ok(strings.len(text));
+    }
+    return Result.Err(failed("write", path));
+}
+
+// Adds a text to the end of a file, creating it if needed. Gives how many
+// characters were added, or why it could not be done.
+pub fn appendFile(path: String, text: String) -> Result<Int, Error> {
+    if appendText(path, text) {
+        return Result.Ok(strings.len(text));
+    }
+    return Result.Err(failed("append", path));
+}
+
+// The lines of a file, or why it cannot be read.
+pub fn readFileLines(path: String) -> Result<[String], Error> {
+    return readFile(path).map(strings.lines);
+}
+
+// The error for the operation that just failed.
+fn failed(operation: String, path: String) -> Error {
+    // The runtime keeps two things about it: the kind and the message
+    let parts = problem();
+    // Without this function and the one that called it: the trace starts
+    // at the program's own call
+    return Error { kind: kindOf(parts[0]), operation: operation, path: path, message: parts[1], stack: result.stack(2) };
+}
+
+fn kindOf(name: String) -> ErrorKind {
+    match name {
+        case "not found": { return ErrorKind.NotFound; }
+        case "permission denied": { return ErrorKind.PermissionDenied; }
+        case "is a directory": { return ErrorKind.IsDirectory; }
+        case "not a directory": { return ErrorKind.NotDirectory; }
+        case "already exists": { return ErrorKind.AlreadyExists; }
+        default: { return ErrorKind.Other; }
+    }
+}
+
+// Provided by the runtime: the operations themselves, which only say
+// whether they worked, and what is known about the last one that did not.
+extern fn readText(path: String) -> String?;
+extern fn writeText(path: String, text: String) -> Bool;
+extern fn appendText(path: String, text: String) -> Bool;
+extern fn problem() -> [String];
 
 pub extern fn exists(path: String) -> Bool;
 

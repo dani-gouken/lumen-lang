@@ -61,7 +61,7 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Interactive debugger, showing Lumen source lines
 - ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`
 
-Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library: numbers, text, arrays, lists, dictionaries, files, time, random numbers ([docs/stdlib.md](docs/stdlib.md)).
+Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library: numbers, text, arrays, lists, dictionaries, files, time, random numbers ([docs/stdlib.md](docs/stdlib.md)).
 
 Not there yet:
 
@@ -156,6 +156,7 @@ Example programs in [examples/](examples/):
 - **sorting.lum** - Merge sort, quicksort and binary search for any type, the order passed as a function
 - **tree.lum** - A generic binary search tree: a struct that refers to itself, optional fields
 - **derivative.lum** - Symbolic differentiation: an enum that holds itself, the rules of calculus as `match` cases with nested patterns
+- **failures.lum** - `Result` for failures with a reason, an error type with a trace, `panic`, and `attempt` to survive what would stop the program
 - **words.lum** - Word counts of a text with the standard library: `std.strings`, `std.dict`, `std.arrays`, `std.list`, `std.math`
 - **modules.lum** - A program in several files: `import`, `pub`, with its modules in `zoo/`
 - **project/** - A program with a project file (`lumen.json`): entry, module root, a package. Run it with `lumen run examples/project`

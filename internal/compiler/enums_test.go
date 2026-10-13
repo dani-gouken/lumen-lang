@@ -690,3 +690,47 @@ total 68
 		"b.lum":    "import a;\npub const Y = a.X + 1;",
 	}, "E2031", "a.lum", "is defined in terms of itself")
 }
+
+func TestLambdasCaptureThroughEnumValues(t *testing.T) {
+	// A variable of the enclosing function used inside the value of an
+	// enum, inside a lambda: it has to be captured like any other use
+	expectOutput(t, `
+		enum Result<T, E> { Ok(T), Err(E) }
+		enum Wrap { One(Int), Pair(Int, String), Deep(Wrap) }
+		struct Note { key: String; n: Int; }
+
+		fn check(key: String, limit: Int) -> fn(Int) -> Result<Int, Note> {
+			return fn(n: Int) -> Result<Int, Note> {
+				if n > limit { return Result.Err(Note { key: key, n: n - limit }); }
+				return Result.Ok(n + limit);
+			};
+		}
+		fn wrappers(label: String, base: Int) -> [fn() -> Wrap] {
+			let step = 1;
+			return [
+				fn() -> Wrap { return Wrap.One(base); },
+				fn() -> Wrap { step++; return Wrap.Pair(base + step, label); },
+				fn() -> Wrap { return Wrap.Deep(Wrap.Deep(Wrap.Pair(step, label + "!"))); },
+			];
+		}
+		fn matcher(wanted: Int) -> fn(Wrap) -> Bool {
+			return fn(w: Wrap) -> Bool {
+				match w {
+					case Wrap.One(n): { return n == wanted; }
+					case Wrap.Pair(n, _): { return n == wanted; }
+					case Wrap.Deep(inner): { return false; }
+				}
+			};
+		}
+	`, `
+		let c = check("volume", 10);
+		println(c(3), c(25));
+		let made = wrappers("x", 5);
+		println(made[0](), made[1](), made[1](), made[2]());
+		let isSeven = matcher(7);
+		println(isSeven(Wrap.One(7)), isSeven(Wrap.Pair(7, "a")), isSeven(Wrap.One(8)), isSeven(Wrap.Deep(Wrap.One(7))));
+	`, `Ok(13) Err({key: "volume", n: 15})
+One(5) Pair(7, "x") Pair(8, "x") Deep(Deep(Pair(3, "x!")))
+true true false false
+`)
+}

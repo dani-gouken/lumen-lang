@@ -1,3 +1,4 @@
-Runtime error: std.strings.substring: range 0..5 is outside a text of 3 characters
-stdlib_error.lum:8:19 in function 'shorten'
+[ERROR] R0007: std.strings.substring: range 0..5 is outside a text of 3 characters
+--> test/e2e/cases/stdlib_error.lum:8:19 in function 'shorten'
 return strings.substring(name, 0, 5) + "...";
+called from test/e2e/cases/stdlib_error.lum:13:13 in function 'main'

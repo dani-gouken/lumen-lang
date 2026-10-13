@@ -1,2 +1,5 @@
-Runtime error: cannot cast array to [Int]: element 2: String is not an Int
+[ERROR] R0003: cannot cast array to [Int]: element 2: String is not an Int
 cast_error.lum:8:21 in function 'sum'
+for n in values as [Int] {
+Suggestion: Ask what the value is before casting it: 'if value is Type { ... }', or a match on its type
+called from test/e2e/cases/cast_error.lum:22:13 in function 'main'

@@ -144,6 +144,15 @@ func (a *Analyzer) visitExpr(expr ast.Expr, scope *functionScope) {
 		a.visitExpr(e.Expr, scope)
 	case *ast.TypeTestExpr:
 		a.visitExpr(e.Expr, scope)
+	case *ast.VariantExpr:
+		// The values of an enum value are expressions like any others
+		for _, arg := range e.Args {
+			a.visitExpr(arg, scope)
+		}
+	case *ast.VariantTestExpr:
+		a.visitExpr(e.Expr, scope)
+	case *ast.VariantFieldExpr:
+		a.visitExpr(e.Expr, scope)
 	case *ast.CallExpr:
 		a.visitExpr(e.Func, scope)
 		for _, arg := range e.Args {

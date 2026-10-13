@@ -472,6 +472,8 @@ func exits(stmt ast.Stmt) bool {
 	switch s := stmt.(type) {
 	case *ast.ReturnStmt, *ast.BreakStmt, *ast.ContinueStmt:
 		return true
+	case *ast.ExprStmt:
+		return isPanic(s)
 	case *ast.BlockStmt:
 		for _, inner := range s.Stmts {
 			if exits(inner) {
@@ -490,6 +492,9 @@ func alwaysReturns(stmt ast.Stmt) bool {
 	switch s := stmt.(type) {
 	case *ast.ReturnStmt:
 		return true
+	case *ast.ExprStmt:
+		// Nothing comes after a panic: the function does not reach its end
+		return isPanic(s)
 	case *ast.BlockStmt:
 		if s == nil {
 			return false
@@ -580,6 +585,14 @@ func walk(node ast.Node, visitExpr func(ast.Expr), visitStmt func(ast.Stmt)) {
 			walkExpr(e.Expr)
 		case *ast.TypeTestExpr:
 			walkExpr(e.Expr)
+		case *ast.VariantExpr:
+			for _, arg := range e.Args {
+				walkExpr(arg)
+			}
+		case *ast.VariantTestExpr:
+			walkExpr(e.Expr)
+		case *ast.VariantFieldExpr:
+			walkExpr(e.Expr)
 		case *ast.CallExpr:
 			walkExpr(e.Func)
 			for _, arg := range e.Args {
@@ -656,4 +669,16 @@ func walk(node ast.Node, visitExpr func(ast.Expr), visitStmt func(ast.Stmt)) {
 	case ast.Expr:
 		walkExpr(n)
 	}
+}
+
+// isPanic reports whether a statement is a call of the builtin `panic`,
+// which stops the program: what follows it never runs, and a function
+// that ends with it does not need to return a value.
+func isPanic(stmt *ast.ExprStmt) bool {
+	call, ok := stmt.Expr.(*ast.CallExpr)
+	if !ok {
+		return false
+	}
+	callee, ok := call.Func.(*ast.Ident)
+	return ok && callee.Name == "panic"
 }

@@ -1,0 +1,140 @@
+// When things go wrong.
+//
+// A failure that is part of the job is returned: the function gives a
+// Result, which holds the value or the reason there is none, and whoever
+// calls it has to look.
+//
+// A failure that should never happen stops the program: an index that is
+// not there, or a call of `panic`. `attempt` is for the places that must
+// survive those anyway, such as a loop that runs jobs one after another.
+//
+// Shows: Result, an error type of your own with a trace, panic, attempt,
+// std.io errors with their kind.
+
+import std.arrays;
+import std.io;
+import std.io.{ErrorKind};
+import std.result;
+import std.result.{Result, Kind, Location, attempt};
+import std.strings;
+
+// --- An error of our own, saying what and where ---
+
+enum Reason { Empty, NotANumber(String), OutOfRange(Int) }
+
+struct ConfigError {
+    key: String;
+    reason: Reason;
+    stack: [Location];      // where it was found
+}
+
+impl ConfigError {
+    fn describe() -> String {
+        match self.reason {
+            case Reason.Empty: { return self.key + " is empty"; }
+            case Reason.NotANumber(text): { return self.key + " should be a number, not '" + text + "'"; }
+            case Reason.OutOfRange(n): { return self.key + " should be from 1 to 100, not " + toString(n); }
+        }
+    }
+}
+
+fn invalid(key: String, reason: Reason) -> ConfigError {
+    // stack(1): from whoever called this function, not from here
+    return ConfigError { key: key, reason: reason, stack: result.stack(1) };
+}
+
+// --- Functions that can fail return a Result ---
+
+fn number(key: String, text: String) -> Result<Int, ConfigError> {
+    if strings.isBlank(text) {
+        return Result.Err(invalid(key, Reason.Empty));
+    }
+    let n = strings.parseInt(text);
+    if n == null {
+        return Result.Err(invalid(key, Reason.NotANumber(text)));
+    }
+    return Result.Ok(n);
+}
+
+fn percent(key: String, text: String) -> Result<Int, ConfigError> {
+    // A next step that can fail too; the first failure is the one that comes out
+    return number(key, text).then(fn(n: Int) -> Result<Int, ConfigError> {
+        if n < 1 || n > 100 {
+            return Result.Err(invalid(key, Reason.OutOfRange(n)));
+        }
+        return Result.Ok(n);
+    });
+}
+
+// --- Jobs that may stop the program ---
+
+fn average(numbers: [Int]) -> Int {
+    return arrays.sum(numbers) / arrays.len(numbers);
+}
+
+fn third(numbers: [Int]) -> Int {
+    return numbers[2];
+}
+
+fn checked(n: Int) -> Int {
+    if n < 0 {
+        panic("a negative total:", n);
+    }
+    return n;
+}
+
+fn main() -> Int {
+    println("-- settings");
+    for text in ["40", "", "lots", "250"] {
+        match percent("volume", text) {
+            case Result.Ok(n): { println("volume set to", n); }
+            case Result.Err(error): { println("refused:", error.describe()); }
+        }
+    }
+
+    // An error is a value: it can be kept, passed on, asked where it came from
+    let error = percent("brightness", "x").reason();
+    if error != null {
+        println(result.trace(error.describe(), error.stack));
+    }
+
+    println("-- files");
+    match io.readFile("no-such-file.conf") {
+        case Result.Ok(text): { println(strings.len(text), "characters"); }
+        case Result.Err(problem): {
+            match problem.kind {
+                case ErrorKind.NotFound: { println("no settings file; using the defaults"); }
+                default: { println(problem.describe()); }
+            }
+        }
+    }
+    // Or in one line, when the reason does not matter
+    println(arrays.len(io.readFileLines("no-such-file.conf").orElse([])), "lines");
+
+    println("-- jobs");
+    let jobs: [fn() -> Int] = [
+        fn() -> Int { return average([4, 8, 9]); },
+        fn() -> Int { return average([]); },
+        fn() -> Int { return third([1, 2]); },
+        fn() -> Int { return checked(3 - 10); },
+        fn() -> Int { return average([10, 20]); },
+    ];
+    let completed = 0;
+    for i, job in jobs {
+        // Without attempt, the second job would end the program
+        match attempt(job) {
+            case Result.Ok(n): {
+                println("job", i, "gave", n);
+                completed++;
+            }
+            case Result.Err(failure): {
+                match failure.kind {
+                    case Kind.Panic: { println("job", i, "gave up:", failure.message); }
+                    default: { println("job", i, "broke:", failure.message, "in", failure.at.function); }
+                }
+            }
+        }
+    }
+    println(completed, "of", arrays.len(jobs), "jobs completed");
+    return 0;
+}

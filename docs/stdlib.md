@@ -26,17 +26,18 @@ A longer program using most of it is [`examples/words.lum`](../examples/words.lu
 | [`std.list`](#stdlist) | `List<T>`: an array with methods |
 | [`std.dict`](#stddict) | `Dict<V>`: values found by a text key |
 | [`std.option`](#stdoption) | Chaining steps on values that may be `null` |
+| [`std.result`](#stdresult) | `Result<T, E>`, surviving a failure with `attempt`, traces |
 | [`std.io`](#stdio) | Reading input, files, the environment |
 | [`std.time`](#stdtime) | The clock, waiting, measuring |
 | [`std.random`](#stdrandom) | Random numbers |
 
 The modules are imported and used like any other ([modules.md](modules.md)): `import std.math;` then `math.abs(-3)`, or `import std.math.{abs};` then `abs(-3)`.
 
-`print`, `println`, `toString` and `push` are not part of the library: they are builtins, available without an import.
+`print`, `println`, `toString`, `push` and `panic` are not part of the library: they are builtins, available without an import.
 
 ## Conventions
 
-**Nothing instead of failure.** A function that may have no answer returns an optional, and `null` means "none": the position of something not found, the first item of an empty array, a text that is not a number, a file that cannot be read. The type checker then makes sure the program deals with it:
+**Nothing instead of failure.** A function that may have no answer returns an optional, and `null` means "none": the position of something not found, the first item of an empty array, a text that is not a number. Where there is a reason worth knowing, as for a file that cannot be read, it returns a [`Result`](#stdresult) with the reason in it. The type checker then makes sure the program deals with it:
 
 ```lumen
 let n = strings.parseInt(line);      // Int?
@@ -47,9 +48,12 @@ let port = strings.parseInt(text) ?? 8080;
 **A failure is for a mistake in the program.** Asking for characters 2 to 9 of a three-letter text, the square root of a negative number, or a random number below zero stops the program, like an index out of bounds does. The message names the function as the program called it and the line that called it:
 
 ```
-Runtime error: std.strings.substring: range 0..5 is outside a text of 3 characters
-  at main.lum:8:19 in function 'shorten'
-        return strings.substring(name, 0, 5) + "...";
+[ERROR] R0007: std.strings.substring: range 0..5 is outside a text of 3 characters
+  --> main.lum:8:19 in function 'shorten'
+     |
+ 8 |     return strings.substring(name, 0, 5) + "...";
+     |                   ^^^^^^^^^^
+  called from main.lum:13:13 in function 'main'
 ```
 
 **Arrays are not changed** by the functions of `std.arrays`; they return new ones. The exceptions say so (`swap`, `random.shuffle`). A `List` is the reverse: its methods change it, unless they return a new list.
@@ -413,41 +417,97 @@ There is no separate `Option` type with `Some` and `None`: `T?` is that type, an
 
 ---
 
+## `std.result`
+
+For failures: returning one with its reason, and surviving one that would stop the program. The whole subject is in [errors.md](errors.md); this is the reference.
+
+**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none.
+
+| Method | Gives |
+|--------|-------|
+| `isOk()`, `isErr()` | |
+| `value() -> T?`, `reason() -> E?` | One or the other, or `null` |
+| `orElse(fallback) -> T` | The value, or the fallback |
+| `map<U>(convert)`, `mapErr<F>(convert)` | The value, or the reason, turned into another |
+| `then<U>(step) -> Result<U, E>` | A next step that can fail too |
+| `expect(message) -> T` | The value; stops the program if there is none |
+
+**Failures that stop the program**
+
+| Function | Does |
+|----------|------|
+| `attempt<T>(action: fn() -> T) -> Result<T, Failure>` | Runs the function; if it stops, the program goes on and the failure is returned |
+| `guard(action: fn() -> Void) -> Failure?` | The same, for a function run for what it does |
+| `stack(skip: Int) -> [Location]` | The calls in progress, innermost first, leaving out `skip` of them: for an error of your own that says where it comes from |
+| `trace(message, stack) -> String` | The message and the calls, over several lines |
+
+| Type | Holds |
+|------|-------|
+| `Failure` | `kind: Kind`, `message`, `at: Location`, `stack: [Location]`; `describe()`, `trace()` |
+| `Kind` | `Panic`, `Bounds`, `Cast`, `Arithmetic`, `Depth`, `Memory`, `Library`, `Other` |
+| `Location` | `function`, `file`, `line`, `column`; `describe()` |
+
+The builtin `panic(values...)`, which stops the program, needs no import.
+
+---
+
 ## `std.io`
 
-Output goes through the builtins `print` and `println`. What can fail for reasons outside the program says so in its result and does not stop the program.
+Output goes through the builtins `print` and `println`. Reading and writing a file can fail for reasons outside the program; those functions return a [`Result`](#stdresult) and never stop the program.
 
 | Function | Result |
 |----------|--------|
 | `readLine() -> String?` | A line of input, without its line end. `null` at the end of the input |
 | `ask(question) -> String?` | Prints the question, then reads the answer |
 | `readLines() -> [String]` | Every remaining line of the input |
-| `readFile(path) -> String?` | The whole content of a file, or `null` if it cannot be read |
-| `writeFile(path, text) -> Bool` | Writes the text, replacing what was in the file. Whether it worked |
-| `appendFile(path, text) -> Bool` | Adds to the end of the file, creating it if needed |
+| `readFile(path) -> Result<String, Error>` | The whole content of a file, or why it cannot be read |
+| `readFileLines(path) -> Result<[String], Error>` | Its lines |
+| `writeFile(path, text) -> Result<Int, Error>` | Writes the text, replacing what was in the file. How many characters were written |
+| `appendFile(path, text) -> Result<Int, Error>` | Adds to the end of the file, creating it if needed |
 | `exists(path) -> Bool` | |
 | `remove(path) -> Bool` | Deletes a file. Whether it worked |
 | `printError(text)` | Writes to the error output. No line end is added |
 | `env(name) -> String?` | An environment variable, or `null` if it is not set |
 
+An `io.Error` says what kind of failure it was, for the program to act on, and the rest for telling a person:
+
+| Field | |
+|-------|---|
+| `kind: ErrorKind` | `NotFound`, `PermissionDenied`, `IsDirectory`, `NotDirectory`, `AlreadyExists`, `Other` |
+| `operation` | `"read"`, `"write"` or `"append"` |
+| `path` | As it was given |
+| `message` | As the operating system puts it: `no such file or directory` |
+| `stack: [Location]` | Where the program asked for the file |
+
+`describe()` gives one sentence (`cannot read notes.txt: no such file or directory`), `trace()` adds where.
+
 Input is what the user types, or what is piped in: `lumen run sum.lum < numbers.txt`.
 
 ```lumen
 import std.io;
+import std.io.{ErrorKind};
+import std.result.{Result};
 import std.strings;
 
 fn main() -> Int {
-    let content = io.readFile("notes.txt");
-    if content == null {
-        io.printError("cannot read notes.txt\n");
-        return 1;
-    }
-    for i, line in strings.lines(content) {
-        println(strings.padLeft(toString(i + 1), 4), line);
+    match io.readFile("notes.txt") {
+        case Result.Ok(content): {
+            for i, line in strings.lines(content) {
+                println(strings.padLeft(toString(i + 1), 4), line);
+            }
+        }
+        case Result.Err(error): {
+            match error.kind {
+                case ErrorKind.NotFound: { println("no notes yet"); }
+                default: { io.printError(error.describe() + "\n"); return 1; }
+            }
+        }
     }
     return 0;
 }
 ```
+
+When the reason does not matter: `io.readFile(path).orElse("")`.
 
 Paths are relative to the directory the program is run from, not to the program's file.
 

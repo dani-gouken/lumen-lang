@@ -69,7 +69,7 @@ func expectFailure(t *testing.T, imports, body, want string) {
 }
 
 func TestModulesAreEmbedded(t *testing.T) {
-	want := []string{"std.arrays", "std.dict", "std.io", "std.list", "std.math", "std.option", "std.random", "std.strings", "std.time"}
+	want := []string{"std.arrays", "std.dict", "std.io", "std.list", "std.math", "std.option", "std.random", "std.result", "std.strings", "std.time"}
 	if got := stdlib.Modules(); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("expected the modules %v, got %v", want, got)
 	}
@@ -115,12 +115,9 @@ func TestExternsMatchNatives(t *testing.T) {
 		}
 	}
 
-	for name, fn := range declared {
+	for name := range declared {
 		if !vm.IsNative(name) {
 			t.Errorf("%s is declared with extern fn but the virtual machine has no such native", name)
-		}
-		if !fn.Pub {
-			t.Errorf("%s is an extern fn without pub: nothing can call it", name)
 		}
 	}
 	for _, name := range vm.NativeNames() {
@@ -655,29 +652,86 @@ func TestTime(t *testing.T) {
 }
 
 func TestIO(t *testing.T) {
-	path := t.TempDir() + "/notes.txt"
+	dir := t.TempDir()
 	body := strings.ReplaceAll(`
-		let path = "FILE";
-		println(io.exists(path), io.readFile(path));
+		let path = "DIR/notes.txt";
+
+		// Reading and writing give a Result: the value, or an error that
+		// says what kind of failure it was
+		println(io.exists(path), io.readFile(path).isErr());
 		println(io.writeFile(path, "one\n"), io.appendFile(path, "two\n"), io.exists(path));
-		println(strings.lines(io.readFile(path) ?? ""));
+		println(io.readFile(path).map(strings.lines), io.readFileLines(path));
+		println(io.readFile(path).orElse("?") == "one\ntwo\n", io.readFile("DIR/missing.txt").orElse("fallback"));
+
+		// What the error holds
+		let missing = io.readFile("DIR/missing.txt").reason();
+		if missing != null {
+			println(missing.kind, missing.operation, missing.path == "DIR/missing.txt", missing.message);
+			println(missing.describe() == "cannot read DIR/missing.txt: no such file or directory");
+			// Where the program asked for the file
+			println(arrays.len(missing.stack), missing.stack[0].function, missing.stack[0].line > 0, strings.contains(missing.trace(), "  at test.lum:"));
+		}
+		println(kindOf(io.readFile("DIR")), kindOf(io.writeFile("DIR/no/such/folder/file", "x")), kindOf(io.appendFile("DIR", "x")), kindOf(io.writeFile("DIR/notes.txt/inside", "x")));
+
+		// The program acts on the kind
+		match io.readFile("DIR/missing.txt") {
+			case Result.Ok(text): { println("read", text); }
+			case Result.Err(error): {
+				match error.kind {
+					case ErrorKind.NotFound: { println("not there yet"); }
+					default: { println(error.describe()); }
+				}
+			}
+		}
+
+		// One failure does not leak into the next result
+		println(io.readFile("DIR/missing.txt").isErr(), io.writeFile(path, "héλ").value(), io.readFile(path).reason() == null);
+
 		println(io.remove(path), io.remove(path), io.exists(path));
-		println(io.writeFile(path + "/nowhere/file", "x"), io.env("LUMEN_NO_SUCH_VARIABLE"), io.env("PATH") != null);
+		println(io.env("LUMEN_NO_SUCH_VARIABLE"), io.env("PATH") != null);
 
 		// Input: a question answered, then the rest line by line
 		let name = io.ask("name? ");
 		println(name ?? "nobody");
 		let rest = io.readLines();
 		println(rest, io.readLine(), io.ask("more? "));
-	`, "FILE", path)
+	`, "DIR", dir)
 
-	out, err := run(t, "import std.io;\nimport std.strings;", body, "ada\nfirst\n\nlast")
+	decls := `import std.io;
+import std.io.{ErrorKind};
+import std.strings;
+import std.arrays;
+import std.result.{Result};
+
+fn kindOf<T>(r: Result<T, io.Error>) -> String {
+	match r {
+		case Result.Ok(_): { return "ok"; }
+		case Result.Err(error): { return toString(error.kind); }
+	}
+}`
+	out, err := run(t, decls, body, "ada\nfirst\n\nlast")
 	if err != nil {
 		t.Fatalf("runtime error: %v", err)
 	}
-	// The arguments of a call are worked out before it prints anything,
-	// so the second question comes before the line it is part of
-	want := "false null\ntrue true true\n[\"one\", \"two\"]\ntrue false false\nfalse null true\nname? ada\nmore? [\"first\", \"\", \"last\"] null null\n"
+	want := strings.Join([]string{
+		`false true`,
+		`Ok(4) Ok(4) true`,
+		`Ok(["one", "two"]) Ok(["one", "two"])`,
+		`true fallback`,
+		`NotFound read true no such file or directory`,
+		`true`,
+		`1 main true true`,
+		`IsDirectory NotFound IsDirectory NotDirectory`,
+		`not there yet`,
+		`true 3 true`,
+		`true false false`,
+		`null true`,
+		`name? ada`,
+		// The arguments of a call are worked out before it prints anything,
+		// so the second question comes before the line it is part of
+		`more? ["first", "", "last"] null null`,
+		``,
+	}, "\n")
 	if out != want {
 		t.Errorf("unexpected output\n--- want ---\n%s--- got ---\n%s", want, out)
 	}

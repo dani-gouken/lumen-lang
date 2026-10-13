@@ -66,9 +66,13 @@ type VM struct {
 	externObjs map[string]Value
 
 	// State of the native functions (see native.go)
-	pinned []Value       // Values a running native keeps alive
-	in     *bufio.Reader // Input of std.io.readLine
-	rng    *rand.Rand    // Generator of std.random
+	outcome     Value         // What the last protected call returned (see protect.go)
+	failure     *RuntimeError // ...or how it failed
+	pinned      []Value       // Values a running native keeps alive
+	problem     string        // Why the last file operation failed (std.io)...
+	problemKind string        // ...and of which kind
+	in          *bufio.Reader // Input of std.io.readLine
+	rng         *rand.Rand    // Generator of std.random
 }
 
 // NewVM creates a new VM instance.
@@ -168,6 +172,17 @@ func (vm *VM) registerBuiltins() {
 	vm.RegisterTypedExtern("println", "fn(...any)->void", func(vm *VM, args []Value) (Value, error) {
 		write(args, "\n")
 		return NewNull(), nil
+	})
+
+	// panic function: stops the program. The message is written like the
+	// arguments of print. The VM turns the error into a failure at the
+	// place of the call.
+	vm.RegisterTypedExtern("panic", "fn(...any)->void", func(vm *VM, args []Value) (Value, error) {
+		parts := make([]string, len(args))
+		for i, arg := range args {
+			parts[i] = FormatValue(arg)
+		}
+		return NewNull(), &panicError{message: strings.Join(parts, " ")}
 	})
 
 	// toString function
@@ -438,13 +453,6 @@ func (vm *VM) Snapshot() interface{} {
 }
 
 // runtimeError creates a formatted error message with debug info.
-func (vm *VM) runtimeError(message string) error {
-	debugInfo := vm.chunk.GetDebugInfo(vm.ip)
-	if debugInfo != nil {
-		return fmt.Errorf("%s", debugInfo.FormatError(message))
-	}
-	return fmt.Errorf("runtime error: %s (at instruction %d)", message, vm.ip)
-}
 
 // Exec executes a chunk of bytecode.
 func (vm *VM) Exec(chunk *Chunk) (Value, error) {
@@ -493,6 +501,14 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 	// Cached function objects belong to the chunk being run
 	vm.funcObjs = make(map[int]Value)
 
+	return vm.run(0)
+}
+
+// run executes instructions until the function that was running when it
+// was called returns, and gives back what it returned. base is the number
+// of frames at that moment: 0 for main, more for a function called from a
+// native function (see callFunction).
+func (vm *VM) run(base int) (Value, error) {
 	for vm.ip < len(vm.chunk.Code) {
 		// Call debug hook if set
 		if vm.debugHook != nil {
@@ -924,10 +940,21 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 					args[i] = vm.regs[funcReg+1+i]
 				}
 
-				// Call the extern function
+				// Call the extern function. It may pin values; a native that
+				// calls back into the program (see callFunction) runs other
+				// natives meanwhile, whose pins come and go above its own.
+				pinned := len(vm.pinned)
 				retVal, err := externObj.Function()(vm, args)
 				if err != nil {
-					vm.pinned = vm.pinned[:0]
+					vm.pinned = vm.pinned[:pinned]
+					if failure, ok := err.(*RuntimeError); ok {
+						// Raised by the program the function called back
+						// into: already complete, with its own place
+						return NewNull(), failure
+					}
+					if stop, ok := err.(*panicError); ok {
+						return NewNull(), vm.runtimeErrorOf(KindPanic, stop.message)
+					}
 					if IsNative(externObj.Name()) && !strings.HasPrefix(err.Error(), "out of memory") {
 						// A function of the standard library: named as
 						// the program names it
@@ -946,7 +973,7 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 				// Store return value in r0. From here it is a root, and
 				// whatever the function kept alive no longer needs to be
 				vm.regs[0] = retVal
-				vm.pinned = vm.pinned[:0]
+				vm.pinned = vm.pinned[:pinned]
 
 				// Extern functions may allocate; collect now that the result is rooted
 				vm.collectIfNeeded()
@@ -963,9 +990,8 @@ func (vm *VM) Exec(chunk *Chunk) (Value, error) {
 			// This moves captured variables from stack to heap
 			vm.closeUpvalues(0)
 
-			// Check if we're in a nested call
-			if vm.frameCount == 0 {
-				// Top-level return
+			// The function this run was started for has returned
+			if vm.frameCount == base {
 				return retVal, nil
 			}
 

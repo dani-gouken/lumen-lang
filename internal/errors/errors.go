@@ -44,6 +44,15 @@ type Diagnostic struct {
 	Context    string      // The source line content
 	Highlights []Highlight // Specific ranges to underline
 	Suggestion string      // Optional fix suggestion
+
+	// Function names the function the position is in, when that helps:
+	// a failure of a running program is found by its function as much as
+	// by its line.
+	Function string
+
+	// Notes are lines printed after everything else, such as the calls
+	// that led to a failure.
+	Notes []string
 }
 
 func (d Diagnostic) String() string {
@@ -57,7 +66,11 @@ func (d Diagnostic) String() string {
 	sb.WriteString(fmt.Sprintf("[%s]%s: %s\n", d.Severity, codeStr, d.Message))
 
 	// Location: --> src/main.lum:10:5
-	sb.WriteString(fmt.Sprintf("  --> %s\n", d.Pos))
+	sb.WriteString(fmt.Sprintf("  --> %s", d.Pos))
+	if d.Function != "" {
+		sb.WriteString(fmt.Sprintf(" in function '%s'", d.Function))
+	}
+	sb.WriteString("\n")
 
 	if d.Context != "" {
 		lineNumStr := fmt.Sprintf("%d", d.Pos.Line)
@@ -113,6 +126,9 @@ func (d Diagnostic) String() string {
 		padding := strings.Repeat(" ", len(lineNumStr))
 		sb.WriteString(fmt.Sprintf("   %s |\n", padding))
 		sb.WriteString(fmt.Sprintf("   %s = Suggestion: %s\n", padding, d.Suggestion))
+	}
+	for _, note := range d.Notes {
+		sb.WriteString("  " + note + "\n")
 	}
 	return sb.String()
 }

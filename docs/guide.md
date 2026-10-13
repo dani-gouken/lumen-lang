@@ -416,6 +416,7 @@ Available everywhere, without an import:
 | `println(values...)` | Same, followed by a newline |
 | `toString(value)` | The text `print` would write, as a `String` |
 | `push(array, value)` | Append to an array |
+| `panic(values...)` | Stop the program with the values as its message |
 
 ### The standard library
 
@@ -450,6 +451,7 @@ fn main() -> Int {
 | `std.list` | `List<T>`: an array with methods (`add`, `removeAt`, `sort`, `map`, ...) |
 | `std.dict` | `Dict<V>`: values by a text key (`set`, `get`, `has`, `keys`, ...) |
 | `std.option` | Chaining on values that may be `null`: `map`, `then`, `mapOr`, `orElse`, ... |
+| `std.result` | `Result<T, E>` for failures with a reason; `attempt` to survive one that stops the program |
 | `std.io` | `readLine`, `readFile`, `writeFile`, `exists`, `env`, ... |
 | `std.time` | `now`, `sleep`, `stopwatch` |
 | `std.random` | `below`, `between`, `pick`, `shuffle`, `seed` |
@@ -485,14 +487,47 @@ A warning does not stop compilation: the program runs, and the exit code is not 
 
 ### Runtime errors
 
+A program that fails while it runs is reported the same way, with the calls that led there:
+
 ```text
-Runtime error: index out of bounds: 7 (length 3)
-  at main.lum:3:17 in function 'pick'
-        return items[index];
-                    ^
+[ERROR] R0002: index out of bounds: 7 (length 3)
+  --> main.lum:3:17 in function 'pick'
+     |
+ 3 |     return items[index];
+     |                 ^
+     |
+     = Suggestion: Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing
+  called from main.lum:8:17 in function 'main'
 ```
 
-The program stops and exits with code 1.
+The program stops and exits with code 1. A program stops itself the same way with `panic("what went wrong", value);`.
+
+### Failures
+
+A function whose failure is part of its job returns a `Result`: the value, or the reason there is none. The caller has to look.
+
+```lumen
+import std.io;
+import std.result.{Result};
+
+match io.readFile("notes.txt") {
+    case Result.Ok(text): { println(text); }
+    case Result.Err(error): { println(error.describe()); }
+}
+```
+
+A failure that should never happen stops the program; `attempt` is for the few places that must survive it, and gives it back as a value with its message, kind and call stack:
+
+```lumen
+import std.result.{Result, attempt};
+
+match attempt(fn() -> Int { return job(); }) {
+    case Result.Ok(n): { println(n); }
+    case Result.Err(failure): { println("failed:", failure.describe()); }
+}
+```
+
+All of it is in [errors.md](errors.md).
 
 ## Not Supported Yet
 

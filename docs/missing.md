@@ -11,7 +11,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Area | Most useful next steps |
 |------|------------------------|
 | Everyday syntax | a pipe operator for chaining, short lambdas, string interpolation, ranges, null operators |
-| Failing on purpose | a way to stop with a message, `Result` in the standard library, a call stack in runtime errors |
+| Failures | a short way to pass one on (`?`), cleanup that always runs |
 | Types | traits as bounds on type parameters, generic traits, conditions and alternatives in `match` |
 | Structs as first-class containers | `for` over a struct, `list[i]`, methods as values |
 | Correctness | unused variables, bytecode checked before it runs |
@@ -55,12 +55,18 @@ arrays.map(numbers, n => n * 2)
 
 **Today**: `fn(n: Int) -> Int { return n * 2; }`, with the types written even where the call already says what they are. This is most of the noise in code that uses `map`, `filter` and `std.option`.
 
-### Stopping with a message, and saying why something failed — S / M
+### More for failures — S to M each
 
-*   **There is no way to fail on purpose.** A program cannot stop itself with a message: no `panic("...")`, no `assert`. The only runtime errors are the ones the VM raises (index out of bounds, a failed cast, division by zero), and code that reaches a state it cannot handle has to return something. (S: a builtin that raises a runtime error.)
-*   **No way to catch a runtime error.** Once raised it ends the program.
-*   **Failure has no reason.** Functions that can fail return an optional, and `null` does not say what went wrong: `io.readFile` gives the same `null` for a missing file and for one that may not be read. A `Result<T, E>` enum is now possible ([enums.md](enums.md)) and the standard library does not have one yet. (M: the enum, and the functions that should return it.)
-*   **Runtime errors show one place.** The message has the line and function where it happened, not the calls that led there. A failure inside a library function names the library's line; the caller's is not shown.
+`Result`, `panic`, `attempt` and traces are there ([errors.md](errors.md)). Not there:
+
+| Missing | Today |
+|---------|-------|
+| A short way to pass a failure on: `let n = count(text)?;` | A `match`, or `then` |
+| Cleanup that runs whatever happens: `defer`, `finally` | Nothing; harmless while the library keeps nothing open between calls |
+| `attempt` on a function with arguments | Wrap the call in a lambda |
+| One shape for all errors | `io.Error`, `Failure` and your own each have `describe()` by convention; a trait cannot be required of a type parameter |
+| Underlining exactly what failed | A runtime error underlines the name or number that starts where the instruction's source does; the end of the expression is not recorded |
+| `Result` from the functions that parse | `strings.parseInt` returns an optional: the reason is always "not a number" |
 
 ### Arrays with a fixed size — L
 
@@ -275,7 +281,6 @@ Function objects are reused, so calling a function by name allocates nothing for
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
 1.  **Chaining and less noise**: the pipe operator, short lambdas, string interpolation. Small, and they change how every program reads.
-2.  **Failing on purpose**: a builtin to stop with a message, `Result<T, E>` in the standard library, the call stack in runtime errors.
 3.  **Syntax highlighting** for one editor.
 4.  **Traits with type parameters, and as bounds**: what `for` over a `List`, `list[i]` and generic code that compares its values all wait for.
 5.  **`match`**: conditions on cases, several patterns per case, `match` as an expression.

@@ -176,10 +176,12 @@ Two consumers use it:
 
 *   the VM, to say where a runtime error happened:
     ```text
-    Runtime error: index out of bounds: 7 (length 3)
-      at main.lum:3:17 in function 'pick'
-            return items[index];
-                        ^
+    [ERROR] R0002: index out of bounds: 7 (length 3)
+      --> main.lum:3:17 in function 'pick'
+         |
+     3 |     return items[index];
+         |                 ^
+      called from main.lum:8:17 in function 'main'
     ```
 *   the debugger, to show the source line of the instruction being stepped.
 

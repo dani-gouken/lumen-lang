@@ -63,6 +63,7 @@ Lumen uses a pragmatic, three-level testing approach focused on **concise, high-
 - A few Go tests cover the other commands: `build` then `exec`, `build` to a `.lasm` listing, `ir`, a missing file, and usage errors.
 - A run that takes longer than 20 seconds fails the test. `limits_memory.lum` builds an array of a million and a half elements; it takes a fraction of a second, and took minutes when appending was quadratic. Performance that regresses that far is caught here.
 - The `modules_*.lum` cases import the modules in `cases/game/`: a working program, private names and methods, missing modules, a runtime error inside a module. Files in subfolders of `cases/` are not run on their own, so that is where modules go. `TestModulesThroughCommands` takes a multi-file program through `build`, `exec`, `ir` and `lumdbg`; `TestModulesAreFoundNextToTheEntryFile` runs one from another directory by absolute path.
+- `panic.lum` stops itself: the output so far, the error with its call stack, exit code 1. The runtime-error cases (`runtime_error`, `cast_error`, `stdlib_error`, `modules_runtime_error`, `program_matrix`) check the code, the suggestion and the calls.
 - `enums_json.lum` is a JSON document as an enum that holds arrays of itself: built, printed two ways, searched by path and summed. `constants.lum` draws a board from constants. `enums_errors.lum` and `constants_errors.lum` check the diagnostics, suggestions included.
 - `TestStandardLibrary` runs programs that use the library with nothing but the binary: input from standard input, the end of the input, files written by one run and read by the next, bytecode built and executed, and a project replacing `std` with its own. The `stdlib_*.lum` and `extern_unknown.lum` cases check the messages for a failing library call, for misuse caught by the type checker, and for an `extern fn` the runtime does not have.
 - `TestExampleProjects` runs every folder of `examples/` that has a `lumen.json` and compares its output with `examples/expected/<folder>.out`, as `TestExamples` does for the single files.
@@ -137,6 +138,8 @@ git diff test/e2e examples   # review what changed before committing
 - ❌ Testing every possible corruption scenario
 - ❌ Backwards compatibility (only one version exists)
 
+**Also in the VM package**: `errors_test.go` raises each kind of runtime error from instructions and checks its kind, code, suggestion and call stack, the exact text it is shown as, how long and repetitive stacks are shortened, and what is shown without debug information.
+
 **Also in the VM package**: `variant_test.go` builds values of an enum from instructions: how they print, when two are equal (variant, values, values inside values, and what stays compared by identity), how type tests see them, and a long chain of them kept alive across collections.
 
 **Also in the VM package**: `native_test.go` calls each native function of the standard library directly: results, the argument checks that protect against hand-written bytecode, files in a temporary folder, input, seeded random numbers per VM. `TestNativeResultsSurviveCollection` sizes the heap so that it is collected while a native is building its result, and spoils whatever is freed; it fails if the native does not pin what it holds.
@@ -186,6 +189,7 @@ Feature tests: one test per language feature, each a short program whose printed
 - ✅ Runtime errors name the source line and function
 - ✅ One compile error per stage, checked by error code
 - ✅ The pipeline stops at the first failing stage
+- ✅ Failures (`failures_test.go`): `panic` with its message, place and stack; how it ends a path for the type checker; `attempt` on every kind of failure; what is left behind after one (data, loops, closures, call depth, memory); an attempt inside an attempt; the fields of a `Failure`; errors as values with a trace of their own; `Result` and its methods
 - ✅ Enums and constants (`enums_test.go`): a simplifier of formulas written as cases with nested patterns; `Option`, `Result` and a linked list as generic enums with generic methods; enums with traits, in structs, arrays and closures; `match` inside loops with `break` and `continue`; constants in every position; all of it again across modules
 - ✅ Programs of several files (`modules_test.go`): a shop spread over six modules using generics, traits, closures and optionals across files; structs of the same name in different modules told apart by `is`, `as` and `match`; type errors across modules; method visibility, with accepted and rejected calls; compile and runtime errors naming the module's file, line and function
 

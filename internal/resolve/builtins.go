@@ -24,6 +24,8 @@ func Builtins() []*ast.FnDecl {
 			Params:     []*ast.Param{{Name: "value", Type: basic("Any")}},
 			ReturnType: basic("String"),
 		},
+		// Stops the program with a message. It never returns.
+		{Name: "panic", Params: variadicAny("message"), ReturnType: basic("Void")},
 		{
 			Name: "push",
 			Params: []*ast.Param{

@@ -662,3 +662,45 @@ func TestTypeArgumentsReachValuesInsideValues(t *testing.T) {
 		t.Errorf("expected the inner value to be rejected, got %v", msgs)
 	}
 }
+
+func TestPanicEndsControlFlow(t *testing.T) {
+	accepted := []struct{ name, src string }{
+		{"last statement of a function", `fn f(n: Int) -> Int { if n > 0 { return n; } panic("no"); }`},
+		{"both branches leave", `fn f(n: Int) -> Int { if n > 0 { return n; } else { panic("no"); } }`},
+		{"a case of a match", `fn f(c: Color) -> Int { match c { case Color.Red: { return 1; } case Color.Green: { return 2; } case Color.Blue: { panic("no blue"); } } }`},
+		{"default of a match", `fn f(n: Int) -> Int { match n { case 1: { return 1; } default: { panic("other"); } } }`},
+		{"narrows like a return", `fn f(n: Int?) -> Int { if n == null { panic("nothing"); } return n + 1; }`},
+		{"with any values", `struct P { x: Int; } fn f() -> Int { panic("state", 1, 2.5, true, null, [1], P { x: 1 }); }`},
+		{"without a message", `fn f() -> Int { panic(); }`},
+		{"in a Void function", `fn f(n: Int) { if n < 0 { panic("negative"); } println(n); }`},
+		{"in a lambda", `fn main() -> Int { let f = fn(n: Int) -> Int { if n > 0 { return n; } panic("no"); }; return f(1); }`},
+	}
+	for _, tt := range accepted {
+		t.Run(tt.name, func(t *testing.T) {
+			if msgs, _, _ := checkSource(t, enumDecls+tt.src); len(msgs) != 0 {
+				t.Errorf("expected no errors, got %v", msgs)
+			}
+		})
+	}
+
+	rejected := []struct{ name, src, want string }{
+		{"panic in one branch only", `fn f(n: Int) -> Int { if n > 0 { panic("big"); } }`, "can reach its end without returning a value"},
+		{"panic in a loop that may not run", `fn f(xs: [Int]) -> Int { for x in xs { panic("any"); } }`, "can reach its end without returning a value"},
+		{"its result used as a value", `fn f() -> Int { let x: Int = panic("no"); return x; }`, "void"},
+		{"no narrowing when the panic is conditional", `fn f(n: Int?, strict: Bool) -> Int { if n == null { if strict { panic("nothing"); } } return n + 1; }`, "the value may be null"},
+	}
+	for _, tt := range rejected {
+		t.Run(tt.name, func(t *testing.T) {
+			msgs, _ := checkSourceLoose(enumDecls + tt.src)
+			if !strings.Contains(strings.Join(msgs, "\n"), tt.want) {
+				t.Errorf("expected an error containing %q, got %v", tt.want, msgs)
+			}
+		})
+	}
+
+	// Code after a panic is never reached
+	diags := checkSourceDiagnostics(t, `fn f() -> Int { panic("stop"); return 1; }`)
+	if len(diags) != 1 || diags[0].Code != ErrUnreachableCode {
+		t.Errorf("expected an unreachable-code warning, got %v", diags)
+	}
+}

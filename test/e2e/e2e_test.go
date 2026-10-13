@@ -856,8 +856,8 @@ fn main() -> Int {
 	// Files: written by one run, read by the next
 	notes := filepath.Join(dir, "notes.txt")
 	files := project(t, map[string]string{
-		"save.lum": "import std.io;\nfn main() -> Int {\n    if io.appendFile(\"" + notes + "\", \"a line\\n\") { return 0; }\n    return 1;\n}\n",
-		"load.lum": "import std.io;\nimport std.strings;\nimport std.arrays;\nfn main() -> Int {\n    println(arrays.len(strings.lines(io.readFile(\"" + notes + "\") ?? \"\")));\n    return 0;\n}\n",
+		"save.lum": "import std.io;\nfn main() -> Int {\n    if io.appendFile(\"" + notes + "\", \"a line\\n\").isOk() { return 0; }\n    return 1;\n}\n",
+		"load.lum": "import std.io;\nimport std.strings;\nimport std.arrays;\nfn main() -> Int {\n    println(arrays.len(io.readFileLines(\"" + notes + "\").orElse([])));\n    return 0;\n}\n",
 	})
 	for i := 0; i < 3; i++ {
 		if res := runLumenIn(t, files, "", "run", "save.lum"); res.exit != 0 {

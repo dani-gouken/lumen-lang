@@ -212,6 +212,25 @@ Testing for a variant is `__is` with the descriptor `{Enum.Variant}`, the
 same check of the object's name as for a struct. A test or cast to the enum
 type lists all its variants: `{Shape.Circle|Shape.Rect|Shape.Empty}`.
 
+### Runtime errors and protected calls
+
+A failure is a `*vm.RuntimeError`: a kind (`ErrorKind`), a message and the
+call stack, taken from the frames when it is raised. `Exec` returns it as
+its error; `Error()` renders it as a diagnostic (see
+[errors.md](errors.md#what-a-runtime-error-looks-like)).
+
+The instruction loop is `VM.run(base)`: it runs until the function that was
+current when it started returns. `Exec` calls it once for `main`. A native
+function can call it again through `VM.callFunction(fn, args)`, which sets
+up a frame as `CALL` does and waits for the result; that is how a native
+runs a function of the program.
+
+`VM.protect(fn)` is `callFunction` with a way back: it saves the frame
+count, registers, function and instruction, and if the call fails, `unwind`
+drops the frames above, closes the upvalues that point into their
+registers, and restores what was saved. The failure is kept for the caller
+instead of ending the program. It is what `std.result.attempt` is built on.
+
 ### Native functions of the standard library
 
 The part of the [standard library](stdlib.md) that is not written in Lumen is

@@ -39,6 +39,9 @@ func (vm *VM) markRoots() {
 		}
 	}
 
+	// What a protected call returned, until the program takes it
+	vm.markValue(vm.outcome)
+
 	// Values a native function is still working with
 	for _, v := range vm.pinned {
 		vm.markValue(v)

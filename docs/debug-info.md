@@ -177,6 +177,8 @@ Instruction 1:
 
 ## Runtime Error Messages
 
+> The examples in this section show an older, plainer form. A runtime error is now shown as a diagnostic: `[ERROR] R0004: division by zero`, then `--> file:line:column in function 'name'`, the source line underlined, a suggestion, and the calls that led there. See [errors.md](errors.md#what-a-runtime-error-looks-like). What the debug information holds, described here, is unchanged.
+
 When a runtime error occurs, the VM uses debug information to generate detailed error messages:
 
 **Example Error:**

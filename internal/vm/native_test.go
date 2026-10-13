@@ -123,7 +123,7 @@ func TestNativesCheckTheirArguments(t *testing.T) {
 	expectNativeError(t, "argument 3 must be an Int, got null", "std.strings.substring", "abc", 0, nil)
 	expectNativeError(t, "argument 1 must be an array, got String", "std.strings.join", "abc", ",")
 	expectNativeError(t, "argument 2 must be a String, got Bool", "std.strings.split", "abc", true)
-	expectNativeError(t, "argument 1 must be a String, got Int", "std.io.readFile", 1)
+	expectNativeError(t, "argument 1 must be a String, got Int", "std.io.readText", 1)
 	expectNativeError(t, "argument 1 must be an Int, got String", "std.random.below", "ten")
 
 	// An array of something else than strings
@@ -275,27 +275,52 @@ func TestNativeFiles(t *testing.T) {
 	path := filepath.Join(dir, "notes.txt")
 	missing := filepath.Join(dir, "no", "such", "file.txt")
 
-	expectNative(t, "false", "std.io.exists", path)
-	expectNative(t, "null", "std.io.readFile", path)
-	expectNative(t, "true", "std.io.writeFile", path, "one\n")
-	expectNative(t, "true", "std.io.exists", path)
-	expectNative(t, `"one\n"`, "std.io.readFile", path)
-	expectNative(t, "true", "std.io.appendFile", path, "two\n")
-	expectNative(t, `"one\ntwo\n"`, "std.io.readFile", path)
-	// Writing replaces, appending to a new file creates it
-	expectNative(t, "true", "std.io.writeFile", path, "")
-	expectNative(t, `""`, "std.io.readFile", path)
-	other := filepath.Join(dir, "new.txt")
-	expectNative(t, "true", "std.io.appendFile", other, "x")
-	expectNative(t, `"x"`, "std.io.readFile", other)
+	// One VM throughout: the reason of a failure is kept in it
+	machine := NewVM()
+	call := func(name string, args ...interface{}) string {
+		t.Helper()
+		v, err := callNative(t, machine, name, args...)
+		if err != nil {
+			t.Fatalf("%s: unexpected error: %v", name, err)
+		}
+		return quoted(v)
+	}
+	expect := func(want, name string, args ...interface{}) {
+		t.Helper()
+		if got := call(name, args...); got != want {
+			t.Errorf("%s%v: expected %s, got %s", name, args, want, got)
+		}
+	}
 
-	// What cannot be done is an answer, not an error
-	expectNative(t, "false", "std.io.writeFile", missing, "x")
-	expectNative(t, "false", "std.io.appendFile", missing, "x")
-	expectNative(t, "null", "std.io.readFile", dir) // A folder
-	expectNative(t, "true", "std.io.remove", path)
-	expectNative(t, "false", "std.io.remove", path)
-	expectNative(t, "false", "std.io.exists", path)
+	expect("false", "std.io.exists", path)
+	expect("null", "std.io.readText", path)
+	expect(`["not found", "no such file or directory"]`, "std.io.problem")
+	expect("true", "std.io.writeText", path, "one\n")
+	expect("true", "std.io.exists", path)
+	expect(`"one\n"`, "std.io.readText", path)
+	expect("true", "std.io.appendText", path, "two\n")
+	expect(`"one\ntwo\n"`, "std.io.readText", path)
+	// Writing replaces, appending to a new file creates it
+	expect("true", "std.io.writeText", path, "")
+	expect(`""`, "std.io.readText", path)
+	other := filepath.Join(dir, "new.txt")
+	expect("true", "std.io.appendText", other, "x")
+	expect(`"x"`, "std.io.readText", other)
+
+	// What cannot be done is an answer, not an error, and the reason is
+	// what the operating system objected to, without the path
+	expect("false", "std.io.writeText", missing, "x")
+	expect(`["not found", "no such file or directory"]`, "std.io.problem")
+	expect("null", "std.io.readText", dir) // A folder
+	expect(`["is a directory", "is a directory"]`, "std.io.problem")
+	expect("false", "std.io.appendText", dir, "x")
+	expect(`["is a directory", "is a directory"]`, "std.io.problem")
+	expect("false", "std.io.writeText", filepath.Join(other, "inside"), "x") // A file used as a folder
+	expect(`["not a directory", "not a directory"]`, "std.io.problem")
+
+	expect("true", "std.io.remove", path)
+	expect("false", "std.io.remove", path)
+	expect("false", "std.io.exists", path)
 
 	t.Setenv("LUMEN_TEST_VARIABLE", "set")
 	expectNative(t, `"set"`, "std.io.env", "LUMEN_TEST_VARIABLE")

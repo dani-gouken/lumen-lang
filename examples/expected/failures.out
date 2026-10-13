@@ -1,0 +1,19 @@
+-- settings
+volume set to 40
+refused: volume is empty
+refused: volume should be a number, not 'lots'
+refused: volume should be from 1 to 100, not 250
+brightness should be a number, not 'x'
+  at examples/failures.lum:54:27 in function 'number'
+  called from examples/failures.lum:61:12 in function 'percent'
+  called from examples/failures.lum:96:17 in function 'main'
+-- files
+no settings file; using the defaults
+0 lines
+-- jobs
+job 0 gave 7
+job 1 broke: division by zero in average
+job 2 broke: index out of bounds: 2 (length 2) in third
+job 3 gave up: a negative total: -7
+job 4 gave 15
+2 of 5 jobs completed

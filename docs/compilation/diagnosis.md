@@ -172,6 +172,23 @@ within them.
 
 | `E7002` | `extern fn` naming a function the runtime does not provide |
 
+### R0xxx — Runtime errors (`internal/vm`)
+
+A failure of a running program is a `vm.RuntimeError`; its `Diagnostic()` is shown like the errors above, with the calls that led to it as notes. See [errors.md](../errors.md#what-a-runtime-error-looks-like).
+
+| Code | Meaning |
+|------|---------|
+| `R0001` | The program called `panic` |
+| `R0002` | An index outside an array or a text |
+| `R0003` | A cast of a value of another type |
+| `R0004` | A division by zero, a result too large for an `Int` |
+| `R0005` | Calls nested deeper than the limit |
+| `R0006` | More memory than the limit |
+| `R0007` | A function of the standard library given arguments it cannot work with |
+| `R0008` | Anything else |
+
+A `Diagnostic` has two fields for these: `Function`, shown after the position, and `Notes`, lines printed after the suggestion.
+
 ### E8xxx — Modules (`internal/modules`)
 
 | Code | Meaning |
@@ -222,10 +239,14 @@ exits with code 1 if any of them is an error.
 
 **Runtime error example:**
 ```text
-Runtime error: index out of bounds: 7 (length 3)
-  at src/main.lum:3:17 in function 'pick'
-        return items[index];
-                    ^
+[ERROR] R0002: index out of bounds: 7 (length 3)
+  --> src/main.lum:3:17 in function 'pick'
+     |
+ 3 |     return items[index];
+     |                 ^
+     |
+     = Suggestion: Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing
+  called from src/main.lum:8:17 in function 'main'
 ```
 
 ## Not Implemented Yet
