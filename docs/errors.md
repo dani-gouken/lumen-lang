@@ -213,6 +213,8 @@ Everything done before the failure stays done: an array that was pushed to still
 
 Closures made inside the function that failed keep working, with the variables they captured.
 
+A program that ends itself with `os.exit` is not a failure: `attempt` does not catch it, and the program ends there.
+
 The calls that were abandoned do not count against the depth limit any more, and what they allocated is collected like any other garbage.
 
 ### When to use it
@@ -220,7 +222,8 @@ The calls that were abandoned do not count against the depth limit any more, and
 Rarely. It is a boundary, not a way to handle errors:
 
 *   a loop that must outlive the jobs it runs;
-*   a tool that runs tests and reports the ones that fail;
+*   a tool that runs tests and reports the ones that fail ([`std.test`](stdlib.md#stdtest) is built on it);
+*   a server that must answer the next request after a handler failed ([`std.http`](stdlib.md#stdhttp) answers 500 and goes on);
 *   the edge of code you do not control.
 
 A failure that is expected is better returned as a `Result` by the function that meets it: the caller is then made to deal with it, by the compiler, instead of having to remember to wrap the call.

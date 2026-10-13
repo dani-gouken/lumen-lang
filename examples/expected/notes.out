@@ -1,0 +1,14 @@
+notes service
+  ok    lists every note
+  ok    creates a note and says where it is
+  ok    tidies tags: lower case, no repeats, no blanks
+  ok    searches titles and bodies, whatever the case
+  ok    refuses a note without a title
+  ok    refuses a title that is taken, whatever its case
+  ok    refuses a title that is too long
+  ok    refuses a body that is not JSON, and says where
+  ok    replaces a note, which may keep its title
+  ok    deletes a note, once
+  ok    answers 404 for a note that is not there
+  ok    answers 405 for a method an address does not take
+12 passed

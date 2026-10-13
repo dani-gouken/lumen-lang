@@ -10,7 +10,8 @@ import (
 )
 
 // callNative calls a native function the way bytecode would, with Go
-// values as arguments: int, float64, string, bool, nil, []string.
+// values as arguments: int, float64, string, bool, nil, []string, []int,
+// [][]string.
 func callNative(t *testing.T, machine *VM, name string, args ...interface{}) (Value, error) {
 	t.Helper()
 	fn, ok := machine.externFuncs[name]
@@ -37,6 +38,22 @@ func callNative(t *testing.T, machine *VM, name string, args ...interface{}) (Va
 			values[i] = v
 		case []string:
 			v, err := machine.newStringArray(a)
+			if err != nil {
+				t.Fatal(err)
+			}
+			values[i] = v
+		case []int:
+			numbers := make([]int64, len(a))
+			for j, n := range a {
+				numbers[j] = int64(n)
+			}
+			v, err := machine.newIntArray(numbers)
+			if err != nil {
+				t.Fatal(err)
+			}
+			values[i] = v
+		case [][]string:
+			v, err := machine.newStringTable(a)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -1,0 +1,67 @@
+$ todo add Renew the passport --due=2026-10-30 --priority=high
+added 1: Renew the passport
+
+$ todo add Water the plants --due=2026-10-13
+added 2: Water the plants
+
+$ todo add Send the tax form --due=2026-10-09 --priority=low
+added 3: Send the tax form
+
+$ todo add Learn to juggle
+added 4: Learn to juggle
+
+$ todo list
+#     task                priority  due
+-  -  ------------------  --------  -----------
+3  !  Send the tax form   low       4 days late
+1     Renew the passport  high      in 17 days
+2     Water the plants    normal    today
+4     Learn to juggle     normal
+
+4 tasks to do, 1 late
+
+$ todo done 2
+done: Water the plants
+
+$ todo done 2
+task 2 was already done
+
+$ todo remove 4
+removed task 4
+
+$ todo add Book the dentist --priority=high
+added 4: Book the dentist
+
+$ todo list --all
+#     task                priority  due
+-  -  ------------------  --------  -----------
+3  !  Send the tax form   low       4 days late
+1     Renew the passport  high      in 17 days
+4     Book the dentist    high
+2  x  Water the plants    normal    today
+
+3 tasks to do, 1 late
+
+$ todo add
+todo: add what? Give the task a title
+
+$ todo add Fly --due=someday
+todo: 'someday' is not a date: write it as 2026-10-20
+
+$ todo add Fly --priority=urgent
+todo: 'urgent' is not a priority: use low, normal or high
+
+$ todo done nine
+todo: 'nine' is not the number of a task
+
+$ todo done 99
+todo: there is no task 99
+
+$ todo frobnicate
+todo: there is no command 'frobnicate'; try help
+
+$ todo list        (after a slip of the editor)
+todo: the list is damaged at line 2, column 21: invalid character '}' looking for beginning of value
+todo: the list is damaged: task 1 is due on 'soon', which is not a date
+
+8 of the commands were refused

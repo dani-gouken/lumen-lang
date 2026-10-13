@@ -80,7 +80,7 @@ impl Error {
 pub fn readFile(path: String) -> Result<String, Error> {
     let text = readText(path);
     if text == null {
-        return Result.Err(failed("read", path));
+        return Result.Err(failure("read", path));
     }
     return Result.Ok(text);
 }
@@ -91,7 +91,7 @@ pub fn writeFile(path: String, text: String) -> Result<Int, Error> {
     if writeText(path, text) {
         return Result.Ok(strings.len(text));
     }
-    return Result.Err(failed("write", path));
+    return Result.Err(failure("write", path));
 }
 
 // Adds a text to the end of a file, creating it if needed. Gives how many
@@ -100,7 +100,7 @@ pub fn appendFile(path: String, text: String) -> Result<Int, Error> {
     if appendText(path, text) {
         return Result.Ok(strings.len(text));
     }
-    return Result.Err(failed("append", path));
+    return Result.Err(failure("append", path));
 }
 
 // The lines of a file, or why it cannot be read.
@@ -108,8 +108,10 @@ pub fn readFileLines(path: String) -> Result<[String], Error> {
     return readFile(path).map(strings.lines);
 }
 
-// The error for the operation that just failed.
-fn failed(operation: String, path: String) -> Error {
+// The error for the operation on a file that just failed. For the modules
+// of the library that work with files (std.fs, std.os): called by the
+// function the program calls, so that the trace starts at the program.
+pub fn failure(operation: String, path: String) -> Error {
     // The runtime keeps two things about it: the kind and the message
     let parts = problem();
     // Without this function and the one that called it: the trace starts

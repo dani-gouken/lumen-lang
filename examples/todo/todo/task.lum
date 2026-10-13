@@ -1,0 +1,117 @@
+// A task, and how it is written to and read from a file.
+
+import std.json;
+import std.json.{Json};
+import std.result.{Result};
+import std.option;
+import std.time;
+import std.time.{Date};
+import std.strings;
+
+pub enum Priority { Low, Normal, High }
+
+impl Priority {
+    pub fn name() -> String {
+        match self {
+            case Priority.Low: { return "low"; }
+            case Priority.Normal: { return "normal"; }
+            case Priority.High: { return "high"; }
+        }
+    }
+
+    // Higher first when sorting.
+    pub fn rank() -> Int {
+        match self {
+            case Priority.High: { return 0; }
+            case Priority.Normal: { return 1; }
+            case Priority.Low: { return 2; }
+        }
+    }
+}
+
+pub fn priorityOf(name: String) -> Priority? {
+    match strings.lower(name) {
+        case "low": { return Priority.Low; }
+        case "normal": { return Priority.Normal; }
+        case "high": { return Priority.High; }
+        default: { return null; }
+    }
+}
+
+pub enum State {
+    Open,
+    Done(Date),         // when it was finished
+}
+
+pub struct Task {
+    id: Int;
+    title: String;
+    priority: Priority;
+    due: Date?;
+    state: State;
+}
+
+impl Task {
+    pub fn isOpen() -> Bool { return self.state == State.Open; }
+
+    // Whether it should have been finished before `today`.
+    pub fn isLate(today: Date) -> Bool {
+        let due = self.due;
+        return self.isOpen() && due != null && due.daysUntil(today) > 0;
+    }
+
+    // "today", "in 3 days", "2 days late", or "" without a date.
+    pub fn deadline(today: Date) -> String {
+        let due = self.due;
+        if due == null { return ""; }
+        let days = today.daysUntil(due);
+        if days == 0 { return "today"; }
+        if days == 1 { return "tomorrow"; }
+        if days > 1 { return "in ${days} days"; }
+        if days == -1 { return "1 day late"; }
+        return "${-days} days late";
+    }
+
+    pub fn toJson() -> Json {
+        let out = json.object().int("id", self.id).text("title", self.title).text("priority", self.priority.name());
+        let due = self.due;
+        if due != null { out.text("due", due.iso()); }
+        match self.state {
+            case State.Open: { }
+            case State.Done(when): { out.text("done", when.iso()); }
+        }
+        return out.done();
+    }
+}
+
+// The task a document describes, or what is wrong with the document.
+pub fn fromJson(document: Json) -> Result<Task, String> {
+    let id = option.then(document.get("id"), json.intOf);
+    if id == null { return Result.Err("a task needs a whole number as its id"); }
+    let title = option.then(document.get("title"), json.textOf);
+    if title == null { return Result.Err("task ${id} has no title"); }
+
+    let priority = Priority.Normal;
+    let named = option.then(document.get("priority"), json.textOf);
+    if named != null {
+        let known = priorityOf(named);
+        if known == null { return Result.Err("task ${id} has the priority '${named}', which is not low, normal or high"); }
+        priority = known;
+    }
+
+    let due: Date? = null;
+    let dueText = option.then(document.get("due"), json.textOf);
+    if dueText != null {
+        due = time.parse(dueText);
+        if due == null { return Result.Err("task ${id} is due on '${dueText}', which is not a date"); }
+    }
+
+    let state = State.Open;
+    let doneText = option.then(document.get("done"), json.textOf);
+    if doneText != null {
+        let when = time.parse(doneText);
+        if when == null { return Result.Err("task ${id} was done on '${doneText}', which is not a date"); }
+        state = State.Done(when);
+    }
+    return Result.Ok(Task { id: id, title: title, priority: priority, due: due, state: state });
+}

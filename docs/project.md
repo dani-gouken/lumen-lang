@@ -64,6 +64,8 @@ lumen lumdbg
 
 Naming a file still works and is unaffected by `entry`: `lumen run src/app/demo.lum`.
 
+What follows the folder or the file is handed to the program, which reads it with [`os.args()`](stdlib.md#stdos): `lumen run . add "Buy milk"`. With arguments the folder has to be named, a dot at least: `lumen run add` would look for a file called `add`.
+
 ## `root`: Where Module Paths Start
 
 Module paths start at one folder, in every file of the program (see [modules.md](modules.md)). With a project file that folder is `root`:

@@ -61,7 +61,7 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Interactive debugger, showing Lumen source lines
 - ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`
 
-Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators, string interpolation (`"total: ${n}"`), enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library: numbers, text, arrays, lists, dictionaries, files, time, random numbers ([docs/stdlib.md](docs/stdlib.md)).
+Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators, string interpolation (`"total: ${n}"`), enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library ([docs/stdlib.md](docs/stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, files and folders, dates, program arguments, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, and tests.
 
 Not there yet:
 
@@ -129,9 +129,12 @@ go run ./cmd/lumen build examples/hello.lum hello.lasm   # bytecode listing
 
 # Step through a program
 go run ./cmd/lumen lumdbg examples/fibonacci.lum
+
+# What follows the file is for the program (std.os.args)
+go run ./cmd/lumen run examples/todo add "Buy milk" --due=2026-10-20
 ```
 
-`run` exits with the `Int` returned by `main`, or with 1 after a compile or runtime error. Errors are reported with their source location:
+`run` exits with the `Int` returned by `main`, with the status given to `os.exit`, or with 1 after a compile or runtime error. Errors are reported with their source location:
 
 ```text
 [ERROR] E1001: undefined identifier 'cuont'
@@ -161,6 +164,13 @@ Example programs in [examples/](examples/):
 - **modules.lum** - A program in several files: `import`, `pub`, with its modules in `zoo/`
 - **project/** - A program with a project file (`lumen.json`): entry, module root, a package. Run it with `lumen run examples/project`
 - **calculator/** - A small language implementation in three modules: lexer, recursive-descent parser, and a tree of trait objects that evaluates itself. `lumen run examples/calculator`
+
+Whole programs on the standard library, each a project to run by its folder:
+
+- **todo/** - A to-do list kept in a JSON file: the command line read into an enum, errors that keep the error they came from, dates. `lumen run examples/todo add "Buy milk" --due=2026-10-20`, then `list`, `done 1`
+- **logs/** - A report on a web server's access log: each line read with a regular expression into a struct or into the reason it could not be, then grouped, counted and charted. `lumen run examples/logs [access.log]`
+- **sales/** - A sales report from a CSV file that is not quite clean: rows checked as they are read, totals by category, customer and week, a summary written as JSON. `lumen run examples/sales [orders.csv out.json]`
+- **notes/** - A web service with its tests: the notes and their rules in one module, the routes in another, and tests that call the routes as the server would. `lumen run examples/notes` runs the tests, `lumen run examples/notes serve` listens on port 8080
 
 ## Working with Bytecode
 

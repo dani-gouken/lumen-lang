@@ -12,6 +12,10 @@ pub extern fn below(limit: Int) -> Int;
 // A number from 0.0 up to, not including, 1.0.
 pub extern fn float() -> Float;
 
+// A random identifier, as good as unique: "3f2b8c1e-9d4a-4f6b-8a1c-0e5d7b9f2a4c".
+// After `seed` they come out the same on every run, like the numbers.
+pub extern fn uuid() -> String;
+
 // A whole number from `low` to `high`, both included.
 pub fn between(low: Int, high: Int) -> Int {
     return low + below(high - low + 1);

@@ -1,0 +1,130 @@
+// The tests of the service. A route is a function from a request to an
+// answer, so it is tested by calling it: no server, no port.
+
+import std.test;
+import std.test.{Suite};
+import std.http;
+import std.http.{Request, Response, Method, Router};
+import std.json;
+import std.json.{Json};
+import std.dict;
+import std.option;
+import std.strings;
+import std.arrays;
+import notes.api;
+import notes.book;
+
+// A request as the server would hand it over. The address may carry a
+// query: "/notes?tag=work".
+pub fn request(method: Method, address: String, body: String) -> Request {
+    let parts = strings.split(address, "?");
+    return Request {
+        method: method,
+        path: parts[0],
+        query: http.queryOf(arrays.at(parts, 1) ?? ""),
+        headers: dict.empty<String>(),
+        body: body,
+        params: dict.empty<String>(),
+        sender: "test",
+    };
+}
+
+// A service with three notes in it.
+fn service() -> Router {
+    let app = api.routes(book.empty());
+    post(app, "{\"title\": \"Groceries\", \"body\": \"milk, eggs\", \"tags\": [\"home\"]}");
+    post(app, "{\"title\": \"Standup\", \"body\": \"demo the parser\", \"tags\": [\"Work\", \" urgent \", \"work\"]}");
+    post(app, "{\"title\": \"Ideas\"}");
+    return app;
+}
+
+fn post(app: Router, body: String) -> Response {
+    return app.answer(request(Method.Post, "/notes", body));
+}
+
+fn get(app: Router, address: String) -> Response {
+    return app.answer(request(Method.Get, address, ""));
+}
+
+// The body of an answer, which has to be JSON.
+fn document(response: Response) -> Json {
+    return response.json().expect("an answer in JSON");
+}
+
+fn titles(response: Response) -> [String] {
+    return arrays.map(document(response).items() ?? [], fn(note: Json) -> String {
+        return option.then(note.get("title"), json.textOf) ?? "?";
+    });
+}
+
+fn errorOf(response: Response) -> String {
+    return option.then(document(response).get("error"), json.textOf) ?? "";
+}
+
+pub fn suite() -> Suite {
+    return test.suite("notes service")
+        .test("lists every note", fn() {
+            let all = get(service(), "/notes");
+            test.equal(all.status, 200);
+            test.equal(all.header("Content-Type"), "application/json");
+            test.same(titles(all), ["Groceries", "Standup", "Ideas"]);
+        })
+        .test("creates a note and says where it is", fn() {
+            let app = service();
+            let made = post(app, "{\"title\": \"  Call mum \", \"tags\": [\"home\"]}");
+            test.equal(made.status, 201);
+            test.equal(made.header("Location"), "/notes/4");
+            test.same(titles(get(app, "/notes?tag=home")), ["Groceries", "Call mum"]);
+        })
+        .test("tidies tags: lower case, no repeats, no blanks", fn() {
+            let tags = document(get(service(), "/notes/2")).find("tags");
+            test.equal(test.present(tags, "tags").stringify(), "[\"work\",\"urgent\"]");
+            test.equal(get(service(), "/tags").body, "[\"home\",\"urgent\",\"work\"]");
+        })
+        .test("searches titles and bodies, whatever the case", fn() {
+            test.same(titles(get(service(), "/notes?q=MILK")), ["Groceries"]);
+            test.same(titles(get(service(), "/notes?q=s")), ["Groceries", "Standup", "Ideas"]);
+            test.same(titles(get(service(), "/notes?q=zebra")), []);
+        })
+        .test("refuses a note without a title", fn() {
+            let answer = post(service(), "{\"body\": \"no title\"}");
+            test.equal(answer.status, 400);
+            test.equal(errorOf(answer), "title is required");
+        })
+        .test("refuses a title that is taken, whatever its case", fn() {
+            let answer = post(service(), "{\"title\": \"groceries\"}");
+            test.equal(answer.status, 409);
+            test.contains(errorOf(answer), "already a note called 'Groceries'");
+        })
+        .test("refuses a title that is too long", fn() {
+            let answer = post(service(), "{\"title\": \"${strings.repeat("x", 61)}\"}");
+            test.equal(answer.status, 413);
+        })
+        .test("refuses a body that is not JSON, and says where", fn() {
+            let answer = post(service(), "{\"title\": ");
+            test.equal(answer.status, 400);
+            test.contains(errorOf(answer), "line 1, column 11");
+        })
+        .test("replaces a note, which may keep its title", fn() {
+            let app = service();
+            let answer = app.answer(request(Method.Put, "/notes/1", "{\"title\": \"Groceries\", \"body\": \"bread\"}"));
+            test.equal(answer.status, 200);
+            test.equal(document(get(app, "/notes/1")).find("body"), Json.String("bread"));
+            // ...but not take the title of another
+            test.equal(app.answer(request(Method.Put, "/notes/1", "{\"title\": \"Ideas\"}")).status, 409);
+        })
+        .test("deletes a note, once", fn() {
+            let app = service();
+            test.equal(app.answer(request(Method.Delete, "/notes/2", "")).status, 204);
+            test.equal(app.answer(request(Method.Delete, "/notes/2", "")).status, 404);
+            test.same(titles(get(app, "/notes")), ["Groceries", "Ideas"]);
+        })
+        .test("answers 404 for a note that is not there", fn() {
+            test.equal(get(service(), "/notes/99").status, 404);
+            test.equal(errorOf(get(service(), "/notes/abc")), "there is no note abc");
+            test.equal(get(service(), "/nowhere").status, 404);
+        })
+        .test("answers 405 for a method an address does not take", fn() {
+            test.equal(service().answer(request(Method.Delete, "/tags", "")).status, 405);
+        });
+}

@@ -1,0 +1,183 @@
+// Numbers and tables written for people.
+//
+//     format.fixed(3.14159, 2)        // "3.14"
+//     format.grouped(1234567)         // "1,234,567"
+//     format.bytes(1536000)           // "1.5 MB"
+//     format.duration(3723000)        // "1h 02m 03s"
+
+import std.strings;
+import std.arrays;
+import std.math;
+
+// A number with that many digits after the point, rounded: fixed(2.5, 0)
+// is "2", fixed(0.125, 2) is "0.12", fixed(1.0, 2) is "1.00".
+pub extern fn fixed(x: Float, digits: Int) -> String;
+
+// A whole number in another base, from 2 to 36: inBase(255, 16) is "ff".
+pub extern fn inBase(n: Int, base: Int) -> String;
+
+// The number a text spells in that base, or null.
+pub extern fn fromBase(text: String, base: Int) -> Int?;
+
+pub fn hex(n: Int) -> String { return inBase(n, 16); }
+
+pub fn binary(n: Int) -> String { return inBase(n, 2); }
+
+// A whole number with its digits in groups of three: "1,234,567".
+pub fn grouped(n: Int) -> String {
+    return groupedWith(n, ",");
+}
+
+// The same with another separator: a space, a dot, a thin space.
+pub fn groupedWith(n: Int, separator: String) -> String {
+    let digits = toString(math.abs(n));
+    let groups: [String] = [];
+    let end = digits.length;
+    while end > 3 {
+        push(groups, strings.substring(digits, end - 3, end));
+        end -= 3;
+    }
+    push(groups, strings.first(digits, end));
+    let text = strings.join(arrays.reversed(groups), separator);
+    if n < 0 { return "-" + text; }
+    return text;
+}
+
+// A whole number with zeros in front, to a width: padded(7, 3) is "007".
+pub fn padded(n: Int, width: Int) -> String {
+    let digits = toString(math.abs(n));
+    let zeros = strings.repeat("0", math.max(0, width - digits.length));
+    if n < 0 { return "-" + zeros + digits; }
+    return zeros + digits;
+}
+
+// A share as a percentage: percent(0.125, 1) is "12.5%".
+pub fn percent(share: Float, digits: Int) -> String {
+    return fixed(share * 100.0, digits) + "%";
+}
+
+// An amount with two decimals and its digits grouped: money(1234567.5)
+// is "1,234,567.50".
+pub fn money(amount: Float) -> String {
+    let cents = math.round(math.fabs(amount) * 100.0);
+    let text = grouped(cents / 100) + "." + padded(cents % 100, 2);
+    if amount < 0.0 && cents != 0 { return "-" + text; }
+    return text;
+}
+
+// A size in bytes, in the unit that reads best: "512 B", "1.5 MB".
+pub fn bytes(size: Int) -> String {
+    let units = ["B", "KB", "MB", "GB", "TB", "PB"];
+    let amount = math.toFloat(size);
+    let unit = 0;
+    while math.fabs(amount) >= 1024.0 && unit < units.length - 1 {
+        amount = amount / 1024.0;
+        unit++;
+    }
+    if unit == 0 { return "${size} B"; }
+    return "${fixed(amount, 1)} ${units[unit]}";
+}
+
+// A length of time in milliseconds, in the units that read best:
+// "350ms", "2.5s", "1m 05s", "1h 02m 03s", "3d 04h".
+pub fn duration(milliseconds: Int) -> String {
+    if milliseconds < 0 { return "-" + duration(-milliseconds); }
+    if milliseconds < 1000 { return "${milliseconds}ms"; }
+    if milliseconds < 60000 { return fixed(math.toFloat(milliseconds) / 1000.0, 1) + "s"; }
+    let seconds = milliseconds / 1000;
+    let minutes = seconds / 60;
+    let hours = minutes / 60;
+    let days = hours / 24;
+    if days > 0 { return "${days}d ${padded(hours % 24, 2)}h"; }
+    if hours > 0 { return "${hours}h ${padded(minutes % 60, 2)}m ${padded(seconds % 60, 2)}s"; }
+    return "${minutes}m ${padded(seconds % 60, 2)}s";
+}
+
+// A number with its ending: 1st, 2nd, 3rd, 4th, 11th, 22nd.
+pub fn ordinal(n: Int) -> String {
+    let last = math.abs(n) % 10;
+    let lastTwo = math.abs(n) % 100;
+    if lastTwo >= 11 && lastTwo <= 13 { return "${n}th"; }
+    match last {
+        case 1: { return "${n}st"; }
+        case 2: { return "${n}nd"; }
+        case 3: { return "${n}rd"; }
+        default: { return "${n}th"; }
+    }
+}
+
+// A count with its noun: plural(1, "file", "files") is "1 file".
+pub fn plural(count: Int, one: String, many: String) -> String {
+    if count == 1 { return "1 ${one}"; }
+    return "${count} ${many}";
+}
+
+// --- Columns ---
+
+// Which side of its column a text is on.
+pub enum Align { Left, Right, Center }
+
+// A text in a column of that width. One that is too long is left whole.
+pub fn pad(text: String, width: Int, align: Align) -> String {
+    let space = math.max(0, width - text.length);
+    match align {
+        case Align.Left: { return text + strings.repeat(" ", space); }
+        case Align.Right: { return strings.repeat(" ", space) + text; }
+        case Align.Center: {
+            let before = space / 2;
+            return strings.repeat(" ", before) + text + strings.repeat(" ", space - before);
+        }
+    }
+}
+
+// A table as text, every column as wide as its widest value, with a line
+// under the titles:
+//
+//     name   age
+//     -----  ---
+//     ada     36
+//     grace   45
+//
+// A column whose values are all numbers is set to the right.
+pub fn table(titles: [String], rows: [[String]]) -> String {
+    let aligns: [Align] = [];
+    for column, _ in titles {
+        let numeric = rows.length > 0;
+        for row in rows {
+            if column < row.length && strings.parseFloat(row[column]) == null { numeric = false; }
+        }
+        if numeric { push(aligns, Align.Right); } else { push(aligns, Align.Left); }
+    }
+    return tableWith(titles, aligns, rows);
+}
+
+// The same, saying how each column is set.
+pub fn tableWith(titles: [String], aligns: [Align], rows: [[String]]) -> String {
+    let widths = arrays.map(titles, fn(title: String) -> Int { return title.length; });
+    for row in rows {
+        for column, value in row {
+            if column < widths.length { widths[column] = math.max(widths[column], value.length); }
+        }
+    }
+
+    let line = fn(values: [String]) -> String {
+        let cells: [String] = [];
+        for column, width in widths {
+            let value = arrays.at(values, column) ?? "";
+            push(cells, pad(value, width, arrays.at(aligns, column) ?? Align.Left));
+        }
+        return strings.trimEnd(strings.join(cells, "  "));
+    };
+
+    let lines = [line(titles)];
+    push(lines, line(arrays.map(widths, fn(width: Int) -> String { return strings.repeat("-", width); })));
+    for row in rows { push(lines, line(row)); }
+    return strings.join(lines, "\n") + "\n";
+}
+
+// A bar of a chart: bar(3, 10, 20) is six blocks out of twenty.
+pub fn bar(value: Int, largest: Int, width: Int) -> String {
+    if largest <= 0 { return ""; }
+    let filled = math.clamp(value * width / largest, 0, width);
+    return strings.repeat("#", filled);
+}

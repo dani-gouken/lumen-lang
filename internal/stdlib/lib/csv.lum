@@ -1,0 +1,135 @@
+// CSV: tables written as text, one row per line, values separated by
+// commas, quoted when they hold a comma, a quote or a line end.
+//
+//     let people = csv.table("name,age\nada,36\ngrace,45\n").expect("a table");
+//     people.column("name")                   // ["ada", "grace"]
+//     people.records()[0].get("age")          // "36"
+
+import std.result.{Result};
+import std.dict;
+import std.dict.{Dict};
+import std.strings;
+import std.arrays;
+
+// Why a text is not CSV, and where. Line 0 means the whole text.
+pub struct ParseError {
+    message: String;
+    line: Int;
+    column: Int;
+}
+
+impl ParseError {
+    pub fn describe() -> String {
+        if self.line == 0 { return self.message; }
+        return "line ${self.line}, column ${self.column}: ${self.message}";
+    }
+}
+
+// The rows of a text, each an array of its values.
+pub fn parse(text: String) -> Result<[[String]], ParseError> {
+    return parseWith(text, ",");
+}
+
+// The same with another separator: ";" or "\t".
+pub fn parseWith(text: String, separator: String) -> Result<[[String]], ParseError> {
+    let found = rows(text, separator);
+    if found == null {
+        let parts = problem();
+        let where = strings.split(parts[0], ":");
+        if where.length < 2 {
+            return Result.Err(ParseError { message: parts[1], line: 0, column: 0 });
+        }
+        return Result.Err(ParseError {
+            message: parts[1],
+            line: strings.parseInt(where[0]) ?? 0,
+            column: strings.parseInt(where[1]) ?? 0,
+        });
+    }
+    return Result.Ok(found);
+}
+
+// Rows as text, quoting the values that need it.
+pub fn write(table: [[String]]) -> String {
+    return text(table, ",");
+}
+
+pub fn writeWith(table: [[String]], separator: String) -> String {
+    return text(table, separator);
+}
+
+// A table whose first row names the columns.
+pub struct Table {
+    header: [String];
+    rows: [[String]];
+}
+
+// Reads a text as a table. Every row must have a value for each column.
+pub fn table(text: String) -> Result<Table, ParseError> {
+    return parse(text).then(asTable);
+}
+
+fn asTable(all: [[String]]) -> Result<Table, ParseError> {
+    if all.length == 0 {
+        return Result.Err(ParseError { message: "there is no header row", line: 0, column: 0 });
+    }
+    let header = all[0];
+    for i, row in all {
+        if row.length != header.length {
+            return Result.Err(ParseError {
+                message: "expected ${header.length} values, as in the header, found ${row.length}",
+                line: i + 1,
+                column: 1,
+            });
+        }
+    }
+    return Result.Ok(Table { header: header, rows: arrays.slice(all, 1, all.length) });
+}
+
+impl Table {
+    pub fn size() -> Int { return self.rows.length; }
+
+    // The values of a column, or null if there is none of that name.
+    pub fn column(name: String) -> [String]? {
+        let at = arrays.indexOf(self.header, name);
+        if at == null { return null; }
+        let out: [String] = [];
+        for row in self.rows { push(out, row[at]); }
+        return out;
+    }
+
+    // The value of a column in a row, or null.
+    pub fn cell(row: Int, name: String) -> String? {
+        let at = arrays.indexOf(self.header, name);
+        if at == null || row < 0 || row >= self.rows.length { return null; }
+        return self.rows[row][at];
+    }
+
+    // Each row as a dictionary from the name of a column to its value.
+    pub fn records() -> [Dict<String>] {
+        let out: [Dict<String>] = [];
+        for row in self.rows {
+            let record = dict.empty<String>();
+            for i, name in self.header { record.set(name, row[i]); }
+            push(out, record);
+        }
+        return out;
+    }
+
+    // The rows a function accepts, as a table with the same columns.
+    pub fn where(wanted: fn(Dict<String>) -> Bool) -> Table {
+        let kept: [[String]] = [];
+        for i, record in self.records() {
+            if wanted(record) { push(kept, self.rows[i]); }
+        }
+        return Table { header: self.header, rows: kept };
+    }
+
+    // The table as CSV text, header first.
+    pub fn write() -> String {
+        return text(arrays.concat([self.header], self.rows), ",");
+    }
+}
+
+extern fn rows(text: String, separator: String) -> [[String]]?;
+extern fn text(table: [[String]], separator: String) -> String;
+extern fn problem() -> [String];

@@ -43,6 +43,8 @@ func kindOfFileError(err error) string {
 	return "other"
 }
 
+var errIsDirectory = syscall.EISDIR
+
 func firstError(errs ...error) error {
 	for _, err := range errs {
 		if err != nil {
@@ -196,6 +198,14 @@ func init() {
 		// A number from 0 up to, not including, 1
 		native{"float", 0, func(vm *VM, args []Value) (Value, error) {
 			return NewNumber(vm.random().Float64()), nil
+		}},
+		// A version 4 UUID from the VM's generator
+		native{"uuid", 0, func(vm *VM, args []Value) (Value, error) {
+			var b [16]byte
+			vm.random().Read(b[:])
+			b[6] = b[6]&0x0f | 0x40
+			b[8] = b[8]&0x3f | 0x80
+			return vm.newString(fmt.Sprintf("%x-%x-%x-%x-%x", b[0:4], b[4:6], b[6:8], b[8:10], b[10:16]))
 		}},
 	)
 }

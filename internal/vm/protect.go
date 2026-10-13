@@ -124,15 +124,20 @@ func (vm *VM) callFunction(fn Value, args []Value) (Value, error) {
 // protect runs a function of the program. If the function fails, by a
 // panic or by any other runtime error, the program is not stopped: the VM
 // is put back where it was and the failure is kept for the caller.
-// It reports whether the function completed.
-func (vm *VM) protect(fn Value) bool {
+// It reports whether the function completed. A program that asks to end
+// (std.os.exit) is not a failure to recover from: that request is handed
+// back as the error, to be passed on.
+func (vm *VM) protect(fn Value) (bool, error) {
 	saved := vm.saveState()
 	vm.outcome, vm.failure = NewNull(), nil
 
 	result, err := vm.callFunction(fn, nil)
 	if err == nil {
 		vm.outcome = result
-		return true
+		return true, nil
+	}
+	if _, leaving := err.(*exitError); leaving {
+		return false, err
 	}
 
 	failure, ok := err.(*RuntimeError)
@@ -143,7 +148,7 @@ func (vm *VM) protect(fn Value) bool {
 	}
 	vm.unwind(saved)
 	vm.failure = failure
-	return false
+	return false, nil
 }
 
 func init() {
@@ -159,7 +164,11 @@ func init() {
 		}},
 		// Runs a function that takes no arguments; false if it failed
 		native{"protect", 1, func(vm *VM, args []Value) (Value, error) {
-			return NewBool(vm.protect(args[0])), nil
+			completed, leaving := vm.protect(args[0])
+			if leaving != nil {
+				return NewNull(), leaving
+			}
+			return NewBool(completed), nil
 		}},
 		// What the function run by protect returned
 		native{"outcome", 0, func(vm *VM, args []Value) (Value, error) {

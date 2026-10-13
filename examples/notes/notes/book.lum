@@ -1,0 +1,136 @@
+// The notes themselves: what the service keeps, and the rules it keeps
+// them by. Nothing here knows about the web.
+
+import std.json;
+import std.json.{Json};
+import std.result.{Result};
+import std.option;
+import std.strings;
+import std.arrays;
+import std.set;
+
+pub struct Note {
+    id: Int;
+    title: String;
+    body: String;
+    tags: [String];
+}
+
+impl Note {
+    pub fn toJson() -> Json {
+        return json.object()
+            .int("id", self.id)
+            .text("title", self.title)
+            .text("body", self.body)
+            .set("tags", json.texts(self.tags))
+            .done();
+    }
+}
+
+// Why a note was refused. The web layer turns each into a status; a
+// command line tool would turn them into sentences.
+pub enum Refusal {
+    Missing(String),            // a field that has to be there
+    TooLong(String, Int),       // a field, and the most it may hold
+    Duplicate(String),          // a title already taken
+}
+
+impl Refusal {
+    pub fn describe() -> String {
+        match self {
+            case Refusal.Missing(field): { return "${field} is required"; }
+            case Refusal.TooLong(field, most): { return "${field} may hold ${most} characters at most"; }
+            case Refusal.Duplicate(title): { return "there is already a note called '${title}'"; }
+        }
+    }
+}
+
+pub struct Book {
+    notes: [Note];
+    lastId: Int;
+}
+
+pub fn empty() -> Book {
+    return Book { notes: [], lastId: 0 };
+}
+
+impl Book {
+    pub fn find(id: Int) -> Note? {
+        return arrays.find(self.notes, fn(note: Note) -> Bool { return note.id == id; });
+    }
+
+    // The notes that carry a tag, or all of them without one.
+    pub fn tagged(tag: String?) -> [Note] {
+        if tag == null { return self.notes; }
+        let wanted: String = tag;
+        return arrays.filter(self.notes, fn(note: Note) -> Bool { return arrays.contains(note.tags, wanted); });
+    }
+
+    // The notes whose title or body holds a text, whatever its case.
+    pub fn search(text: String) -> [Note] {
+        let wanted = strings.lower(text);
+        return arrays.filter(self.notes, fn(note: Note) -> Bool {
+            return strings.contains(strings.lower(note.title + " " + note.body), wanted);
+        });
+    }
+
+    // Every tag in use, each once, in alphabetical order.
+    pub fn tags() -> [String] {
+        let all = set.of(arrays.flatMap(self.notes, fn(note: Note) -> [String] { return note.tags; }));
+        return arrays.sortedTexts(all.items());
+    }
+
+    // Adds the note a document describes.
+    pub fn add(document: Json) -> Result<Note, Refusal> {
+        return self.checked(document, null).map(fn(note: Note) -> Note {
+            self.lastId++;
+            note.id = self.lastId;
+            push(self.notes, note);
+            return note;
+        });
+    }
+
+    // Replaces what a note says. Null if there is no such note.
+    pub fn replace(id: Int, document: Json) -> Result<Note, Refusal>? {
+        let found = self.find(id);
+        if found == null { return null; }
+        let old: Note = found;
+        return self.checked(document, id).map(fn(new: Note) -> Note {
+            old.title = new.title;
+            old.body = new.body;
+            old.tags = new.tags;
+            return old;
+        });
+    }
+
+    pub fn remove(id: Int) -> Bool {
+        let at = arrays.findIndex(self.notes, fn(note: Note) -> Bool { return note.id == id; });
+        if at == null { return false; }
+        self.notes = arrays.without(self.notes, at);
+        return true;
+    }
+
+    // A note read from a document and checked against the rules.
+    // `replacing` is the id of the note being replaced, if any: that one
+    // may keep its own title.
+    fn checked(document: Json, replacing: Int?) -> Result<Note, Refusal> {
+        let title = strings.trim(option.then(document.get("title"), json.textOf) ?? "");
+        if title == "" { return Result.Err(Refusal.Missing("title")); }
+        if strings.len(title) > 60 { return Result.Err(Refusal.TooLong("title", 60)); }
+
+        let taken = arrays.find(self.notes, fn(note: Note) -> Bool { return strings.lower(note.title) == strings.lower(title); });
+        if taken != null && taken.id != replacing { return Result.Err(Refusal.Duplicate(taken.title)); }
+
+        let body = option.then(document.get("body"), json.textOf) ?? "";
+        if strings.len(body) > 2000 { return Result.Err(Refusal.TooLong("body", 2000)); }
+
+        // Tags: texts only, tidied, without repeats
+        let tags = set.texts();
+        let given: [Json] = option.then(document.get("tags"), json.itemsOf) ?? [];
+        for tag in given {
+            let name = strings.lower(strings.trim(tag.text() ?? ""));
+            if name != "" { tags.add(name); }
+        }
+        return Result.Ok(Note { id: 0, title: title, body: body, tags: tags.items() });
+    }
+}

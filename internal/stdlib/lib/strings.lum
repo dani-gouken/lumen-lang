@@ -141,6 +141,10 @@ pub extern fn lower(text: String) -> String;
 // Without the spaces, tabs and line ends at both ends.
 pub extern fn trim(text: String) -> String;
 
+// Without the spaces and line ends at the start only, or at the end only.
+pub extern fn trimStart(text: String) -> String;
+pub extern fn trimEnd(text: String) -> String;
+
 // The first character in upper case: capitalize("ada") is "Ada".
 pub fn capitalize(text: String) -> String {
     if text == "" { return text; }

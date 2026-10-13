@@ -16,7 +16,7 @@ fn main() -> Int {
 }
 ```
 
-A longer program using most of it is [`examples/words.lum`](../examples/words.lum).
+A longer program using the core of it is [`examples/words.lum`](../examples/words.lum). Whole programs built on the rest: a [to-do list](../examples/todo/main.lum) kept in a JSON file, a [report on a web server's log](../examples/logs/main.lum), a [sales report](../examples/sales/main.lum) from a CSV file, and a [web service](../examples/notes/main.lum) with its tests.
 
 | Module | For |
 |--------|-----|
@@ -28,8 +28,19 @@ A longer program using most of it is [`examples/words.lum`](../examples/words.lu
 | [`std.option`](#stdoption) | Chaining steps on values that may be `null` |
 | [`std.result`](#stdresult) | `Result<T, E>`, surviving a failure with `attempt`, traces |
 | [`std.io`](#stdio) | Reading input, files, the environment |
-| [`std.time`](#stdtime) | The clock, waiting, measuring |
-| [`std.random`](#stdrandom) | Random numbers |
+| [`std.time`](#stdtime) | The clock, dates, waiting, measuring |
+| [`std.random`](#stdrandom) | Random numbers, identifiers |
+| [`std.path`](#stdpath) | Paths taken apart and put together |
+| [`std.fs`](#stdfs) | Folders: listing, walking, creating, copying |
+| [`std.os`](#stdos) | Program arguments, exit, running other programs |
+| [`std.format`](#stdformat) | Numbers, sizes, durations and tables written for people |
+| [`std.json`](#stdjson) | Reading, searching and writing JSON |
+| [`std.regex`](#stdregex) | Regular expressions |
+| [`std.csv`](#stdcsv) | Tables as text |
+| [`std.set`](#stdset) | `Set<T>`: values without repeats |
+| [`std.encoding`, `std.hash`](#stdencoding-and-stdhash) | Base64, hex, URL encoding; SHA, MD5, HMAC |
+| [`std.http`](#stdhttp) | Asking web servers, and being one |
+| [`std.test`](#stdtest) | Tests and checks |
 
 The modules are imported and used like any other ([modules.md](modules.md)): `import std.math;` then `math.abs(-3)`, or `import std.math.{abs};` then `abs(-3)`.
 
@@ -254,6 +265,21 @@ Generic functions on plain arrays. Type arguments are inferred: `arrays.reversed
 | `smallest(numbers) -> Int?`, `largest(numbers) -> Int?` | `null` for an empty array |
 | `sortedNumbers(numbers)`, `sortedTexts(texts)` | Smallest first; alphabetical |
 
+**Pieces and groups**
+
+| Function | Result |
+|----------|--------|
+| `take(items, count)`, `drop(items, count)` | The first `count` items; all but those |
+| `chunks(items, size) -> [[T]]` | Pieces of `size`, the last one shorter if it does not divide |
+| `flatten(arrays) -> [T]`, `flatMap(items, convert)` | |
+| `groupBy(items, name) -> Dict<[T]>` | The items sorted into groups by a text worked out from each |
+| `countBy(items, name) -> Dict<Int>` | How many items give each text |
+| `unique(texts)`, `uniqueBy(items, name)` | Without repeats; the first of each is kept |
+| `partition(items, wanted) -> [[T]]` | The items a function accepts, then the others |
+| `sortedBy(items, rank)`, `sortedByText(items, name)` | In the order of a number, or of a text, worked out from each |
+| `maxBy(items, rank) -> T?`, `minBy(items, rank) -> T?` | |
+| `sumOf(items, amount) -> Int` | |
+
 **Equal**, for `indexOf` and `contains`, means what `==` means: numbers, texts and booleans are equal when they have the same value; an array or a struct is only equal to itself. To look for a struct by what is in it, use `find` with a function.
 
 ```lumen
@@ -341,10 +367,13 @@ println(ages.get("nobody") ?? 0);
 | `dict.empty<V>() -> Dict<V>` | An empty dictionary. The type of the values has to be written |
 | `set(key, value)` | Sets the value of a key, replacing the one it had |
 | `get(key) -> V?` | The value, or `null` if the key has none |
+| `getOr(key, fallback) -> V` | The value, or the fallback |
+| `update(key, start, change)` | Sets the key to what a function makes of its value, or of `start` if it has none. Counting: `counts.update(word, 0, fn(n: Int) -> Int { return n + 1; })` |
 | `has(key) -> Bool` | |
 | `remove(key) -> Bool` | Removes a key; whether it was there |
 | `size()`, `isEmpty()` | |
 | `keys() -> [String]` | The keys, in the order they were first set |
+| `sortedKeys() -> [String]` | In alphabetical order |
 | `values() -> [V]` | The values, in the order of their keys |
 | `each(action)` | Calls `action(key, value)` for each |
 
@@ -474,7 +503,7 @@ An `io.Error` says what kind of failure it was, for the program to act on, and t
 | Field | |
 |-------|---|
 | `kind: ErrorKind` | `NotFound`, `PermissionDenied`, `IsDirectory`, `NotDirectory`, `AlreadyExists`, `Other` |
-| `operation` | `"read"`, `"write"` or `"append"` |
+| `operation` | `"read"`, `"write"`, `"append"`; from [`std.fs`](#stdfs) and [`std.os`](#stdos) also `"list"`, `"copy"`, `"run"`, ... |
 | `path` | As it was given |
 | `message` | As the operating system puts it: `no such file or directory` |
 | `stack: [Location]` | Where the program asked for the file |
@@ -509,7 +538,7 @@ fn main() -> Int {
 
 When the reason does not matter: `io.readFile(path).orElse("")`.
 
-Paths are relative to the directory the program is run from, not to the program's file.
+Paths are relative to the directory the program is run from, not to the program's file. For a file that comes with the program, start from [`os.program()`](#stdos).
 
 ---
 
@@ -531,7 +560,42 @@ work();
 println("took", watch.milliseconds(), "ms");
 ```
 
-There are no dates yet: nothing turns a time into a year, month and day.
+Lengths of time are constants in milliseconds: `time.second`, `minute`, `hour`, `day`, `week`, as in `time.sleep(2 * time.second)`.
+
+### Dates
+
+A moment is a number, which is what `now` gives. A `Date` is that moment told the way people do, in some time zone.
+
+| Function / method | Result |
+|-------------------|--------|
+| `time.today() -> Date` | Now, where the program runs |
+| `time.utc(moment)`, `time.local(moment)` | A moment as told in UTC, or where the program runs |
+| `time.date(year, month, day)`, `dateTime(year, month, day, hour, minute, second)` | In UTC. Numbers out of range carry over: the 32nd of January is the 1st of February |
+| `time.parse(text) -> Date?` | Reads `2026-10-13`, `2026-10-13 14:30`, `2026-10-13T14:30:00+02:00`, and the dates of e-mail and of web server logs |
+| `timestamp() -> Int` | The moment |
+| `format(pattern)`, `iso()`, `isoTime()` | See below; `2026-10-13`; `2026-10-13T14:30:00Z` |
+| `plus(milliseconds)`, `plusDays(n)`, `plusMonths(n)`, `startOfDay()` | New dates |
+| `daysUntil(other) -> Int` | Days of the calendar, not lengths of 24 hours |
+| `isBefore(other)`, `isAfter(other)`, `isSameDay(other)` | |
+| `time.daysIn(year, month)`, `isLeapYear(year)`, `monthName(month)` | |
+
+A `Date` has the fields `year`, `month` (1 for January), `day`, `hour`, `minute`, `second`, `millisecond`, `weekday` (an enum, `Weekday.Monday` to `Weekday.Sunday`, with `name()` and `isWeekend()`), `dayOfYear` and `offset` (minutes ahead of UTC).
+
+In a pattern for `format`:
+
+| | | | |
+|---|---|---|---|
+| `YYYY` 2026 | `YY` 26 | `MMMM` October | `MMM` Oct |
+| `MM` 10 | `M` 10 | `DD` 03 | `D` 3 |
+| `dddd` Tuesday | `ddd` Tue | `HH` 09 | `H` 9 |
+| `hh` 09 (of 12) | `h` 9 | `A` AM | `mm` 05 |
+| `ss` 07 | `SSS` 042 | `Z` +02:00 | `[text]` kept as it is |
+
+```lumen
+let today = time.today();
+println(today.format("dddd D MMMM YYYY"));       // Tuesday 13 October 2026
+println(today.plusDays(30).iso(), today.daysUntil(time.date(2027, 1, 1)));
+```
 
 ---
 
@@ -546,10 +610,318 @@ There are no dates yet: nothing turns a time into a year, month and day.
 | `chance(probability) -> Bool` | True with that probability: `chance(0.25)` one time in four |
 | `pick<T>(items) -> T?` | One of the items; `null` for an empty array |
 | `shuffle<T>(items)` | **Changes the array**: puts its items in a random order |
+| `uuid() -> String` | A random identifier: `3f2b8c1e-9d4a-4f6b-8a1c-0e5d7b9f2a4c` |
 
 Without `seed` the numbers differ on every run. With it they repeat, which is what a test or a replay needs.
 
 These numbers are for games and simulations. They are not fit for passwords or keys.
+
+---
+
+## `std.path`
+
+Paths taken apart and put together. Nothing here touches the disk. The separator is that of the system the program runs on.
+
+| Function | Result |
+|----------|--------|
+| `join(parts) -> String` | The parts put together and tidied: `join(["a", "b/", "../c.txt"])` is `a/c.txt` |
+| `inside(folder, name) -> String` | `inside("notes", "todo.txt")` is `notes/todo.txt` |
+| `base(path)`, `dir(path)` | The last part; all but the last part |
+| `extension(path)` | With its dot: `.txt`; `""` if there is none |
+| `stem(path)` | The last part without its extension |
+| `withExtension(path, extension)` | `withExtension("a/b.md", ".html")` is `a/b.html` |
+| `parts(path) -> [String]` | `"a/b/c.txt"` gives `["a", "b", "c.txt"]` |
+| `clean(path)` | The shortest path that means the same |
+| `isAbsolute(path)`, `absolute(path)` | |
+| `matches(pattern, name) -> Bool` | `*` stands for any characters, `?` for one: `matches("*.txt", "todo.txt")` |
+| `separator()` | `/`, or `\` on Windows |
+
+---
+
+## `std.fs`
+
+Folders and the files in them. Reading and writing the *content* of a file is in [`std.io`](#stdio). Like there, what can fail returns a `Result` whose reason is an `io.Error`.
+
+| Function | Result |
+|----------|--------|
+| `list(folder) -> Result<[Entry], Error>` | What a folder holds, sorted by name; one level |
+| `walk(folder) -> Result<[String], Error>` | The path of every file under it, however deep |
+| `find(folder, pattern) -> Result<[String], Error>` | Those whose name fits: `fs.find("src", "*.lum")` |
+| `info(path) -> Result<Entry, Error>` | What is known about one file or folder |
+| `isDir(path)`, `isFile(path)` | |
+| `makeDir(folder) -> Result<String, Error>` | Creates it and the folders above it. One already there is fine |
+| `removeAll(path) -> Result<String, Error>` | Deletes a file, or a folder with all it holds. Nothing there is fine |
+| `rename(from, to)`, `copy(from, to)` | Give the new path |
+| `currentDir()`, `tempDir()` | |
+| `makeTempDir(prefix) -> Result<String, Error>` | A new, empty folder for the program's own use |
+
+An `Entry` has `name`, `path`, `kind` (`Kind.File` or `Kind.Folder`), `size` in bytes, `modified` (a moment, as `time.now`), and `isFile()`, `isFolder()`.
+
+```lumen
+match fs.list("notes") {
+    case Result.Ok(entries): {
+        for entry in entries { println(entry.name, format.bytes(entry.size)); }
+    }
+    case Result.Err(error): { println(error.describe()); }     // cannot list notes: no such file or directory
+}
+```
+
+---
+
+## `std.os`
+
+| Function | Result |
+|----------|--------|
+| `args() -> [String]` | What followed the program on the command line: `lumen run notes.lum add milk` gives `["add", "milk"]` |
+| `program() -> String` | The file the program was run from. Files that come with a program are found from it: `path.inside(path.dir(os.program()), "data.csv")` |
+| `exit(status)` | Ends the program now. Nothing after it runs, not even an `attempt` around it |
+| `platform()` | `"linux"`, `"darwin"`, `"windows"` |
+| `hostname()` | |
+| `environment() -> Dict<String>` | Every environment variable. One alone: `io.env` |
+| `run(program, arguments) -> Result<Output, Error>` | Runs another program and waits for it |
+| `runWithInput(program, arguments, input)` | The same, with a text for it to read |
+
+An `Output` has `status`, `out`, `err`, and `succeeded()`, `lines()`. A program that ran and reports a failure is not an error: look at `output.status`. The error is for a program that could not be started.
+
+**Arguments on the command line.** What follows the file is for the program, except the options of `lumen` itself (`--heap-mb`, `--max-depth`). After a lone `--` everything is for the program:
+
+```
+lumen run todo.lum add "Buy milk" --due=2026-10-20
+lumen run --heap-mb=64 report.lum -- --heap-mb=this-one-is-mine
+lumen run . list                 # a project: name its folder, then the arguments
+```
+
+---
+
+## `std.format`
+
+Numbers and tables written for people.
+
+| Function | Result |
+|----------|--------|
+| `fixed(x, digits)` | `fixed(3.14159, 2)` is `3.14`, `fixed(1.0, 2)` is `1.00` |
+| `grouped(n)`, `groupedWith(n, separator)` | `1,234,567` |
+| `money(amount)` | `1,234,567.50` |
+| `percent(share, digits)` | `percent(0.125, 1)` is `12.5%` |
+| `padded(n, width)` | `padded(7, 3)` is `007` |
+| `hex(n)`, `binary(n)`, `inBase(n, base)`, `fromBase(text, base) -> Int?` | |
+| `bytes(size)` | `512 B`, `1.5 MB` |
+| `duration(milliseconds)` | `350ms`, `2.5s`, `1m 05s`, `1h 02m 03s`, `3d 04h` |
+| `ordinal(n)` | `1st`, `2nd`, `11th`, `22nd` |
+| `plural(count, one, many)` | `1 file`, `3 files` |
+| `pad(text, width, align)` | `Align.Left`, `Align.Right`, `Align.Center` |
+| `table(titles, rows) -> String` | Columns as wide as their widest value; a column of numbers is set to the right |
+| `tableWith(titles, aligns, rows)` | The same, saying how each column is set |
+| `bar(value, largest, width)` | A bar of a chart, in `#` |
+
+```lumen
+print(format.table(["name", "age"], [["ada", "36"], ["grace", "45"]]));
+```
+```
+name   age
+-----  ---
+ada     36
+grace   45
+```
+
+---
+
+## `std.json`
+
+A document is a value of an enum, so a `match` takes it apart and the compiler checks every kind is handled:
+
+```lumen
+pub enum Json { Null, Bool(Bool), Number(Float), String(String), Array([Json]), Object(Dict<Json>) }
+```
+
+| Function / method | Result |
+|-------------------|--------|
+| `json.parse(text) -> Result<Json, ParseError>` | The error has `message`, `line`, `column`, `describe()` |
+| `get(key) -> Json?`, `at(index) -> Json?` | Into an object, into an array |
+| `find(path) -> Json?` | Keys and positions separated by dots: `find("user.tags.0")` |
+| `text()`, `number()`, `int()`, `bool()`, `items()`, `fields()` | The value if it is of that kind, else `null` |
+| `isNull()` | |
+| `equals(other)` | By content. `==` only finds two arrays or objects equal when they are the same one |
+| `stringify()`, `pretty()` | On one line; over several, indented |
+| `json.int(n)`, `json.texts(items)`, `json.ints(items)`, `json.array(items, convert)` | Making documents |
+| `json.object()` | An object built a key at a time: `.text(k, v)`, `.int`, `.number`, `.bool`, `.none`, `.set(k, json)`, then `.done()` |
+| `json.textOf`, `intOf`, `numberOf`, `boolOf`, `itemsOf` | The same accessors as functions, to chain with [`std.option`](#stdoption) |
+
+```lumen
+let document = json.parse(text).expect("a document");
+let name = option.then(document.get("name"), json.textOf) ?? "nobody";
+
+let reply = json.object().text("name", name).int("visits", 3).set("tags", json.texts(tags)).done();
+println(reply.stringify());         // {"name":"ada","visits":3,"tags":["a","b"]}
+```
+
+The keys of an object stay in the order they were written. Numbers are `Float`s; `int()` gives one that is whole.
+
+---
+
+## `std.regex`
+
+Regular expressions, in the syntax of RE2: no look-behind and no back-references, and a search that always takes time proportional to the text. `\w`, `\d` and `\b` know the letters and digits of English only.
+
+| Function / method | Result |
+|-------------------|--------|
+| `regex.compile(pattern) -> Result<Regex, PatternError>` | Checks a pattern |
+| `regex.must(pattern) -> Regex` | The same for a pattern written in the program: a wrong one stops it |
+| `matches(text) -> Bool` | Whether it fits somewhere |
+| `find(text) -> Match?`, `findAll(text) -> [Match]` | |
+| `all(text) -> [String]` | The text of every match |
+| `replace(text, with)` | `$1` is what the first group took |
+| `replaceWith(text, convert)` | Each match replaced by what a function makes of it |
+| `split(text) -> [String]` | The pieces between the matches |
+| `regex.escape(text)` | A text as a pattern that matches exactly it |
+
+A `Match` has `text`, `start`, `end` (positions in characters), `groups`, and `group(index)`, `named(name)` for a group written `(?P<name>...)`.
+
+In a text of a program a backslash is written twice, and `${` would start a value to insert: write `"\\d+"` and `"\${name}"`.
+
+```lumen
+let date = regex.must("(\\d{4})-(\\d{2})-(\\d{2})");
+date.replace("on 2026-10-13", "$3/$2/$1")           // on 13/10/2026
+```
+
+---
+
+## `std.csv`
+
+| Function / method | Result |
+|-------------------|--------|
+| `csv.parse(text) -> Result<[[String]], ParseError>` | The rows, each an array of its values |
+| `csv.parseWith(text, separator)` | With `";"` or `"\t"` |
+| `csv.write(rows)`, `csv.writeWith(rows, separator)` | Rows as text, quoting what needs it |
+| `csv.table(text) -> Result<Table, ParseError>` | The first row names the columns; every row must have a value for each |
+| `table.column(name) -> [String]?`, `cell(row, name) -> String?` | |
+| `table.records() -> [Dict<String>]` | Each row as a dictionary from column to value |
+| `table.where(wanted) -> Table` | The rows a function accepts |
+| `table.write()`, `size()`, `header`, `rows` | |
+
+---
+
+## `std.set`
+
+Values without repeats. A set tells its items apart by a text worked out from each; for texts and numbers that is taken care of.
+
+| Function / method | Result |
+|-------------------|--------|
+| `set.texts()`, `set.numbers()` | Empty sets |
+| `set.of(texts)`, `set.ofNumbers(numbers)` | From an array |
+| `set.by(key)` | Of anything, given how to tell two apart: `set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; })` |
+| `add(item) -> Bool`, `addAll(items)`, `remove(item) -> Bool`, `has(item)` | `add` says whether the item was new |
+| `size()`, `isEmpty()`, `items()`, `copy()` | Items come in the order they were first added |
+| `union(other)`, `intersection(other)`, `difference(other)`, `filter(wanted)` | New sets |
+| `isSubsetOf(other)`, `equals(other)` | |
+
+---
+
+## `std.encoding` and `std.hash`
+
+| Function | Result |
+|----------|--------|
+| `encoding.toBase64(text)`, `fromBase64(encoded) -> String?` | Reading back gives `null` for a text not in that encoding |
+| `toBase64Url`, `fromBase64Url` | The variant that is safe in an address |
+| `toHex`, `fromHex` | Two hexadecimal digits per byte |
+| `toUrl`, `fromUrl` | As a value in the query of an address |
+| `bytes(text) -> [Int]`, `fromBytes(bytes) -> String?` | The bytes of a text in UTF-8 |
+| `hash.sha256(text)`, `sha1`, `md5` | Hexadecimal digits |
+| `hash.crc32(text) -> Int` | |
+| `hash.hmacSha256(key, text)` | A signature |
+
+These hashes are made to be fast: they are for telling contents apart and for signing, not for storing passwords.
+
+---
+
+## `std.http`
+
+**Asking a server.**
+
+```lumen
+match http.get("https://example.com/api/users/1") {
+    case Result.Ok(response): { println(response.status, response.body); }
+    case Result.Err(error): { println(error.describe()); }
+}
+
+let created = http.to(Method.Post, url).header("Authorization", token).json(document).timeout(5000).send();
+```
+
+A server that answers "not found" has answered: that is a `Response` with status 404. An `Error` is for when there was no answer at all, and its `kind` says why: `Timeout`, `Refused`, `UnknownHost`, `BadUrl`, `Other`.
+
+| Function / method | Result |
+|-------------------|--------|
+| `http.get(url)`, `post(url, body, contentType)`, `postJson(url, document)` | `Result<Response, Error>` |
+| `http.to(method, url)` | A request built a part at a time: `.header`, `.query`, `.body`, `.json`, `.timeout`, then `.send()` |
+| `response.status`, `body`, `headers` | Header names are in lower case |
+| `response.ok()`, `header(name)`, `json()` | |
+
+**Being one.** A handler is a function from a `Request` to a `Response`. A `Router` chooses one from the method and the path:
+
+```lumen
+let app = http.router();
+app.get("/hello/:name", fn(request: Request) -> Response {
+    return http.text("hello, ${request.params.get("name") ?? "you"}");
+});
+app.post("/notes", createNote);
+http.serve(8080, app.handler()).expect("a free port");
+```
+
+| Function / method | Result |
+|-------------------|--------|
+| `http.serve(port, handler)` | Answers every request, for as long as the program runs |
+| `http.listen(port) -> Result<Server, Error>` | Port 0 lets the system choose: `server.port` |
+| `server.handle(count, handler)`, `next()`, `reply(response)`, `close()` | That many requests, or one at a time by hand |
+| `router.get`, `post`, `put`, `patch`, `delete`, `on(method, path, handler)` | `:name` takes one part of the path into `request.params`; a last `*` takes the rest, as `"rest"` |
+| `router.answer(request) -> Response` | The answer, without a server: how routes are tested |
+| `http.text(body)`, `html(body)`, `sendJson(status, document)`, `respond(status, body)`, `notFound()`, `redirect(to)` | Answers |
+| `response.with(name, value)` | One more header |
+| `request.method`, `path`, `query`, `headers`, `body`, `params`, `sender`, `header(name)`, `json()` | |
+
+A path nobody takes is answered with 404, one taken only for other methods with 405. A handler that stops, by a `panic` or any other failure, does not stop the server: its request is answered with 500 and the failure goes to the error output.
+
+A program does one thing at a time: requests are answered one after the other, and a handler that waits makes the others wait. The server listens on this machine only (`127.0.0.1`).
+
+A complete service with its tests: [`examples/notes`](../examples/notes/main.lum).
+
+---
+
+## `std.test`
+
+```lumen
+import std.test;
+
+fn main() -> Int {
+    return test.suite("prices")
+        .test("a total adds up", fn() { test.equal(total([1, 2, 3]), 6); })
+        .test("an empty basket costs nothing", fn() { test.equal(total([]), 0); })
+        .run().exitCode();
+}
+```
+```
+prices
+  ok    a total adds up
+  FAIL  an empty basket costs nothing
+        expected 0, got 1
+        at prices.lum:6
+1 passed, 1 failed
+```
+
+A check that does not hold stops its test; the suite goes on with the next and reports at the end. So does any other failure in a test: an index out of bounds is a failed test, not the end of the run.
+
+| Function / method | |
+|-------------------|---|
+| `test.suite(name)`, `.test(name, body)` | |
+| `.run() -> Report` | Runs and prints. `.check()` runs without printing |
+| `report.ok()`, `passed()`, `failed()`, `exitCode()`, `lines()`, `results` | |
+| `equal(got, want)`, `notEqual` | As `==` has it |
+| `same(got, want)` | Two arrays with equal items in the same order |
+| `near(got, want, tolerance)` | For numbers with a point |
+| `isTrue(condition, what)`, `isFalse` | |
+| `present(value, what) -> T`, `absent(value, what)` | For optionals; `present` gives the value |
+| `contains(text, part)` | |
+| `fails(kind, action) -> Failure` | The function must stop with a failure of that [kind](errors.md#surviving-attempt) |
+| `fail(message)` | For a check of your own |
 
 ---
 
@@ -569,15 +941,19 @@ and provided by a Go function in the virtual machine (`internal/vm/native_*.go`)
 
 The package `std` is found like any [package](project.md#packages-modules-from-somewhere-else); the only difference is that its folder is inside the binary. In messages its files appear as `<std>/strings.lum`. A project that lists a package named `std` in its `lumen.json` gets that one instead, whole.
 
+**Natives hand back simple things.** A native function cannot make a struct or a value of an enum: those are made by compiled code, which knows what each must hold. So a native returns a number, a text, or arrays of them, and the Lumen half of the module builds the types the program sees. `json.parse` is the clearest case: Go checks the text and lists its tokens, and thirty lines of Lumen build the tree of `Json` values from them. An operation that fails gives `null` and keeps the reason, which the Lumen half fetches to build its error value.
+
+**The web server** is split the same way, for another reason: a program is one thread. Go accepts connections and reads requests, each in its own goroutine, and queues them; the program takes them one at a time, works out the answer in Lumen, and hands it back.
+
 A folder called `std` among a program's own modules is not reachable as `std.something`: the name belongs to the library.
 
 ## What Is Missing
 
-*   **Dates**, and formatting of numbers (`toString(3.0)` prints `3`; there is no way to ask for two decimals).
-*   **Maps with keys that are not text**, and sets.
-*   **Folders**: listing one, creating one. **Reading a file in pieces**: `readFile` takes all of it.
-*   **Program arguments**: a program cannot see what follows its name on the command line.
-*   **Networking**, running other programs.
-*   **Equality by content** for arrays and structs: `==`, and so `contains` and `indexOf`, only say whether two of them are the same object.
-*   **`for` over a `List` or a `Dict`** directly: loop over `list.items`, `dict.keys()`.
-*   Everything is compiled into the program that imports a module, used or not; there is no removal of unused functions yet.
+*   **Maps with keys that are not text.** `Dict` takes texts, and `Set` asks for a function that makes a text of an item: nothing can be required of a type parameter yet, so there is no "any type that can be hashed".
+*   **Reading a file in pieces**, and files that are not text: `readFile` takes all of it, as a text.
+*   **Doing two things at once.** A web server answers one request at a time; a program cannot ask two servers at the same moment, or go on while another program runs.
+*   **Time zones by name.** A date is told in UTC, where the program runs, or at a fixed offset; there is no "Europe/Paris".
+*   **Sockets below HTTP**, HTTPS for a server of your own, and e-mail.
+*   **Equality by content** for arrays and structs: `==`, and so `contains` and `indexOf`, only say whether two of them are the same object. `json.equals`, `set.equals` and `test.same` are written by hand for their types.
+*   **`for` over a `List`, a `Dict` or a `Set`** directly: loop over `list.items`, `dict.keys()`, `set.items()`.
+*   Everything is compiled into the program that imports a module, used or not; there is no removal of unused functions yet. A program that imports `std.http` compiles `std.json`, `std.dict` and the rest with it.

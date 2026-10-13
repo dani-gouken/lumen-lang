@@ -91,11 +91,20 @@ func argument(i int) string {
 
 // parseOptions removes the --name=value options from the arguments and
 // applies them. They may appear anywhere after the command.
+//
+// What follows the file to run is for the program (std.os.args), except
+// the options of lumen itself; after a lone "--" everything is for the
+// program, whatever it looks like.
 func parseOptions(args []string) []string {
 	var rest []string
-	for _, arg := range args {
+	for i, arg := range args {
 		name, value, isOption := strings.Cut(arg, "=")
-		if !strings.HasPrefix(arg, "--") {
+		afterFile := len(rest) >= 3
+		if arg == "--" && afterFile {
+			return append(rest, args[i+1:]...)
+		}
+		isOurs := name == "--heap-mb" || name == "--max-depth"
+		if !strings.HasPrefix(arg, "--") || (afterFile && !isOurs) {
 			rest = append(rest, arg)
 			continue
 		}
@@ -128,6 +137,10 @@ func newVM() *vm.VM {
 	if maxDepth > 0 {
 		machine.SetMaxCallDepth(maxDepth)
 	}
+	if len(os.Args) > 3 {
+		machine.SetArgs(os.Args[3:])
+	}
+	machine.SetProgram(programFile)
 	return machine
 }
 
@@ -232,6 +245,7 @@ func printHelp() {
 // compileSource runs the compilation pipeline on a .lum file. Diagnostics
 // are printed to stderr; the process exits if the program does not compile.
 func compileSource(inputFile string) *compiler.Result {
+	programFile = inputFile
 	errs := errors.NewHandler()
 	result, err := compiler.CompileFileOptions(inputFile, projectOptions(inputFile), errs)
 	if err != nil {
@@ -248,6 +262,18 @@ func compileSource(inputFile string) *compiler.Result {
 	return result
 }
 
+// leaveIfAsked ends the process with the status the program asked for, if
+// the run ended by a call of std.os.exit and not by a failure.
+func leaveIfAsked(err error) {
+	if status, asked := vm.ExitCode(err); asked {
+		os.Exit(status & 0xFF)
+	}
+}
+
+// programFile is the file being run, for the program to find what comes
+// with it (std.os.program).
+var programFile string
+
 // cmdRun compiles and executes a .lum file. An Int returned by main becomes
 // the process exit code.
 func cmdRun(inputFile string) {
@@ -255,6 +281,7 @@ func cmdRun(inputFile string) {
 
 	result, err := newVM().Exec(chunk)
 	if err != nil {
+		leaveIfAsked(err)
 		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
 		os.Exit(1)
 	}
@@ -351,6 +378,7 @@ func cmdDisassemble(inputFile, outputFile string) {
 }
 
 func cmdExecute(inputFile string) {
+	programFile = inputFile
 	// Read bytecode file
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
@@ -369,6 +397,7 @@ func cmdExecute(inputFile string) {
 	v := newVM()
 	result, err := v.Exec(chunk)
 	if err != nil {
+		leaveIfAsked(err)
 		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
 		os.Exit(1)
 	}
@@ -377,6 +406,7 @@ func cmdExecute(inputFile string) {
 }
 
 func cmdRunAsm(inputFile string) {
+	programFile = inputFile
 	// Read assembly file
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
@@ -395,6 +425,7 @@ func cmdRunAsm(inputFile string) {
 	v := newVM()
 	result, err := v.Exec(chunk)
 	if err != nil {
+		leaveIfAsked(err)
 		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
 		os.Exit(1)
 	}
@@ -425,6 +456,7 @@ func formatValue(val vm.Value) string {
 }
 
 func cmdDebug(inputFile string) {
+	programFile = inputFile
 	var chunk *vm.Chunk
 
 	// Determine if file is .lum, .lc or .lasm
@@ -537,6 +569,7 @@ func cmdDebug(inputFile string) {
 	// Execute the chunk with debugging
 	result, err := v.Exec(chunk)
 	if err != nil {
+		leaveIfAsked(err)
 		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
 		os.Exit(1)
 	}

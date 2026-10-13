@@ -1,0 +1,457 @@
+// The web: asking servers for things, and being one.
+//
+// Asking:
+//
+//     match http.get("https://example.com/api/users/1") {
+//         case Result.Ok(response): { println(response.status, response.body); }
+//         case Result.Err(error): { println(error.describe()); }
+//     }
+//
+// A server that answers "not found" has answered: that is a Response,
+// with status 404. An Error is for when there was no answer at all.
+//
+// Answering:
+//
+//     let app = http.router();
+//     app.get("/hello/:name", fn(request: Request) -> Response {
+//         return http.text("hello, ${request.params.get("name") ?? "you"}");
+//     });
+//     http.serve(8080, app.handler()).expect("a free port");
+
+import std.result;
+import std.result.{Result};
+import std.dict;
+import std.dict.{Dict};
+import std.json;
+import std.json.{Json};
+import std.strings;
+import std.encoding;
+import std.arrays;
+import std.math;
+import std.io;
+
+pub enum Method { Get, Post, Put, Patch, Delete, Head, Options }
+
+impl Method {
+    pub fn name() -> String {
+        match self {
+            case Method.Get: { return "GET"; }
+            case Method.Post: { return "POST"; }
+            case Method.Put: { return "PUT"; }
+            case Method.Patch: { return "PATCH"; }
+            case Method.Delete: { return "DELETE"; }
+            case Method.Head: { return "HEAD"; }
+            case Method.Options: { return "OPTIONS"; }
+        }
+    }
+}
+
+// The method a name stands for, or null: methodOf("post") is Method.Post.
+pub fn methodOf(name: String) -> Method? {
+    let all = [Method.Get, Method.Post, Method.Put, Method.Patch, Method.Delete, Method.Head, Method.Options];
+    let wanted = strings.upper(name);
+    return arrays.find(all, fn(method: Method) -> Bool { return method.name() == wanted; });
+}
+
+// Why there was no answer.
+pub enum ErrorKind {
+    Timeout,        // nothing came back in time
+    Refused,        // nothing is listening there
+    UnknownHost,    // no machine has that name
+    BadUrl,         // the address is not one
+    InUse,          // for a server: the port is taken
+    Other,
+}
+
+pub struct Error {
+    kind: ErrorKind;
+    url: String;
+    message: String;
+}
+
+impl Error {
+    pub fn describe() -> String {
+        return "no answer from ${self.url}: ${self.message}";
+    }
+}
+
+// What a server answers, and what a server of your own answers with.
+pub struct Response {
+    status: Int;                // 200 is fine, 404 not found, 500 the server failed
+    headers: Dict<String>;      // names in lower case: "content-type"
+    body: String;
+}
+
+impl Response {
+    // Whether the status says it went well: 200 to 299.
+    pub fn ok() -> Bool { return self.status >= 200 && self.status < 300; }
+
+    // The value of a header, whatever the case of its name, or null.
+    pub fn header(name: String) -> String? {
+        return self.headers.get(strings.lower(name));
+    }
+
+    // The body read as JSON.
+    pub fn json() -> Result<Json, json.ParseError> {
+        return json.parse(self.body);
+    }
+
+    // The same answer with one more header. Returns it, to chain.
+    pub fn with(name: String, value: String) -> Response {
+        self.headers.set(strings.lower(name), value);
+        return self;
+    }
+}
+
+// --- Asking ---
+
+// A request about to be sent, built a part at a time:
+//
+//     http.to(Method.Post, url).header("Authorization", token).json(document).send()
+pub struct Call {
+    method: Method;
+    url: String;
+    headers: Dict<String>;
+    body: String;
+    timeout: Int;           // milliseconds to wait for the answer
+}
+
+pub fn to(method: Method, url: String) -> Call {
+    return Call { method: method, url: url, headers: dict.empty<String>(), body: "", timeout: 30000 };
+}
+
+impl Call {
+    pub fn header(name: String, value: String) -> Call {
+        self.headers.set(name, value);
+        return self;
+    }
+
+    // A value in the query of the address, encoded as it must be:
+    // .query("q", "a b") adds ?q=a+b.
+    pub fn query(name: String, value: String) -> Call {
+        let joint = "?";
+        if strings.contains(self.url, "?") { joint = "&"; }
+        self.url = self.url + joint + encoding.toUrl(name) + "=" + encoding.toUrl(value);
+        return self;
+    }
+
+    pub fn body(text: String) -> Call {
+        self.body = text;
+        return self;
+    }
+
+    // A document as the body, announced as JSON.
+    pub fn json(document: Json) -> Call {
+        self.body = document.stringify();
+        return self.header("Content-Type", "application/json");
+    }
+
+    pub fn timeout(milliseconds: Int) -> Call {
+        self.timeout = milliseconds;
+        return self;
+    }
+
+    pub fn send() -> Result<Response, Error> {
+        let parts = exchange(self.method.name(), self.url, pairs(self.headers), self.body, self.timeout);
+        if parts == null { return Result.Err(noAnswer(self.url)); }
+        // The status, the body, then the headers
+        return Result.Ok(Response {
+            status: strings.parseInt(parts[0]) ?? 0,
+            headers: paired(parts, 2),
+            body: parts[1],
+        });
+    }
+}
+
+pub fn get(url: String) -> Result<Response, Error> {
+    return to(Method.Get, url).send();
+}
+
+// Sends a text. `contentType` says what it is: "text/plain", "application/json".
+pub fn post(url: String, body: String, contentType: String) -> Result<Response, Error> {
+    return to(Method.Post, url).header("Content-Type", contentType).body(body).send();
+}
+
+pub fn postJson(url: String, document: Json) -> Result<Response, Error> {
+    return to(Method.Post, url).json(document).send();
+}
+
+// --- Answering ---
+
+// What someone asked a server.
+pub struct Request {
+    method: Method;
+    path: String;               // "/users/7"
+    query: Dict<String>;        // what follows the ?: ?page=2 gives "page" -> "2"
+    headers: Dict<String>;      // names in lower case
+    body: String;
+    params: Dict<String>;       // the parts of the path a route names: /users/:id
+    sender: String;             // the address it came from
+}
+
+impl Request {
+    pub fn header(name: String) -> String? {
+        return self.headers.get(strings.lower(name));
+    }
+
+    // The body read as JSON.
+    pub fn json() -> Result<Json, json.ParseError> {
+        return json.parse(self.body);
+    }
+}
+
+// An answer with a status and a text.
+pub fn respond(status: Int, body: String) -> Response {
+    let headers = dict.empty<String>();
+    headers.set("content-type", "text/plain; charset=utf-8");
+    return Response { status: status, headers: headers, body: body };
+}
+
+// 200 with a text.
+pub fn text(body: String) -> Response { return respond(200, body); }
+
+// 200 with a page.
+pub fn html(body: String) -> Response {
+    return respond(200, body).with("Content-Type", "text/html; charset=utf-8");
+}
+
+// A document, with the status that goes with it.
+pub fn sendJson(status: Int, document: Json) -> Response {
+    return respond(status, document.stringify()).with("Content-Type", "application/json");
+}
+
+pub fn notFound() -> Response { return respond(404, "not found"); }
+
+// Sends the browser to another address.
+pub fn redirect(to: String) -> Response {
+    return respond(302, "").with("Location", to);
+}
+
+// A server that is listening.
+pub struct Server {
+    id: Int;
+    port: Int;
+}
+
+// Starts listening on a port of this machine. Port 0 lets the system
+// choose a free one: server.port says which.
+pub fn listen(port: Int) -> Result<Server, Error> {
+    let opened = open(port);
+    if opened == null { return Result.Err(noAnswer("port ${port}")); }
+    return Result.Ok(Server { id: opened[0], port: opened[1] });
+}
+
+impl Server {
+    // Waits for the next request. Null once the server is closed.
+    pub fn next() -> Request? {
+        return self.nextWithin(0);
+    }
+
+    // The same, giving up after that many milliseconds.
+    pub fn nextWithin(milliseconds: Int) -> Request? {
+        // The method, the path, the query, the body, the sender, then the headers
+        let parts = accept(self.id, milliseconds);
+        if parts == null { return null; }
+        return Request {
+            method: methodOf(parts[0]) ?? Method.Get,
+            path: parts[1],
+            query: queryOf(parts[2]),
+            headers: paired(parts, 5),
+            body: parts[3],
+            params: dict.empty<String>(),
+            sender: parts[4],
+        };
+    }
+
+    // Answers the request `next` gave. Each request is answered once,
+    // before the next is taken.
+    pub fn reply(response: Response) {
+        respondTo(self.id, response.status, pairs(response.headers), response.body);
+    }
+
+    // Answers that many requests with what a function makes of each, then
+    // returns. A handler that stops, by a panic or any other failure, does
+    // not stop the server: its request is answered with status 500.
+    pub fn handle(count: Int, handler: fn(Request) -> Response) {
+        let done = 0;
+        while done < count {
+            let request = self.next();
+            if request == null { return; }
+            self.reply(answerOf(request, handler));
+            done++;
+        }
+    }
+
+    pub fn close() {
+        shut(self.id);
+    }
+}
+
+// What a handler makes of a request, or status 500 if it stops.
+fn answerOf(request: Request, handler: fn(Request) -> Response) -> Response {
+    match result.attempt(fn() -> Response { return handler(request); }) {
+        case Result.Ok(response): { return response; }
+        case Result.Err(failure): {
+            io.printError("${request.method.name()} ${request.path} failed: ${failure.describe()}\n");
+            return respond(500, "the server failed");
+        }
+    }
+}
+
+// Listens on a port and answers every request with what a function makes
+// of it, for as long as the program runs. It only returns if the port
+// cannot be listened on.
+pub fn serve(port: Int, handler: fn(Request) -> Response) -> Result<Server, Error> {
+    return listen(port).map(fn(server: Server) -> Server {
+        while true { server.handle(1000, handler); }
+    });
+}
+
+// --- Routes ---
+
+struct Route {
+    method: Method;
+    parts: [String];
+    handler: fn(Request) -> Response;
+}
+
+// Chooses what answers a request from its method and its path.
+//
+//     let app = http.router();
+//     app.get("/", home);
+//     app.get("/users/:id", showUser);        // request.params.get("id")
+//     app.post("/users", createUser);
+//     http.serve(8080, app.handler());
+//
+// Routes are tried in the order they were added. A path nobody takes is
+// answered with 404, and a path taken only for other methods with 405.
+pub struct Router {
+    routes: [Route];
+}
+
+pub fn router() -> Router {
+    return Router { routes: [] };
+}
+
+impl Router {
+    // Adds a route. In the path, a part starting with a colon takes
+    // whatever is there and gives it that name in request.params; a last
+    // part that is * takes all that is left, under the name "rest".
+    pub fn on(method: Method, path: String, handler: fn(Request) -> Response) -> Router {
+        push(self.routes, Route { method: method, parts: partsOf(path), handler: handler });
+        return self;
+    }
+
+    pub fn get(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Get, path, handler); }
+    pub fn post(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Post, path, handler); }
+    pub fn put(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Put, path, handler); }
+    pub fn patch(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Patch, path, handler); }
+    pub fn delete(path: String, handler: fn(Request) -> Response) -> Router { return self.on(Method.Delete, path, handler); }
+
+    // The answer to a request.
+    pub fn answer(request: Request) -> Response {
+        let parts = partsOf(request.path);
+        let pathIsKnown = false;
+        for route in self.routes {
+            let params = fit(route.parts, parts);
+            if params == null { continue; }
+            pathIsKnown = true;
+            if route.method == request.method {
+                request.params = params;
+                let handler = route.handler;
+                return handler(request);
+            }
+        }
+        if pathIsKnown { return respond(405, "method not allowed"); }
+        return notFound();
+    }
+
+    // The router as one function, for serve and handle.
+    pub fn handler() -> fn(Request) -> Response {
+        return fn(request: Request) -> Response { return self.answer(request); };
+    }
+}
+
+// What the named parts of a route take in a path, or null if the path is
+// not one of that route.
+fn fit(route: [String], path: [String]) -> Dict<String>? {
+    let params = dict.empty<String>();
+    for i, part in route {
+        if part == "*" && i == route.length - 1 {
+            params.set("rest", strings.join(arrays.slice(path, math.min(i, path.length), path.length), "/"));
+            return params;
+        }
+        if i >= path.length { return null; }
+        if strings.startsWith(part, ":") {
+            params.set(strings.from(part, 1), path[i]);
+        } else if part != path[i] {
+            return null;
+        }
+    }
+    if path.length != route.length { return null; }
+    return params;
+}
+
+fn partsOf(path: String) -> [String] {
+    let named = fn(part: String) -> Bool { return part != ""; };
+    return arrays.filter(strings.split(path, "/"), named);
+}
+
+// "a=1&b=x+y" as a dictionary, the values decoded.
+pub fn queryOf(query: String) -> Dict<String> {
+    let out = dict.empty<String>();
+    for pair in strings.split(query, "&") {
+        if pair == "" { continue; }
+        let at = strings.indexOf(pair, "=") ?? pair.length;
+        let name = encoding.fromUrl(strings.first(pair, at)) ?? strings.first(pair, at);
+        let value = "";
+        if at < pair.length { value = strings.from(pair, at + 1); }
+        out.set(name, encoding.fromUrl(value) ?? value);
+    }
+    return out;
+}
+
+// A dictionary as name, value, name, value.
+fn pairs(headers: Dict<String>) -> [String] {
+    let out: [String] = [];
+    headers.each(fn(name: String, value: String) {
+        push(out, name);
+        push(out, value);
+    });
+    return out;
+}
+
+// The other way round, from a position on.
+fn paired(parts: [String], from: Int) -> Dict<String> {
+    let out = dict.empty<String>();
+    let i = from;
+    while i + 1 < parts.length {
+        out.set(parts[i], parts[i + 1]);
+        i += 2;
+    }
+    return out;
+}
+
+fn noAnswer(url: String) -> Error {
+    // The kind, then the message
+    let parts = problem();
+    return Error { kind: kindOf(parts[0]), url: url, message: parts[1] };
+}
+
+fn kindOf(name: String) -> ErrorKind {
+    match name {
+        case "timeout": { return ErrorKind.Timeout; }
+        case "refused": { return ErrorKind.Refused; }
+        case "unknown host": { return ErrorKind.UnknownHost; }
+        case "bad url": { return ErrorKind.BadUrl; }
+        case "in use": { return ErrorKind.InUse; }
+        default: { return ErrorKind.Other; }
+    }
+}
+
+extern fn exchange(method: String, url: String, headers: [String], body: String, timeout: Int) -> [String]?;
+extern fn open(port: Int) -> [Int]?;
+extern fn accept(server: Int, timeout: Int) -> [String]?;
+extern fn respondTo(server: Int, status: Int, headers: [String], body: String);
+extern fn shut(server: Int);
+extern fn problem() -> [String];

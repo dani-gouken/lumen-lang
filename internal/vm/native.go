@@ -166,3 +166,13 @@ func (vm *VM) newStringArray(items []string) (Value, error) {
 	}
 	return result, nil
 }
+
+// ptrOf is the address of a heap object, as a value holds it.
+func ptrOf(arr *ArrayObj) unsafe.Pointer {
+	return unsafe.Pointer(arr)
+}
+
+// Collections reports how many times the heap has been collected.
+func (vm *VM) Collections() int {
+	return vm.heap.Collections()
+}

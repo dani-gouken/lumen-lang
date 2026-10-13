@@ -17,7 +17,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Correctness | unused variables, bytecode checked before it runs |
 | Runtime | register allocation per call, method dispatch cost |
 | Program structure | native code from outside (shared libraries), a way to install packages, variables outside functions |
-| Tooling | syntax highlighting, a test runner, a formatter |
+| Tooling | syntax highlighting, a `lumen test` command, a formatter |
 
 ---
 
@@ -74,9 +74,27 @@ arrays.map(numbers, n => n * 2)
 
 ### The standard library has gaps — S to M each
 
-There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, dictionaries, optionals, files, time, random numbers. Its own list of [what is missing](stdlib.md#what-is-missing) covers dates, number formatting, maps with other keys, sets, folders, program arguments and networking.
+There is one, built in ([stdlib.md](stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, optionals, files and folders, dates, program arguments, running other programs, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, and tests. Its own list of [what is missing](stdlib.md#what-is-missing) covers maps with keys that are not text, files read in pieces, doing two things at once and time zones by name.
 
 Adding a function written in Lumen means editing a file in `internal/stdlib/lib/`. Adding a native one means an `extern fn` there and a Go function in `internal/vm/native_*.go`; a test fails if the two do not match.
+
+### What writing the library showed — S to L each
+
+The library is some 2,500 lines of Lumen. Most of it compiled as first written; these are the places where the language made the code longer or stranger than it should be, in the order of how often they came up.
+
+| Missing | What it cost |
+|---------|--------------|
+| **A value for "several things at once"** (tuples) | `arrays.partition` returns `[[T]]` for its two halves; a native function hands back a flat `[String]` and a comment says what each position holds |
+| **A short way to pass a failure on** (`?`), and `match` with a value | `order()` in [`examples/sales`](../examples/sales/main.lum) nests a lambda per step that can fail; every `kindOf(name)` is a `match` with a `return` in each case |
+| **`a?.b`** | `option.then(document.get("name"), json.textOf)` where `document.get("name")?.text()` was meant. `std.json` has `textOf`, `intOf`, ... only so that there is a function to pass |
+| **Something required of a type parameter** | `Set<T>` has to be given a function from an item to a text; every error type has a `describe()` by convention only |
+| **Equality by content** | `Json.equals`, `Set.equals` and `test.same` are each written by hand; `test.equal` on two arrays fails with "expected [1, 2], got [1, 2]", and has a special message for it |
+| **A function in a field, called** | `self.key(item)` is taken for a method call: `let key = self.key; key(item)` |
+| **What a test taught, inside a lambda** | `if tag == null { return ...; }` then a lambda using `tag`: it is `String?` again in there. A second variable of the plain type (`let wanted: String = tag;`) works around it. Sound, since a lambda may run later, but a variable nothing assigns afterwards could keep what was learned |
+| **A text over several lines** | The sample log of [`examples/logs`](../examples/logs/main.lum) could not be a constant in the program: it is a file next to it, found with `os.program()` |
+| **`${` in a text that is not an insertion** | A regex replacement naming a group is `"\${year}"`: easy to forget, and the error is "undefined identifier 'year'" |
+| **A `Result` with nothing in it** | `fs.makeDir` gives back the path it was given, for want of a `Result<Void, Error>` |
+| **Keywords as names** | `for case in cases` is a syntax error; so are `match`, `in`, `is` as names of variables |
 
 ### Getting packages, and native code from outside — L
 
@@ -210,7 +228,8 @@ Type arguments are inferred from the arguments of a call (`first([1, 2])`, `stac
 
 *   a call whose result goes nowhere typed: `let xs = none();` still needs `none<Int>()`;
 *   the first argument that mentions a parameter decides it; there is no search for a type common to several arguments (`same(1, 2.5)` is an error, not `T = Any`);
-*   inference does not look further than one call: in `first(none())`, nothing determines the inner call.
+*   inference does not look further than one call: in `first(none())`, nothing determines the inner call;
+*   **a generic call with `??` as what a `for` loops over** is a defect, not a limit: `for tag in option.then(value, json.itemsOf) ?? [] { ... }` is accepted by the type checker and then refused by the desugarer with `E4001: Cannot iterate over type 'struct U { }'`, the second type pass having lost what `U` was. Naming the array first (`let tags: [Json] = ...;`) avoids it.
 
 ### Function casts cannot see through generics — inherent
 

@@ -5,6 +5,7 @@ import (
 	"hash/fnv"
 	"strconv"
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -66,6 +67,8 @@ func init() {
 		transform("upper", strings.ToUpper),
 		transform("lower", strings.ToLower),
 		transform("trim", strings.TrimSpace),
+		transform("trimStart", func(s string) string { return strings.TrimLeftFunc(s, unicode.IsSpace) }),
+		transform("trimEnd", func(s string) string { return strings.TrimRightFunc(s, unicode.IsSpace) }),
 		native{"split", 2, func(vm *VM, args []Value) (Value, error) {
 			s, err := argString(args, 0)
 			if err != nil {

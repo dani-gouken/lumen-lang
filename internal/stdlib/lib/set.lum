@@ -1,0 +1,130 @@
+// A set: values without repeats, where asking whether one is in takes
+// about the same time however many there are.
+//
+//     let seen = set.texts();
+//     seen.add("ada");
+//     seen.has("ada")         // true
+//
+// A set tells its items apart by a text worked out from each, its key.
+// For texts and numbers that is taken care of; for anything else, say
+// how: set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; }).
+
+import std.dict;
+import std.dict.{Dict};
+
+pub struct Set<T> {
+    members: Dict<T>;
+    key: fn(T) -> String;
+}
+
+// An empty set of values told apart by `key`.
+pub fn by<T>(key: fn(T) -> String) -> Set<T> {
+    return Set<T> { members: dict.empty<T>(), key: key };
+}
+
+// An empty set of texts.
+pub fn texts() -> Set<String> {
+    return by(fn(text: String) -> String { return text; });
+}
+
+// An empty set of whole numbers.
+pub fn numbers() -> Set<Int> {
+    return by(fn(n: Int) -> String { return toString(n); });
+}
+
+// The set of the texts of an array.
+pub fn of(items: [String]) -> Set<String> {
+    let out = texts();
+    out.addAll(items);
+    return out;
+}
+
+// The set of the numbers of an array.
+pub fn ofNumbers(items: [Int]) -> Set<Int> {
+    let out = numbers();
+    out.addAll(items);
+    return out;
+}
+
+impl<T> Set<T> {
+    pub fn size() -> Int { return self.members.size(); }
+
+    pub fn isEmpty() -> Bool { return self.members.isEmpty(); }
+
+    // Adds an item. Returns whether it was new.
+    pub fn add(item: T) -> Bool {
+        let name = self.name(item);
+        if self.members.has(name) { return false; }
+        self.members.set(name, item);
+        return true;
+    }
+
+    pub fn addAll(items: [T]) {
+        for item in items { self.add(item); }
+    }
+
+    pub fn has(item: T) -> Bool {
+        return self.members.has(self.name(item));
+    }
+
+    // Removes an item. Returns whether it was there.
+    pub fn remove(item: T) -> Bool {
+        return self.members.remove(self.name(item));
+    }
+
+    // The items, in the order they were first added.
+    pub fn items() -> [T] {
+        return self.members.values();
+    }
+
+    // A set with the same items, to change without changing this one.
+    pub fn copy() -> Set<T> {
+        let out = by(self.key);
+        out.addAll(self.items());
+        return out;
+    }
+
+    // What is in this set, in the other, or in both.
+    pub fn union(other: Set<T>) -> Set<T> {
+        let out = self.copy();
+        out.addAll(other.items());
+        return out;
+    }
+
+    // What is in both.
+    pub fn intersection(other: Set<T>) -> Set<T> {
+        return self.filter(fn(item: T) -> Bool { return other.has(item); });
+    }
+
+    // What is in this set and not in the other.
+    pub fn difference(other: Set<T>) -> Set<T> {
+        return self.filter(fn(item: T) -> Bool { return !other.has(item); });
+    }
+
+    // The items a function accepts.
+    pub fn filter(wanted: fn(T) -> Bool) -> Set<T> {
+        let out = by(self.key);
+        for item in self.items() {
+            if wanted(item) { out.add(item); }
+        }
+        return out;
+    }
+
+    // Whether every item of this set is in the other.
+    pub fn isSubsetOf(other: Set<T>) -> Bool {
+        for item in self.items() {
+            if !other.has(item) { return false; }
+        }
+        return true;
+    }
+
+    // Whether both hold the same items, in whatever order.
+    pub fn equals(other: Set<T>) -> Bool {
+        return self.size() == other.size() && self.isSubsetOf(other);
+    }
+
+    fn name(item: T) -> String {
+        let key = self.key;
+        return key(item);
+    }
+}

@@ -3,6 +3,9 @@
 // The functions here return new arrays and leave the ones they are given
 // alone, unless their description says otherwise.
 
+import std.dict;
+import std.dict.{Dict};
+
 // How many items an array holds.
 pub fn len<T>(items: [T]) -> Int {
     return items.length;
@@ -231,11 +234,156 @@ pub fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
     return out;
 }
 
+// The items in the order of a number worked out from each, smallest
+// first: sortedBy(people, fn(p: Person) -> Int { return p.age; }).
+pub fn sortedBy<T>(items: [T], rank: fn(T) -> Int) -> [T] {
+    return sorted<T>(items, fn(a: T, b: T) -> Bool { return rank(a) < rank(b); });
+}
+
+// The items in the alphabetical order of a text worked out from each.
+pub fn sortedByText<T>(items: [T], name: fn(T) -> String) -> [T] {
+    return sorted<T>(items, fn(a: T, b: T) -> Bool { return name(a) < name(b); });
+}
+
+// The item a function ranks highest, or null for an empty array. Of
+// several ranked the same, the first.
+pub fn maxBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
+    let best: T? = null;
+    let bestRank = 0;
+    for item in items {
+        let r = rank(item);
+        if best == null || r > bestRank {
+            best = item;
+            bestRank = r;
+        }
+    }
+    return best;
+}
+
+// The item a function ranks lowest, or null for an empty array.
+pub fn minBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
+    return maxBy<T>(items, fn(item: T) -> Int { return -rank(item); });
+}
+
 // Changes the array itself: the items at the two positions change places.
 pub fn swap<T>(items: [T], a: Int, b: Int) {
     let held = items[a];
     items[a] = items[b];
     items[b] = held;
+}
+
+// --- Pieces and groups ---
+
+// The first `count` items, or all of them if there are fewer.
+pub fn take<T>(items: [T], count: Int) -> [T] {
+    if count <= 0 { return []; }
+    if count >= items.length { return copy<T>(items); }
+    return slice<T>(items, 0, count);
+}
+
+// All but the first `count` items.
+pub fn drop<T>(items: [T], count: Int) -> [T] {
+    if count <= 0 { return copy<T>(items); }
+    if count >= items.length { return []; }
+    return slice<T>(items, count, items.length);
+}
+
+// The items in pieces of `size`, the last one shorter if it does not
+// divide: chunks([1, 2, 3, 4, 5], 2) is [[1, 2], [3, 4], [5]].
+pub fn chunks<T>(items: [T], size: Int) -> [[T]] {
+    if size <= 0 { panic("the size of a chunk must be at least 1, got ${size}"); }
+    let out: [[T]] = [];
+    let from = 0;
+    while from < items.length {
+        let to = from + size;
+        if to > items.length { to = items.length; }
+        push(out, slice<T>(items, from, to));
+        from = to;
+    }
+    return out;
+}
+
+// The items of every array, one after the other.
+pub fn flatten<T>(arrays: [[T]]) -> [T] {
+    let out: [T] = [];
+    for items in arrays {
+        for item in items { push(out, item); }
+    }
+    return out;
+}
+
+// Each item turned into several, all in one array.
+pub fn flatMap<T, U>(items: [T], convert: fn(T) -> [U]) -> [U] {
+    let out: [U] = [];
+    for item in items {
+        for made in convert(item) { push(out, made); }
+    }
+    return out;
+}
+
+// The items sorted into groups by a text worked out from each. The
+// groups come in the order their first item did.
+//
+//     arrays.groupBy(words, fn(word: String) -> String { return strings.first(word, 1); })
+pub fn groupBy<T>(items: [T], name: fn(T) -> String) -> Dict<[T]> {
+    let groups = dict.empty<[T]>();
+    for item in items {
+        let key = name(item);
+        let group = groups.get(key);
+        if group == null {
+            groups.set(key, [item]);
+        } else {
+            push(group, item);
+        }
+    }
+    return groups;
+}
+
+// How many items give each text.
+pub fn countBy<T>(items: [T], name: fn(T) -> String) -> Dict<Int> {
+    let counts = dict.empty<Int>();
+    for item in items {
+        let key = name(item);
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    return counts;
+}
+
+// The items without repeats, two items being the same when they give
+// the same text. The first of each is kept.
+pub fn uniqueBy<T>(items: [T], name: fn(T) -> String) -> [T] {
+    let seen = dict.empty<Bool>();
+    let out: [T] = [];
+    for item in items {
+        let key = name(item);
+        if !seen.has(key) {
+            seen.set(key, true);
+            push(out, item);
+        }
+    }
+    return out;
+}
+
+// The texts without repeats.
+pub fn unique(texts: [String]) -> [String] {
+    return uniqueBy<String>(texts, fn(text: String) -> String { return text; });
+}
+
+// The items a function accepts, then the ones it does not.
+pub fn partition<T>(items: [T], wanted: fn(T) -> Bool) -> [[T]] {
+    let yes: [T] = [];
+    let no: [T] = [];
+    for item in items {
+        if wanted(item) { push(yes, item); } else { push(no, item); }
+    }
+    return [yes, no];
+}
+
+// The sum of a number worked out from each item.
+pub fn sumOf<T>(items: [T], amount: fn(T) -> Int) -> Int {
+    let total = 0;
+    for item in items { total += amount(item); }
+    return total;
 }
 
 // --- Numbers and texts ---

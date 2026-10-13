@@ -1,0 +1,101 @@
+// The notes as a web service: which address does what, and how each
+// outcome is said in HTTP.
+//
+//     GET    /notes              every note; ?tag=work for those with a tag, ?q=milk to search
+//     POST   /notes              a new note, from {"title": ..., "body": ..., "tags": [...]}
+//     GET    /notes/:id
+//     PUT    /notes/:id          replaces it
+//     DELETE /notes/:id
+//     GET    /tags
+
+import std.http;
+import std.http.{Request, Response, Router};
+import std.json;
+import std.json.{Json};
+import std.result.{Result};
+import std.strings;
+import notes.book;
+import notes.book.{Book, Note, Refusal};
+
+// The routes of the service, over one book of notes.
+pub fn routes(notes: Book) -> Router {
+    let app = http.router();
+
+    app.get("/notes", fn(request: Request) -> Response {
+        let q = request.query.get("q");
+        let found = notes.tagged(request.query.get("tag"));
+        if q != null { found = notes.search(q); }
+        return http.sendJson(200, json.array(found, asJson));
+    });
+
+    app.post("/notes", fn(request: Request) -> Response {
+        match request.json() {
+            case Result.Ok(document): {
+                match notes.add(document) {
+                    case Result.Ok(note): {
+                        return http.sendJson(201, note.toJson()).with("Location", "/notes/${note.id}");
+                    }
+                    case Result.Err(refusal): { return refused(refusal); }
+                }
+            }
+            case Result.Err(error): { return problem(400, "the body is not JSON: ${error.describe()}"); }
+        }
+    });
+
+    app.get("/notes/:id", fn(request: Request) -> Response {
+        let note = notes.find(idOf(request));
+        if note == null { return noSuchNote(request); }
+        return http.sendJson(200, note.toJson());
+    });
+
+    app.put("/notes/:id", fn(request: Request) -> Response {
+        match request.json() {
+            case Result.Ok(document): {
+                let outcome = notes.replace(idOf(request), document);
+                if outcome == null { return noSuchNote(request); }
+                match outcome {
+                    case Result.Ok(note): { return http.sendJson(200, note.toJson()); }
+                    case Result.Err(refusal): { return refused(refusal); }
+                }
+            }
+            case Result.Err(error): { return problem(400, "the body is not JSON: ${error.describe()}"); }
+        }
+    });
+
+    app.delete("/notes/:id", fn(request: Request) -> Response {
+        if !notes.remove(idOf(request)) { return noSuchNote(request); }
+        return http.respond(204, "");
+    });
+
+    app.get("/tags", fn(request: Request) -> Response {
+        return http.sendJson(200, json.texts(notes.tags()));
+    });
+
+    return app;
+}
+
+fn asJson(note: Note) -> Json { return note.toJson(); }
+
+// The id in the address; -1, which no note has, if it is not a number.
+fn idOf(request: Request) -> Int {
+    return strings.parseInt(request.params.get("id") ?? "") ?? -1;
+}
+
+// Every failure is said the same way: a status, and {"error": "..."}.
+fn problem(status: Int, message: String) -> Response {
+    return http.sendJson(status, json.object().text("error", message).done());
+}
+
+fn noSuchNote(request: Request) -> Response {
+    return problem(404, "there is no note ${request.params.get("id") ?? "?"}");
+}
+
+// Each kind of refusal has its status: the compiler makes sure a new
+// kind is given one.
+fn refused(refusal: Refusal) -> Response {
+    match refusal {
+        case Refusal.Missing(_): { return problem(400, refusal.describe()); }
+        case Refusal.TooLong(_, _): { return problem(413, refusal.describe()); }
+        case Refusal.Duplicate(_): { return problem(409, refusal.describe()); }
+    }
+}

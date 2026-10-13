@@ -66,11 +66,15 @@ type VM struct {
 	externObjs map[string]Value
 
 	// State of the native functions (see native.go)
-	outcome     Value         // What the last protected call returned (see protect.go)
-	failure     *RuntimeError // ...or how it failed
-	pinned      []Value       // Values a running native keeps alive
-	problem     string        // Why the last file operation failed (std.io)...
-	problemKind string        // ...and of which kind
+	outcome     Value                 // What the last protected call returned (see protect.go)
+	failure     *RuntimeError         // ...or how it failed
+	pinned      []Value               // Values a running native keeps alive
+	problem     string                // Why the last file operation failed (std.io)...
+	args        []string              // What the program was started with (std.os.args)
+	program     string                // The file it was run from (std.os.program)
+	problemKind string                // ...and of which kind
+	servers     map[int64]*httpServer // The servers of std.http, by number
+	lastServer  int64
 	in          *bufio.Reader // Input of std.io.readLine
 	rng         *rand.Rand    // Generator of std.random
 }
@@ -959,6 +963,10 @@ func (vm *VM) run(base int) (Value, error) {
 						// Raised by the program the function called back
 						// into: already complete, with its own place
 						return NewNull(), failure
+					}
+					if _, leaving := err.(*exitError); leaving {
+						// The program asked to end: not a failure
+						return NewNull(), err
 					}
 					if stop, ok := err.(*panicError); ok {
 						return NewNull(), vm.runtimeErrorOf(KindPanic, stop.message)

@@ -1,0 +1,54 @@
+// A small web service that keeps notes, with its tests.
+//
+//     lumen run examples/notes                 runs the tests
+//     lumen run examples/notes serve           listens on port 8080
+//     lumen run examples/notes serve 3000      ...or another
+//
+// then, from another terminal:
+//
+//     curl -X POST localhost:8080/notes -d '{"title": "Groceries", "tags": ["home"]}'
+//     curl localhost:8080/notes?tag=home
+//
+// Three files share the work: notes/book.lum holds the notes and their
+// rules and knows nothing of the web, notes/api.lum says which address
+// does what, and notes/checks.lum tests the two by calling the routes as
+// the server would.
+
+import std.os;
+import std.http;
+import std.http.{Request, Response};
+import std.result.{Result};
+import std.time;
+import std.strings;
+import std.arrays;
+import notes.api;
+import notes.book;
+import notes.checks;
+
+// Wraps a handler so that every request is noted as it is answered.
+fn logged(handler: fn(Request) -> Response) -> fn(Request) -> Response {
+    return fn(request: Request) -> Response {
+        let watch = time.stopwatch();
+        let response = handler(request);
+        println("${time.today().format("HH:mm:ss")} ${request.method.name()} ${request.path} -> ${response.status} in ${watch.microseconds()}us");
+        return response;
+    };
+}
+
+fn main() -> Int {
+    let args = os.args();
+    if arrays.first(args) != "serve" {
+        return checks.suite().run().exitCode();
+    }
+
+    let port = strings.parseInt(arrays.at(args, 1) ?? "8080") ?? 8080;
+    let app = api.routes(book.empty());
+    println("notes are served on http://localhost:${port}, stop with Ctrl+C");
+    match http.serve(port, logged(app.handler())) {
+        case Result.Ok(_): { return 0; }
+        case Result.Err(error): {
+            println(error.describe());
+            return 1;
+        }
+    }
+}

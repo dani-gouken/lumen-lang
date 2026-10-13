@@ -1,0 +1,1103 @@
+package stdlib_test
+
+import (
+	"bytes"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"sync"
+	"testing"
+
+	"github.com/dani-gouken/lumen/internal/compiler"
+	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/vm"
+)
+
+func newListener() (net.Listener, error) {
+	return net.Listen("tcp", "127.0.0.1:0")
+}
+
+// quote writes a path as a Lumen string literal.
+func quote(path string) string {
+	return fmt.Sprintf("%q", path)
+}
+
+func TestPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the expected paths are written with /")
+	}
+	expect(t, "import std.path;", `
+		println(path.join(["a", "b/", "../c.txt"]), path.inside("notes", "todo.txt"), path.join([]) == "");
+		println(path.base("notes/todo.txt"), path.dir("notes/todo.txt"), path.extension("a/b.tar.gz"), "[" + path.extension("a/b") + "]");
+		println(path.stem("x/y.tar.gz"), path.stem("readme"), path.stem(".hidden") == "");
+		println(path.withExtension("a/b.md", ".html"), path.withExtension("b.md", ".html"), path.withExtension("./b", ".txt"), path.withExtension("/b.md", ""));
+		println(path.parts("/a/b/c.txt"), path.parts("a//b/../c"), path.parts(""), path.parts("/"));
+		println(path.clean("a//b/../c/"), path.isAbsolute("/a"), path.isAbsolute("a"), path.separator());
+		println(path.matches("*.txt", "todo.txt"), path.matches("*.txt", "todo.md"), path.isAbsolute(path.absolute("x")));
+	`,
+		"a/c.txt notes/todo.txt true",
+		"todo.txt notes .gz []",
+		"y.tar readme true",
+		"a/b.html b.html b.txt /b",
+		`["a", "b", "c.txt"] ["a", "c"] ["."] []`,
+		"a/c true false /",
+		"true false true",
+	)
+	expectFailure(t, "import std.path;", `println(path.matches("[", "x"));`, "std.path.matches: '[' is not a valid pattern")
+}
+
+func TestFolders(t *testing.T) {
+	dir := t.TempDir()
+	expect(t, `
+		import std.fs;
+		import std.fs.{Kind, Entry};
+		import std.io;
+		import std.io.{ErrorKind};
+		import std.path;
+		import std.result.{Result};
+		import std.arrays;
+		import std.strings;`, `
+		let root = `+quote(dir)+`;
+		let deep = fs.makeDir(path.join([root, "x", "y"])).expect("a folder");
+		println(fs.isDir(deep), fs.isFile(deep), fs.makeDir(deep).isOk());
+		io.writeFile(path.inside(deep, "a.txt"), "hello").expect("a file");
+		io.writeFile(path.inside(root, "b.lum"), "").expect("a file");
+
+		// One level, sorted, with what each entry is
+		for entry in fs.list(root).expect("a listing") {
+			println(entry.name, entry.kind, entry.isFile(), entry.isFolder(), entry.path == path.inside(root, entry.name));
+		}
+		let about = fs.info(path.inside(deep, "a.txt")).expect("facts");
+		println(about.name, about.size, about.kind == Kind.File, about.modified > 0);
+
+		// Every file, however deep
+		let relative = fn(file: String) -> String { return strings.from(file, strings.len(root) + 1); };
+		println(arrays.map(fs.walk(root).expect("a walk"), relative));
+		println(arrays.map(fs.find(root, "*.txt").expect("a search"), relative), arrays.len(fs.find(root, "*.go").expect("a search")));
+
+		let copied = fs.copy(path.inside(deep, "a.txt"), path.inside(root, "c.txt")).expect("a copy");
+		println(path.base(copied), io.readFile(copied).orElse("?"));
+		let moved = fs.rename(copied, path.inside(root, "d.txt")).expect("a move");
+		println(path.base(moved), io.exists(copied), io.exists(moved));
+
+		// Failures say what, on what, and of which kind
+		match fs.list(path.inside(root, "nope")) {
+			case Result.Ok(_): { println("?"); }
+			case Result.Err(error): {
+				println(error.kind, error.operation, path.base(error.path), error.message);
+				println(error.kind == ErrorKind.NotFound, arrays.len(error.stack), error.stack[0].function);
+			}
+		}
+		let problems = [
+			fs.list(moved).reason(),
+			fs.info(path.inside(root, "nope")).reason(),
+			fs.walk(path.inside(root, "nope")).reason(),
+			fs.copy(path.inside(root, "nope"), moved).reason(),
+			fs.copy(deep, moved).reason(),
+			fs.rename(path.inside(root, "nope"), moved).reason(),
+			fs.makeDir(path.inside(moved, "inside")).reason(),
+		];
+		for problem in problems {
+			if problem != null { println(problem.operation, problem.kind, path.base(problem.path), arrays.len(problem.stack), problem.stack[0].function); }
+		}
+
+		println(fs.removeAll(path.inside(root, "x")).isOk(), fs.isDir(deep), fs.removeAll(path.inside(root, "x")).isOk());
+		let temp = fs.makeTempDir("lumen-test-").expect("a folder");
+		println(fs.isDir(temp), strings.startsWith(path.base(temp), "lumen-test-"), fs.removeAll(temp).isOk(), fs.isDir(temp));
+		println(fs.isDir(fs.currentDir()), fs.isDir(fs.tempDir()));
+	`,
+		"true false true",
+		"b.lum File true false true",
+		"x Folder false true true",
+		"a.txt 5 true true",
+		`["b.lum", "x/y/a.txt"]`,
+		`["x/y/a.txt"] 0`,
+		"c.txt hello",
+		"d.txt false true",
+		"NotFound list nope no such file or directory",
+		"true 1 main",
+		"list NotDirectory d.txt 1 main",
+		"inspect NotFound nope 1 main",
+		"walk NotFound nope 1 main",
+		"copy NotFound nope 1 main",
+		"copy IsDirectory y 1 main",
+		"rename NotFound nope 1 main",
+		"create NotDirectory inside 1 main",
+		"true false true",
+		"true true true false",
+		"true true",
+	)
+}
+
+func TestOs(t *testing.T) {
+	t.Setenv("LUMEN_TEST_VARIABLE", "a=b")
+	expect(t, "import std.os;\nimport std.strings;", `
+		println(os.args(), os.platform() == `+quote(runtime.GOOS)+`);
+		let all = os.environment();
+		println(all.get("LUMEN_TEST_VARIABLE"), all.get("LUMEN_NO_SUCH_VARIABLE"), all.size() > 1);
+	`,
+		"[] true",
+		"a=b null true",
+	)
+	if runtime.GOOS == "windows" {
+		return
+	}
+	expect(t, "import std.os;\nimport std.io.{ErrorKind};\nimport std.result.{Result};\nimport std.arrays;", `
+		let out = os.run("sh", ["-c", "echo one; echo two; echo no >&2; exit 3"]).expect("a run");
+		println(out.status, out.lines(), out.err == "no\n", out.succeeded());
+		let shouted = os.runWithInput("tr", ["a-z", "A-Z"], "hello").expect("a run");
+		println(shouted.out, shouted.status, shouted.succeeded());
+		// A program that cannot be started is the error; one that fails is not
+		match os.run("no-such-program-of-lumen", ["x"]) {
+			case Result.Ok(_): { println("?"); }
+			case Result.Err(error): { println(error.describe(), error.kind == ErrorKind.NotFound, arrays.len(error.stack)); }
+		}
+		println(os.runWithInput("no-such-program-of-lumen", [], "x").isErr());
+	`,
+		`3 ["one", "two"] true false`,
+		"HELLO 0 true",
+		"cannot run no-such-program-of-lumen: there is no such program true 1",
+		"true",
+	)
+}
+
+// TestExit checks that os.exit ends the program at once, whatever is
+// around the call, and hands its status to whoever ran the program.
+func TestExit(t *testing.T) {
+	cases := []struct {
+		name, body, printed string
+		status              int
+	}{
+		{"plain", `println("before"); os.exit(3); println("after");`, "before\n", 3},
+		{"zero", `os.exit(0); println("after");`, "", 0},
+		{"deep in calls", `let leave = fn(n: Int) { if n > 2 { os.exit(n); } }; for i in arrays.range(0, 9) { println(i); leave(i); }`, "0\n1\n2\n3\n", 3},
+		// An attempt survives failures; leaving is not one
+		{"inside attempt", `let r = attempt(fn() -> Int { os.exit(7); return 1; }); println("after", r.isOk());`, "", 7},
+		{"inside guard, nested", `guard(fn() { guard(fn() { os.exit(9); }); println("inner"); }); println("after");`, "", 9},
+		{"after a caught failure", `println(attempt(fn() -> Int { panic("x"); }).isErr()); os.exit(4);`, "true\n", 4},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out, err := run(t, "import std.os;\nimport std.arrays;\nimport std.result.{attempt, guard};", c.body, "")
+			status, asked := vm.ExitCode(err)
+			if !asked || status != c.status || out != c.printed {
+				t.Errorf("expected status %d after printing %q, got %v (%v) after %q", c.status, c.printed, status, err, out)
+			}
+		})
+	}
+}
+
+func TestJson(t *testing.T) {
+	expect(t, `
+		import std.json;
+		import std.json.{Json};
+		import std.option;
+		import std.result.{Result};
+		import std.arrays;`, `
+		let text = "{\"name\": \"ada\", \"age\": 36, \"tags\": [\"a\", \"b\"], \"x\": {\"y\": [1, 2.5, null, true]}, \"e\": {}, \"l\": []}";
+		let doc = json.parse(text).expect("a document");
+		println(doc.stringify());
+		println(doc.pretty());
+
+		// Looking in, a step at a time or along a path
+		println(option.then(doc.get("name"), json.textOf) ?? "nobody", option.then(doc.get("age"), json.intOf), option.then(doc.get("nope"), json.textOf));
+		println(doc.find("x.y.1"), doc.find("x.y.2"), doc.find("x.y.9"), doc.find("tags.0"), doc.find("name.first"), doc.find("x.nope.y"));
+		println(doc.get("name"), doc.at(0), (doc.find("tags") ?? Json.Null).at(1));
+		let tags = option.then(doc.get("tags"), json.itemsOf) ?? [];
+		println(arrays.len(tags), arrays.map(tags, fn(tag: Json) -> String { return tag.text() ?? "?"; }));
+		let fields = doc.fields();
+		if fields != null { println(fields.keys(), doc.isNull(), (doc.find("x.y.2") ?? Json.Bool(false)).isNull()); }
+
+		// Each kind answers only for itself
+		let kinds = [Json.Null, Json.Bool(true), Json.Number(2.0), Json.Number(2.5), Json.String("s"), json.ints([1]), json.object().done()];
+		for kind in kinds {
+			println(kind.stringify(), kind.text(), kind.number(), kind.int(), kind.bool(), kind.items() != null, kind.fields() != null);
+		}
+
+		// Every kind of value is taken apart by a match the compiler checks
+		let describe = fn(value: Json) -> String {
+			match value {
+				case Json.Null: { return "nothing"; }
+				case Json.Bool(b): { return "a boolean"; }
+				case Json.Number(x): { return "a number"; }
+				case Json.String(s): { return "a text of ${arrays.len(json.texts([s]).items() ?? [])}"; }
+				case Json.Array(items): { return "${arrays.len(items)} items"; }
+				case Json.Object(fields): { return "${fields.size()} fields"; }
+			}
+		};
+		println(describe(doc), describe(Json.Null), describe(doc.find("tags") ?? Json.Null), describe(Json.String("x")));
+	`,
+		`{"name":"ada","age":36,"tags":["a","b"],"x":{"y":[1,2.5,null,true]},"e":{},"l":[]}`,
+		`{`,
+		`  "name": "ada",`,
+		`  "age": 36,`,
+		`  "tags": [`,
+		`    "a",`,
+		`    "b"`,
+		`  ],`,
+		`  "x": {`,
+		`    "y": [`,
+		`      1,`,
+		`      2.5,`,
+		`      null,`,
+		`      true`,
+		`    ]`,
+		`  },`,
+		`  "e": {},`,
+		`  "l": []`,
+		`}`,
+		"ada 36 null",
+		`Number(2.5) Null null String("a") null null`,
+		`String("ada") null String("b")`,
+		`2 ["a", "b"]`,
+		`["name", "age", "tags", "x", "e", "l"] false true`,
+		"null null null null null false false",
+		"true null null null true false false",
+		"2 null 2 2 null false false",
+		"2.5 null 2.5 null null false false",
+		`"s" s null null null false false`,
+		"[1] null null null null true false",
+		"{} null null null null false true",
+		"6 fields nothing 2 items a text of 1",
+	)
+
+	// Writing, and reading back what was written
+	expect(t, "import std.json;\nimport std.json.{Json};\nimport std.option;", `
+		let made = json.object()
+			.text("name", "é\"x\n\t\\")
+			.int("n", -3)
+			.number("x", 0.5)
+			.bool("ok", true)
+			.none("z")
+			.set("t", json.ints([1, 2]))
+			.set("w", json.texts(["a"]))
+			.set("p", json.array([[1, 2], [3]], json.ints))
+			.done();
+		let text = made.stringify();
+		println(text);
+		let back = json.parse(text).expect("what was written");
+		println(back.equals(made), made.equals(back), back == made, back.stringify() == text);
+		println(json.parse(made.pretty()).expect("the long form").equals(made));
+		println(option.then(back.get("name"), json.textOf) == "é\"x\n\t\\");
+
+		// Equality is by content, in order for arrays and by key for objects
+		let a = json.parse("{\"a\": 1, \"b\": [1, 2]}").expect("a");
+		println(a.equals(json.parse("{\"b\": [1, 2], \"a\": 1}").expect("b")),
+			a.equals(json.parse("{\"a\": 1, \"b\": [2, 1]}").expect("c")),
+			a.equals(json.parse("{\"a\": 1}").expect("d")),
+			a.equals(json.parse("{\"a\": 1, \"b\": [1, 2], \"c\": 0}").expect("e")),
+			a.equals(Json.Null), Json.Null.equals(Json.Null), json.int(1).equals(Json.Number(1.0)), Json.String("1").equals(json.int(1)));
+		println(json.parse(" [ ] ").expect("x").stringify(), json.parse("1e3").expect("x").int(), json.parse("\"\\u00e9\"").expect("x").text(), json.parse("-0.5").expect("x").number());
+		println(json.int(7).pretty(), json.ints([]).pretty(), json.texts(["a"]).pretty() == "[\n  \"a\"\n]");
+	`,
+		`{"name":"é\"x\n\t\\","n":-3,"x":0.5,"ok":true,"z":null,"t":[1,2],"w":["a"],"p":[[1,2],[3]]}`,
+		"true true false true",
+		"true",
+		"true",
+		"true false false false false true true false",
+		"[] 1000 é -0.5",
+		"7 [] true",
+	)
+
+	// What is not JSON says where
+	expect(t, "import std.json;\nimport std.result.{Result};", `
+		let wrong = ["", "[1, 2", "1 2", "{\"a\": [1,\n }", "{\"a\" 1}", "[1,]", "nul", "{'a': 1}", "[\n\n  é]"];
+		for text in wrong {
+			match json.parse(text) {
+				case Result.Ok(document): { println("?", document); }
+				case Result.Err(error): { println(error.line, error.column, error.describe()); }
+			}
+		}
+	`,
+		"1 1 line 1, column 1: the text ends before the value does",
+		"1 6 line 1, column 6: the text ends before the value does",
+		"1 3 line 1, column 3: there is something after the value",
+		"2 2 line 2, column 2: invalid character '}' looking for beginning of value",
+		"1 6 line 1, column 6: invalid character '1' after object key",
+		"1 4 line 1, column 4: invalid character ']' looking for beginning of value",
+		"1 4 line 1, column 4: the text ends before the value does",
+		"1 2 line 1, column 2: invalid character '\\'' looking for beginning of object key string",
+		"3 3 line 3, column 3: invalid character 'é' looking for beginning of value",
+	)
+}
+
+func TestRegex(t *testing.T) {
+	expect(t, `
+		import std.regex;
+		import std.regex.{Match, Regex};
+		import std.result.{Result};
+		import std.strings;
+		import std.arrays;`, `
+		let date = regex.must("(?P<year>\\d{4})-(\\d{2})-(\\d{2})");
+		let found = date.find("été: released on 2026-10-13 and 2027-01-02");
+		if found != null {
+			println(found.text, found.start, found.end, found.groups);
+			println(found.named("year"), found.named("month"), found.named(""), found.group(2), found.group(3), found.group(-1));
+		}
+		println(date.find("no date here"), date.matches("on 2026-10-13"), date.matches("2026-1-1"));
+		println(date.all("2026-10-13 and 2027-01-02"), arrays.len(date.findAll("")), date.names);
+		println(date.replace("on 2026-10-13", "$3/$2/\${year}"), date.replace("nothing", "x"));
+
+		let numbers = regex.must("\\d+");
+		println(numbers.replaceWith("3 apples, 12 pears", fn(m: Match) -> String { return toString((strings.parseInt(m.text) ?? 0) * 2); }));
+		println(numbers.replaceWith("none", fn(m: Match) -> String { return "?"; }), numbers.replaceWith("7", fn(m: Match) -> String { return "<${m.start}-${m.end}>"; }));
+		println(regex.must("\\s*,\\s*").split("a , b,c"), regex.must(",").split(""), regex.must("x").split("abc"));
+		println(regex.escape("1+1?"), regex.must(regex.escape("1+1?")).matches("is 1+1?"), regex.must("^1+1?$").matches("1+1?"));
+
+		// A group that took no part, and a pattern without groups
+		let either = regex.must("(a)|(b)").find("b");
+		if either != null { println(either.groups, arrays.len(numbers.findAll("42")[0].groups)); }
+		// Case insensitive, across accents (\\w and \\b only know the letters of English)
+		println(regex.must("(?i)é[a-zé]+").all("Été, étude et Ecole"));
+
+		match regex.compile("(a") {
+			case Result.Ok(_): { println("?"); }
+			case Result.Err(error): { println(error.pattern, "/", error.message, "/", strings.startsWith(error.describe(), "'(a' is not a regular expression")); }
+		}
+		println(regex.compile("[a-z]+").isOk(), regex.compile("a{2,1}").isErr(), regex.compile("(?<=a)b").isErr());
+	`,
+		`2026-10-13 17 27 ["2026", "10", "13"]`,
+		"2026 null null 13 null null",
+		"null true false",
+		`["2026-10-13", "2027-01-02"] 0 ["year", "", ""]`,
+		"on 13/10/2026 nothing",
+		"6 apples, 24 pears",
+		"none <0-1>",
+		`["a", "b", "c"] [""] ["abc"]`,
+		`1\+1\? true false`,
+		`["", "b"] 0`,
+		`["Été", "étude"]`,
+		"(a / missing closing ): `(a` / true",
+		"true true true",
+	)
+	expectFailure(t, "import std.regex;", `regex.must("(a");`, "'(a' is not a regular expression")
+}
+
+func TestCsv(t *testing.T) {
+	expect(t, `
+		import std.csv;
+		import std.csv.{Table};
+		import std.dict.{Dict};
+		import std.result.{Result};
+		import std.strings;
+		import std.arrays;`, `
+		let people = csv.table("name,age,city\nada,36,London\n\"grace, h\",45,\"New\nYork\"\nalan,41,\n").expect("a table");
+		println(people.header, people.size(), people.column("name"), people.column("nope"));
+		println(people.cell(1, "age"), people.cell(1, "city") == "New\nYork", people.cell(2, "city") == "", people.cell(9, "age"), people.cell(0, "nope"), people.cell(-1, "age"));
+		let records = people.records();
+		println(arrays.len(records), records[0].get("age"), records[1].keys());
+
+		// The rows a function accepts, and the table back as text
+		let older = people.where(fn(row: Dict<String>) -> Bool { return (strings.parseInt(row.get("age") ?? "") ?? 0) > 40; });
+		println(older.size(), older.column("name"));
+		print(older.write());
+		println(csv.table(people.write()).expect("what was written").rows == people.rows, csv.table(people.write()).expect("x").write() == people.write());
+
+		println(csv.parse("a,b\n1\n").expect("rows"), csv.parse("").expect("rows"), csv.parseWith("a;b,c\n", ";").expect("rows"), csv.parseWith("a\tb", "\t").expect("rows"));
+		print(csv.write([["a b", "c\"d"], ["e,f", ""]]));
+		print(csv.writeWith([["a,b", "c;d"]], ";"));
+
+		let wrong = [csv.table("a,b\n1\n").reason(), csv.table("").reason(), csv.table("a,b\n1,2\n3,4,5\n").reason()];
+		for error in wrong { if error != null { println(error.line, error.column, error.describe()); } }
+		match csv.parse("a,b\nc,\"d\n") {
+			case Result.Ok(rows): { println("?", rows); }
+			case Result.Err(error): { println(error.line, strings.contains(error.describe(), "line 2, column")); }
+		}
+	`,
+		`["name", "age", "city"] 3 ["ada", "grace, h", "alan"] null`,
+		"45 true true null null null",
+		`3 36 ["name", "age", "city"]`,
+		`2 ["grace, h", "alan"]`,
+		"name,age,city",
+		`"grace, h",45,"New`,
+		`York"`,
+		"alan,41,",
+		"false true",
+		`[["a", "b"], ["1"]] [] [["a", "b,c"]] [["a", "b"]]`,
+		`a b,"c""d"`,
+		`"e,f",`,
+		`a,b;"c;d"`,
+		"2 1 line 2, column 1: expected 2 values, as in the header, found 1",
+		"0 0 there is no header row",
+		"3 1 line 3, column 1: expected 2 values, as in the header, found 3",
+		"2 true",
+	)
+	expectFailure(t, "import std.csv;", `csv.parseWith("a", "::");`, "std.csv.rows: the separator must be one character, got '::'")
+}
+
+func TestEncodingAndHash(t *testing.T) {
+	expect(t, "import std.encoding;\nimport std.hash;\nimport std.option;\nimport std.strings;", `
+		println(encoding.toBase64("héllo"), encoding.fromBase64("aMOpbGxv"), encoding.fromBase64("!!"), encoding.fromBase64(encoding.toBase64("")) == "");
+		println(encoding.toBase64Url("??>>"), encoding.fromBase64Url("Pz8-Pg"), encoding.toHex("hi"), encoding.fromHex("6869"), encoding.fromHex("zz"));
+		println(encoding.toUrl("a b&c=é"), encoding.fromUrl("a+b%26c%3D%C3%A9"), encoding.fromUrl("%zz"));
+		println(encoding.bytes("hé"), encoding.fromBytes([104, 105]), encoding.fromBytes([255]), encoding.fromBytes(encoding.bytes("héλ☃")));
+
+		// There and back, chained: each step runs if the one before gave a text
+		let round = fn(text: String) -> String? {
+			return option.then(option.then(encoding.fromHex(encoding.toHex(encoding.toBase64(text))), encoding.fromBase64), encoding.fromUrl);
+		};
+		println(round("plain"), round(encoding.toUrl("a b/c?d=é")) == "a b/c?d=é");
+
+		println(hash.sha256("abc"));
+		println(hash.sha1("abc"), hash.md5("abc"), hash.crc32("abc"));
+		println(hash.hmacSha256("Jefe", "what do ya want for nothing?"));
+		println(hash.matches("abc", hash.sha256("abc")), hash.matches("abd", hash.sha256("abc")), strings.len(hash.sha256("")), hash.sha256("a") == hash.sha256("a"));
+	`,
+		"aMOpbGxv héllo null true",
+		"Pz8-Pg ??>> 6869 hi null",
+		"a+b%26c%3D%C3%A9 a b&c=é null",
+		"[104, 195, 169] hi null héλ☃",
+		"plain true",
+		"ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+		"a9993e364706816aba3e25717850c26c9cd0d89d 900150983cd24fb0d6963f7d28e17f72 891568578",
+		"5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843",
+		"true false 64 true",
+	)
+	expectFailure(t, "import std.encoding;", `encoding.fromBytes([1, 256]);`, "a byte is between 0 and 255, element 1 is 256")
+}
+
+func TestFormat(t *testing.T) {
+	expect(t, "import std.format;\nimport std.format.{Align};", `
+		println(format.fixed(3.14159, 2), format.fixed(2.5, 0), format.fixed(1.0, 2), format.fixed(-0.125, 1), format.fixed(1234.5, 0));
+		println(format.grouped(1234567), format.grouped(-1000), format.grouped(999), format.grouped(0), format.grouped(1000), format.groupedWith(1234567, " "), format.grouped(-123456));
+		println(format.padded(7, 3), format.padded(-7, 3), format.padded(1234, 2), format.padded(0, 1), format.padded(5, 0));
+		println(format.percent(0.125, 1), format.percent(1.0, 0), format.percent(0.0, 2));
+		println(format.money(1234567.5), format.money(0.0), format.money(-0.004), format.money(-3.999), format.money(0.005), format.money(12.345), format.money(-1000.0));
+		println(format.hex(255), format.binary(5), format.inBase(-255, 16), format.fromBase("ff", 16), format.fromBase("zz", 10), format.fromBase(format.inBase(123456789, 36), 36));
+		println(format.bytes(0), format.bytes(512), format.bytes(1023), format.bytes(1024), format.bytes(1536000), format.bytes(5368709120), format.bytes(-2048));
+		println(format.duration(0), format.duration(350), format.duration(999), format.duration(1000), format.duration(2500), format.duration(59999));
+		println(format.duration(60000), format.duration(65000), format.duration(3723000), format.duration(86400000), format.duration(273600000), format.duration(-65000));
+		println(format.ordinal(1), format.ordinal(2), format.ordinal(3), format.ordinal(4), format.ordinal(11), format.ordinal(12), format.ordinal(13), format.ordinal(21), format.ordinal(22), format.ordinal(101), format.ordinal(113), format.ordinal(0));
+		println(format.plural(1, "file", "files"), format.plural(0, "file", "files"), format.plural(2, "child", "children"), format.plural(-1, "degree", "degrees"));
+		println("[" + format.pad("ab", 6, Align.Left) + "]", "[" + format.pad("ab", 6, Align.Right) + "]", "[" + format.pad("ab", 6, Align.Center) + "]", "[" + format.pad("abc", 6, Align.Center) + "]", "[" + format.pad("too long", 3, Align.Right) + "]");
+		println("[" + format.bar(3, 10, 20) + "]", "[" + format.bar(10, 10, 5) + "]", "[" + format.bar(99, 10, 5) + "]", "[" + format.bar(0, 10, 5) + "]", "[" + format.bar(1, 0, 5) + "]", "[" + format.bar(-1, 10, 5) + "]");
+	`,
+		"3.14 2 1.00 -0.1 1234",
+		"1,234,567 -1,000 999 0 1,000 1 234 567 -123,456",
+		"007 -007 1234 0 5",
+		"12.5% 100% 0.00%",
+		"1,234,567.50 0.00 0.00 -4.00 0.01 12.35 -1,000.00",
+		"ff 101 -ff 255 null 123456789",
+		"0 B 512 B 1023 B 1.0 KB 1.5 MB 5.0 GB -2.0 KB",
+		"0ms 350ms 999ms 1.0s 2.5s 60.0s",
+		"1m 00s 1m 05s 1h 02m 03s 1d 00h 3d 04h -1m 05s",
+		"1st 2nd 3rd 4th 11th 12th 13th 21st 22nd 101st 113th 0th",
+		"1 file 0 files 2 children -1 degrees",
+		"[ab    ] [    ab] [  ab  ] [ abc  ] [too long]",
+		"[######] [#####] [#####] [] [] []",
+	)
+
+	// Tables: columns as wide as their widest value, numbers to the right
+	expect(t, "import std.format;\nimport std.format.{Align};", `
+		print(format.table(["name", "age", "city"], [["ada", "36", "London"], ["grace", "45.5", ""], ["a very long name", "7"]]));
+		println("--");
+		print(format.table(["only", "titles"], []));
+		println("--");
+		print(format.tableWith(["a", "b"], [Align.Center, Align.Right], [["xxxxx", "1"], ["y", "22"], ["z", "333", "dropped"]]));
+		println("--");
+		print(format.tableWith(["é", "n"], [Align.Right], [["été", "1"]]));
+	`,
+		"name               age  city",
+		"----------------  ----  ------",
+		"ada                 36  London",
+		"grace             45.5",
+		"a very long name     7",
+		"--",
+		"only  titles",
+		"----  ------",
+		"--",
+		"  a      b",
+		"-----  ---",
+		"xxxxx    1",
+		"  y     22",
+		"  z    333",
+		"--",
+		"  é  n",
+		"---  -",
+		"été  1",
+	)
+	expectFailure(t, "import std.format;", `format.fixed(1.0, 200);`, "the number of digits must be between 0 and 100, got 200")
+	expectFailure(t, "import std.format;", `format.inBase(1, 99);`, "the base must be between 2 and 36, got 99")
+}
+
+func TestDates(t *testing.T) {
+	expect(t, "import std.time;\nimport std.time.{Date, Weekday};\nimport std.arrays;", `
+		let d = time.dateTime(2026, 10, 13, 14, 5, 7);
+		println(d.year, d.month, d.day, d.hour, d.minute, d.second, d.millisecond, d.weekday, d.dayOfYear, d.offset);
+		println(d.format("dddd D MMMM YYYY"), "|", d.format("ddd DD MMM YY, HH:mm:ss.SSS"), "|", d.format("h:mm A [on] M/D"), "|", d.format("[YYYY is] YYYY"));
+		println(d.iso(), d.isoTime(), d.zone(), d.timestamp(), d.format(""), d.format("no pattern in ...") == "no pattern in ...");
+		println(time.dateTime(2026, 1, 3, 0, 7, 9).format("D/M h:m:s A"), time.dateTime(2026, 1, 3, 12, 0, 0).format("hh A"), time.dateTime(2026, 1, 3, 23, 0, 0).format("h A"));
+
+		// Moving about the calendar
+		println(d.plusDays(30).iso(), d.plusDays(-13).iso(), d.plusMonths(3).iso(), d.plusMonths(-10).iso(), d.plus(-2 * time.hour).format("HH:mm"), d.plus(time.week).iso());
+		println(time.date(2026, 1, 31).plusMonths(1).iso(), time.date(2024, 2, 28).plusDays(1).iso(), time.date(2026, 12, 31).plusDays(1).iso());
+		println(d.daysUntil(time.date(2027, 1, 1)), time.date(2027, 1, 1).daysUntil(d), d.daysUntil(d.plus(23 * time.hour)), d.startOfDay().isoTime());
+		println(d.isBefore(d.plus(1)), d.isAfter(d.plus(1)), d.isSameDay(d.plus(9 * time.hour)), d.isSameDay(d.plus(10 * time.hour)), d.plus(0).timestamp() == d.timestamp());
+
+		println(time.date(2026, 1, 32).iso(), time.date(2026, 13, 1).iso(), time.date(2026, 3, 0).iso());
+		println(time.daysIn(2024, 2), time.daysIn(2026, 2), time.daysIn(2026, 12), time.isLeapYear(2000), time.isLeapYear(1900), time.isLeapYear(2024), time.monthName(1), time.monthName(12));
+		println(arrays.map([0, 1, 2, 3, 4, 5, 6], fn(n: Int) -> String { return time.date(2026, 10, 11).plusDays(n).weekday.name(); }));
+		println(Weekday.Saturday.isWeekend(), Weekday.Sunday.isWeekend(), Weekday.Monday.isWeekend(), time.utc(0).isoTime(), time.utc(-1).format("YYYY-MM-DD HH:mm:ss.SSS"));
+
+		// Reading
+		let read = fn(text: String) -> String {
+			let date = time.parse(text);
+			if date == null { return "?"; }
+			return date.isoTime();
+		};
+		println(read("2026-10-13"), read("2026-10-13 14:30"), read("2026-10-13T14:30:00Z"), read("2026-10-13T14:30:00+02:00"), read("13/Oct/2026:13:55:36 +0000"));
+		println(read("nope"), read("2026-13-45"), read(""), (time.parse(d.isoTime()) ?? time.utc(0)).timestamp() == d.timestamp());
+
+		// Here and now
+		let now = time.today();
+		println(now.timestamp() / 10000 == time.now() / 10000, now.plusDays(1).daysUntil(now), time.local(d.timestamp()).timestamp() == d.timestamp());
+		println(time.local(d.timestamp()).plusDays(7).daysUntil(time.local(d.timestamp())), time.local(d.timestamp()).startOfDay().hour, time.local(d.timestamp()).plus(time.day).timestamp() - d.timestamp());
+		println(time.second, time.minute, time.hour, time.day, time.week);
+	`,
+		"2026 10 13 14 5 7 0 Tuesday 286 0",
+		"Tuesday 13 October 2026 | Tue 13 Oct 26, 14:05:07.000 | 2:05 PM on 10/13 | YYYY is 2026",
+		"2026-10-13 2026-10-13T14:05:07Z Z 1791900307000  true",
+		"3/1 12:7:9 AM 12 PM 11 PM",
+		"2026-11-12 2026-09-30 2027-01-13 2025-12-13 12:05 2026-10-20",
+		"2026-03-03 2024-02-29 2027-01-01",
+		"80 -80 1 2026-10-13T00:00:00Z",
+		"true false true false true",
+		"2026-02-01 2027-01-01 2026-02-28",
+		"29 28 31 true false true January December",
+		`["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]`,
+		"true true false 1970-01-01T00:00:00Z 1969-12-31 23:59:59.999",
+		"2026-10-13T00:00:00Z 2026-10-13T14:30:00Z 2026-10-13T14:30:00Z 2026-10-13T12:30:00Z 2026-10-13T13:55:36Z",
+		"? ? ? true",
+		"true -1 true",
+		"-7 0 86400000",
+		"1000 60000 3600000 86400000 604800000",
+	)
+	expectFailure(t, "import std.time;", `time.monthName(13);`, "there is no month 13")
+}
+
+func TestSet(t *testing.T) {
+	src := `
+		import std.set;
+		import std.set.{Set};
+		import std.arrays;
+
+		struct Point { x: Int; y: Int; }
+
+		fn main() -> Int {
+			let seen = set.of(["a", "b", "a"]);
+			let other = set.of(["b", "c"]);
+			println(seen.size(), seen.isEmpty(), set.texts().isEmpty(), seen.has("a"), seen.has("z"), seen.items());
+			println(seen.union(other).items(), seen.intersection(other).items(), seen.difference(other).items(), other.difference(seen).items());
+			println(seen.isSubsetOf(other), set.of(["b"]).isSubsetOf(other), set.texts().isSubsetOf(other), seen.equals(set.of(["b", "a"])), seen.equals(other), seen.equals(set.of(["a"])));
+			println(seen.add("a"), seen.add("z"), seen.remove("a"), seen.remove("a"), seen.items(), seen.size());
+
+			// A copy is its own set
+			let copy = seen.copy();
+			copy.add("new");
+			println(seen.has("new"), copy.has("new"), copy.size() - seen.size());
+
+			// Numbers, and anything else given how to tell two apart
+			let numbers = set.ofNumbers([3, 3, 4, -1, 3]);
+			println(numbers.items(), numbers.has(4), numbers.has(5), numbers.filter(fn(n: Int) -> Bool { return n > 0; }).items());
+			let points = set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; });
+			println(points.add(Point { x: 1, y: 2 }), points.add(Point { x: 1, y: 2 }), points.add(Point { x: 2, y: 1 }), points.has(Point { x: 2, y: 1 }), points.size());
+			println(arrays.map(points.items(), fn(p: Point) -> Int { return p.x * 10 + p.y; }));
+
+			// The primes below 50, by crossing out
+			let crossed = set.numbers();
+			let primes: [Int] = [];
+			for n in arrays.range(2, 50) {
+				if crossed.has(n) { continue; }
+				push(primes, n);
+				let multiple = n * n;
+				while multiple < 50 { crossed.add(multiple); multiple += n; }
+			}
+			println(primes);
+			return 0;
+		}`
+	errs := errors.NewHandler()
+	result := compiler.Compile(src, "sets.lum", errs)
+	for _, d := range errs.Diagnostics {
+		t.Fatalf("unexpected diagnostic:\n%s", d.String())
+	}
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	if _, err := machine.Exec(result.Chunk); err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	want := `2 false true true false ["a", "b"]
+["a", "b", "c"] ["b"] ["a"] ["c"]
+false true true true false false
+false true true false ["b", "z"] 2
+false true 1
+[3, 4, -1] true false [3, 4]
+true false true true 2
+[12, 21]
+[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47]
+`
+	if out.String() != want {
+		t.Errorf("unexpected output:\n%s\nwant:\n%s", out.String(), want)
+	}
+}
+
+func TestMoreArraysAndDict(t *testing.T) {
+	src := `
+		import std.arrays;
+		import std.strings;
+		import std.dict;
+		import std.random;
+		import std.option;
+
+		struct Person { name: String; age: Int; }
+
+		fn main() -> Int {
+			let people = [Person { name: "grace", age: 45 }, Person { name: "ada", age: 36 }, Person { name: "alan", age: 41 }, Person { name: "bob", age: 36 }];
+			let age = fn(p: Person) -> Int { return p.age; };
+			let name = fn(p: Person) -> String { return p.name; };
+			println(arrays.map(arrays.sortedBy(people, age), name), arrays.map(arrays.sortedByText(people, name), name));
+			println(option.map(arrays.maxBy(people, age), name), option.map(arrays.minBy(people, age), name), arrays.maxBy([], age), arrays.sumOf(people, age), arrays.sumOf([], age));
+			println(arrays.take([1, 2, 3], 2), arrays.take([1], 5), arrays.take([1], 0), arrays.drop([1, 2, 3], 2), arrays.drop([1], 5), arrays.drop([1, 2], -1));
+			println(arrays.chunks([1, 2, 3, 4, 5], 2), arrays.chunks([1, 2], 5), arrays.len(arrays.chunks(arrays.take([1], 0), 3)), arrays.flatten([[1], [], [2, 3]]), arrays.flatMap(["a b", "", "c"], strings.words));
+
+			let groups = arrays.groupBy(people, fn(p: Person) -> String { return strings.first(p.name, 1); });
+			println(groups.keys(), arrays.map(groups.get("a") ?? [], name), arrays.len(groups.get("z") ?? []));
+			let counts = arrays.countBy(strings.words("to be or not to be"), fn(word: String) -> String { return word; });
+			println(counts.keys(), counts.values(), counts.sortedKeys());
+			println(arrays.unique(["b", "a", "b", "a", "c"]), arrays.map(arrays.uniqueBy(people, fn(p: Person) -> String { return toString(p.age); }), name));
+			println(arrays.partition([1, 2, 3, 4, 5], fn(n: Int) -> Bool { return n % 2 == 0; }), arrays.partition(arrays.take([1], 0), fn(n: Int) -> Bool { return true; }));
+
+			// The originals are left alone
+			println(arrays.map(people, name));
+
+			let tally = dict.empty<Int>();
+			for word in ["x", "y", "x"] { tally.update(word, 0, fn(n: Int) -> Int { return n + 1; }); }
+			tally.set("a", 0);
+			println(tally.getOr("x", 0), tally.getOr("zz", -1), tally.sortedKeys(), tally.keys(), dict.empty<Int>().sortedKeys());
+
+			random.seed(7);
+			let first = random.uuid();
+			let second = random.uuid();
+			random.seed(7);
+			println(first == random.uuid(), first == second, strings.len(first), strings.count(first, "-"), strings.substring(first, 14, 15));
+			return 0;
+		}`
+	errs := errors.NewHandler()
+	result := compiler.Compile(src, "more.lum", errs)
+	for _, d := range errs.Diagnostics {
+		t.Fatalf("unexpected diagnostic:\n%s", d.String())
+	}
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	if _, err := machine.Exec(result.Chunk); err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	want := `["ada", "bob", "alan", "grace"] ["ada", "alan", "bob", "grace"]
+grace ada null 158 0
+[1, 2] [1] [] [3] [] [1, 2]
+[[1, 2], [3, 4], [5]] [[1, 2]] 0 [1, 2, 3] ["a", "b", "c"]
+["g", "a", "b"] ["ada", "alan"] 0
+["to", "be", "or", "not"] [2, 2, 1, 1] ["be", "not", "or", "to"]
+["b", "a", "c"] ["grace", "ada", "alan"]
+[[2, 4], [1, 3, 5]] [[], []]
+["grace", "ada", "alan", "bob"]
+2 -1 ["a", "x", "y"] ["x", "y", "a"] []
+true false 36 4 4
+`
+	if out.String() != want {
+		t.Errorf("unexpected output:\n%s\nwant:\n%s", out.String(), want)
+	}
+	expectFailure(t, "import std.arrays;", `arrays.chunks([1], 0);`, "the size of a chunk must be at least 1, got 0")
+}
+
+// serve runs a Lumen program that serves requests and, next to it, a
+// Go function that asks them. It gives what the program printed.
+func serve(t *testing.T, imports, body string, client func(base string)) string {
+	t.Helper()
+	src := imports + "\nfn main() -> Int {\n" + body + "\nreturn 0;\n}\n"
+	errs := errors.NewHandler()
+	result := compiler.Compile(src, "server.lum", errs)
+	for _, d := range errs.Diagnostics {
+		t.Errorf("unexpected diagnostic:\n%s", d.String())
+	}
+	if t.Failed() {
+		t.FailNow()
+	}
+
+	// The program prints its port first; the client waits for that line
+	reader, writer := io.Pipe()
+	var out bytes.Buffer
+	var wait sync.WaitGroup
+	wait.Add(1)
+	go func() {
+		defer wait.Done()
+		machine := vm.NewVM()
+		machine.SetOutput(io.MultiWriter(&out, writer))
+		if _, err := machine.Exec(result.Chunk); err != nil {
+			t.Errorf("the server stopped: %v", err)
+		}
+		writer.Close()
+	}()
+
+	var port int
+	if _, err := fmt.Fscanln(reader, &port); err != nil || port == 0 {
+		t.Fatalf("expected the program to print its port first, got %v", err)
+	}
+	go io.Copy(io.Discard, reader)
+	client(fmt.Sprintf("http://127.0.0.1:%d", port))
+	wait.Wait()
+	return out.String()
+}
+
+func TestHttpServer(t *testing.T) {
+	ask := func(method, address, body string) string {
+		t.Helper()
+		request, _ := http.NewRequest(method, address, strings.NewReader(body))
+		request.Header.Set("X-Token", "secret")
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatalf("%s %s: %v", method, address, err)
+		}
+		defer response.Body.Close()
+		content, _ := io.ReadAll(response.Body)
+		return fmt.Sprintf("%d %s [%s] %s", response.StatusCode, response.Header.Get("Content-Type"), response.Header.Get("X-Made-By"), content)
+	}
+
+	var answers []string
+	// Failures of a handler go to the error output of the test; that is fine
+	printed := serve(t, `
+		import std.http;
+		import std.http.{Request, Response, Method};
+		import std.json;
+		import std.json.{Json};
+		import std.arrays;
+		import std.strings;
+		import std.option;
+
+		struct Counter { hits: Int; }
+	`, `
+		let seen = Counter { hits: 0 };
+		let app = http.router();
+		app.get("/", fn(request: Request) -> Response { return http.html("<h1>home</h1>"); })
+			.get("/hello/:name", fn(request: Request) -> Response {
+				seen.hits++;
+				return http.text("hello, ${request.params.get("name") ?? "you"} (${request.query.get("q") ?? "-"}) ${request.header("x-token") ?? "?"}");
+			})
+			.get("/users/:id/posts/:post", fn(request: Request) -> Response {
+				return http.text(strings.join(request.params.keys(), ",") + " " + strings.join(request.params.values(), ","));
+			})
+			.post("/echo", fn(request: Request) -> Response {
+				let n = option.then(option.then(request.json().value(), fn(document: Json) -> Json? { return document.find("n"); }), json.intOf) ?? -1;
+				return http.sendJson(201, json.object().int("twice", n * 2).text("type", request.header("Content-Type") ?? "").done()).with("X-Made-By", "lumen");
+			})
+			.delete("/hello/:name", fn(request: Request) -> Response { return http.respond(204, ""); })
+			.get("/files/*", fn(request: Request) -> Response { return http.text("[" + (request.params.get("rest") ?? "?") + "]"); })
+			.get("/boom", fn(request: Request) -> Response { let items = [1]; return http.text(toString(items[5])); })
+			.get("/go", fn(request: Request) -> Response { return http.redirect("/hello/there"); })
+			.on(Method.Put, "/hits", fn(request: Request) -> Response { return http.text(toString(seen.hits)); });
+
+		let server = http.listen(0).expect("a free port");
+		println(server.port);
+		server.handle(13, app.handler());
+		server.close();
+		println("served", seen.hits, server.next() == null);
+	`, func(base string) {
+		// Redirects are followed by Go's client: /go counts for two
+		for _, r := range [][3]string{
+			{"GET", "/", ""},
+			{"GET", "/hello/ada?q=a+b%26c", ""},
+			{"GET", "/hello/", ""},
+			{"GET", "/users/7/posts/42", ""},
+			{"POST", "/echo", `{"n": 21}`},
+			{"POST", "/echo", `not json`},
+			{"DELETE", "/hello/ada", ""},
+			{"POST", "/hello/ada", ""},
+			{"GET", "/files/a/b.txt", ""},
+			{"GET", "/files", ""},
+			{"GET", "/boom", ""},
+			{"GET", "/go", ""},
+		} {
+			answers = append(answers, ask(r[0], base+r[1], r[2]))
+		}
+	})
+
+	want := []string{
+		"200 text/html; charset=utf-8 [] <h1>home</h1>",
+		"200 text/plain; charset=utf-8 [] hello, ada (a b&c) secret",
+		"404 text/plain; charset=utf-8 [] not found",
+		"200 text/plain; charset=utf-8 [] id,post 7,42",
+		`201 application/json [lumen] {"twice":42,"type":""}`,
+		`201 application/json [lumen] {"twice":-2,"type":""}`,
+		"204 text/plain; charset=utf-8 [] ",
+		"405 text/plain; charset=utf-8 [] method not allowed",
+		"200 text/plain; charset=utf-8 [] [a/b.txt]",
+		"200 text/plain; charset=utf-8 [] []",
+		"500 text/plain; charset=utf-8 [] the server failed",
+		"200 text/plain; charset=utf-8 [] hello, there (-) secret",
+	}
+	for i := range want {
+		if i >= len(answers) || answers[i] != want[i] {
+			t.Errorf("answer %d:\n  want %s\n   got %v", i+1, want[i], answers[i:min(i+1, len(answers))])
+		}
+	}
+	if !strings.HasSuffix(printed, "served 2 true\n") {
+		t.Errorf("expected the program to carry on after serving, got %q", printed)
+	}
+}
+
+func TestHttpClient(t *testing.T) {
+	origin := http.NewServeMux()
+	origin.HandleFunc("/users/7", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Seen", r.Method+" "+r.URL.RawQuery+" "+r.Header.Get("Authorization"))
+		body, _ := io.ReadAll(r.Body)
+		if len(body) > 0 {
+			w.WriteHeader(201)
+			fmt.Fprintf(w, `{"got": %s, "type": %q}`, body, r.Header.Get("Content-Type"))
+			return
+		}
+		io.WriteString(w, `{"name": "ada", "langs": ["lumen", "go"]}`)
+	})
+	origin.HandleFunc("/text", func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		fmt.Fprintf(w, "%s %s %s", r.Method, r.Header.Get("Content-Type"), body)
+	})
+	listener := newLocalServer(t, origin)
+
+	expect(t, `
+		import std.http;
+		import std.http.{Method, ErrorKind, Error};
+		import std.json;
+		import std.option;
+		import std.result.{Result};`, `
+		let base = `+quote(listener)+`;
+		let user = http.get(base + "/users/7").expect("an answer");
+		println(user.status, user.ok(), user.header("Content-Type"), user.header("CONTENT-TYPE"), user.header("nope"));
+		let document = user.json().expect("json");
+		println(document.find("name"), option.then(document.find("langs.1"), json.textOf));
+
+		let created = http.postJson(base + "/users/7", json.object().int("n", 1).done()).expect("an answer");
+		println(created.status, created.body, created.ok());
+		let call = http.to(Method.Put, base + "/users/7").header("Authorization", "token").query("q", "a b").query("r", "é&").timeout(2000).send().expect("an answer");
+		println(call.header("x-seen"));
+		println(http.post(base + "/text", "héllo", "text/plain").expect("an answer").body);
+		println(http.to(Method.Patch, base + "/text").body("x").send().expect("an answer").body, http.to(Method.Delete, base + "/text").send().expect("an answer").body);
+
+		// A status that says no is an answer; no answer is an error
+		let missing = http.get(base + "/nope").expect("an answer");
+		println(missing.status, missing.ok(), missing.json().isErr());
+		match http.get("example.com/x") {
+			case Result.Ok(_): { println("?"); }
+			case Result.Err(error): { println(error.kind, error.kind == ErrorKind.BadUrl, error.describe()); }
+		}
+		let kind = fn(error: Error) -> ErrorKind { return error.kind; };
+		println(option.map(http.get("http://127.0.0.1:1/").reason(), kind), option.map(http.to(Method.Get, "ftp://x/").send().reason(), kind));
+		println(Method.Get.name(), http.methodOf("post"), http.methodOf("Delete") == Method.Delete, http.methodOf("fetch"));
+		let query = http.queryOf("a=1&b=x+y%26z&c&=d&");
+		println(query.keys(), query.get("b"), query.get("c") == "", http.queryOf("").size());
+	`,
+		"200 true application/json application/json null",
+		`String("ada") go`,
+		`201 {"got": {"n":1}, "type": "application/json"} true`,
+		"PUT q=a+b&r=%C3%A9%26 token",
+		"POST text/plain héllo",
+		"PATCH  x DELETE  ",
+		"404 false true",
+		"BadUrl true no answer from example.com/x: an address starts with http:// or https:// and names a host",
+		"Refused BadUrl",
+		"GET Post true null",
+		`["a", "b", "c", ""] x y&z true 0`,
+	)
+}
+
+// newLocalServer serves a handler on a port of this machine until the
+// test ends, and gives its address.
+func newLocalServer(t *testing.T, handler http.Handler) string {
+	t.Helper()
+	server := &http.Server{Handler: handler}
+	listener, err := newListener()
+	if err != nil {
+		t.Fatal(err)
+	}
+	go server.Serve(listener)
+	t.Cleanup(func() { server.Close() })
+	return "http://" + listener.Addr().String()
+}
+
+func TestTestModule(t *testing.T) {
+	out, err := run(t, "import std.test;\nimport std.result.{Kind};\nimport std.strings;", `
+		let checks = test.suite("prices")
+			.test("adds", fn() { test.equal(1 + 1, 2); test.notEqual("a", "b"); test.isTrue(1 < 2, "one below two"); test.isFalse(2 < 1, "two below one"); })
+			.test("wrong", fn() { test.equal(1 + 1, 3); println("not reached"); })
+			.test("bounds", fn() { let items = [1]; println(items[4]); })
+			.test("same", fn() { test.same([1, 2], [1, 2]); test.near(0.1 + 0.2, 0.3, 0.0001); test.contains("hello", "ell"); })
+			.test("same not", fn() { test.same(["a", "b"], ["a", "c"]); })
+			.test("same length", fn() { test.same([1], [1, 2]); })
+			.test("fails", fn() { let f = test.fails(Kind.Bounds, fn() { let items = [1]; println(items[4]); }); test.contains(f.message, "out of bounds"); })
+			.test("fails not", fn() { test.fails(Kind.Bounds, fn() { panic("x"); }); })
+			.test("fails nothing", fn() { test.fails(Kind.Panic, fn() { }); })
+			.test("present", fn() { test.equal(test.present(strings.parseInt("4"), "a number"), 4); test.absent(strings.parseInt("x"), "number"); })
+			.test("absent", fn() { test.present(strings.parseInt("x"), "a number"); })
+			.test("near", fn() { test.near(1.0, 2.0, 0.5); })
+			.test("own", fn() { test.fail("my own reason"); })
+			.test("truth", fn() { test.isTrue(2 < 1, "two below one"); });
+		let report = checks.run();
+		println(report.passed(), report.failed(), report.ok(), report.exitCode(), report.suite);
+		println(report.results[1].passed(), report.results[0].passed(), report.results[0].microseconds >= 0);
+
+		// Without printing, and a suite where all is well
+		let quiet = test.suite("fine").test("one", fn() { }).check();
+		println(quiet.ok(), quiet.exitCode(), quiet.lines());
+		println(test.suite("empty").check().lines());
+	`, "")
+	if err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	want := `prices
+  ok    adds
+  FAIL  wrong
+        expected 3, got 2
+        at test.lum:8
+  FAIL  bounds
+        index out of bounds: 4 (length 1)
+        at test.lum:9
+  ok    same
+  FAIL  same not
+        expected c at 1, got b: ["a", "b"]
+        at test.lum:11
+  FAIL  same length
+        expected 2 items, got 1: [1]
+        at test.lum:12
+  ok    fails
+  FAIL  fails not
+        expected a failure of kind Bounds, got Panic: x
+        at test.lum:14
+  FAIL  fails nothing
+        expected a failure, and there was none
+        at test.lum:15
+  ok    present
+  FAIL  absent
+        expected a number, got nothing
+        at test.lum:17
+  FAIL  near
+        expected 2 give or take 0.5, got 1
+        at test.lum:18
+  FAIL  own
+        my own reason
+        at test.lum:19
+  FAIL  truth
+        expected two below one
+        at test.lum:20
+4 passed, 10 failed
+4 10 false 1 prices
+false true true
+true 0 ["fine", "  ok    one", "1 passed"]
+["empty", "0 passed"]
+`
+	if out != want {
+		t.Errorf("unexpected report:\n%s\nwant:\n%s", out, want)
+	}
+}
+
+// TestLibraryUnderMemoryPressure runs the functions whose natives build
+// arrays of arrays with a heap so small that it is collected many times
+// while they work: a value a native lost track of would come back wrong.
+func TestLibraryUnderMemoryPressure(t *testing.T) {
+	src := `
+		import std.json;
+		import std.regex;
+		import std.csv;
+		import std.strings;
+		import std.arrays;
+		import std.encoding;
+		import std.option;
+		import std.dict;
+		import std.json.{Json};
+
+		fn main() -> Int {
+			let rows: [String] = [];
+			let fields: [String] = [];
+			for i in arrays.range(0, 300) {
+				push(rows, "row${i},\"value, ${i}\",${i * 7}");
+				push(fields, "\"key${i}\": [${i}, \"text ${i}\", {\"n\": ${i}}]");
+			}
+			let table = strings.join(rows, "\n");
+			let document = "{" + strings.join(fields, ", ") + "}";
+			let numbers = regex.must("(\\d+),\"value, (\\d+)\",(\\d+)");
+
+			let total = 0;
+			for round in arrays.range(0, 40) {
+				let parsed = csv.parse(table).expect("csv");
+				let found = numbers.findAll(table);
+				let tree = json.parse(document).expect("json");
+				let bytes = encoding.bytes(table);
+				for i in arrays.range(0, 300) {
+					if parsed[i][1] != "value, ${i}" || found[i].groups[2] != toString(i * 7) { panic("row ${i} of round ${round} is wrong"); }
+					if option.then(tree.find("key${i}.2.n"), json.intOf) != i || option.then(tree.find("key${i}.1"), json.textOf) != "text ${i}" { panic("key ${i} of round ${round} is wrong"); }
+				}
+				total += arrays.len(parsed) + arrays.len(found) + (tree.fields() ?? dict.empty<Json>()).size() + arrays.len(bytes) / arrays.len(bytes);
+			}
+			println(total);
+			return 0;
+		}`
+	errs := errors.NewHandler()
+	result := compiler.Compile(src, "pressure.lum", errs)
+	for _, d := range errs.Diagnostics {
+		t.Fatalf("unexpected diagnostic:\n%s", d.String())
+	}
+
+	var out bytes.Buffer
+	machine := vm.NewVMWithHeapSize(3 << 20)
+	machine.SetOutput(&out)
+	if _, err := machine.Exec(result.Chunk); err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	if out.String() != "36040\n" {
+		t.Errorf("expected 36040, got %q", out.String())
+	}
+	if machine.Collections() < 5 {
+		t.Errorf("expected the heap to be collected many times, got %d", machine.Collections())
+	}
+}
+
+// TestProgramArguments checks that a program reads its own files and
+// arguments through the library, end to end in one process.
+func TestProgramArguments(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "in.txt"), []byte("3\n4\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	src := `
+		import std.os;
+		import std.io;
+		import std.path;
+		import std.strings;
+		import std.arrays;
+		fn main() -> Int {
+			let args = os.args();
+			let numbers = arrays.map(io.readFileLines(path.inside(args[0], args[1])).expect("the file"), fn(line: String) -> Int { return strings.parseInt(line) ?? 0; });
+			println(arrays.len(args), arrays.sum(numbers));
+			return 0;
+		}`
+	errs := errors.NewHandler()
+	result := compiler.Compile(src, "args.lum", errs)
+	for _, d := range errs.Diagnostics {
+		t.Fatalf("unexpected diagnostic:\n%s", d.String())
+	}
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	machine.SetArgs([]string{dir, "in.txt", "--verbose"})
+	if _, err := machine.Exec(result.Chunk); err != nil {
+		t.Fatalf("runtime error: %v", err)
+	}
+	if out.String() != "3 7\n" {
+		t.Errorf("expected 3 arguments and a sum of 7, got %q", out.String())
+	}
+}
