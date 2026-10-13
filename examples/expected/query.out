@@ -1,0 +1,36 @@
+> SELECT name, city FROM people WHERE age >= 30 ORDER BY name
+Ada|Lyon
+Chloe|Lyon
+Dmitri|Turin
+Farid|Nice
+Greta|Oslo
+
+> SELECT city, COUNT(*) AS people, ROUND(AVG(age), 1) AS age FROM people GROUP BY city ORDER BY people DESC, city
+Lyon|3|37.3
+Nice|2|30.5
+Accra|1|29.0
+Oslo|1|61.0
+Turin|1|41.0
+
+> SELECT p.name, COALESCE(c.country, 'unknown') FROM people p LEFT JOIN cities c ON c.name = p.city ORDER BY p.id
+Ada|France
+Bao|France
+Chloe|France
+Dmitri|Italy
+Esi|unknown
+Farid|France
+Greta|Norway
+Hugo|France
+
+> SELECT UPPER(SUBSTR(name, 1, 1)) || '.', CASE WHEN age < 30 THEN 'young' WHEN age < 50 THEN 'middle' ELSE 'senior' END FROM people ORDER BY age, name LIMIT 4
+H.|young
+B.|young
+E.|young
+F.|middle
+
+> SELECT c.country, SUM(p.age) FROM people p JOIN cities c ON c.name = p.city GROUP BY c.country HAVING COUNT(*) > 1 ORDER BY 2 DESC
+France|173
+
+> SELECT name FROM people WHERE salary > 100
+Error: there is no column salary
+

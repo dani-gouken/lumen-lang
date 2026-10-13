@@ -1,0 +1,87 @@
+// The text of a query, cut into words, numbers, texts and symbols.
+
+import std.strings;
+import std.result.{Result};
+
+pub enum Kind {
+    Word,       // A name, or a word of the language: told apart by the parser
+    Number,
+    Text,       // 'between quotes'
+    Symbol,     // ( ) , . * + - / % = != <> < <= > >= ||
+    End,
+}
+
+pub struct Token {
+    kind: Kind;
+    text: String;       // A word in upper case is how it is compared
+    upper: String;
+    at: Int;            // Where it starts in the query
+}
+
+fn isDigit(c: String) -> Bool { return c >= "0" && c <= "9"; }
+
+fn isLetter(c: String) -> Bool {
+    return (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_";
+}
+
+pub fn tokens(source: String) -> Result<[Token], String> {
+    let out: [Token] = [];
+    let length = strings.len(source);
+    let at = 0;
+    while at < length {
+        let c = source[at];
+        let start = at;
+
+        if c == " " || c == "\n" || c == "\t" || c == "\r" {
+            at++;
+        } else if c == "-" && at + 1 < length && source[at + 1] == "-" {
+            // A comment, to the end of the line
+            while at < length && source[at] != "\n" { at++; }
+        } else if isLetter(c) {
+            while at < length && (isLetter(source[at]) || isDigit(source[at])) { at++; }
+            let word = strings.substring(source, start, at);
+            push(out, Token { kind: Kind.Word, text: word, upper: strings.upper(word), at: start });
+        } else if isDigit(c) {
+            while at < length && isDigit(source[at]) { at++; }
+            if at + 1 < length && source[at] == "." && isDigit(source[at + 1]) {
+                at++;
+                while at < length && isDigit(source[at]) { at++; }
+            }
+            let number = strings.substring(source, start, at);
+            push(out, Token { kind: Kind.Number, text: number, upper: number, at: start });
+        } else if c == "'" {
+            // A quote inside a text is written twice
+            let said = "";
+            at++;
+            let closed = false;
+            while at < length && !closed {
+                if source[at] != "'" {
+                    said = said + source[at];
+                    at++;
+                } else if at + 1 < length && source[at + 1] == "'" {
+                    said = said + "'";
+                    at += 2;
+                } else {
+                    closed = true;
+                    at++;
+                }
+            }
+            if !closed { return Result.Err("a text that starts at ${start} is not closed"); }
+            push(out, Token { kind: Kind.Text, text: said, upper: said, at: start });
+        } else {
+            let two = "";
+            if at + 1 < length { two = c + source[at + 1]; }
+            let symbol = c;
+            if two == "!=" || two == "<>" || two == "<=" || two == ">=" || two == "||" {
+                symbol = two;
+            } else if !strings.contains("(),.*+-/%=<>;", c) {
+                return Result.Err("did not expect '${c}' at ${start}");
+            }
+            at += strings.len(symbol);
+            if symbol == "<>" { symbol = "!="; }
+            push(out, Token { kind: Kind.Symbol, text: symbol, upper: symbol, at: start });
+        }
+    }
+    push(out, Token { kind: Kind.End, text: "the end", upper: "", at: length });
+    return Result.Ok(out);
+}

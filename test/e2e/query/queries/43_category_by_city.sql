@@ -1,0 +1,1 @@
+SELECT c.city, p.category, COUNT(*) AS n, ROUND(AVG(o.quantity), 3) FROM orders o JOIN customers c ON c.id = o.customer_id JOIN products p ON p.id = o.product_id WHERE c.tier = 'gold' AND p.price > 60 GROUP BY c.city, p.category HAVING COUNT(*) > 4 ORDER BY c.city, n DESC, p.category;

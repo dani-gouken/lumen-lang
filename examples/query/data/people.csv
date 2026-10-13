@@ -1,0 +1,9 @@
+id:int,name:text,city:text,age:int
+1,Ada,Lyon,36
+2,Bao,Nice,28
+3,Chloe,Lyon,52
+4,Dmitri,Turin,41
+5,Esi,Accra,29
+6,Farid,Nice,33
+7,Greta,Oslo,61
+8,Hugo,Lyon,24

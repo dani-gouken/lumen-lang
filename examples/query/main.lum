@@ -1,0 +1,84 @@
+// Queries on tables kept in files: SELECT with joins, conditions, groups
+// and sorting, over CSV files, answered as SQLite answers them.
+//
+//   query/value.lum     what a cell holds, and how values compare
+//   query/lexer.lum     the text of a query    -> words
+//   query/tree.lum      a query once read
+//   query/parser.lum    words                  -> a query
+//   query/engine.lum    a query and the tables -> rows
+//
+//   lumen run examples/query <folder> <file.sql>    answers the query of a file
+//   lumen run examples/query <folder> "SELECT ..."  answers the query given
+//   lumen run examples/query                        shows a few, on data/
+//
+// A table is the file <name>.csv of the folder. Its first line names the
+// columns and what they hold: id:int,name:text,price:real.
+
+import std.arrays;
+import std.io;
+import std.os;
+import std.path;
+import std.strings;
+import std.result.{Result};
+import query.parser;
+import query.engine;
+import query.value.{show};
+
+// Answers a query: its rows, one per line, the values between bars.
+fn rows(text: String, folder: String) -> Result<[String], String> {
+    let answer = engine.answer(parser.parse(text)?, folder)?;
+    return Result.Ok(arrays.map(answer.rows, row -> strings.join(arrays.map(row, show), "|")));
+}
+
+// A few queries that show what there is.
+fn tour() -> [String] {
+    return [
+        "SELECT name, city FROM people WHERE age >= 30 ORDER BY name",
+        "SELECT city, COUNT(*) AS people, ROUND(AVG(age), 1) AS age FROM people GROUP BY city ORDER BY people DESC, city",
+        "SELECT p.name, COALESCE(c.country, 'unknown') FROM people p LEFT JOIN cities c ON c.name = p.city ORDER BY p.id",
+        "SELECT UPPER(SUBSTR(name, 1, 1)) || '.', CASE WHEN age < 30 THEN 'young' WHEN age < 50 THEN 'middle' ELSE 'senior' END FROM people ORDER BY age, name LIMIT 4",
+        "SELECT c.country, SUM(p.age) FROM people p JOIN cities c ON c.name = p.city GROUP BY c.country HAVING COUNT(*) > 1 ORDER BY 2 DESC",
+        "SELECT name FROM people WHERE salary > 100",
+    ];
+}
+
+fn main() -> Int {
+    let arguments = os.args();
+    if arrays.len(arguments) == 0 {
+        let folder = path.join([path.dir(os.program()), "data"]);
+        for text in tour() {
+            println("> " + text);
+            match rows(text, folder) {
+                case Result.Ok(lines): { for line in lines { println(line); } }
+                case Result.Err(problem): { println("Error: " + problem); }
+            }
+            println();
+        }
+        return 0;
+    }
+    if arrays.len(arguments) != 2 {
+        io.printError("Usage: lumen run examples/query <folder> <file.sql | \"SELECT ...\">\n");
+        return 2;
+    }
+
+    let text = arguments[1];
+    if strings.endsWith(text, ".sql") {
+        match io.readFile(text) {
+            case Result.Ok(content): { text = content; }
+            case Result.Err(error): {
+                io.printError("Error: ${error.describe()}\n");
+                return 2;
+            }
+        }
+    }
+    match rows(text, arguments[0]) {
+        case Result.Ok(lines): {
+            for line in lines { println(line); }
+            return 0;
+        }
+        case Result.Err(problem): {
+            io.printError("Error: ${problem}\n");
+            return 1;
+        }
+    }
+}

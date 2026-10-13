@@ -194,3 +194,59 @@ func BenchmarkLox(b *testing.B) {
 		})
 	}
 }
+
+// The query engine of examples/query answers SELECTs over tables kept in
+// CSV files: a program that moves data rather than walking a tree. Each
+// run reads the tables (some thousands of rows), joins, groups and sorts.
+var queryPrograms = map[string]string{
+	"join":  "41_top_customers",
+	"group": "43_category_by_city",
+	"scan":  "06_like",
+}
+
+func queryEngine(t testing.TB) *vm.Chunk {
+	t.Helper()
+	errs := errors.NewHandler()
+	result, err := compiler.CompileFile("../../examples/query/main.lum", errs)
+	if err != nil || errs.HasErrors() {
+		t.Fatalf("the query engine does not compile: %v\n%v", err, errs.Diagnostics)
+	}
+	return result.Chunk
+}
+
+func runQuery(t testing.TB, engine *vm.Chunk, name string) string {
+	t.Helper()
+	var out bytes.Buffer
+	machine := vm.NewVM()
+	machine.SetOutput(&out)
+	machine.SetArgs([]string{"../e2e/query/data", "../e2e/query/queries/" + name + ".sql"})
+	if result, err := machine.Exec(engine); err != nil || !result.IsInt() || result.AsInt() != 0 {
+		t.Fatalf("%s: %v, %v", name, result, err)
+	}
+	return out.String()
+}
+
+func TestQueryProgramsAnswerAsSQLite(t *testing.T) {
+	engine := queryEngine(t)
+	for _, name := range queryPrograms {
+		want, err := os.ReadFile("../e2e/query/queries/" + name + ".expected")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := runQuery(t, engine, name); got != string(want) {
+			t.Errorf("%s: answered\n%s", name, got)
+		}
+	}
+}
+
+func BenchmarkQuery(b *testing.B) {
+	engine := queryEngine(b)
+	for label, name := range queryPrograms {
+		b.Run(label, func(b *testing.B) {
+			b.ReportAllocs()
+			for i := 0; i < b.N; i++ {
+				runQuery(b, engine, name)
+			}
+		})
+	}
+}

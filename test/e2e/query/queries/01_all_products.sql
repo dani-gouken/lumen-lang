@@ -1,0 +1,1 @@
+SELECT * FROM products ORDER BY id LIMIT 12;

@@ -1,0 +1,329 @@
+// The words of a query, read as a SELECT.
+//
+//   select     = SELECT [DISTINCT] ( "*" | item { "," item } )
+//                FROM source { [LEFT] JOIN source ON expr }
+//                [WHERE expr] [GROUP BY expr { "," expr }] [HAVING expr]
+//                [ORDER BY expr [ASC | DESC] { "," ... }] [LIMIT n [OFFSET n]]
+//   item       = expr [ [AS] name ]
+//   source     = table [ [AS] name ]
+//
+// Expressions, from what binds loosest to what binds tightest:
+//
+//   or         = and { OR and }
+//   and        = not { AND not }
+//   not        = NOT not | comparison
+//   comparison = sum [ ( "=" | "!=" | "<" | "<=" | ">" | ">=" ) sum
+//                    | IS [NOT] NULL | [NOT] IN "(" expr { "," expr } ")"
+//                    | [NOT] LIKE sum | [NOT] BETWEEN sum AND sum ]
+//   sum        = product { ( "+" | "-" ) product }
+//   product    = joined { ( "*" | "/" | "%" ) joined }
+//   joined     = unary { "||" unary }
+//   unary      = "-" unary | primary
+//   primary    = number | 'text' | NULL | name [ "." name ] | name "(" ... ")"
+//              | CASE { WHEN expr THEN expr } [ELSE expr] END | "(" expr ")"
+
+import std.arrays;
+import std.strings;
+import std.result.{Result};
+import query.lexer.{Kind, Token, tokens};
+import query.tree.{Expr, Item, Source, Join, OrderKey, Select};
+import query.value.{Value};
+
+pub fn parse(source: String) -> Result<Select, String> {
+    let parser = Parser { tokens: tokens(source)? };
+    let select = parser.select()?;
+    parser.took(";");
+    if parser.peek().kind != Kind.End {
+        return Result.Err("did not expect '${parser.peek().text}' after the query");
+    }
+    return Result.Ok(select);
+}
+
+// The words that end a name: none of them can be the name given to a
+// table or to a result without AS.
+fn reserved(word: String) -> Bool {
+    return match word {
+        case "FROM" | "WHERE" | "GROUP" | "HAVING" | "ORDER" | "LIMIT" | "OFFSET": true;
+        case "JOIN" | "LEFT" | "INNER" | "ON" | "AND" | "OR" | "NOT" | "AS": true;
+        case "ASC" | "DESC" | "THEN" | "ELSE" | "END" | "WHEN" | "IS" | "IN" | "LIKE" | "BETWEEN": true;
+        default: false;
+    };
+}
+
+struct Parser {
+    tokens: [Token];
+    at: Int = 0;
+}
+
+impl Parser {
+    fn peek() -> Token {
+        return self.tokens[self.at];
+    }
+
+    // Takes the next token if it is this word or symbol
+    fn took(text: String) -> Bool {
+        let token = self.peek();
+        if token.kind == Kind.Text || token.kind == Kind.End || token.upper != text { return false; }
+        self.at++;
+        return true;
+    }
+
+    fn need(text: String) -> Result<Bool, String> {
+        if self.took(text) { return Result.Ok(true); }
+        return Result.Err("expected ${text}, found '${self.peek().text}'");
+    }
+
+    fn name(what: String) -> Result<String, String> {
+        let token = self.peek();
+        if token.kind != Kind.Word || reserved(token.upper) {
+            return Result.Err("expected ${what}, found '${token.text}'");
+        }
+        self.at++;
+        return Result.Ok(token.text);
+    }
+
+    fn select() -> Result<Select, String> {
+        self.need("SELECT")?;
+        let distinct = self.took("DISTINCT");
+
+        let items: [Item] = [];
+        let everything = self.took("*");
+        if !everything {
+            push(items, self.item()?);
+            while self.took(",") { push(items, self.item()?); }
+        }
+
+        self.need("FROM")?;
+        let from = self.source()?;
+        let joins: [Join] = [];
+        let more = true;
+        while more {
+            let left = self.took("LEFT");
+            if !left { self.took("INNER"); }
+            if self.took("JOIN") {
+                let joined = self.source()?;
+                self.need("ON")?;
+                push(joins, Join { source: joined, on: self.expression()?, left: left });
+            } else {
+                if left { return Result.Err("expected JOIN after LEFT"); }
+                more = false;
+            }
+        }
+
+        let filter: Expr? = null;
+        if self.took("WHERE") { filter = self.expression()?; }
+
+        let groups: [Expr] = [];
+        if self.took("GROUP") {
+            self.need("BY")?;
+            push(groups, self.expression()?);
+            while self.took(",") { push(groups, self.expression()?); }
+        }
+        let having: Expr? = null;
+        if self.took("HAVING") { having = self.expression()?; }
+
+        let order: [OrderKey] = [];
+        if self.took("ORDER") {
+            self.need("BY")?;
+            push(order, self.orderKey()?);
+            while self.took(",") { push(order, self.orderKey()?); }
+        }
+
+        let limit: Int? = null;
+        let offset = 0;
+        if self.took("LIMIT") {
+            limit = self.count()?;
+            if self.took("OFFSET") { offset = self.count()?; }
+        }
+
+        return Result.Ok(Select {
+            distinct: distinct, everything: everything, items: items, from: from, joins: joins,
+            filter: filter, groups: groups, having: having, order: order, limit: limit, offset: offset,
+        });
+    }
+
+    fn item() -> Result<Item, String> {
+        let start = self.peek().at;
+        let value = self.expression()?;
+        // Named by AS, by a name that follows, or by how it is written
+        if self.took("AS") { return Result.Ok(Item { value: value, name: self.name("a name")? }); }
+        let next = self.peek();
+        if next.kind == Kind.Word && !reserved(next.upper) {
+            self.at++;
+            return Result.Ok(Item { value: value, name: next.text });
+        }
+        let name = match value {
+            case Expr.Column(table, column): column;
+            default: "column" + toString(start);
+        };
+        return Result.Ok(Item { value: value, name: name });
+    }
+
+    fn source() -> Result<Source, String> {
+        let table = self.name("the name of a table")?;
+        self.took("AS");
+        let next = self.peek();
+        if next.kind == Kind.Word && !reserved(next.upper) {
+            self.at++;
+            return Result.Ok(Source { table: table, alias: next.text });
+        }
+        return Result.Ok(Source { table: table, alias: table });
+    }
+
+    fn orderKey() -> Result<OrderKey, String> {
+        let value = self.expression()?;
+        let descending = self.took("DESC");
+        if !descending { self.took("ASC"); }
+        return Result.Ok(OrderKey { value: value, descending: descending });
+    }
+
+    fn count() -> Result<Int, String> {
+        let token = self.peek();
+        let n = strings.parseInt(token.text);
+        if token.kind != Kind.Number || n == null {
+            return Result.Err("expected a whole number, found '${token.text}'");
+        }
+        self.at++;
+        return Result.Ok(n);
+    }
+
+    // --- Expressions ---
+
+    fn expression() -> Result<Expr, String> {
+        let left = self.conjunction()?;
+        while self.took("OR") { left = Expr.Binary("OR", left, self.conjunction()?); }
+        return Result.Ok(left);
+    }
+
+    fn conjunction() -> Result<Expr, String> {
+        let left = self.negation()?;
+        while self.took("AND") { left = Expr.Binary("AND", left, self.negation()?); }
+        return Result.Ok(left);
+    }
+
+    fn negation() -> Result<Expr, String> {
+        if self.took("NOT") { return Result.Ok(Expr.Not(self.negation()?)); }
+        return self.comparison();
+    }
+
+    fn comparison() -> Result<Expr, String> {
+        let left = self.sum()?;
+
+        for operator in ["=", "!=", "<=", ">=", "<", ">"] {
+            if self.took(operator) { return Result.Ok(Expr.Binary(operator, left, self.sum()?)); }
+        }
+        if self.took("IS") {
+            let negated = self.took("NOT");
+            self.need("NULL")?;
+            return Result.Ok(Expr.IsNull(left, negated));
+        }
+
+        let negated = self.took("NOT");
+        if self.took("IN") {
+            self.need("(")?;
+            let options: [Expr] = [self.expression()?];
+            while self.took(",") { push(options, self.expression()?); }
+            self.need(")")?;
+            return Result.Ok(Expr.In(left, options, negated));
+        }
+        if self.took("LIKE") { return Result.Ok(Expr.Like(left, self.sum()?, negated)); }
+        if self.took("BETWEEN") {
+            let low = self.sum()?;
+            self.need("AND")?;
+            return Result.Ok(Expr.Between(left, low, self.sum()?, negated));
+        }
+        if negated { return Result.Err("expected IN, LIKE or BETWEEN after NOT"); }
+        return Result.Ok(left);
+    }
+
+    fn sum() -> Result<Expr, String> {
+        let left = self.product()?;
+        let more = true;
+        while more {
+            if self.took("+") { left = Expr.Binary("+", left, self.product()?); }
+            else if self.took("-") { left = Expr.Binary("-", left, self.product()?); }
+            else { more = false; }
+        }
+        return Result.Ok(left);
+    }
+
+    fn product() -> Result<Expr, String> {
+        let left = self.joined()?;
+        let more = true;
+        while more {
+            if self.took("*") { left = Expr.Binary("*", left, self.joined()?); }
+            else if self.took("/") { left = Expr.Binary("/", left, self.joined()?); }
+            else if self.took("%") { left = Expr.Binary("%", left, self.joined()?); }
+            else { more = false; }
+        }
+        return Result.Ok(left);
+    }
+
+    fn joined() -> Result<Expr, String> {
+        let left = self.unary()?;
+        while self.took("||") { left = Expr.Binary("||", left, self.unary()?); }
+        return Result.Ok(left);
+    }
+
+    fn unary() -> Result<Expr, String> {
+        if self.took("-") { return Result.Ok(Expr.Negate(self.unary()?)); }
+        return self.primary();
+    }
+
+    fn primary() -> Result<Expr, String> {
+        let token = self.peek();
+        if token.kind == Kind.Number {
+            self.at++;
+            if strings.contains(token.text, ".") {
+                return Result.Ok(Expr.Literal(Value.Real(strings.parseFloat(token.text) ?? 0.0)));
+            }
+            let n = strings.parseInt(token.text);
+            if n == null { return Result.Err("${token.text} is too large a number"); }
+            return Result.Ok(Expr.Literal(Value.Int(n)));
+        }
+        if token.kind == Kind.Text {
+            self.at++;
+            return Result.Ok(Expr.Literal(Value.Text(token.text)));
+        }
+        if self.took("(") {
+            let inner = self.expression()?;
+            self.need(")")?;
+            return Result.Ok(inner);
+        }
+        if self.took("NULL") { return Result.Ok(Expr.Literal(Value.Null)); }
+        if self.took("CASE") { return self.cases(); }
+
+        let name = self.name("a value")?;
+        if self.took("(") { return self.call(strings.upper(name)); }
+        if self.took(".") { return Result.Ok(Expr.Column(name, self.name("the name of a column")?)); }
+        return Result.Ok(Expr.Column("", name));
+    }
+
+    fn call(function: String) -> Result<Expr, String> {
+        if self.took("*") {
+            self.need(")")?;
+            return Result.Ok(Expr.Call(function, [], true));
+        }
+        let arguments: [Expr] = [];
+        if !self.took(")") {
+            push(arguments, self.expression()?);
+            while self.took(",") { push(arguments, self.expression()?); }
+            self.need(")")?;
+        }
+        return Result.Ok(Expr.Call(function, arguments, false));
+    }
+
+    fn cases() -> Result<Expr, String> {
+        let branches: [(Expr, Expr)] = [];
+        while self.took("WHEN") {
+            let condition = self.expression()?;
+            self.need("THEN")?;
+            push(branches, (condition, self.expression()?));
+        }
+        if arrays.isEmpty(branches) { return Result.Err("expected WHEN after CASE"); }
+        let otherwise: Expr? = null;
+        if self.took("ELSE") { otherwise = self.expression()?; }
+        self.need("END")?;
+        return Result.Ok(Expr.Case(branches, otherwise));
+    }
+}

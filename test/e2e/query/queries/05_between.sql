@@ -1,0 +1,1 @@
+SELECT id, joined FROM customers WHERE joined BETWEEN 2015 AND 2017 AND id NOT BETWEEN 20 AND 250 ORDER BY joined, id;

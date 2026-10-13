@@ -273,6 +273,12 @@ Everything runs in `internal/sandbox`: bounded steps, memory, depth and output, 
 
 It is the widest test there is of Lumen doing what it is for. Writing it found three defects no other test had: Floats compared by their bits (`0.0 == -0.0` was false), a method stored on a value overwriting a field of the same name, and a built program not ending with the status its source ends with.
 
+### A second real program (`examples/query`, `test/e2e/query`)
+
+`examples/query` answers SQL queries over tables kept in CSV files: `SELECT` with joins, conditions, `GROUP BY`, `HAVING`, `ORDER BY`, `LIMIT`, some 1,100 lines in five modules. Where the Lox interpreter walks a tree, this one moves data.
+
+What is right is what SQLite answers. `test/e2e/query/queries` holds fifty queries, each with SQLite's answer next to it; `TestQueries` runs the engine on three tables of some thousands of rows and compares, to the last digit. `TestQueryAnswersAreSQLites` asks SQLite again where `sqlite3` is installed, so that the answers kept stay its own. `python3 test/e2e/query/generate.py` makes the tables and the answers again after a query is added.
+
 ### Whole programs, measured (`test/bench`)
 
 `test/bench/programs` holds one program per part of the language (calls, arrays, structs, traits, closures, texts, enums), each with the output it must print. `make bench` times them, and the compiler on them. `BenchmarkLox` runs the Lox interpreter on two Lox programs: a program of real size, doing everything at once. Before a change meant to make Lumen faster or smaller, save its output; after, compare (`benchstat`). `TestBytecodeSize` logs how large each compiles to.

@@ -1,0 +1,1 @@
+SELECT c.name, c.city, ROUND(SUM(o.quantity * p.price * (1 - o.discount)), 2) AS spent FROM orders o JOIN customers c ON c.id = o.customer_id JOIN products p ON p.id = o.product_id GROUP BY c.id, c.name, c.city ORDER BY spent DESC, c.id LIMIT 10;

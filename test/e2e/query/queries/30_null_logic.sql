@@ -1,0 +1,1 @@
+SELECT id, NULLIF(quantity, 5) > 3, NULLIF(quantity, 5) > 3 AND id > 5, NULLIF(quantity, 5) > 3 OR id > 5, NOT (NULLIF(quantity, 5) > 3), NULLIF(quantity, 5) + 1, NULLIF(quantity, 5) IN (1, 2, 3), NULLIF(quantity, 5) BETWEEN 2 AND 8 FROM orders WHERE id <= 14 ORDER BY id;

@@ -1,0 +1,10 @@
+envelope A|notebook C
+envelope A|folder C
+bulb A|torch A
+bulb A|lantern C
+torch A|lantern C
+chisel B|hammer C
+spade B|trowel C
+spade B|hose C
+trowel C|hose C
+notebook C|folder C
