@@ -26,7 +26,7 @@ func objectOf(v Value) (*ObjectObj, bool) {
 
 // isVariant reports whether an object is a value of an enum: its name is
 // then "Enum.Variant" and what it holds is by position.
-func isVariant(obj *ObjectObj) bool { return obj.variant }
+func isVariant(obj *ObjectObj) bool { return obj.shape.variant }
 
 // kindName sorts a value into one of the kinds std.reflect knows.
 func kindName(v Value) string {
@@ -50,7 +50,7 @@ func kindName(v Value) string {
 	case ObjTypeObject:
 		obj, _ := objectOf(v)
 		switch {
-		case strings.HasPrefix(obj.typeName, tuplePrefix):
+		case strings.HasPrefix(obj.shape.typeName, tuplePrefix):
 			return "tuple"
 		case isVariant(obj):
 			return "variant"
@@ -102,7 +102,7 @@ func init() {
 			if !ok {
 				return vm.newString(typeName(args[0]))
 			}
-			name := obj.typeName
+			name := obj.shape.typeName
 			if isVariant(obj) {
 				name = name[:strings.LastIndex(name, ".")]
 			}
@@ -111,7 +111,7 @@ func init() {
 		// For a value of an enum, the name of its variant; else ""
 		native{"variantName", 1, func(vm *VM, args []Value) (Value, error) {
 			if obj, ok := objectOf(args[0]); ok && isVariant(obj) {
-				return vm.newString(obj.typeName[strings.LastIndex(obj.typeName, ".")+1:])
+				return vm.newString(obj.shape.typeName[strings.LastIndex(obj.shape.typeName, ".")+1:])
 			}
 			return vm.newString("")
 		}},
@@ -158,7 +158,7 @@ func init() {
 			}
 			value, found := obj.Get(name)
 			if !found || isFunction(value) {
-				return NewNull(), fmt.Errorf("%s has no field '%s'", obj.typeName, name)
+				return NewNull(), fmt.Errorf("%s has no field '%s'", obj.shape.typeName, name)
 			}
 			return value, nil
 		}},
@@ -177,11 +177,11 @@ func init() {
 			}
 			old, found := obj.Get(name)
 			if !found || isFunction(old) {
-				return NewNull(), fmt.Errorf("%s has no field '%s'", obj.typeName, name)
+				return NewNull(), fmt.Errorf("%s has no field '%s'", obj.shape.typeName, name)
 			}
 			was, is := kindName(old), kindName(args[2])
 			if was != "null" && is != "null" && was != is {
-				return NewNull(), fmt.Errorf("the field '%s' of %s holds %s, it cannot be given %s", name, obj.typeName, article(typeName(old)), article(typeName(args[2])))
+				return NewNull(), fmt.Errorf("the field '%s' of %s holds %s, it cannot be given %s", name, obj.shape.typeName, article(typeName(old)), article(typeName(args[2])))
 			}
 			obj.Set(name, args[2])
 			return NewNull(), nil

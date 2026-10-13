@@ -2,6 +2,7 @@ package stdlib_test
 
 import (
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -483,4 +484,158 @@ func TestMachinesSideBySide(t *testing.T) {
 			t.Errorf("two machines disagree: %q and %q", first, got)
 		}
 	}
+}
+
+// Values of enums and structs through everything that looks at what they
+// are: matches with and without values held, tests of a type kept as a
+// value or branched on, equality, values that hold nothing shared between
+// places, structs of many fields, traits, tasks.
+func TestValuesKnowWhatTheyAre(t *testing.T) {
+	out, err := runWith(t, 64<<20, `
+		import std.arrays;
+		import std.dict;
+		import std.task;
+
+		enum Light { Red, Amber, Green, Flashing(Int), Broken(String, Int) }
+		enum Tree { Leaf, Node(Tree, Int, Tree) }
+
+		trait Describe { fn describe() -> String; }
+
+		struct Wide {
+			a: Int; b: Int; c: Int; d: Int; e: Int; f: Int; g: Int; h: Int; i: Int; j: Int;
+			k: Int; l: Int; m: Int; n: Int; o: Int; p: Int; q: Int; r: Int; s: Int; t: Int;
+		}
+		struct Empty { }
+		struct Junction { name: String; lights: [Light]; }
+
+		impl Describe for Junction {
+			fn describe() -> String { return self.name + " with " + toString(arrays.len(self.lights)) + " lights"; }
+		}
+		impl Describe for Empty {
+			fn describe() -> String { return "nothing"; }
+		}
+
+		fn next(light: Light) -> Light {
+			match light {
+				case Light.Red: { return Light.Green; }
+				case Light.Green: { return Light.Amber; }
+				case Light.Amber: { return Light.Red; }
+				case Light.Flashing(times) if times > 1: { return Light.Flashing(times - 1); }
+				case Light.Flashing(times): { return Light.Red; }
+				case Light.Broken(why, since): { return light; }
+			}
+		}
+
+		fn waits(light: Light) -> Int {
+			match light {
+				case Light.Red | Light.Amber: { return 1; }
+				case Light.Flashing(times): { return times; }
+				case Light.Broken(why, since): { return since; }
+				default: { return 0; }
+			}
+		}
+
+		fn insert(tree: Tree, value: Int) -> Tree {
+			match tree {
+				case Tree.Leaf: { return Tree.Node(Tree.Leaf, value, Tree.Leaf); }
+				case Tree.Node(left, here, right): {
+					if value < here { return Tree.Node(insert(left, value), here, right); }
+					return Tree.Node(left, here, insert(right, value));
+				}
+			}
+		}
+
+		fn total(tree: Tree) -> Int {
+			match tree {
+				case Tree.Leaf: { return 0; }
+				case Tree.Node(left, here, right): { return total(left) + here + total(right); }
+			}
+		}
+
+		fn depth(tree: Tree) -> Int {
+			match tree {
+				case Tree.Leaf: { return 0; }
+				case Tree.Node(left, here, right): {
+					let l = depth(left);
+					let r = depth(right);
+					if l > r { return l + 1; }
+					return r + 1;
+				}
+			}
+		}
+
+		fn kind(value: Any) -> String {
+			if value is Light { return "light"; }
+			if value is Tree { return "tree"; }
+			if value is Describe { return "described"; }
+			if value is Wide { return "wide"; }
+			if value is Int { return "int"; }
+			return "other";
+		}
+
+		fn main() -> Int {
+			// A cycle of lights, many times round: the values that hold
+			// nothing are the same wherever they are made
+			let light = Light.Red;
+			let waited = 0;
+			for step in 0..3000 { waited += waits(light); light = next(light); }
+			println(light == Light.Red, waited, next(Light.Flashing(3)) == Light.Flashing(2), next(Light.Flashing(1)));
+			println(Light.Red == Light.Red, Light.Red == Light.Amber, Light.Flashing(2) == Light.Flashing(2), Light.Broken("fuse", 3) == Light.Broken("fuse", 4));
+
+			// Kept in arrays, in a dictionary, in a struct
+			let seen = dict.empty<Light>();
+			let lights: [Light] = [];
+			for i in 0..9 {
+				let made = Light.Green;
+				if i % 3 == 1 { made = Light.Amber; }
+				if i % 3 == 2 { made = Light.Flashing(i); }
+				push(lights, made);
+				seen.set("light" + toString(i), made);
+			}
+			let junction = Junction { name: "north", lights: lights };
+			let green = arrays.len(arrays.filter(junction.lights, l -> l == Light.Green));
+			println(green, seen.getOr("light5", Light.Red), seen.getOr("light4", Light.Red) == Light.Amber, junction.describe());
+
+			// A tree of values that hold values
+			let tree = Tree.Leaf;
+			for i in 0..500 { tree = insert(tree, (i * 7919) % 1009); }
+			println(total(tree), depth(tree) > 8, tree == Tree.Leaf, insert(Tree.Leaf, 1) == insert(Tree.Leaf, 1));
+
+			// A struct of more fields than a value comes with room for
+			let wide = Wide { a: 1, b: 2, c: 3, d: 4, e: 5, f: 6, g: 7, h: 8, i: 9, j: 10,
+				k: 11, l: 12, m: 13, n: 14, o: 15, p: 16, q: 17, r: 18, s: 19, t: 20 };
+			wide.t += wide.a + wide.j;
+			println(wide.a + wide.h + wide.p + wide.q + wide.t, Empty { }.describe());
+
+			// What a value is, asked as a value and branched on
+			let things: [Any] = [Light.Red, tree, junction, wide, 42, "text", Empty { }, Light.Broken("fuse", 1)];
+			let kinds: [String] = [];
+			for thing in things { push(kinds, kind(thing)); }
+			println(kinds);
+			let isLight = things[0] is Light;
+			let isTree = things[0] is Tree;
+			println(isLight, isTree, things[7] is Light, things[2] is Describe, things[3] is Describe);
+
+			// Made in other tasks, the same values
+			let made = task.map([1, 2, 3, 4], n -> next(Light.Flashing(n))).expect("the lights");
+			println(made, made[0] == Light.Red, made[3] == Light.Flashing(3));
+			return 0;
+		}`, nil)
+	if err != nil {
+		t.Fatalf("the program was stopped: %v", err)
+	}
+	// 500 numbers (i * 7919) % 1009 for i below 500
+	sum := 0
+	for i := 0; i < 500; i++ {
+		sum += (i * 7919) % 1009
+	}
+	expectLines(t, out,
+		"true 2000 true Red",
+		"true false true false",
+		"3 Flashing(5) true north with 9 lights",
+		fmt.Sprint(sum)+" true false true",
+		"73 nothing",
+		`["light", "tree", "described", "wide", "int", "other", "described", "light"]`,
+		"true false true true false",
+		"[Red, Flashing(1), Flashing(2), Flashing(3)] true true")
 }

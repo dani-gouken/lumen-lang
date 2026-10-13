@@ -379,3 +379,152 @@ func TestAFunctionFarIntoTheProgramUsesLongJumps(t *testing.T) {
 		}
 	}
 }
+
+func stringConst(s string) ir.Constant { return ir.Constant{Val: s, Type: "String"} }
+
+// made returns the NEWOBJ instructions of a function, in order.
+func made(chunk *vm.Chunk, function string) []vm.Instr {
+	p := chunk.Prototypes[chunk.FindPrototype(function)]
+	var found []vm.Instr
+	for _, instr := range chunk.Code[p.CodeStart : p.CodeStart+p.CodeSize] {
+		if instr.Op == vm.OpNEWOBJ {
+			found = append(found, instr)
+		}
+	}
+	return found
+}
+
+// A value is made with room for the fields it is about to be given, and a
+// value of an enum that is given none is marked as one that never changes.
+func TestValuesAreMadeWithWhatIsKnownOfThem(t *testing.T) {
+	f := ir.NewBuilder("main")
+	set := func(obj *ir.Register, field string, value ir.Value) {
+		f.Emit(ir.OpSetField, nil, obj, stringConst(field), value)
+	}
+	one := f.CreateMov(intConst(1))
+
+	point := f.NewRegister()
+	f.Emit(ir.OpNewStruct, point, stringConst("Point"))
+	set(point, "x", one)
+	set(point, "y", one)
+	set(point, "z", one)
+
+	circle := f.NewRegister()
+	f.Emit(ir.OpNewVariant, circle, stringConst("Shape.Circle"))
+	set(circle, "0", one)
+
+	empty := f.NewRegister()
+	f.Emit(ir.OpNewVariant, empty, stringConst("Shape.Empty"))
+
+	// A struct without fields is still a value of its own: it can be
+	// given some later, and two of them are told apart
+	unit := f.NewRegister()
+	f.Emit(ir.OpNewStruct, unit, stringConst("Unit"))
+
+	// Given a field further on, in another block: not one that never changes
+	later, done := f.NewBlock(), f.NewBlock()
+	late := f.NewRegister()
+	f.Emit(ir.OpNewVariant, late, stringConst("Shape.Late"))
+	f.CreateJmp(later)
+	f.SetBlock(later)
+	set(late, "0", one)
+	f.CreateJmp(done)
+	f.SetBlock(done)
+	f.CreateRet(f.CreateGetField(point, "z"))
+
+	chunk := generate(t, f.Func)
+	expectInt(t, run(t, chunk), 1)
+
+	objects := made(chunk, "main")
+	if len(objects) != 5 {
+		t.Fatalf("expected 5 values to be made, found %d", len(objects))
+	}
+	want := []struct {
+		name     string
+		kind     uint16
+		fields   uint16
+		constant bool
+	}{
+		{"Point", vm.ObjectIsNamed, 3, false},
+		{"Shape.Circle", vm.ObjectIsVariant, 1, false},
+		{"Shape.Empty", vm.ObjectIsVariant, 0, true},
+		{"Unit", vm.ObjectIsNamed, 0, false},
+		{"Shape.Late", vm.ObjectIsVariant, 0, false},
+	}
+	for i, w := range want {
+		c := objects[i].C
+		if c&vm.ObjectKindMask != w.kind || c>>vm.ObjectFieldsShift != w.fields || (c&vm.ObjectIsConstant != 0) != w.constant {
+			t.Errorf("%s: made as kind %d with %d fields, constant %v", w.name, c&vm.ObjectKindMask, c>>vm.ObjectFieldsShift, c&vm.ObjectIsConstant != 0)
+		}
+	}
+}
+
+// What a case of a match asks, whether a value is of one variant, is one
+// instruction on the value: no text is made and nothing is called.
+func TestTypeTestsAskTheValue(t *testing.T) {
+	// classify(shape): 1 for a Circle, 2 for a Square, 3 otherwise
+	build := func(descriptor string) *vm.Chunk {
+		f := ir.NewBuilder("main")
+		circle := f.NewRegister()
+		f.Emit(ir.OpNewVariant, circle, stringConst("Shape.Circle"))
+		f.Emit(ir.OpSetField, nil, circle, stringConst("0"), f.CreateMov(intConst(5)))
+
+		isCircle, isSquare, other, yes := f.NewBlock(), f.NewBlock(), f.NewBlock(), f.NewBlock()
+		f.CreateBr(f.CreateCall(f.CreateMov(funcRef("__is")), circle, f.CreateMov(stringConst("{Shape.Square}"))), isSquare, isCircle)
+		f.SetBlock(isSquare)
+		f.CreateRet(f.CreateMov(intConst(2)))
+		f.SetBlock(isCircle)
+		f.CreateBr(f.CreateCall(f.CreateMov(funcRef("__is")), circle, f.CreateMov(stringConst(descriptor))), yes, other)
+		f.SetBlock(yes)
+		f.CreateRet(f.CreateMov(intConst(1)))
+		f.SetBlock(other)
+		f.CreateRet(f.CreateMov(intConst(3)))
+
+		errs := errors.NewHandler()
+		chunk := NewGenerator(&ir.Program{Functions: []*ir.Function{f.Func}}, []string{"__is"}, errs).Generate()
+		if errs.HasErrors() {
+			t.Fatalf("%v", errs.Diagnostics)
+		}
+		return chunk
+	}
+
+	chunk := build("{Shape.Circle}")
+	expectInt(t, run(t, chunk), 1)
+	expectCount(t, chunk, "main", 2, vm.OpJNTYPE)
+	expectCount(t, chunk, "main", 0, vm.OpCALL, vm.OpCALLX, vm.OpNEWEXFUNC, vm.OpISTYPE)
+	// The descriptors are not in the program: only the names are
+	for _, text := range chunk.StringPool {
+		if text == "{Shape.Circle}" || text == "{Shape.Square}" {
+			t.Errorf("the program holds the descriptor %s", text)
+		}
+	}
+
+	// Anything but one name is for the function to read: several names,
+	// a builtin type, a struct with fields
+	for descriptor, want := range map[string]int64{
+		"{Shape.Square|Shape.Circle}": 1,
+		"{Shape.Square|Shape.Empty}":  3,
+		"int":                         3,
+		"any":                         1,
+	} {
+		chunk := build(descriptor)
+		expectInt(t, run(t, chunk), want)
+		expectCount(t, chunk, "main", 1, vm.OpJNTYPE) // The first test only
+		expectCount(t, chunk, "main", 1, vm.OpCALLX)
+	}
+
+	// The answer kept as a value: asked of the value all the same
+	f := ir.NewBuilder("main")
+	square := f.NewRegister()
+	f.Emit(ir.OpNewVariant, square, stringConst("Shape.Square"))
+	answer := f.CreateCall(f.CreateMov(funcRef("__is")), square, f.CreateMov(stringConst("{Shape.Square}")))
+	f.CreateMov(answer)
+	f.CreateRet(answer)
+	errs := errors.NewHandler()
+	kept := NewGenerator(&ir.Program{Functions: []*ir.Function{f.Func}}, []string{"__is"}, errs).Generate()
+	if result := run(t, kept); !result.IsBool() || !result.AsBool() {
+		t.Errorf("expected true, got %s", vm.FormatValue(result))
+	}
+	expectCount(t, kept, "main", 1, vm.OpISTYPE)
+	expectCount(t, kept, "main", 0, vm.OpCALLX)
+}

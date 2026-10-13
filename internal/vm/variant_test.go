@@ -184,12 +184,10 @@ func TestVariantValuesInTypeTests(t *testing.T) {
 	// carries: the descriptor lists the names that pass
 	machine := NewVM()
 	make := func(name string) Value {
-		obj, _, err := machine.heap.AllocObject()
+		obj, _, err := machine.heap.AllocObjectOf(machine.heap.RootShape(name, true), 0)
 		if err != nil {
 			t.Fatal(err)
 		}
-		obj.typeName = name
-		obj.variant = true
 		return NewHeapPtr(uintptr(unsafe.Pointer(obj)))
 	}
 	circle, empty, red := make("Shape.Circle"), make("Shape.Empty"), make("Color.Red")
@@ -257,7 +255,7 @@ func TestVariantValuesSurviveCollection(t *testing.T) {
 		if !ok {
 			t.Fatalf("expected a value of an enum at position %d, got %s", count, FormatValue(current))
 		}
-		if obj.typeName == "List.Nil" {
+		if obj.TypeName() == "List.Nil" {
 			break
 		}
 		head, _ := obj.Get("0")

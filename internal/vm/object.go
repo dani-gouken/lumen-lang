@@ -177,10 +177,25 @@ type Shape struct {
 	keys  []string
 	index map[string]int
 	next  map[string]*Shape
+
+	// What the objects of this shape are values of, which they have in
+	// common as they have their fields: the name of the struct, or
+	// "Enum.Variant" for a value of an enum, which is compared and printed
+	// by what it holds. Empty for a plain object created from assembly.
+	typeName string
+	variant  bool
+
+	// The shape of a value of that type without fields yet: where every
+	// one of them starts, and where taking a field away starts again from
+	root *Shape
 }
 
-func newShape() *Shape {
-	return &Shape{index: map[string]int{}}
+// newRootShape makes the shape of the values of a type before they are
+// given a field.
+func newRootShape(typeName string, variant bool) *Shape {
+	shape := &Shape{index: map[string]int{}, typeName: typeName, variant: variant}
+	shape.root = shape
+	return shape
 }
 
 // with returns the shape of an object of this shape given one more field.
@@ -189,8 +204,11 @@ func (s *Shape) with(key string) *Shape {
 		return child
 	}
 	child := &Shape{
-		keys:  append(s.keys[:len(s.keys):len(s.keys)], key),
-		index: make(map[string]int, len(s.keys)+1),
+		keys:     append(s.keys[:len(s.keys):len(s.keys)], key),
+		index:    make(map[string]int, len(s.keys)+1),
+		typeName: s.typeName,
+		variant:  s.variant,
+		root:     s.root,
 	}
 	for name, slot := range s.index {
 		child.index[name] = slot
@@ -204,35 +222,133 @@ func (s *Shape) with(key string) *Shape {
 }
 
 // ObjectObj represents a heap-allocated object: a value of a struct or of
-// an enum, or a plain object made from assembly.
+// an enum, or a plain object made from assembly. It is its shape and its
+// values; everything the values of a type have in common is in the shape.
 type ObjectObj struct {
 	header ObjHeader
 	shape  *Shape
 	slots  []Value
-
-	// root is the shape of an object without fields, of the heap this
-	// object is on: where taking a field away starts again from.
-	root *Shape
-
-	// Name of the struct this object is a value of; empty for a plain
-	// object created from assembly. Used by casts.
-	typeName string
-
-	// variant marks a value of an enum. typeName is then "Enum.Variant"
-	// and the values it holds are the fields "0", "1", ... Such a value is
-	// compared and printed by what it holds.
-	variant bool
 }
 
-// Third operand of NEWOBJ: what the object is.
+// An object made with the number of its fields known comes with the room
+// for them, in one piece: the object and its values are one allocation
+// and lie together. One that outgrows its room moves its values elsewhere,
+// as an array does.
+type (
+	objectOf1 struct {
+		ObjectObj
+		room [1]Value
+	}
+	objectOf2 struct {
+		ObjectObj
+		room [2]Value
+	}
+	objectOf3 struct {
+		ObjectObj
+		room [3]Value
+	}
+	objectOf4 struct {
+		ObjectObj
+		room [4]Value
+	}
+	objectOf6 struct {
+		ObjectObj
+		room [6]Value
+	}
+	objectOf8 struct {
+		ObjectObj
+		room [8]Value
+	}
+	objectOf12 struct {
+		ObjectObj
+		room [12]Value
+	}
+	objectOf16 struct {
+		ObjectObj
+		room [16]Value
+	}
+)
+
+// newObject makes an object with room for at least capacity fields.
+func newObject(shape *Shape, capacity int) *ObjectObj {
+	var obj *ObjectObj
+	switch {
+	case capacity <= 0:
+		obj = &ObjectObj{}
+	case capacity == 1:
+		whole := &objectOf1{}
+		obj, whole.slots = &whole.ObjectObj, whole.room[:0]
+	case capacity == 2:
+		whole := &objectOf2{}
+		obj, whole.slots = &whole.ObjectObj, whole.room[:0]
+	case capacity == 3:
+		whole := &objectOf3{}
+		obj, whole.slots = &whole.ObjectObj, whole.room[:0]
+	case capacity == 4:
+		whole := &objectOf4{}
+		obj, whole.slots = &whole.ObjectObj, whole.room[:0]
+	case capacity <= 6:
+		whole := &objectOf6{}
+		obj, whole.slots = &whole.ObjectObj, whole.room[:0]
+	case capacity <= 8:
+		whole := &objectOf8{}
+		obj, whole.slots = &whole.ObjectObj, whole.room[:0]
+	case capacity <= 12:
+		whole := &objectOf12{}
+		obj, whole.slots = &whole.ObjectObj, whole.room[:0]
+	case capacity <= 16:
+		whole := &objectOf16{}
+		obj, whole.slots = &whole.ObjectObj, whole.room[:0]
+	default:
+		obj = &ObjectObj{slots: make([]Value, 0, capacity)}
+	}
+	obj.header.Type = ObjTypeObject
+	obj.shape = shape
+	return obj
+}
+
+// roomFor is the room newObject gives for a number of fields.
+func roomFor(capacity int) int {
+	switch {
+	case capacity <= 0:
+		return 0
+	case capacity <= 4:
+		return capacity
+	case capacity <= 6:
+		return 6
+	case capacity <= 8:
+		return 8
+	case capacity <= 12:
+		return 12
+	case capacity <= 16:
+		return 16
+	}
+	return capacity
+}
+
+// Third operand of NEWOBJ: what the object is, in its two lowest bits.
 const (
 	ObjectIsNamed   = 1 // A value of a struct; B is the constant of its name
 	ObjectIsVariant = 2 // A value of an enum; B is the constant of "Enum.Variant"
+
+	// The rest of the operand is for the compiler, which knows more about
+	// the object than its name:
+	//
+	// ObjectIsConstant marks a value that is never given a field, of a
+	// variant that holds nothing: every such value is the same, so one is
+	// made and handed out each time.
+	ObjectIsConstant = 4
+
+	// From ObjectFieldsShift up, the number of fields the object is about
+	// to be given (0 if not known), so that it is made with room for them.
+	ObjectFieldsShift = 3
+	ObjectKindMask    = 3
+	MaxObjectFields   = MaxOperand >> ObjectFieldsShift
 )
 
 // TypeName returns the name of the struct the object is a value of.
 func (o *ObjectObj) TypeName() string {
-	return o.typeName
+	return o.shape.typeName
 }
 
 func (o *ObjectObj) Header() *ObjHeader {
@@ -269,7 +385,7 @@ func (o *ObjectObj) Delete(key string) bool {
 	if !ok {
 		return false
 	}
-	shape := o.root
+	shape := o.shape.root
 	for i, name := range o.shape.keys {
 		if i != at {
 			shape = shape.with(name)

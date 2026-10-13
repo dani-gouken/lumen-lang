@@ -173,6 +173,19 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 		case OpADDI, OpSUBI:
 			err = v.registers(instr.A, instr.B)
 
+		case OpISTYPE:
+			if err = v.registers(instr.A, instr.B); err == nil {
+				err = v.pooledString(instr.C)
+			}
+
+		case OpJNTYPE:
+			if err = v.registers(instr.A); err == nil {
+				err = v.pooledString(instr.B)
+			}
+			if err == nil {
+				err = jump(ip, int(instr.C))
+			}
+
 		case OpNEWSTR:
 			if err = v.registers(instr.A); err == nil {
 				err = v.pooledString(instr.B)
@@ -180,7 +193,7 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 
 		case OpNEWOBJ:
 			err = v.registers(instr.A)
-			if err == nil && (instr.C == ObjectIsNamed || instr.C == ObjectIsVariant) {
+			if kind := instr.C & ObjectKindMask; err == nil && (kind == ObjectIsNamed || kind == ObjectIsVariant) {
 				err = v.pooledString(instr.B)
 			}
 

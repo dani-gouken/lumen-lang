@@ -366,6 +366,12 @@ func FormatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 		name, _ := vm.ShortName(instr.Op)
 		return fmt.Sprintf("%s r%d r%d %d", name, instr.A, instr.B, instr.C)
 
+	case vm.OpISTYPE:
+		return fmt.Sprintf("ISTYPE r%d r%d %d", instr.A, instr.B, instr.C)
+
+	case vm.OpJNTYPE:
+		return fmt.Sprintf("JNTYPE r%d %d %d", instr.A, instr.B, instr.C)
+
 	case vm.OpRETHROW:
 		return "RETHROW"
 

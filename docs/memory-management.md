@@ -112,13 +112,19 @@ shape: the names are kept once, not in every object.
 ```go
 type ObjectObj struct {
     header ObjHeader
-    shape  *Shape   // Which field is in which slot
+    shape  *Shape   // Which field is in which slot, and what the object is a value of
     slots  []Value
 }
 ```
 
+The shape also carries the name of the struct or of the variant, so an object is 48 bytes and its values. Made with the number of its fields known (`AllocObjectOf(shape, fields)`, which is what `NEWOBJ` does), it comes with room for them in the same allocation: the values lie right after the object. With more than 16 fields, or more fields than was said, the values are a second allocation, as an array's are.
+
+A value of an enum that holds nothing is made once for each place of the program that makes it, and kept for as long as the program runs.
+
 **Operations:**
-- `AllocObject()` - Allocate empty object
+- `AllocObject()` - Allocate an empty object of no type
+- `RootShape(name, variant)` - The shape the values of a struct, or of a variant of an enum, start with
+- `AllocObjectOf(shape, fields)` - Allocate a value of that type, with room for its fields
 - `Get(key string)` - Get value by key (returns value and bool)
 - `Set(key string, v Value)` - Set key-value pair
 - `Delete(key string)` - Take a field away

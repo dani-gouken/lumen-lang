@@ -33,6 +33,11 @@ type chunkCache struct {
 
 	// The same for the host functions the chunk names
 	externs []Value
+
+	// The values that are made once and handed out each time (see
+	// ObjectIsConstant), by the instruction that makes them. Not there
+	// until a first one is made.
+	constants []Value
 }
 
 // cacheFor returns what is kept for a chunk.
@@ -231,6 +236,33 @@ func (vm *VM) compare(op OpCode, a, b Value) (bool, error) {
 		name, symbol = "GE", ">="
 	}
 	return false, vm.arithmeticError(name, symbol, a, b)
+}
+
+// isOfType reports whether a value is of the struct, or the variant of an
+// enum, of a name: whether that is the name its shape carries.
+//
+// The instruction that asks remembers the last shape it was told yes for
+// and the last it was told no for. Values of one type start from one
+// shape, and a case of a match keeps meeting the same few: the names are
+// compared once for each.
+func isOfType(v Value, known *fieldCache, name string) bool {
+	h := header(v)
+	if h == nil || h.Type != ObjTypeObject {
+		return false
+	}
+	root := (*ObjectObj)(unsafe.Pointer(h)).shape.root
+	switch root {
+	case known.shape:
+		return true
+	case known.next:
+		return false
+	}
+	if root.typeName == name {
+		known.shape = root
+		return true
+	}
+	known.next = root
+	return false
 }
 
 // testAgainst is a test that jumps, against a small number, on a value
@@ -901,6 +933,20 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 			regs[instr.A] = NewInt(diff)
 
+		case OpISTYPE:
+			regs[instr.A] = NewBool(isOfType(regs[instr.B], &cache[ip], chunk.StringPool[intOf(consts[instr.C])]))
+
+		case OpJNTYPE:
+			// Go on at C unless the value is of the type
+			if !isOfType(regs[instr.A], &cache[ip], chunk.StringPool[intOf(consts[instr.B])]) {
+				target := int(instr.C)
+				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+					return NewNull(), vm.stopped()
+				}
+				ip = target
+				continue
+			}
+
 		case OpENDTRY:
 			n := len(vm.handlers)
 			if n == 0 || vm.handlers[n-1].depth != vm.frameCount {
@@ -1063,17 +1109,36 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 
 		case OpNEWOBJ:
-			// Allocate a new object: A = dest. With C = 1, B is the constant
-			// index of the name of the struct the object is a value of.
-			obj, shouldGC, err := vm.heap.AllocObject()
+			// Allocate a new object: A = dest. C says what it is a value of
+			// (see ObjectIsNamed); B is then the constant of the name.
+			known := &cache[ip]
+			if known.shape == nil {
+				// What the values made here start as, found once
+				known.shape = vm.heap.rootShape
+				if kind := instr.C & ObjectKindMask; kind == ObjectIsNamed || kind == ObjectIsVariant {
+					known.shape = vm.heap.RootShape(chunk.StringPool[intOf(consts[instr.B])], kind == ObjectIsVariant)
+				}
+			}
+			if instr.C&ObjectIsConstant != 0 {
+				// A value that holds nothing and never will: the same one
+				// every time
+				if kept.constants == nil {
+					kept.constants = make([]Value, len(code))
+				}
+				if kept.constants[ip] != 0 {
+					regs[instr.A] = kept.constants[ip]
+					break
+				}
+			}
+
+			obj, shouldGC, err := vm.heap.AllocObjectOf(known.shape, int(instr.C>>ObjectFieldsShift))
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("object allocation failed: %v", err))
 			}
-			if instr.C == ObjectIsNamed || instr.C == ObjectIsVariant {
-				obj.typeName = chunk.StringPool[intOf(consts[instr.B])]
-				obj.variant = instr.C == ObjectIsVariant
-			}
 			regs[instr.A] = valueOf(&obj.header)
+			if instr.C&ObjectIsConstant != 0 {
+				kept.constants[ip] = regs[instr.A]
+			}
 			if shouldGC {
 				vm.CollectGarbage()
 			}

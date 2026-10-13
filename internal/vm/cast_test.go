@@ -75,8 +75,7 @@ func TestCastMismatch(t *testing.T) {
 		return ptr(obj)
 	}
 	object := func(name string, fields map[string]Value) Value {
-		obj, _, _ := heap.AllocObject()
-		obj.typeName = name
+		obj, _, _ := heap.AllocObjectOf(heap.RootShape(name, false), 0)
 		for field, value := range fields {
 			obj.Set(field, value)
 		}

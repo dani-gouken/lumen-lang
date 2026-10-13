@@ -36,8 +36,29 @@ type Heap struct {
 	// use it to spoil freed objects, so that using one shows.
 	onFree func(*ObjHeader)
 
-	// The shape of an object without fields: where every object starts
+	// The shape of an object without fields: where every object starts.
+	// There is one per type the objects are values of; rootShape is that
+	// of the plain objects, which are of none.
 	rootShape *Shape
+	roots     map[shapeKind]*Shape
+}
+
+// shapeKind is what the values of a type have in common from the start.
+type shapeKind struct {
+	typeName string
+	variant  bool
+}
+
+// RootShape returns the shape the values of a type start with: a struct
+// by its name, or a variant of an enum by "Enum.Variant".
+func (h *Heap) RootShape(typeName string, variant bool) *Shape {
+	kind := shapeKind{typeName, variant}
+	if shape, ok := h.roots[kind]; ok {
+		return shape
+	}
+	shape := newRootShape(typeName, variant)
+	h.roots[kind] = shape
+	return shape
 }
 
 const (
@@ -92,13 +113,15 @@ func NewHeap(maxBytes uint64) *Heap {
 		start = DefaultGCStart
 	}
 
+	plain := newRootShape("", false)
 	return &Heap{
 		objects:        nil,
 		bytesAllocated: 0,
 		nextGC:         start,
 		maxBytes:       maxBytes,
 		minGC:          start,
-		rootShape:      newShape(),
+		rootShape:      plain,
+		roots:          map[shapeKind]*Shape{{}: plain},
 	}
 }
 
@@ -167,13 +190,21 @@ func (h *Heap) AllocArray(capacity int) (*ArrayObj, bool, error) {
 	return obj, h.ShouldCollect(), nil
 }
 
-// AllocObject allocates a map/object.
+// AllocObject allocates a plain object: a value of no type, without
+// fields yet.
 // Returns the object and a boolean indicating if GC should run.
 func (h *Heap) AllocObject() (*ObjectObj, bool, error) {
-	if err := h.reserve(uint64(unsafe.Sizeof(ObjectObj{}))); err != nil {
+	return h.AllocObjectOf(h.rootShape, 0)
+}
+
+// AllocObjectOf allocates a value of a type (see RootShape) with room for
+// a number of fields, which it does not have yet.
+// Returns the object and a boolean indicating if GC should run.
+func (h *Heap) AllocObjectOf(shape *Shape, fields int) (*ObjectObj, bool, error) {
+	if err := h.reserve(uint64(unsafe.Sizeof(ObjectObj{})) + uint64(roomFor(fields))*valueSize); err != nil {
 		return nil, false, err
 	}
-	obj := &ObjectObj{header: ObjHeader{Type: ObjTypeObject}, shape: h.rootShape, root: h.rootShape}
+	obj := newObject(shape, fields)
 	h.track(obj)
 	return obj, h.ShouldCollect(), nil
 }

@@ -158,6 +158,7 @@ type Chunk struct {
 - `DIV r_dest r_a r_b` - Division
 - `MOD r_dest r_a r_b` - Remainder
 - `NEG r_dest r_a` - Negation
+- `ISTYPE r_dest r_value name`, `JNTYPE r_value name target` - Whether a value is of a struct or a variant, by the name it carries; the second goes on at `target` unless it is
 - `ADDI r_dest r_a k`, `SUBI r_dest r_a k` - Addition and subtraction of a number `k` (0 to 65535) written in the instruction
 - `NOT r_dest r_a` - Boolean negation
 
@@ -415,6 +416,21 @@ A struct value holds its fields in slots, and shares with every other value
 made the same way a **shape**: which field is in which slot. Adding a field
 moves an object to the shape of those that have it; values of one struct all
 end up with the same one.
+
+The shape also holds what the values of a type have in common besides their
+fields: the name of the struct, or `Enum.Variant` for a value of an enum. A
+value is then its shape and its slots, 48 bytes before the fields, and
+`NEWOBJ` says how many fields it is about to be given, so that the value and
+the room for them are one allocation (up to 16 fields; more are a second).
+
+A value of an enum that holds nothing, `Light.Red` or `Option.None`, is
+made once per place that makes it and handed out each time: nothing can
+tell two of them apart, and nothing can change one.
+
+Asking what a value is, as every case of a `match` on an enum does, is
+`JNTYPE value name target` (or `ISTYPE dest value name`): it compares the
+name the value's shape carries. The instruction remembers the shapes it
+answered yes and no for, so the names themselves are compared once each.
 
 An instruction that reads or writes a field remembers the shape of the last
 object it met and where the field was. While it keeps meeting values of the

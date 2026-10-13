@@ -155,6 +155,7 @@ Before a function's instructions are written, `shorten` (in `function.go`) decid
 | The result of a call nothing reads | nothing | `MOV dest r0` |
 | A test read only by the branch after it | `JNLT a b else`, `JNLE`, `JNEQ`, `JNNE` (go to `else` unless the test holds; greater-than swaps the registers) | the test, then `JMPIFNOT` |
 | The same against a number in 0..65535 | `JNLTI a k else`, `JNLEI`, `JNGTI`, `JNGEI`, `JNEQI`, `JNNEI` | `LOADI`, the test, `JMPIFNOT` |
+| A call of `__is` with a descriptor naming one struct or variant (`{Shape.Circle}`), which is what a case of a `match` on an enum is | `JNTYPE value name else` when a branch reads it, `ISTYPE dest value name` otherwise | `NEWSTR` of the descriptor, `MOV`, a call of the host function, `JMPIFNOT` |
 | Adding or subtracting a number in 0..65535 | `ADDI dest a k`, `SUBI dest a k` | `LOADI`, then `ADD` or `SUB` |
 | The first argument of a function that calls nothing | stays in `r0` | `MOV home r0` on entry |
 
@@ -183,8 +184,8 @@ JMP   head
 | `MOV` of a `FuncRef` | `NEWFUNC` for a compiled function, `NEWEXFUNC` for a host function |
 | `ADD` `SUB` `MUL` `DIV` `MOD` `NEG` `NOT` | the instruction of the same name |
 | `EQ` `NEQ` `LT` `LTE` `GT` `GTE` | `EQ` `NE` `LT` `LE` `GT` `GE` |
-| `NEW_STRUCT` | `NEWOBJ` with the struct's name as a string constant, which casts check |
-| `NEW_VARIANT` | `NEWOBJ` with the name `Enum.Variant` and a third operand of 2, which marks a value of an enum |
+| `NEW_STRUCT` | `NEWOBJ` with the struct's name as a string constant, which casts check. The third operand is 1 in its two lowest bits and, from the fourth up, the number of `SET_FIELD` on the value that follow in the block: the room it is made with |
+| `NEW_VARIANT` | `NEWOBJ` with the name `Enum.Variant` and 2 in the lowest bits of the third operand, which marks a value of an enum; the number of fields as for a struct. With no field set anywhere in the function, the third bit is set too: the value holds nothing, and is made once |
 | `GET_FIELD` / `SET_FIELD` | `GETFIELD` / `SETFIELD` with the field name as a string constant |
 | `NEW_ARRAY` | `NEWARRAY` (capacity capped at 65535; it is only a hint) |
 | `GET_INDEX` / `LEN` / `PUSH` | `GETINDEX` / `ARRLEN` / `ARRPUSH` |

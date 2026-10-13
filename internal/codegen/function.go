@@ -2,6 +2,7 @@ package codegen
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dani-gouken/lumen/internal/ir"
 	"github.com/dani-gouken/lumen/internal/token"
@@ -50,6 +51,9 @@ type funcGen struct {
 	window   map[int]int                         // A temporary made where a call wants it: its place there
 	unread   map[int]bool                        // Temporaries nothing reads
 	inReturn map[int]bool                        // Results of calls read where the call left them, in r0
+	typeTest map[*ir.Instruction]string          // A call that asks whether a value is of one type -> its name
+	fields   map[*ir.Instruction]uint16          // A struct or enum value being made -> how many fields it is given
+	constant map[*ir.Instruction]bool            // Values of an enum that hold nothing and are never given anything
 }
 
 // fixup is a jump whose target is filled in once all blocks are placed.
@@ -456,6 +460,9 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 	f.window = make(map[int]int)
 	f.unread = make(map[int]bool)
 	f.inReturn = make(map[int]bool)
+	f.typeTest = make(map[*ir.Instruction]string)
+	f.fields = make(map[*ir.Instruction]uint16)
+	f.constant = make(map[*ir.Instruction]bool)
 	for id, u := range uses {
 		if isTemp(id) && u.reads == 0 {
 			f.unread[id] = true
@@ -493,7 +500,14 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 		for idx, instr := range instrs {
 			switch instr.Op {
 			case ir.OpCall:
+				if name, ok := f.typeTestOf(instr, once); ok {
+					f.typeTest[instr] = name
+					continue
+				}
 				f.shortenCall(instr, idx, instrs, uses, isTemp, once)
+
+			case ir.OpNewStruct, ir.OpNewVariant:
+				f.measure(instr, idx, instrs, uses)
 
 			case ir.OpAdd, ir.OpSub:
 				if len(instr.Operands) != 2 {
@@ -515,7 +529,15 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 				}
 				test := instrs[idx-1]
 				u := once(instr.Operands[0])
-				if u == nil || u.defInstr != test || len(test.Operands) != 2 {
+				if u == nil || u.defInstr != test {
+					continue
+				}
+				if _, asksType := f.typeTest[test]; asksType {
+					f.folded[test] = true
+					f.fused[instr] = test
+					continue
+				}
+				if len(test.Operands) != 2 {
 					continue
 				}
 				if _, ok := fusable[test.Op]; !ok {
@@ -533,6 +555,97 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 			}
 		}
 	}
+}
+
+// typeTestIntrinsic is the host function `value is Type` and the cases of
+// a match are compiled to calls of (irgen.TypeTestIntrinsic), with the
+// type as a descriptor: a text the function reads.
+const typeTestIntrinsic = "__is"
+
+// typeTestOf recognizes the call that asks whether a value is of one
+// struct, or one variant of an enum: the descriptor is then "{Name}", and
+// the answer is whether the value carries that name. This is what every
+// case of a match on an enum asks, and it needs neither the text nor the
+// call. Any other descriptor (several names, fields, a builtin type) is
+// left to the function.
+func (f *funcGen) typeTestOf(call *ir.Instruction, once func(ir.Value) *usage) (string, bool) {
+	if len(call.Operands) != 3 || call.Dest == nil {
+		return "", false
+	}
+	constant := func(v ir.Value, kind ir.TypeRef) (string, *usage) {
+		u := once(v)
+		if u == nil || u.defInstr.Op != ir.OpMov || len(u.defInstr.Operands) != 1 {
+			return "", nil
+		}
+		c, ok := u.defInstr.Operands[0].(ir.Constant)
+		if !ok || c.Type != kind {
+			return "", nil
+		}
+		text, _ := c.Val.(string)
+		return text, u
+	}
+	fn, fnUse := constant(call.Operands[0], "FuncRef")
+	desc, descUse := constant(call.Operands[2], "String")
+	if fnUse == nil || descUse == nil || fn != typeTestIntrinsic {
+		return "", false
+	}
+	if _, isReg := regID(call.Operands[1]); !isReg {
+		return "", false
+	}
+	if len(desc) < 3 || desc[0] != '{' || desc[len(desc)-1] != '}' || strings.ContainsAny(desc[1:len(desc)-1], "{}|:,=") {
+		return "", false
+	}
+	f.folded[fnUse.defInstr] = true
+	f.folded[descUse.defInstr] = true
+	return desc[1 : len(desc)-1], true
+}
+
+// measure counts the fields a struct or enum value is given where it is
+// made, so that it is made with room for them: a value is built by making
+// it, then setting its fields one after the other.
+//
+// A value of an enum that is given nothing holds nothing, and nothing in
+// the language can give it anything later: every such value is the same
+// one. That is only said of a value no other instruction of the function
+// writes to.
+func (f *funcGen) measure(made *ir.Instruction, idx int, instrs []*ir.Instruction, uses map[int]*usage) {
+	if made.Dest == nil {
+		return
+	}
+	id := made.Dest.ID
+	count := 0
+	for _, instr := range instrs[idx+1:] {
+		if instr.Op != ir.OpSetField || len(instr.Operands) == 0 {
+			continue
+		}
+		if target, ok := regID(instr.Operands[0]); ok && target == id {
+			count++
+		}
+	}
+	if count > vm.MaxObjectFields {
+		count = vm.MaxObjectFields
+	}
+	f.fields[made] = uint16(count)
+
+	if made.Op == ir.OpNewVariant && count == 0 && uses[id].defs == 1 && !f.setsFieldOf(id) {
+		f.constant[made] = true
+	}
+}
+
+// setsFieldOf reports whether any instruction of the function sets a
+// field of a register.
+func (f *funcGen) setsFieldOf(id int) bool {
+	for _, bb := range f.blocks {
+		for _, instr := range body(bb) {
+			if instr.Op != ir.OpSetField || len(instr.Operands) == 0 {
+				continue
+			}
+			if target, ok := regID(instr.Operands[0]); ok && target == id {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // shortenCall decides how a call gets its function and its arguments.
@@ -656,7 +769,9 @@ func (f *funcGen) emitJump(op vm.OpCode, cond uint16, target *ir.BasicBlock) {
 // of the test and the branch on its result.
 func (f *funcGen) emitTest(test *ir.Instruction, otherwise *ir.BasicBlock) {
 	at := len(f.g.chunk.Code)
-	if small, ok := f.small[test]; ok {
+	if name, ok := f.typeTest[test]; ok {
+		f.emit(vm.OpJNTYPE, f.reg(test.Operands[1]), f.g.stringConstant(name, f.pos), 0)
+	} else if small, ok := f.small[test]; ok {
 		// With the number on the left the test reads the other way round
 		op := againstSmall[test.Op][1-small.operand]
 		f.emit(op, f.reg(test.Operands[1-small.operand]), small.value, 0)
@@ -789,14 +904,18 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 	case ir.OpNewStruct:
 		// The struct's name is recorded on the value; casts check it
 		if name, ok := f.nameOperand(instr, 0); ok {
-			f.emit(vm.OpNEWOBJ, f.dest(instr), f.g.stringConstant(name, f.pos), 1)
+			f.emit(vm.OpNEWOBJ, f.dest(instr), f.g.stringConstant(name, f.pos), vm.ObjectIsNamed|f.fields[instr]<<vm.ObjectFieldsShift)
 		}
 
 	case ir.OpNewVariant:
 		// A value of an enum: the object carries the variant's name, and a
 		// mark that it is compared and printed by what it holds
 		if name, ok := f.nameOperand(instr, 0); ok {
-			f.emit(vm.OpNEWOBJ, f.dest(instr), f.g.stringConstant(name, f.pos), vm.ObjectIsVariant)
+			what := vm.ObjectIsVariant | f.fields[instr]<<vm.ObjectFieldsShift
+			if f.constant[instr] {
+				what |= vm.ObjectIsConstant
+			}
+			f.emit(vm.OpNEWOBJ, f.dest(instr), f.g.stringConstant(name, f.pos), what)
 		}
 
 	case ir.OpGetField:
@@ -928,6 +1047,12 @@ func (f *funcGen) loadFunction(dest uint16, name string) {
 func (f *funcGen) generateCall(instr *ir.Instruction) {
 	if len(instr.Operands) == 0 {
 		f.fail(ErrUnsupportedIR, "call without a callee", "")
+		return
+	}
+
+	if name, ok := f.typeTest[instr]; ok {
+		// Whether a value is of one type is asked of the value
+		f.emit(vm.OpISTYPE, f.dest(instr), f.reg(instr.Operands[1]), f.g.stringConstant(name, f.pos))
 		return
 	}
 

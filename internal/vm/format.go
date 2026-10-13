@@ -71,9 +71,9 @@ func (f *formatter) formatValue(v Value, depth int) string {
 			return "{...}"
 		}
 		obj := (*ObjectObj)(ptr)
-		if obj.variant {
+		if obj.shape.variant {
 			// Written as it is made, without the enum's name: Rect(3, 4)
-			name := obj.typeName[strings.LastIndex(obj.typeName, ".")+1:]
+			name := obj.shape.typeName[strings.LastIndex(obj.shape.typeName, ".")+1:]
 			var values []string
 			for i := 0; ; i++ {
 				value, ok := obj.Get(strconv.Itoa(i))
@@ -89,7 +89,7 @@ func (f *formatter) formatValue(v Value, depth int) string {
 			if len(values) == 0 {
 				return name
 			}
-			if strings.HasPrefix(obj.typeName, tuplePrefix) {
+			if strings.HasPrefix(obj.shape.typeName, tuplePrefix) {
 				// A tuple, written as it is made: (1, "a")
 				name = ""
 			}
@@ -172,7 +172,7 @@ func typeName(v Value) string {
 	case ObjTypeArray:
 		return "array"
 	case ObjTypeObject:
-		if name := (*ObjectObj)(unsafe.Pointer(v.AsHeapPtr())).typeName; name != "" {
+		if name := (*ObjectObj)(unsafe.Pointer(v.AsHeapPtr())).shape.typeName; name != "" {
 			return name
 		}
 		return "struct"

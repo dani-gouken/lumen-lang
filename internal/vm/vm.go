@@ -414,7 +414,8 @@ func valuesEqual(a, b Value) bool {
 		}
 
 		va, vb := (*ObjectObj)(unsafe.Pointer(ha)), (*ObjectObj)(unsafe.Pointer(hb))
-		if !va.variant || !vb.variant || va.typeName != vb.typeName || len(va.slots) != len(vb.slots) {
+		// Values of one variant start from the same shape
+		if !va.shape.variant || va.shape.root != vb.shape.root || len(va.slots) != len(vb.slots) {
 			return false
 		}
 		last := len(va.slots) - 1
@@ -446,7 +447,7 @@ func variantObject(v Value) (*ObjectObj, bool) {
 		return nil, false
 	}
 	obj := (*ObjectObj)(unsafe.Pointer(v.AsHeapPtr()))
-	return obj, obj.variant
+	return obj, obj.shape.variant
 }
 
 // GetHeap returns the VM's heap.

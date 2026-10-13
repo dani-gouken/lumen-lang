@@ -127,10 +127,15 @@ const (
 	// Arithmetic with a small number: A = dest, B = register, C = the number.
 	OpADDI
 	OpSUBI
+
+	// Whether a value is of a struct, or a variant of an enum, by the name
+	// its values carry: what a case of a match on an enum asks.
+	OpISTYPE // A = dest (a Bool), B = the value, C = the constant of the name
+	OpJNTYPE // A = the value, B = the constant of the name, C = where to go on unless it is
 )
 
 // LastOp is the highest opcode there is.
-const LastOp = OpSUBI
+const LastOp = OpJNTYPE
 
 // MaxOperand is the largest value an instruction operand can hold. It bounds
 // what one operand can index: registers per function, constants, functions
@@ -272,7 +277,7 @@ func (i Instr) String() string {
 		return formatInstr("CALLK", i.A, i.B, i.C)
 	case OpCALLX:
 		return formatInstr("CALLX", i.A, i.B, i.C)
-	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI:
+	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI, OpISTYPE, OpJNTYPE:
 		return formatInstr(shortNames[i.Op], i.A, i.B, i.C)
 	case OpGC:
 		return "GC"
@@ -309,6 +314,7 @@ var shortNames = map[OpCode]string{
 	OpJNLT: "JNLT", OpJNLE: "JNLE", OpJNEQ: "JNEQ", OpJNNE: "JNNE",
 	OpJNLTI: "JNLTI", OpJNLEI: "JNLEI", OpJNGTI: "JNGTI", OpJNGEI: "JNGEI", OpJNEQI: "JNEQI", OpJNNEI: "JNNEI",
 	OpADDI: "ADDI", OpSUBI: "SUBI",
+	OpISTYPE: "ISTYPE", OpJNTYPE: "JNTYPE",
 }
 
 // ShortName returns the name of one of those instructions, and whether op

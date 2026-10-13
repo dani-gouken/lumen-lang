@@ -275,7 +275,7 @@ func (t *castType) mismatch(v Value) string {
 		obj := (*ObjectObj)(unsafe.Pointer(v.AsHeapPtr()))
 		named := false
 		for _, name := range t.names {
-			if name == obj.typeName {
+			if name == obj.shape.typeName {
 				named = true
 			}
 		}
