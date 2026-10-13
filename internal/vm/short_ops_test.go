@@ -77,7 +77,7 @@ func TestTestsThatJumpDoWhatTheTestAndTheJumpDid(t *testing.T) {
 				name := NewInstr(tt.long, 0, 0, 0).String() + " of " + a.String() + " and " + b.String()
 				// A swapped test names its operands the other way round
 				// when it refuses them; the refusal is the same
-				if tt.swapped && !(bothInts(a, b) || bothNumbers(a, b)) {
+				if tt.swapped && !(bothInts(a, b) || (a.IsNumber() && b.IsNumber())) {
 					continue
 				}
 				both(t, name, values, long, short)
@@ -331,8 +331,11 @@ func TestFloatsAreEqualAsNumbers(t *testing.T) {
 		{"a number and itself", NewNumber(1.5), NewNumber(1.5), true},
 		{"two numbers", NewNumber(1.5), NewNumber(2.5), false},
 		{"infinity and itself", NewNumber(1 / zero.AsNumber()), NewNumber(1 / zero.AsNumber()), true},
-		// An Int and a Float are two kinds of value, never equal
-		{"an Int and the same Float", NewInt(1), NewNumber(1), false},
+		// An Int and a Float are compared as numbers
+		{"an Int and the same Float", NewInt(1), NewNumber(1), true},
+		{"a Float and the same Int", NewNumber(-3), NewInt(-3), true},
+		{"an Int and another Float", NewInt(1), NewNumber(1.5), false},
+		{"an Int and NaN", NewInt(0), nan, false},
 		{"null and itself", NewNull(), NewNull(), true},
 		{"true and itself", NewBool(true), NewBool(true), true},
 	}
@@ -378,5 +381,109 @@ func TestFloatsAreEqualAsNumbers(t *testing.T) {
 		if boxed.AsBool() != c.equal {
 			t.Errorf("%s: held by a variant, EQ says %v", c.name, boxed.AsBool())
 		}
+	}
+}
+
+// A whole number met by a Float is worked out as a Float, by every
+// instruction that works on numbers, whichever side it is on. Two whole
+// numbers are still worked out as whole numbers.
+func TestIntsAndFloatsAreWorkedOutTogether(t *testing.T) {
+	run := func(op OpCode, a, b Value) (Value, error) {
+		chunk := NewChunk()
+		chunk.Code = []Instr{
+			NewInstr(OpLOADK, 1, uint16(chunk.AddConstant(a)), 0),
+			NewInstr(OpLOADK, 2, uint16(chunk.AddConstant(b)), 0),
+			NewInstr(op, 0, 1, 2),
+			NewInstr(OpRET, 0, 0, 0),
+		}
+		addMainProto(chunk, 3, 0)
+		return NewVM().Exec(chunk)
+	}
+	seven, two := NewInt(7), NewInt(2)
+	sevenF, twoF := NewNumber(7), NewNumber(2)
+
+	numbers := []struct {
+		name string
+		op   OpCode
+		a, b Value
+		want Value
+	}{
+		{"Int + Float", OpADD, seven, twoF, NewNumber(9)},
+		{"Float + Int", OpADD, sevenF, two, NewNumber(9)},
+		{"Int - Float", OpSUB, seven, twoF, NewNumber(5)},
+		{"Float - Int", OpSUB, sevenF, two, NewNumber(5)},
+		{"Int * Float", OpMUL, seven, twoF, NewNumber(14)},
+		{"Float * Int", OpMUL, sevenF, two, NewNumber(14)},
+		{"Int / Float", OpDIV, seven, twoF, NewNumber(3.5)},
+		{"Float / Int", OpDIV, sevenF, two, NewNumber(3.5)},
+		{"Int / Int", OpDIV, seven, two, NewInt(3)},
+		{"Int + Int", OpADD, seven, two, NewInt(9)},
+		{"Float / Float", OpDIV, sevenF, twoF, NewNumber(3.5)},
+		{"Float / zero", OpDIV, sevenF, NewInt(0), NewNumber(math.Inf(1))},
+	}
+	for _, c := range numbers {
+		got, err := run(c.op, c.a, c.b)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if got != c.want {
+			t.Errorf("%s: expected %s, got %s", c.name, c.want.String(), got.String())
+		}
+	}
+
+	tests := []struct {
+		name string
+		op   OpCode
+		a, b Value
+		want bool
+	}{
+		{"Int < Float", OpLT, two, NewNumber(2.5), true},
+		{"Float < Int", OpLT, NewNumber(2.5), two, false},
+		{"Int <= the same Float", OpLE, two, twoF, true},
+		{"Float > Int", OpGT, NewNumber(2.5), two, true},
+		{"Int >= Float", OpGE, two, NewNumber(2.5), false},
+		{"Int == the same Float", OpEQ, two, twoF, true},
+		{"Float != another Int", OpNE, twoF, seven, true},
+	}
+	for _, c := range tests {
+		got, err := run(c.op, c.a, c.b)
+		if err != nil {
+			t.Errorf("%s: %v", c.name, err)
+			continue
+		}
+		if got != NewBool(c.want) {
+			t.Errorf("%s: expected %v, got %s", c.name, c.want, got.String())
+		}
+	}
+
+	// The short forms, whose second operand is a small whole number
+	for _, c := range []struct {
+		name string
+		op   OpCode
+		want Value
+	}{
+		{"Float + 3", OpADDI, NewNumber(10.5)},
+		{"Float - 3", OpSUBI, NewNumber(4.5)},
+	} {
+		chunk := NewChunk()
+		chunk.Code = []Instr{
+			NewInstr(OpLOADK, 1, uint16(chunk.AddConstant(NewNumber(7.5))), 0),
+			NewInstr(c.op, 0, 1, 3),
+			NewInstr(OpRET, 0, 0, 0),
+		}
+		addMainProto(chunk, 2, 0)
+		got, err := NewVM().Exec(chunk)
+		if err != nil || got != c.want {
+			t.Errorf("%s: expected %s, got %s, %v", c.name, c.want.String(), got.String(), err)
+		}
+	}
+
+	// What is not a number is still refused
+	if _, err := run(OpMUL, seven, NewBool(true)); err == nil {
+		t.Errorf("expected a number and a boolean to be refused")
+	}
+	if _, err := run(OpLT, sevenF, NewNull()); err == nil {
+		t.Errorf("expected a Float and null to be refused")
 	}
 }

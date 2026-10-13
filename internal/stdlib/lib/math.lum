@@ -1,7 +1,7 @@
 // Numbers.
 //
-// Int and Float do not mix in arithmetic: convert with toFloat, or with
-// one of floor, ceil, round and trunc, which say how the fraction is lost.
+// An Int is taken for a Float where one is expected. A Float is never taken
+// for an Int: floor, ceil, round and trunc say how the fraction is lost.
 
 // --- Between Int and Float ---
 

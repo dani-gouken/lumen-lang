@@ -18,6 +18,26 @@ type Node interface {
 type BaseNode struct {
 	Pos token.Position
 	Tok token.Token // Original token (for rich diagnostics)
+
+	// widened marks a whole number written where a Float is expected:
+	// let half: Float = 1; The checker sets it, and the desugarer makes
+	// the number a Float there. It is kept in the node, and not beside
+	// it, so that a copy of the node is still marked.
+	widened bool
+}
+
+// MarkWidened says that the value of this expression, an Int, is used as
+// a Float.
+func (n *BaseNode) MarkWidened(yes bool) { n.widened = yes }
+
+// IsWidened reports whether the value of this expression, an Int, is
+// used as a Float.
+func (n *BaseNode) IsWidened() bool { return n.widened }
+
+// Widenable is an expression that can be marked as an Int used as a Float.
+type Widenable interface {
+	MarkWidened(yes bool)
+	IsWidened() bool
 }
 
 func (n *BaseNode) Position() token.Position {

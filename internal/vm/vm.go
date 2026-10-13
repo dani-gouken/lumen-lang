@@ -407,6 +407,13 @@ func valuesEqual(a, b Value) bool {
 		if a == b {
 			return true
 		}
+		// A whole number and a Float: equal when they are the same number
+		if a.IsNumber() && b.IsInt() {
+			return floatOf(a) == float64(intOf(b))
+		}
+		if a.IsInt() && b.IsNumber() {
+			return float64(intOf(a)) == floatOf(b)
+		}
 		ha, hb := header(a), header(b)
 		if ha == nil || hb == nil || ha.Type != hb.Type {
 			return false

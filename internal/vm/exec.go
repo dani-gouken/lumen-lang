@@ -366,8 +366,27 @@ func bothInts(a, b Value) bool {
 	return uint64(a)&kindMask == kindInt && uint64(b)&kindMask == kindInt
 }
 
-func bothNumbers(a, b Value) bool {
-	return a.IsNumber() && b.IsNumber()
+// numbers reads two operands as Floats when both are numbers and at least
+// one is a Float: a whole number met by a Float is worked out as one.
+// Two Ints are not its business: the instructions deal with those first.
+func numbers(a, b Value) (x, y float64, ok bool) {
+	switch {
+	case a.IsNumber():
+		x = floatOf(a)
+	case a.IsInt():
+		x = float64(intOf(a))
+	default:
+		return 0, 0, false
+	}
+	switch {
+	case b.IsNumber():
+		y = floatOf(b)
+	case b.IsInt():
+		y = float64(intOf(b))
+	default:
+		return 0, 0, false
+	}
+	return x, y, true
 }
 
 // arithmeticError says why an arithmetic instruction cannot work on its
@@ -397,8 +416,7 @@ func (vm *VM) concatenate(a, b Value) (Value, error) {
 // compare applies an ordering instruction to operands that are not two
 // Ints: two Numbers or two Strings.
 func (vm *VM) compare(op OpCode, a, b Value) (bool, error) {
-	if bothNumbers(a, b) {
-		x, y := floatOf(a), floatOf(b)
+	if x, y, ok := numbers(a, b); ok {
 		switch op {
 		case OpLT:
 			return x < y, nil
@@ -629,8 +647,8 @@ func (vm *VM) execute(base int) (Value, error) {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
 				regs[instr.A] = NewInt(sum)
-			} else if bothNumbers(a, b) {
-				regs[instr.A] = NewNumber(floatOf(a) + floatOf(b))
+			} else if x, y, ok := numbers(a, b); ok {
+				regs[instr.A] = NewNumber(x + y)
 			} else {
 				str, err := vm.concatenate(a, b)
 				if err != nil {
@@ -648,8 +666,8 @@ func (vm *VM) execute(base int) (Value, error) {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
 				regs[instr.A] = NewInt(diff)
-			} else if bothNumbers(a, b) {
-				regs[instr.A] = NewNumber(floatOf(a) - floatOf(b))
+			} else if x, y, ok := numbers(a, b); ok {
+				regs[instr.A] = NewNumber(x - y)
 			} else {
 				return NewNull(), vm.arithmeticError("SUB", "-", a, b)
 			}
@@ -665,8 +683,8 @@ func (vm *VM) execute(base int) (Value, error) {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
 				regs[instr.A] = NewInt(product)
-			} else if bothNumbers(a, b) {
-				regs[instr.A] = NewNumber(floatOf(a) * floatOf(b))
+			} else if x, y, ok := numbers(a, b); ok {
+				regs[instr.A] = NewNumber(x * y)
 			} else {
 				return NewNull(), vm.arithmeticError("MUL", "*", a, b)
 			}
@@ -683,8 +701,8 @@ func (vm *VM) execute(base int) (Value, error) {
 					return NewNull(), err
 				}
 				regs[instr.A] = quotient
-			} else if bothNumbers(a, b) {
-				regs[instr.A] = NewNumber(floatOf(a) / floatOf(b))
+			} else if x, y, ok := numbers(a, b); ok {
+				regs[instr.A] = NewNumber(x / y)
 			} else {
 				return NewNull(), vm.arithmeticError("DIV", "/", a, b)
 			}
@@ -696,8 +714,8 @@ func (vm *VM) execute(base int) (Value, error) {
 					return NewNull(), vm.runtimeError("division by zero")
 				}
 				regs[instr.A] = NewInt(intOf(a) % intOf(b))
-			} else if bothNumbers(a, b) {
-				regs[instr.A] = NewNumber(math.Mod(floatOf(a), floatOf(b)))
+			} else if x, y, ok := numbers(a, b); ok {
+				regs[instr.A] = NewNumber(math.Mod(x, y))
 			} else {
 				return NewNull(), vm.arithmeticError("MOD", "%", a, b)
 			}
@@ -1099,9 +1117,11 @@ func (vm *VM) execute(base int) (Value, error) {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
 				regs[instr.A] = NewInt(sum)
+			} else if a.IsNumber() {
+				regs[instr.A] = NewNumber(floatOf(a) + float64(instr.C))
 			} else {
-				// Whatever ADD does of a value that is not an Int and one
-				// that is
+				// Whatever ADD does of a value that is not a number and
+				// one that is
 				result, err := vm.concatenate(a, NewInt(int64(instr.C)))
 				if err != nil {
 					return NewNull(), err
@@ -1111,6 +1131,10 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpSUBI:
 			a := regs[instr.B]
+			if a.IsNumber() {
+				regs[instr.A] = NewNumber(floatOf(a) - float64(instr.C))
+				break
+			}
 			if !a.IsInt() {
 				return NewNull(), vm.arithmeticError("SUB", "-", a, NewInt(int64(instr.C)))
 			}

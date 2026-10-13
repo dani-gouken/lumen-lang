@@ -436,7 +436,7 @@ func TestPatternTestErrors(t *testing.T) {
 		{"wrong number of values", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Rect(w) { return 1; } return 0; }", "E2029", "holds 2 values, the pattern has 1"},
 		{"value that is never the variant", "fn main() -> Int { let n = 3; if n is Shape.Empty { return 1; } return 0; }", "E2029", "a value of type int is never a Shape.Empty"},
 		{"tuple of the wrong size", "fn main() -> Int { let p = (1, 2); if p is (a, b, c) { return 1; } return 0; }", "E2029", "is never a"},
-		{"name of the wrong type", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Circle(r) && r == 1 { return 1; } return 0; }", "E2006", "operator == not defined"},
+		{"name of the wrong type", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Circle(r) && r == \"one\" { return 1; } return 0; }", "E2006", "operator == not defined"},
 		{"unknown enum", "fn main() -> Int { let s = Shape.Empty; if s is Shapes.Circle(r) { return 1; } return 0; }", "E1001", "undefined identifier 'Shapes'"},
 	}
 	for _, tt := range tests {

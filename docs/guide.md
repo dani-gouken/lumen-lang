@@ -82,7 +82,7 @@ count++;                    // count += 1; a statement, not an expression
 }
 ```
 
-There is no implicit conversion between `Int` and `Float`: `1 + 2.5` is a compile error.
+A whole number is taken for a `Float` wherever one is expected, and the two work together as `Float`s: `1 + 2.5` is `3.5`, `let half: Float = 1;` holds `1.0`, `math.sqrt(16)` is fine. Between two whole numbers nothing changes: `7 / 2` is `3`. The other way is never implicit: a `Float` becomes an `Int` through `math.floor`, `math.round` and their like, which say how the fraction is lost.
 
 An `Int` holds 48 bits, from -140737488355328 to 140737488355327. Arithmetic that leaves this range stops the program with `integer overflow`; it never wraps around.
 
@@ -703,7 +703,7 @@ fn main() -> Int {
     }
 
     println("sum", arrays.sum(numbers), "largest", arrays.largest(numbers) ?? 0);
-    println("root of the sum", math.sqrt(math.toFloat(arrays.sum(numbers))));
+    println("root of the sum", math.sqrt(arrays.sum(numbers)));
     return 0;
 }
 ```

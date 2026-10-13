@@ -275,6 +275,41 @@ func (d *Desugarer) desugarExprStmt(expr *ast.ExprStmt) *ast.ExprStmt {
 
 // desugarExpr desugars an expression
 func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
+	lowered := d.desugarExprAsWritten(expr)
+	if node, ok := expr.(ast.Widenable); ok && node.IsWidened() {
+		node.MarkWidened(false)
+		return d.asFloat(lowered)
+	}
+	return lowered
+}
+
+// asFloat makes a Float of a whole number written where one is expected:
+// let half: Float = 1; A literal becomes the literal of the Float. Anything
+// else is multiplied by 1.0, which the machine works out as a Float.
+func (d *Desugarer) asFloat(expr ast.Expr) ast.Expr {
+	floatOf := func(lit *ast.Literal) *ast.Literal {
+		tok := lit.Tok
+		tok.Type, tok.Literal = token.FLOAT, lit.Value+".0"
+		return &ast.Literal{BaseNode: ast.BaseNode{Pos: lit.Pos, Tok: tok}, Kind: "float", Value: lit.Value + ".0"}
+	}
+	switch e := expr.(type) {
+	case *ast.Literal:
+		if e.Kind == "int" {
+			return floatOf(e)
+		}
+	case *ast.UnaryExpr:
+		if lit, ok := e.Expr.(*ast.Literal); ok && e.Op == "-" && lit.Kind == "int" {
+			return &ast.UnaryExpr{BaseNode: e.BaseNode, Op: "-", Expr: floatOf(lit)}
+		}
+	}
+	pos := expr.Position()
+	one := &ast.Literal{BaseNode: ast.BaseNode{Pos: pos, Tok: token.Token{Type: token.FLOAT, Literal: "1.0", Pos: pos}}, Kind: "float", Value: "1.0"}
+	return &ast.BinaryExpr{BaseNode: ast.BaseNode{Pos: pos, Tok: expr.Token()}, Left: expr, Op: "*", Right: one}
+}
+
+// desugarExprAsWritten desugars an expression, before a whole number is
+// made the Float it is used as.
+func (d *Desugarer) desugarExprAsWritten(expr ast.Expr) ast.Expr {
 	switch expr := expr.(type) {
 	case *ast.BinaryExpr:
 		if expr.Op == "&&" && hasPatternTest(expr) {

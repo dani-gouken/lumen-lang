@@ -596,13 +596,13 @@ func TestExternFunctions(t *testing.T) {
 		lib["main.lum"] = "import std.math;\nimport std.strings;\nfn main() -> Int {\n" + body + "\nreturn 0;\n}\n"
 		expectModulesError(t, lib, code, "main.lum", msg)
 	}
-	check(`let r = math.sqrt(4);`, "E2010", "cannot use type int as argument of type float")
+	check(`let r = math.sqrt("4");`, "E2010", "cannot use type string as argument of type float")
 	check(`let r = math.sqrt(4.0, 2.0);`, "E2009", "expected 1 arguments, got 2")
 	check(`let r: Int = math.sqrt(4.0);`, "E2001", "float")
 	check(`let n: Int = strings.indexOf("abc", "b");`, "E2001", "int?")
 	check(`let n = strings.indexOf("abc", "b") + 1;`, "E2017", "the value may be null")
 	check(`let s: String = strings.split("a b", " ");`, "E2001", "[string]")
-	check(`let r = math.floor(2);`, "E2010", "cannot use type int as argument of type float")
+	check(`let r = math.floor("2");`, "E2010", "cannot use type string as argument of type float")
 	check(`let r = math.nothing(2);`, "E8002", "module 'std.math' has no 'nothing'")
 
 	// An extern function is a value like any function

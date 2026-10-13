@@ -8,7 +8,7 @@ Write the pattern as Shape.Rect(a, b)
 [ERROR] E2029: a value of type float is never equal to a string
 [ERROR] E2029: a value of type (int, int) is never a tuple of 3 values
 is_patterns_errors.lum:30:16
-[ERROR] E2006: operator > not defined for types float and int
+[ERROR] E2006: operator > not defined for types float and string
 [WARNING] E2023: this test always holds: every value of type Wrap fits the pattern
 is_patterns_errors.lum:40:16
 [WARNING] E2023: this test always holds: every value of type (int, int) fits the pattern

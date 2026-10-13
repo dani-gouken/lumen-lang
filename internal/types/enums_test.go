@@ -176,7 +176,7 @@ func TestEnumsRejected(t *testing.T) {
 		// Making values
 		{"unknown variant", `fn main() -> Int { let s = Shape.Square(1.0); return 0; }`, "enum Shape has no variant 'Square'"},
 		{"misspelled variant", `fn main() -> Int { let s = Shape.Circl(1.0); return 0; }`, "enum Shape has no variant 'Circl'"},
-		{"wrong type of value", `fn main() -> Int { let s = Shape.Circle(1); return 0; }`, "cannot use type int as value 1 of Shape.Circle, which is of type float"},
+		{"wrong type of value", `fn main() -> Int { let s = Shape.Circle("wide"); return 0; }`, "cannot use type string as value 1 of Shape.Circle, which is of type float"},
 		{"wrong type of second value", `fn main() -> Int { let s = Shape.Rect(1.0, "x"); return 0; }`, "cannot use type string as value 2 of Shape.Rect"},
 		{"too many values", `fn main() -> Int { let s = Shape.Circle(1.0, 2.0); return 0; }`, "Shape.Circle holds 1 value, got 2"},
 		{"too few values", `fn main() -> Int { let s = Shape.Rect(1.0); return 0; }`, "Shape.Rect holds 2 values, got 1"},
@@ -497,7 +497,7 @@ func TestConstantsRejected(t *testing.T) {
 		{"value of the wrong type", `const N: Int = "three";`, ErrTypeMismatch, "cannot use a value of type string for constant 'N' of type int"},
 		{"used as the wrong type", `const N = 3; fn main() -> Int { let s: String = N; return 0; }`, ErrTypeMismatch, "cannot assign type int to string"},
 		{"operators on the wrong types", `const N = 3 + "x";`, "", "int"},
-		{"Int and Float mixed", `const A = 2; const B = A * 1.5;`, "", "int"},
+		{"a number and a text mixed", `const A = 2; const B = A * "x";`, "", "int"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

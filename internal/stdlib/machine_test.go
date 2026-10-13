@@ -1393,3 +1393,97 @@ func TestIfAsAValue(t *testing.T) {
 		"11 9",
 		"b four")
 }
+
+// A whole number where a Float is expected is one, and whole numbers and
+// Floats are worked out together as Floats. What is kept is a Float from
+// then on: halving it gives a half.
+func TestWholeNumbersAreTakenForFloats(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+		import std.math;
+		import std.reflect;
+
+		const WIDTH = 800;
+		const HALF: Float = 1 / 2.0;
+
+		struct Vec { x: Float; y: Float = 2; }
+		impl Vec {
+			fn scaled(by: Float) -> Vec { return Vec { x: self.x * by, y: self.y * by }; }
+			fn length() -> Float { return math.sqrt(self.x * self.x + self.y * self.y); }
+		}
+		enum Shape { Circle(Float), Rect(Float, Float) }
+		struct Box<T> { value: T; }
+
+		fn half(x: Float) -> Float { return x / 2; }
+		fn ratio(a: Int, b: Int) -> Float { return a; }
+		fn maybe(n: Int) -> Float? { if n < 0 { return null; } return n; }
+		fn area(shape: Shape) -> Float {
+			return match shape {
+				case Shape.Circle(r): 3 * r * r;
+				case Shape.Rect(w, h): w * h;
+			};
+		}
+		fn id<T>(value: T) -> T { return value; }
+		fn kind(value: Any) -> String { return reflect.typeName(value); }
+
+		fn main() {
+			// Kept: a variable, an argument, a field, what is returned
+			let f: Float = 7;
+			println(f / 2, half(7), half(WIDTH), ratio(7, 2) / 2, kind(f), kind(ratio(1, 2)));
+			let v = Vec { x: 3 };
+			println(v.x / 2, v.y / 2, v.scaled(2).x, Vec { x: 3, y: 4 }.length(), kind(v.x), kind(v.y));
+			let n = 5;
+			f = n;
+			println(f / 2, kind(f));
+			println(maybe(3), maybe(-1), (maybe(9) ?? 0) / 2, maybe(-9) ?? 1, kind(maybe(-9) ?? 1));
+			println(area(Shape.Circle(1)), area(Shape.Rect(3, n)), id<Float>(4) / 8, Box<Float> { value: n }.value / 2);
+
+			// Worked out together
+			println(1 + 2.5, 2.5 - 1, 2 * 2.5, 7 / 2.0, 7.0 / 2, 7 / 2, WIDTH - v.x, WIDTH / 3, HALF);
+			println(1 < 1.5, 2.5 <= 2, 3 > 2.5, 2 >= 2.0, 2 == 2.0, 2.0 == 2, 3 != 3.5, n == 5.0, n * 1.0 == n);
+			f += 1;
+			f *= 2;
+			f -= n;
+			f /= 2;
+			println(f, kind(f));
+			let total = 0.0;
+			for i in 0..4 { total += i; }
+			println(total, total / 4, kind(total));
+
+			// In arrays, branches and closures
+			let xs: [Float] = [1, 2, n];
+			push(xs, 4);
+			println(xs, xs[2] / 2, arrays.map(xs, kind), [1, 2.5, n], kind([1, 2.5][0]));
+			let chosen = if n > 3 { 1 } else { 2.5 };
+			let other = if n > 9 { 1 } else { 2.5 };
+			println(chosen / 2, other, kind(chosen));
+			let scale: fn(Int) -> Float = fn(k: Int) -> Float { return k; };
+			println(scale(3) / 2, arrays.map([1, 2, 3], fn(k: Int) -> Float { return k; }));
+
+			// The functions of the library that take a Float
+			println(math.sqrt(16), math.fmax(n, 2.5), math.floor(7 / 2.0), math.round(n / 2.0), math.powf(2, 10));
+
+			// A whole number that stays one is still one
+			let count = 7;
+			println(count / 2, count % 2, kind(count), kind(count / 2), 2 == 2);
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out,
+		"3.5 3.5 400 3.5 Float Float",
+		"1.5 1 6 5 Float Float",
+		"2.5 Float",
+		"3 null 4.5 1 Float",
+		"3 15 0.5 2.5",
+		"3.5 1.5 5 3.5 3.5 3 797 266 0.5",
+		"true false true true true true true true true",
+		"3.5 Float",
+		"6 1.5 Float",
+		`[1, 2, 5, 4] 2.5 ["Float", "Float", "Float", "Float"] [1, 2.5, 5] Float`,
+		"0.5 2.5 Float",
+		"1.5 [1, 2, 3]",
+		"4 5 3 3 1024",
+		"3 1 Int Int true")
+}

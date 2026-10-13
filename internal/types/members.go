@@ -413,6 +413,32 @@ func (c *Checker) checkArgs(e *ast.CallExpr, ft *FunctionType) Type {
 // `let names: [String] = [];` have the declared type. A call of a generic
 // function takes from it the type arguments it could not infer otherwise.
 func (c *Checker) checkExprAs(expr ast.Expr, expected Type) Type {
+	return c.widen(expr, expected, c.checkExprExpecting(expr, expected))
+}
+
+// widen lets a whole number stand where a Float is expected: an argument,
+// a variable or a field declared Float, a value returned as one. The
+// expression is marked, for the desugarer to make its value a Float; from
+// here on it is one.
+func (c *Checker) widen(expr ast.Expr, expected, typ Type) Type {
+	if expr == nil || typ == nil || expected == nil || !typ.Equals(Int) {
+		return typ
+	}
+	wanted := withoutNull(expected)
+	if wanted == nil || !wanted.Equals(Float) {
+		return typ
+	}
+	if node, ok := expr.(ast.Widenable); ok {
+		node.MarkWidened(true)
+		c.info.Types[expr] = Float
+		return Float
+	}
+	return typ
+}
+
+// checkExprExpecting is checkExprAs before a whole number is taken for a
+// Float.
+func (c *Checker) checkExprExpecting(expr ast.Expr, expected Type) Type {
 	if fn, ok := expr.(*ast.FnExpr); ok && fn.Short {
 		// item -> item.name takes its types from what is expected here
 		typ := c.checkShortFn(fn, expected)
@@ -493,6 +519,7 @@ func (c *Checker) checkPush(e *ast.CallExpr) {
 		c.errorf(e.Args[0].Token(), ErrArgType, "push expects an array, got %s", arrType)
 		return
 	}
+	valType = c.widen(e.Args[1], arr.ElementType, valType)
 	if !c.assignable(arr.ElementType, valType) {
 		c.errorf(e.Args[1].Token(), ErrArgType, "cannot push type %s onto %s", valType, arrType)
 	}
@@ -839,7 +866,15 @@ func (c *Checker) comparable(left, right Type) bool {
 	if left.Equals(Null) || right.Equals(Null) {
 		return true
 	}
+	if isNumber(left) && isNumber(right) {
+		// 1 == 1.0: a whole number is compared as the Float it would be
+		return true
+	}
 	return c.assignable(left, right) || c.assignable(right, left)
+}
+
+func isNumber(t Type) bool {
+	return t != nil && (t.Equals(Int) || t.Equals(Float))
 }
 
 func isUnknown(t Type) bool {

@@ -1,4 +1,4 @@
-[ERROR] E2010: cannot use type int as argument of type float
+[ERROR] E2010: cannot use type string as argument of type float
 stdlib_misuse.lum:8:26
 [ERROR] E2001: cannot assign type int? to int
 stdlib_misuse.lum:9:26

@@ -1076,6 +1076,7 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 		if value == nil || isUnknown(value) {
 			return right
 		}
+		right = c.widen(e.Right, value, right)
 		if !c.assignable(value, right) {
 			c.errorf(e.Right.Token(), ErrTypeMismatch, "fallback of type %s does not match %s", right, value)
 		}
@@ -1115,6 +1116,16 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 	}
 
 	if left.Equals(Float) && right.Equals(Float) {
+		switch e.Op {
+		case "+", "-", "*", "/":
+			return Float
+		case "<", "<=", ">", ">=":
+			return Bool
+		}
+	}
+
+	// A whole number with a Float: worked out as Floats
+	if isNumber(left) && isNumber(right) && !left.Equals(right) {
 		switch e.Op {
 		case "+", "-", "*", "/":
 			return Float
@@ -1573,8 +1584,19 @@ func (c *Checker) checkArrayLiteralExpr(e *ast.ArrayLiteralExpr) Type {
 	}
 
 	// Check that all other elements have compatible types
+	types := []Type{firstType}
 	for i := 1; i < len(e.Elements); i++ {
-		elemType := c.checkExpr(e.Elements[i])
+		types = append(types, c.checkExpr(e.Elements[i]))
+	}
+	if mixesNumbers(types) {
+		// [1, 2.5]: whole numbers among Floats are Floats
+		for i, elem := range e.Elements {
+			c.widen(elem, Float, types[i])
+		}
+		return NewArray(Float)
+	}
+	for i := 1; i < len(e.Elements); i++ {
+		elemType := types[i]
 		if elemType != nil && !c.assignable(firstType, elemType) {
 			c.errorfWithSuggestion(
 				e.Elements[i].Token(),
@@ -1588,6 +1610,23 @@ func (c *Checker) checkArrayLiteralExpr(e *ast.ArrayLiteralExpr) Type {
 	}
 
 	return NewArray(firstType)
+}
+
+// mixesNumbers reports whether some types are all numbers, and not all
+// of one kind: whole numbers and Floats together.
+func mixesNumbers(types []Type) bool {
+	ints, floats := false, false
+	for _, t := range types {
+		switch {
+		case t != nil && t.Equals(Int):
+			ints = true
+		case t != nil && t.Equals(Float):
+			floats = true
+		default:
+			return false
+		}
+	}
+	return ints && floats
 }
 
 // Helpers

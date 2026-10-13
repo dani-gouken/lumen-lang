@@ -96,7 +96,7 @@ Full description: [enums.md](enums.md).
 - Binary precedence (high → low): `* / %`, `+ -`, `<< >>`, `&`, `^`, `|`, `|>`, `< <= > >=`, `== !=`, `??`, `&&`, `||`.
   - On bits: `& | ^ << >>` and unary `~`, on `Int` only, with `&= |= ^= <<= >>=`. They bind tighter than comparisons: `flags & MASK == 0` tests the mask. `>>` keeps the sign. A shift by a negative count, or one that pushes bits past the 48 an `Int` has, is a runtime error. In the pattern of a `case`, `|` separates patterns (`case 1 | 2:`); in brackets it is the operator.
   - Whole numbers are also written by their bits: `0xFF`, `0b1010`.
-  - Arithmetic: `Int`/`Float`; result matches operands (no implicit int↔float coercion).
+  - Arithmetic: `Int`/`Float`. Two `Int` give an `Int` (`7 / 2` is `3`), two `Float` a `Float`. An `Int` with a `Float` is worked out as two `Float`: `7 / 2.0` is `3.5`.
   - Comparison: numbers or strings → `Bool`.
   - Equality: any type → `Bool`.
   - Null-coalescing `a ?? b`: `a: T?`, `b: T|T?`, result `T`.
@@ -155,7 +155,7 @@ Full description: [modules.md](modules.md).
 ## 7. Type Rules (grab bag)
 - `if`/`while` conditions must be `Bool`.
 - `for in` requires array or string.
-- No implicit `Int`↔`Float` coercion.
+- An `Int` is taken for a `Float` where one is expected: an argument, a variable or field declared `Float`, a value returned as one, an item among `Float`s (`[1, 2.5]`), one branch of an `if` whose other is a `Float`. It is converted there, so what is kept is a `Float`. With an operator, an `Int` and a `Float` give a `Float`, and compare as numbers (`2 == 2.0`). Never the other way: a `Float` becomes an `Int` only through `math.floor`, `ceil`, `round` or `trunc`. A type parameter is not guessed: `largest([1, 2.5])` works because the array is one of `Float`, `max(1, 2.5)` does not.
 - **Optionals.** `T?` is "a `T` or `null`". `null` only fits `T?` or `Any`. A `T` can be used where a `T?` is expected, not the other way round. An optional cannot be operated on, indexed, or have fields read or methods called directly (`E2017`); `value ?? fallback` yields a `T`. A test against `null` narrows a local variable, a parameter or a field path (`node.next`) to `T` where the test guarantees it: in the body of `if x != null`, after `if x == null { return; }` (or `break`/`continue`), in a `while x != null` body, and on the right of `x != null && ...` / `x == null || ...`. Narrowing ends at an assignment to the variable, and does not apply inside lambdas or to a variable that a lambda assigns (it could be set to `null` whenever the lambda runs). What is known about a field also ends at the next assignment to any field and at the next call of something that may assign one, since those could change it through another reference. Calls that cannot assign a field (builtins, functions that only read) do not affect it; a call of a function value or of a function stored in a field always does.
 - **Type tests.** `value is Type` is a `Bool` computed when the program runs; where it is true, the tested variable or field has that type: `if shape is Square { shape.side }`. A test that can never be true (`1 is String`) is a compile error (`E2021`). `match` accepts types as patterns (`case Int:`, `case [String]:`, `case Point:`, `case fn(Int) -> Int:`), with the same narrowing inside each case.
 - **Pattern tests.** `value is P`, where `P` is the pattern of a variant or of a tuple as a `case` takes it, is a `Bool`: whether the value fits. The value is evaluated once. The names of `P` are variables of what runs only when the test held: the operands to its right in a chain of `&&`, and, when the test is the condition of an `if` or a `while` or an operand of the `&&` chain that is, the block that statement guards. They are not in scope in an `else`. A test in any other place (under `!`, an operand of `||`, a value by itself or the last operand of a chain that is a value) may not name anything (`E1003`). `P` is checked against the type of the value as a case is (`E2029`); a test that always holds is a warning (`E2023`). Where the test held, a tested variable or field is not null, and is of the enum if it was an `Any`, a trait or a union. After `is`, `Name.Name` not followed by parentheses is a type when `Name` is a module, and a tuple of names that are all types is a tuple type.
@@ -320,7 +320,7 @@ known defects are inventoried in [missing.md](missing.md).
 | Feature | Status | Notes |
 |---------|--------|-------|
 | `Int`, `Float`, `Bool`, `String`, `null` | Supported | Ints are 48-bit signed; overflow is a runtime error |
-| Arithmetic, comparison, `!`, unary `-` | Supported | No implicit Int/Float conversion; strings compare by content |
+| Arithmetic, comparison, `!`, unary `-` | Supported | An Int with a Float is a Float; strings compare by content |
 | String concatenation, indexing | Supported | Length is `strings.len(text)`; for an array, `arrays.len(items)` |
 | String interpolation: `"total: ${n}"` | Supported | Any expression; `\$` for a literal dollar before a brace |
 | `let`, `const`, assignment, `+=` and `++`, block scopes | Supported | `++`/`--` are statements |

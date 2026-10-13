@@ -80,7 +80,7 @@ let port = strings.parseInt(text) ?? 8080;
 
 ## `std.math`
 
-`Int` and `Float` do not mix in arithmetic (`1 + 2.5` is a type error). Convert explicitly; going to an `Int` there are four ways to lose the fraction.
+An `Int` is taken for a `Float` where one is expected, and the two work together as `Float`s (`1 + 2.5` is `3.5`), so `toFloat` is rarely needed: it is there for when the conversion should be seen. Going to an `Int` is never implicit, and there are four ways to lose the fraction.
 
 | Function | Result |
 |----------|--------|
@@ -122,7 +122,7 @@ The four fail if the number does not fit in an `Int`.
 // The length of the diagonal of a 3 by 4 rectangle
 let a = 3;
 let b = 4;
-let diagonal = math.sqrt(math.toFloat(a * a + b * b));    // 5.0
+let diagonal = math.sqrt(a * a + b * b);    // 5.0
 ```
 
 ---

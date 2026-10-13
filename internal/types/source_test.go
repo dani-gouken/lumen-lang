@@ -560,7 +560,7 @@ func TestCheckRejectsInvalidPrograms(t *testing.T) {
 		{"inferred type argument conflicts with a later argument", `fn same<T>(a: T, b: T) -> T { return a; } fn main() -> Int { return same(1, "two"); }`, "cannot use type string as argument of type int"},
 		{"inferred result is checked", `fn first<T>(xs: [T]) -> T { return xs[0]; } fn main() -> Int { return first(["a"]); }`, "cannot return type string"},
 		{"compound assignment of another type", `fn main() -> Int { let i = 1; i += "a"; return i; }`, "operator + not defined for types int and string"},
-		{"compound assignment mixing Int and Float", `fn main() -> Int { let i = 1; i *= 2.5; return i; }`, "operator * not defined for types int and float"},
+		{"compound assignment mixing Int and Float", `fn main() -> Int { let i = 1; i *= 2.5; return i; }`, "cannot assign the float result of *= to int"},
 		{"compound assignment not defined for the type", `fn main() -> Int { let s = "a"; s -= "b"; return 0; }`, "operator - not defined for types string and string"},
 		{"compound assignment on a Bool", `fn main() -> Int { let b = true; b += 1; return 0; }`, "operator + not defined for types bool and int"},
 		{"increment of a String", `fn main() -> Int { let s = "a"; s++; return 0; }`, "operator + not defined for types string and int"},
@@ -591,7 +591,11 @@ func TestCheckRejectsInvalidPrograms(t *testing.T) {
 		{"assignment to an outer loop's index", `fn main() -> Int { for i, row in [[1]] { for j, cell in row { i = j; } } return 0; }`, "cannot assign to loop index 'i'"},
 		{"push wrong element", `fn main() -> Int { let xs: [Int] = []; push(xs, true); return 0; }`, "cannot push type bool onto [int]"},
 		{"push onto a non-array", `fn main() -> Int { push(1, 2); return 0; }`, "push expects an array, got int"},
-		{"mixed arithmetic", `fn main() -> Int { return 1 + 2.5; }`, "operator + not defined for types int and float"},
+		{"mixed arithmetic is a Float", `fn main() -> Int { return 1 + 2.5; }`, "cannot return type float from function returning int"},
+		{"a number and a text", `fn main() -> Int { return 1 + "2"; }`, "operator + not defined for types int and string"},
+		{"a Float is not taken for a whole number", `fn main() -> Int { let n: Int = 2.0; return n; }`, "cannot assign type float to int"},
+		{"nor where an index is expected", `fn main() -> Int { let xs = [1]; return xs[0.0]; }`, "float"},
+		{"a remainder of a Float", `fn main() -> Float { return 7.5 % 2; }`, "operator % not defined"},
 	}
 
 	for _, tt := range tests {

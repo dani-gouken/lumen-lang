@@ -289,6 +289,11 @@ func (c *Checker) checkCondExprAs(e *ast.CondExpr, expected Type) Type {
 	c.withNarrowing(whenTrue, func() { then = branch(e.Then) })
 	c.withNarrowing(c.factsFrom(e.Cond, false), func() { otherwise = branch(e.Else) })
 
+	if mixesNumbers([]Type{then, otherwise}) {
+		// A whole number in one branch, a Float in the other: a Float
+		then, otherwise = c.widen(e.Then, Float, then), c.widen(e.Else, Float, otherwise)
+	}
+
 	says := func(t Type) bool { return t != nil && !isUnknown(t) && !t.Equals(Null) }
 	isNull := func(t Type) bool { return t != nil && t.Equals(Null) }
 	switch {
