@@ -421,6 +421,26 @@ func (c *Checker) checkExprAs(expr ast.Expr, expected Type) Type {
 		}
 		return typ
 	}
+	if cond, ok := expr.(*ast.CondExpr); ok {
+		// Each branch is checked as the value expected here
+		typ := c.checkCondExprAs(cond, expected)
+		if typ != nil {
+			c.info.Types[expr] = typ
+		}
+		return typ
+	}
+	if block, ok := expr.(*ast.BlockExpr); ok && block.Value != nil {
+		state := c.flowSnapshot()
+		defer c.flowRestore(state)
+		for _, stmt := range block.Stmts {
+			c.checkStmt(stmt)
+		}
+		typ := c.checkExprAs(block.Value, expected)
+		if typ != nil {
+			c.info.Types[expr] = typ
+		}
+		return typ
+	}
 	if match, ok := expr.(*ast.MatchExpr); ok {
 		// Each case is checked as the value expected here
 		typ := c.checkMatch(match.Match, true, expected)

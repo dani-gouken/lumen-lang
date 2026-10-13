@@ -149,6 +149,23 @@ match n {
 }
 ```
 
+An `if` also stands where a value is expected, and gives the value of the branch taken. It then always has an `else`:
+
+```rust
+let size = if n > 100 { "large" } else if n > 10 { "medium" } else { "small" };
+total += if item.taxed { item.price * 1.2 } else { item.price };
+
+let label = if count > 1 {
+    let rounded = count / 10 * 10;      // statements may come first
+    "about ${rounded}"                  // the last expression, without ';', is the value
+} else {
+    return null;                        // a branch that leaves gives nothing
+};
+```
+
+Both branches give one type (`null` in one makes it optional). What the condition establishes holds in the branch, as in the statement: `if user != null { user.name } else { "nobody" }`, `if shape is Shape.Circle(r) { r } else { 0 }`.
+
+
 Where a value is expected, a `match` gives the value of the case that runs:
 
 ```rust

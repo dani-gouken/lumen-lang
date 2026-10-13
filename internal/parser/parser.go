@@ -1093,6 +1093,63 @@ func (p *Parser) parseIfStmt() *ast.IfStmt {
 	return stmt
 }
 
+// parseIfExpr parses an if where a value is expected:
+//
+//	let size = if n > 100 { "large" } else if n > 10 { "medium" } else { "small" };
+//
+// It always has an else: there is a value either way. A branch is an
+// expression in braces, after statements if it needs some; one that ends
+// in return, break, continue or panic gives nothing, and need not.
+func (p *Parser) parseIfExpr() ast.Expr {
+	tok := p.expect(token.IF, "'if'")
+	expr := &ast.CondExpr{BaseNode: base(tok)}
+	expr.Cond = p.parseHeaderExpr()
+	expr.Then = p.parseValueBlock()
+	if !p.at(token.ELSE) {
+		p.failWith(ErrUnexpectedToken, "Say what the value is otherwise: if condition { one } else { other }",
+			"an 'if' that gives a value needs an 'else', found %s", describe(p.cur()))
+	}
+	p.next()
+	if p.at(token.IF) {
+		expr.Else = p.parseIfExpr()
+	} else {
+		expr.Else = p.parseValueBlock()
+	}
+	return expr
+}
+
+// parseValueBlock parses the branch of an if that gives a value: braces
+// around an expression, which statements may come before.
+func (p *Parser) parseValueBlock() ast.Expr {
+	open := p.expect(token.LBRACE, "'{'")
+	saved, savedOr := p.noStructLit, p.noBitOr
+	p.noStructLit, p.noBitOr = false, false
+	defer func() { p.noStructLit, p.noBitOr = saved, savedOr }()
+
+	block := &ast.BlockExpr{BaseNode: base(open)}
+	for !p.at(token.RBRACE) && !p.at(token.EOF) {
+		switch p.cur().Type {
+		case token.LET, token.RETURN, token.BREAK, token.CONTINUE, token.WHILE, token.FOR, token.DEFER:
+			block.Stmts = append(block.Stmts, p.parseStmt())
+			continue
+		}
+		at := p.cur()
+		expr, assigned := p.parseExprOrAssignment()
+		if !assigned && p.at(token.RBRACE) {
+			// The last thing in the braces, with no ';': the value
+			block.Value = expr
+			break
+		}
+		p.expectSemicolon()
+		block.Stmts = append(block.Stmts, &ast.ExprStmt{BaseNode: base(at), Expr: expr})
+	}
+	p.expect(token.RBRACE, "'}'")
+	if block.Value != nil && len(block.Stmts) == 0 {
+		return block.Value
+	}
+	return block
+}
+
 // parseMatchStmt parses a match statement. A `default:` case is stored with a
 // nil pattern.
 func (p *Parser) parseMatchStmt() *ast.MatchStmt {
@@ -1571,6 +1628,10 @@ func (p *Parser) parsePrimary() ast.Expr {
 	case token.MATCH:
 		// A match where a value is expected gives the value of its case
 		return &ast.MatchExpr{BaseNode: base(tok), Match: p.parseMatch(true)}
+
+	case token.IF:
+		// An if where a value is expected gives the value of its branch
+		return p.parseIfExpr()
 
 	case token.IDENT:
 		if isShortFnArrow(p.peekAt(1)) {

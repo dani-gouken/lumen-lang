@@ -332,6 +332,29 @@ func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
 		return &ast.VariantFieldExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Enum: expr.Enum, Variant: expr.Variant, Index: expr.Index}
 	case *ast.MatchExpr:
 		return d.desugarMatchExpr(expr)
+	case *ast.CondExpr:
+		// if ... { a } else { b } where a value is expected
+		if hasPatternTest(expr.Cond) {
+			// if shape is Shape.Circle(r) { ... }: the names of the test
+			// are variables of the branch it guards
+			cond := d.lowerCondition(expr.Cond)
+			then := &ast.BlockExpr{BaseNode: expr.BaseNode, Stmts: cond.names, Value: d.desugarExpr(expr.Then)}
+			chosen := &ast.CondExpr{BaseNode: expr.BaseNode, Cond: cond.test, Then: then, Else: d.desugarExpr(expr.Else)}
+			if len(cond.before) == 0 {
+				return chosen
+			}
+			return &ast.BlockExpr{BaseNode: expr.BaseNode, Stmts: cond.before, Value: chosen}
+		}
+		return &ast.CondExpr{BaseNode: expr.BaseNode, Cond: d.desugarExpr(expr.Cond), Then: d.desugarExpr(expr.Then), Else: d.desugarExpr(expr.Else)}
+	case *ast.BlockExpr:
+		block := &ast.BlockExpr{BaseNode: expr.BaseNode}
+		for _, stmt := range expr.Stmts {
+			block.Stmts = append(block.Stmts, d.desugarStmt(stmt))
+		}
+		if expr.Value != nil {
+			block.Value = d.desugarExpr(expr.Value)
+		}
+		return block
 	case *ast.Literal:
 		return expr // No desugaring needed
 	default:

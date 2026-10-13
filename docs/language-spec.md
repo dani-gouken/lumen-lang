@@ -104,6 +104,7 @@ Full description: [enums.md](enums.md).
 - Length: `arrays.len(items)` and `strings.len(text)`, from the standard library, give the number of elements of an array and of characters of a string. Arrays and strings have no members: `items.length` is an error (`E2033`) that names the function to use. A dot only reaches a field or a method of a struct or an enum.
 - Safe access `a?.b`, `a?.m(args)`: `a: T?`; null when `a` is null, otherwise the rest of the postfix chain applied to `a` as a `T` (`a?.b.c` reads `c` only when `a` is not null). The result is optional. An error (`E2035`) when `a` cannot be null.
 - Try `a?` (postfix): for `a: T?`, the value as a `T`, or `return null;` from the enclosing function, which must return an optional or nothing. For `a: Result<T, E>`, the value as a `T`, or a return of the failure, from a function that returns `Result<U, E>`. Anything else is `E2034`. In a function expression the enclosing function is that expression.
+- If as a value: `if cond { a } else { b }` where an expression is expected, with `else if` chained. An `else` is required. A branch is braces around an expression, after statements if any; one that always leaves (`return`, `break`, `continue`, `panic`) gives nothing. The branches are of one type, or `null` (the type is then optional), or two types the place expects both of. Narrowing and the names of `value is Pattern` in the condition hold in the first branch. Only the branch taken is evaluated. At the start of a statement `if` is the statement.
 - Match as a value: `match x { case p: expr; ... }` where an expression is expected. The cases are expressions of one type (`null` among them makes it optional; the type expected at that place may take them all), or blocks that always leave. Without a `default` it must be complete over an enum (`E2028`); a case that gives nothing is `E2040`.
 - Tuples: `(a, b)` of type `(A, B)`, two to six values. `pair.0`, `pair.1` read by position; `let (a, b) = pair;` and `for (a, b) in pairs` name the values, `_` skipping one. Compared by content, immutable, matched with `case (a, b):` and checked for completeness like an enum (which is what a tuple is: see [enums.md](enums.md#tuples)).
 - Calls: `callee(args...)` with arity/type check. Method calls: `value.method(args...)`.
@@ -280,6 +281,8 @@ AddExpr      = MulExpr { ("+" | "-") MulExpr } ;
 MulExpr      = UnaryExpr { ("*" | "/" | "%") UnaryExpr } ;
 UnaryExpr    = ( "-" | "!" | "~" ) UnaryExpr | CastExpr ;
 CastExpr     = PostfixExpr { "as" OptType | "is" ( OptType | VariantPat | TuplePat ) } ;
+IfExpr       = "if" Expr ValueBlock "else" ( IfExpr | ValueBlock ) ;   (* a Primary *)
+ValueBlock   = "{" { Stmt } [ Expr ] "}" ;
 PostfixExpr  = Primary { Call | Index | Member | SafeAccess | "?" } ;
 SafeAccess   = "?." ( Ident [TypeArgs] | IntLit ) { Call | Index | Member } ;
 Call         = "(" [ ArgList ] ")" ;

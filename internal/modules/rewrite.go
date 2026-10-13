@@ -560,6 +560,19 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 		r.exprs(e.Elements)
 	case *ast.MatchExpr:
 		r.stmt(e.Match)
+	case *ast.CondExpr:
+		e.Cond = r.expr(e.Cond)
+		e.Then = r.expr(e.Then)
+		e.Else = r.expr(e.Else)
+	case *ast.BlockExpr:
+		r.scoped(func() {
+			for _, stmt := range e.Stmts {
+				r.stmt(stmt)
+			}
+			if e.Value != nil {
+				e.Value = r.expr(e.Value)
+			}
+		})
 	case *ast.RangeExpr:
 		e.Low = r.expr(e.Low)
 		e.High = r.expr(e.High)

@@ -1304,3 +1304,92 @@ func TestBitwiseOperators(t *testing.T) {
 		}
 	}
 }
+
+// An if where a value is expected, in programs: chosen once, with what a
+// test established, with generics, enums, closures and branches that leave.
+func TestIfAsAValue(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+		import std.strings;
+		import std.result.{Result};
+
+		enum Shape { Circle(Int), Square(Int) }
+		struct User { name: String; manager: User?; }
+		struct Box<T> { value: T; }
+
+		fn wrap<T>(value: T) -> Box<T> { return Box<T> { value: value }; }
+		fn pick<T>(first: Bool, a: T, b: T) -> T { return if first { a } else { b }; }
+		fn size(n: Int) -> String { return if n > 100 { "large" } else if n > 10 { "medium" } else { "small" }; }
+		fn sign(n: Int) -> Int { return if n > 0 { 1 } else if n < 0 { -1 } else { 0 }; }
+		fn bossOf(user: User) -> String { return if user.manager != null { user.manager.name } else { "nobody" }; }
+		fn first(xs: [Int]) -> Int? { return if arrays.isEmpty(xs) { null } else { xs[0] }; }
+		fn area(shape: Shape) -> Int { return if shape is Shape.Circle(r) { 3 * r * r } else if shape is Shape.Square(side) { side * side } else { 0 }; }
+
+		// A branch that leaves gives nothing, and need not
+		fn half(n: Int) -> Result<Int, String> {
+			let whole = if n % 2 == 0 { n / 2 } else { return Result.Err("${n} is odd"); };
+			return Result.Ok(whole);
+		}
+		fn sumUntilNegative(xs: [Int]) -> Int {
+			let sum = 0;
+			for x in xs { sum += if x >= 0 { x } else { break; }; }
+			return sum;
+		}
+
+		// Only the branch chosen is worked out
+		fn loud(calls: [String], name: String, value: Int) -> Int { push(calls, name); return value; }
+
+		fn main() {
+			println(size(5), size(50), size(500), sign(9), sign(-9), sign(0));
+			let ada = User { name: "ada", manager: null };
+			println(bossOf(ada), bossOf(User { name: "bob", manager: ada }));
+			println(first([]), first([7, 8]), area(Shape.Circle(2)), area(Shape.Square(5)));
+			println(half(10), half(7), sumUntilNegative([1, 2, 3, -1, 100]));
+
+			let calls: [String] = [];
+			let chosen = if arrays.len(calls) == 0 { loud(calls, "then", 1) } else { loud(calls, "else", 2) };
+			println(chosen, calls);
+
+			// Statements before the value; names of a branch stay in it
+			let n = 4;
+			let label = if n > 2 {
+				let twice = n * 2;
+				let parts = arrays.map([n, twice], toString);
+				strings.join(parts, "<")
+			} else {
+				"small"
+			};
+			println(label);
+
+			// Anywhere a value goes
+			println(1 + if n == 4 { 10 } else { 20 } * 2);
+			println(wrap(if n > 0 { "positive" } else { "negative" }).value, pick(n > 9, "yes", "no"));
+			println([1, 2, 3, 4] |> arrays.map(x -> if x % 2 == 0 { "even" } else { "odd" }) |> strings.join(","));
+			println("${if n > 3 { "more" } else { "less" }} than three");
+			let either: Int | String = if n > 9 { 1 } else { "one" };
+			let none: [String] = if n > 9 { ["some"] } else { [] };
+			println(either, none);
+			let counter = fn(up: Bool) -> fn(Int) -> Int { return if up { x -> x + 1 } else { x -> x - 1 }; };
+			println(counter(true)(10), counter(false)(10));
+			let matched = match n { case 4: if label == "small" { "s" } else { "b" }; default: "?"; };
+			println(matched, if (match n { case 4: true; default: false; }) { "four" } else { "other" });
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out,
+		"small medium large 1 -1 0",
+		"nobody ada",
+		"null 7 12 25",
+		`Ok(5) Err("7 is odd") 6`,
+		`1 ["then"]`,
+		"4<8",
+		"21",
+		"positive no",
+		"odd,even,odd,even",
+		"more than three",
+		"one []",
+		"11 9",
+		"b four")
+}

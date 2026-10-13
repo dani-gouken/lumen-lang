@@ -1207,6 +1207,13 @@ func TestCompileErrors(t *testing.T) {
 		{"redeclaration", "fn main() -> Int { let a = 1; let a = 2; return a; }", "E1002", "already declared"},
 		{"type mismatch", `fn main() -> Int { let a: Int = "text"; return a; }`, "E2001", "cannot assign type string to int"},
 		{"bad operands", `fn main() -> Int { return 1 + "a"; }`, "E2006", "operator + not defined"},
+		{"branches of an if of two types", `fn main() -> Int { let v = if true { 1 } else { "one" }; return 0; }`, "E2001", "this branch gives string, the one before gives int"},
+		{"an if whose condition is a number", `fn main() -> Int { return if 3 { 1 } else { 2 }; }`, "E2005", "condition must be bool, got int"},
+		{"an if that may give null where it cannot", `fn main() -> Int { let n: Int = if true { 1 } else { null }; return n; }`, "E2001", "cannot assign type int? to int"},
+		{"an if that gives the wrong type", `fn main() -> Int { return if true { "a" } else { "b" }; }`, "E2003", "cannot return type string from function returning int"},
+		{"a name of one branch used in the other", `enum S { A(Int), B }
+			fn main() -> Int { let s = S.A(1); return if s is S.A(n) { n } else { n }; }`, "E1001", "undefined identifier 'n'"},
+		{"a name of a branch used after it", `fn main() -> Int { let v = if true { let inner = 1; inner } else { 2 }; return inner; }`, "E1001", "undefined identifier 'inner'"},
 		{"bits of a float", `fn main() -> Int { return 1.5 & 1; }`, "E2006", "operator & not defined for types float and int"},
 		{"bits of a text", `fn main() -> Int { return "a" | "b"; }`, "E2006", "operator | not defined for types string and string"},
 		{"bits of a boolean", `fn main() -> Bool { return true ^ false; }`, "E2006", "operator ^ not defined for types bool and bool"},

@@ -567,8 +567,12 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 		}
 		r.popScope()
 	case *ast.CondExpr:
-		r.visitExpr(e.Cond)
+		// As for the statement: what `value is Shape.Circle(r)` names is
+		// a variable of the branch taken when the test held
+		r.pushScope(e)
+		r.visitCondition(e.Cond, true)
 		r.visitExpr(e.Then)
+		r.popScope()
 		r.visitExpr(e.Else)
 	case *ast.Ident:
 		r.resolveIdent(e)

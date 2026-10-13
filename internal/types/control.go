@@ -266,11 +266,28 @@ func (c *Checker) checkBlockExpr(e *ast.BlockExpr) Type {
 // checkCondExpr types a choice between two values: the type both have, the
 // wider when one takes the other, optional when one is null.
 func (c *Checker) checkCondExpr(e *ast.CondExpr) Type {
-	c.checkExpr(e.Cond)
+	return c.checkCondExprAs(e, nil)
+}
+
+// checkCondExprAs is checkCondExpr where a type is expected: each branch
+// is checked as a value of it, which is what gives a short function its
+// parameters and an empty array its items.
+func (c *Checker) checkCondExprAs(e *ast.CondExpr, expected Type) Type {
+	branch := func(expr ast.Expr) Type {
+		if expected == nil {
+			return c.checkExpr(expr)
+		}
+		return c.checkExprAs(expr, expected)
+	}
+	if cond := c.checkExpr(e.Cond); cond != nil && !isUnknown(cond) && !cond.Equals(Bool) {
+		c.errorfWithSuggestion(e.Cond.Token(), ErrInvalidCondition, "Condition must evaluate to a boolean", "condition must be bool, got %s", cond)
+	}
 
 	var then, otherwise Type
-	c.withNarrowing(c.factsFrom(e.Cond, true), func() { then = c.checkExpr(e.Then) })
-	c.withNarrowing(c.factsFrom(e.Cond, false), func() { otherwise = c.checkExpr(e.Else) })
+	whenTrue := c.factsFrom(e.Cond, true)
+	c.recordNarrowedNames(whenTrue)
+	c.withNarrowing(whenTrue, func() { then = branch(e.Then) })
+	c.withNarrowing(c.factsFrom(e.Cond, false), func() { otherwise = branch(e.Else) })
 
 	says := func(t Type) bool { return t != nil && !isUnknown(t) && !t.Equals(Null) }
 	isNull := func(t Type) bool { return t != nil && t.Equals(Null) }
@@ -278,6 +295,15 @@ func (c *Checker) checkCondExpr(e *ast.CondExpr) Type {
 	case says(then) && says(otherwise):
 		if c.assignable(otherwise, then) {
 			return otherwise
+		}
+		if expected != nil && !isUnknown(expected) && c.assignable(expected, then) && c.assignable(expected, otherwise) {
+			// Two types the place takes both of: Int | String
+			return expected
+		}
+		if !c.assignable(then, otherwise) {
+			c.errorfWithSuggestion(e.Else.Token(), ErrTypeMismatch,
+				"Both branches give the value of the 'if': make them of one type",
+				"this branch gives %s, the one before gives %s", otherwise, then)
 		}
 		return then
 	case says(then) && isNull(otherwise):

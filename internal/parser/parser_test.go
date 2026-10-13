@@ -1597,3 +1597,72 @@ func TestParseBitwiseRefused(t *testing.T) {
 		})
 	}
 }
+
+// An if where a value is expected.
+func TestParseIfExpr(t *testing.T) {
+	cases := []struct{ name, src, want string }{
+		{"two values", `if a { 1 } else { 2 }`, `(if a 1 else 2)`},
+		{"a chain", `if a { 1 } else if b { 2 } else { 3 }`, `(if a 1 else (if b 2 else 3))`},
+		{"a condition with operators", `if a > 1 && b { x } else { y }`, `(if ((a > 1) && b) x else y)`},
+		{"in an operation", `1 + if a { 2 } else { 3 } * 4`, `(1 + ((if a 2 else 3) * 4))`},
+		{"as an argument", `f(if a { 1 } else { 2 }, 3)`, `f((if a 1 else 2), 3)`},
+		{"inside another", `if a { if b { 1 } else { 2 } } else { 3 }`, `(if a (if b 1 else 2) else 3)`},
+		{"a struct in a branch", `if a { Point { x: 1 } } else { origin }`, `(if a Point { x: 1 } else origin)`},
+		{"piped", `if a { xs } else { ys } |> sum`, `sum((if a xs else ys))`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			prog := parseOK(t, "fn main() { let v = "+c.src+"; }")
+			let := prog.Decls[0].(*ast.FnDecl).Body.Stmts[0].(*ast.LetStmt)
+			if got := let.Value.String(); got != c.want {
+				t.Errorf("expected %s, got %s", c.want, got)
+			}
+		})
+	}
+
+	// Statements before the value, and a branch that leaves
+	prog := parseOK(t, `fn f(n: Int) -> Int {
+		let v = if n > 0 { let twice = n * 2; log(twice); twice + 1 } else { return 0; };
+		return v;
+	}`)
+	cond := prog.Decls[0].(*ast.FnDecl).Body.Stmts[0].(*ast.LetStmt).Value.(*ast.CondExpr)
+	then, ok := cond.Then.(*ast.BlockExpr)
+	if !ok || len(then.Stmts) != 2 || then.Value == nil || then.Value.String() != "(twice + 1)" {
+		t.Errorf("expected two statements and a value, got %s", cond.Then)
+	}
+	otherwise, ok := cond.Else.(*ast.BlockExpr)
+	if !ok || len(otherwise.Stmts) != 1 || otherwise.Value != nil {
+		t.Errorf("expected a branch that returns, got %s", cond.Else)
+	}
+
+	// At the start of a statement an if is still the statement
+	prog = parseOK(t, `fn f(n: Int) { if n > 0 { log(n); } let v = if n > 0 { 1 } else { 2 }; }`)
+	body := prog.Decls[0].(*ast.FnDecl).Body.Stmts
+	if _, ok := body[0].(*ast.IfStmt); !ok {
+		t.Errorf("expected a statement first, got %T", body[0])
+	}
+	if _, ok := body[1].(*ast.LetStmt).Value.(*ast.CondExpr); !ok {
+		t.Errorf("expected a value second")
+	}
+}
+
+func TestParseIfExprRefused(t *testing.T) {
+	cases := []struct{ name, src, msg string }{
+		{"without an else", `let v = if a { 1 };`, "an 'if' that gives a value needs an 'else'"},
+		{"without braces", `let v = if a 1 else 2;`, "expected '{'"},
+		{"an else without braces", `let v = if a { 1 } else 2;`, "expected '{'"},
+		{"a value followed by more", `let v = if a { 1 2 } else { 3 };`, "expected ';'"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			errs := errors.NewHandler()
+			Parse("fn main() { "+c.src+" }", "test.lum", errs)
+			if len(errs.Diagnostics) == 0 {
+				t.Fatal("expected a diagnostic, got none")
+			}
+			if d := errs.Diagnostics[0]; !strings.Contains(d.Message, c.msg) {
+				t.Errorf("expected a message containing %q, got %q", c.msg, d.Message)
+			}
+		})
+	}
+}
