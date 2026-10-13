@@ -58,6 +58,9 @@ func (vm *VM) markRoots() {
 		for _, cached := range cache.constants {
 			vm.markValue(cached)
 		}
+		for _, cached := range cache.strings {
+			vm.markValue(cached)
+		}
 	}
 	for _, cached := range vm.externObjs {
 		vm.markValue(cached)

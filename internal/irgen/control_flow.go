@@ -7,9 +7,6 @@ import (
 
 // compileIfStmt compiles an if statement
 func (fc *FunctionCompiler) compileIfStmt(stmt *ast.IfStmt) {
-	// Compile condition
-	cond := fc.compileExpr(stmt.Cond)
-
 	// Create basic blocks
 	thenBlock := fc.builder.NewBlock()
 	mergeBlock := fc.builder.NewBlock()
@@ -18,10 +15,15 @@ func (fc *FunctionCompiler) compileIfStmt(stmt *ast.IfStmt) {
 	// Branch
 	if stmt.Else != nil {
 		elseBlock = fc.builder.NewBlock()
-		fc.builder.CreateBr(cond, thenBlock, elseBlock)
-	} else {
-		fc.builder.CreateBr(cond, thenBlock, mergeBlock)
 	}
+	made := len(fc.builder.Func.Blocks)
+	if stmt.Else != nil {
+		fc.compileCondition(stmt.Cond, thenBlock, elseBlock)
+	} else {
+		fc.compileCondition(stmt.Cond, thenBlock, mergeBlock)
+	}
+	// What the condition made on its way comes before what it guards
+	fc.builder.PlaceBefore(thenBlock, made)
 
 	// Then block
 	fc.builder.SetBlock(thenBlock)
@@ -44,6 +46,41 @@ func (fc *FunctionCompiler) compileIfStmt(stmt *ast.IfStmt) {
 	fc.builder.SetBlock(mergeBlock)
 }
 
+// compileCondition compiles an expression for where it leads rather than
+// for its value: to one block if it holds, to another if not.
+//
+// `a && b` as a value is worked out into a register on two paths, which is
+// then tested. As a condition it needs no register: if a does not hold
+// the answer is known and the code goes straight to where "not" leads,
+// and b decides otherwise. The same for `||` and `!`, to any depth. A test
+// of two numbers in a condition is then a single instruction that jumps
+// (see codegen), where it was a comparison, a move and two jumps.
+func (fc *FunctionCompiler) compileCondition(cond ast.Expr, holds, fails *ir.BasicBlock) {
+	switch e := cond.(type) {
+	case *ast.BinaryExpr:
+		switch e.Op {
+		case "&&":
+			rest := fc.builder.NewBlock()
+			fc.compileCondition(e.Left, rest, fails)
+			fc.builder.SetBlock(rest)
+			fc.compileCondition(e.Right, holds, fails)
+			return
+		case "||":
+			rest := fc.builder.NewBlock()
+			fc.compileCondition(e.Left, holds, rest)
+			fc.builder.SetBlock(rest)
+			fc.compileCondition(e.Right, holds, fails)
+			return
+		}
+	case *ast.UnaryExpr:
+		if e.Op == "!" {
+			fc.compileCondition(e.Expr, fails, holds)
+			return
+		}
+	}
+	fc.builder.CreateBr(fc.compileExpr(cond), holds, fails)
+}
+
 // compileWhileStmt compiles a while loop
 func (fc *FunctionCompiler) compileWhileStmt(stmt *ast.WhileStmt) {
 	// Create basic blocks
@@ -56,8 +93,9 @@ func (fc *FunctionCompiler) compileWhileStmt(stmt *ast.WhileStmt) {
 
 	// Condition block
 	fc.builder.SetBlock(condBlock)
-	cond := fc.compileExpr(stmt.Cond)
-	fc.builder.CreateBr(cond, bodyBlock, exitBlock)
+	made := len(fc.builder.Func.Blocks)
+	fc.compileCondition(stmt.Cond, bodyBlock, exitBlock)
+	fc.builder.PlaceBefore(bodyBlock, made)
 
 	// Push loop context
 	loop := fc.newLoop(exitBlock, condBlock)
@@ -74,6 +112,9 @@ func (fc *FunctionCompiler) compileWhileStmt(stmt *ast.WhileStmt) {
 	fc.loopStack = fc.loopStack[:len(fc.loopStack)-1]
 
 	// Exit block
+	// What follows the loop comes after the loop: it was made first, to
+	// have somewhere to leave to
+	fc.builder.PlaceLast(exitBlock)
 	fc.builder.SetBlock(exitBlock)
 }
 
@@ -127,6 +168,9 @@ func (fc *FunctionCompiler) compileForStmt(stmt *ast.ForStmt) {
 
 	fc.loopStack = fc.loopStack[:len(fc.loopStack)-1]
 
+	// What follows the loop comes after the loop: it was made first, to
+	// have somewhere to leave to
+	fc.builder.PlaceLast(exitBlock)
 	fc.builder.SetBlock(exitBlock)
 }
 

@@ -51,6 +51,7 @@ type funcGen struct {
 	window   map[int]int                         // A temporary made where a call wants it: its place there
 	unread   map[int]bool                        // Temporaries nothing reads
 	inReturn map[int]bool                        // Results of calls read where the call left them, in r0
+	straight map[int]int                         // A temporary that is only moved into a variable: the variable
 	typeTest map[*ir.Instruction]string          // A call that asks whether a value is of one type -> its name
 	switches map[*ir.Instruction]*typeSwitch     // The branch that starts a run of such tests on one value -> the run
 	inSwitch map[*ir.Instruction]bool            // The branches further down a run
@@ -400,6 +401,9 @@ func (f *funcGen) allocateRegisters() {
 			if _, placed := f.window[instr.Dest.ID]; placed || f.inReturn[instr.Dest.ID] {
 				continue
 			}
+			if _, written := f.straight[instr.Dest.ID]; written {
+				continue
+			}
 			var slot int
 			if len(free) > 0 {
 				slot = free[len(free)-1]
@@ -424,6 +428,9 @@ func (f *funcGen) allocateRegisters() {
 	}
 	for id := range f.inReturn {
 		f.phys[id] = returnReg
+	}
+	for id, variable := range f.straight {
+		f.phys[id] = f.phys[variable]
 	}
 }
 
@@ -475,6 +482,7 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 	f.window = make(map[int]int)
 	f.unread = make(map[int]bool)
 	f.inReturn = make(map[int]bool)
+	f.straight = make(map[int]int)
 	f.typeTest = make(map[*ir.Instruction]string)
 	f.switches = make(map[*ir.Instruction]*typeSwitch)
 	f.inSwitch = make(map[*ir.Instruction]bool)
@@ -574,6 +582,51 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 	}
 	if !f.long {
 		f.findSwitches()
+	}
+	f.writeStraight(uses, isTemp)
+}
+
+// direct is the operations that read what they work on before they write
+// their result, and write it once: their result can go anywhere.
+var direct = map[ir.OpType]bool{
+	ir.OpAdd: true, ir.OpSub: true, ir.OpMul: true, ir.OpDiv: true, ir.OpMod: true,
+	ir.OpEq: true, ir.OpNeq: true, ir.OpLt: true, ir.OpLte: true, ir.OpGt: true, ir.OpGte: true,
+	ir.OpNeg: true, ir.OpNot: true, ir.OpGetField: true, ir.OpGetIndex: true, ir.OpLen: true,
+	ir.OpGetMethod: true, ir.OpLoadUpvalue: true, ir.OpCall: true,
+}
+
+// writeStraight finds the values that are worked out only to be put in a
+// variable by the very next instruction, as in `total = total + n`: the
+// result is written to the variable itself, and the move is not made.
+func (f *funcGen) writeStraight(uses map[int]*usage, isTemp func(int) bool) {
+	for _, bb := range f.blocks {
+		instrs := body(bb)
+		for idx := 0; idx+1 < len(instrs); idx++ {
+			made, move := instrs[idx], instrs[idx+1]
+			if made.Dest == nil || !direct[made.Op] || f.folded[made] || f.typeTest[made] != "" {
+				continue
+			}
+			id := made.Dest.ID
+			if !isTemp(id) || uses[id].reads != 1 || f.inReturn[id] {
+				continue
+			}
+			if _, placed := f.window[id]; placed {
+				continue
+			}
+			if move.Op != ir.OpMov || move.Dest == nil || len(move.Operands) != 1 || f.folded[move] {
+				continue
+			}
+			if source, ok := regID(move.Operands[0]); !ok || source != id {
+				continue
+			}
+			// Into a variable that has a place of its own for the whole
+			// function, which a temporary has not
+			if isTemp(move.Dest.ID) {
+				continue
+			}
+			f.straight[id] = move.Dest.ID
+			f.folded[move] = true
+		}
 	}
 }
 

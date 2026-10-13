@@ -415,6 +415,9 @@ func TestNativeArraysThroughBytecode(t *testing.T) {
 			NewInstr(OpNEWEXFUNC, 1, 0, 0),
 			NewInstr(OpMOV, 2, 4, 0),
 			NewInstr(OpNEWSTR, 3, 0, 0),
+			// A text of its own each time: the one written in the program
+			// is one object however often it is reached
+			NewInstr(OpADD, 3, 3, 3),
 			NewInstr(OpCALL, 1, 2, 0),
 		)
 	}
@@ -436,8 +439,8 @@ func TestNativeArraysThroughBytecode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("execution failed: %v", err)
 	}
-	if got := FormatValue(result); got != `["item"]` {
-		t.Errorf(`expected ["item"], got %s`, got)
+	if got := FormatValue(result); got != `["itemitem"]` {
+		t.Errorf(`expected ["itemitem"], got %s`, got)
 	}
 
 	// The forty-nine texts taken off are garbage; the one left is not
@@ -455,9 +458,9 @@ func TestNativeArraysThroughBytecode(t *testing.T) {
 		t.Fatalf("expected the %d texts to be there before a collection, got %d", height, got)
 	}
 	machine.CollectGarbage()
-	// The one in the array, and at most the last one made, which the
-	// machine may still have at hand
-	if got := texts(); got < 1 || got > 2 {
-		t.Errorf("expected 1 or 2 texts left after a collection, got %d", got)
+	// The one in the array, the one written in the program, and at most
+	// the last one made, which the machine may still have at hand
+	if got := texts(); got < 2 || got > 3 {
+		t.Errorf("expected 2 or 3 texts left after a collection, got %d", got)
 	}
 }

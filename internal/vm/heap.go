@@ -175,6 +175,64 @@ func (h *Heap) AllocString(s string) (*StringObj, bool, error) {
 	return obj, h.ShouldCollect(), nil
 }
 
+// A short text made by joining two comes with its bytes, in one piece: the
+// object and the bytes are one allocation, and the two texts are copied
+// straight to where they stay. Joining is what a program building a text
+// does over and over, mostly to short ones.
+type (
+	stringOf16 struct {
+		StringObj
+		room [16]byte
+	}
+	stringOf32 struct {
+		StringObj
+		room [32]byte
+	}
+	stringOf64 struct {
+		StringObj
+		room [64]byte
+	}
+)
+
+// joined makes the text of two texts one after the other.
+func joined(a, b string) *StringObj {
+	var obj *StringObj
+	var room []byte
+	switch size := len(a) + len(b); {
+	case size == 0:
+		return &StringObj{header: ObjHeader{Type: ObjTypeString}}
+	case size <= 16:
+		whole := &stringOf16{}
+		obj, room = &whole.StringObj, whole.room[:size]
+	case size <= 32:
+		whole := &stringOf32{}
+		obj, room = &whole.StringObj, whole.room[:size]
+	case size <= 64:
+		whole := &stringOf64{}
+		obj, room = &whole.StringObj, whole.room[:size]
+	default:
+		return &StringObj{header: ObjHeader{Type: ObjTypeString}, data: a + b}
+	}
+	copy(room, a)
+	copy(room[len(a):], b)
+	obj.header.Type = ObjTypeString
+	// The text is the bytes that came with the object, which nothing
+	// writes to again
+	obj.data = unsafe.String(&room[0], len(room))
+	return obj
+}
+
+// AllocJoined allocates the text of two texts one after the other.
+// Returns the object and a boolean indicating if GC should run.
+func (h *Heap) AllocJoined(a, b string) (*StringObj, bool, error) {
+	if err := h.reserve(uint64(unsafe.Sizeof(StringObj{})) + uint64(len(a)+len(b))); err != nil {
+		return nil, false, err
+	}
+	obj := joined(a, b)
+	h.track(obj)
+	return obj, h.ShouldCollect(), nil
+}
+
 // AllocArray allocates an array object.
 // Returns the object and a boolean indicating if GC should run.
 //

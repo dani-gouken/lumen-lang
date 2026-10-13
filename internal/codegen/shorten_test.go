@@ -649,3 +649,52 @@ func TestARunOfTypeTestsIsASwitch(t *testing.T) {
 	chunk = build(four, "E.A", true)
 	expectInt(t, run(t, chunk), 1)
 }
+
+// A value worked out only to be put in a variable by the next instruction
+// is written to the variable: `total = total + n` is one instruction.
+func TestResultsAreWrittenStraightToTheirVariable(t *testing.T) {
+	f := ir.NewBuilder("main")
+	head, body, done := f.NewBlock(), f.NewBlock(), f.NewBlock()
+	total := f.CreateMov(intConst(100000))
+	i := f.CreateMov(intConst(0))
+	f.CreateJmp(head)
+
+	f.SetBlock(head)
+	cond := f.NewRegister()
+	f.Emit(ir.OpLt, cond, i, f.CreateMov(intConst(10)))
+	f.CreateBr(cond, body, done)
+
+	f.SetBlock(body)
+	// total = total * 3 - i, each step through a temporary, as source
+	// code compiles: t = total * 3; total = t; u = total - i; total = u
+	three := f.CreateMov(intConst(100003))
+	product := f.NewRegister()
+	f.Emit(ir.OpMul, product, total, three)
+	f.Emit(ir.OpMov, total, product)
+	difference := f.NewRegister()
+	f.Emit(ir.OpSub, difference, total, i)
+	f.Emit(ir.OpMov, total, difference)
+	// A temporary read twice stays one
+	kept := f.NewRegister()
+	f.Emit(ir.OpAdd, kept, i, f.CreateMov(intConst(1)))
+	f.Emit(ir.OpMov, i, kept)
+	f.Emit(ir.OpMod, total, total, f.CreateMov(intConst(999983)))
+	f.Emit(ir.OpAdd, total, total, kept)
+	f.CreateJmp(head)
+
+	f.SetBlock(done)
+	f.CreateRet(total)
+
+	chunk := generate(t, f.Func)
+	want := int64(100000)
+	for i := int64(0); i < 10; i++ {
+		want = (want*100003-i)%999983 + i + 1
+	}
+	expectInt(t, run(t, chunk), want)
+	if err := vm.Verify(chunk); err != nil {
+		t.Fatal(err)
+	}
+	// The two results that only go to total need no move; the one read
+	// again afterwards is moved
+	expectCount(t, chunk, "main", 1, vm.OpMOV)
+}

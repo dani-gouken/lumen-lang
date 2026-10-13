@@ -49,9 +49,14 @@ type stmt struct {
 	other []*stmt
 }
 
+// A condition: a comparison of two expressions, or conditions joined by
+// "&&" or "||", or one negated ("!"). The right side of && and || is only
+// worked out if the left has not decided, which shows when it calls a
+// function that prints.
 type cond struct {
 	op   string
 	l, r *expr
+	a, b *cond
 }
 
 type function struct {
@@ -107,8 +112,32 @@ func (g *generator) expr(depth int) *expr {
 }
 
 func (g *generator) cond() *cond {
+	return g.condition(2)
+}
+
+func (g *generator) condition(depth int) *cond {
+	if depth > 0 {
+		switch g.random.Intn(6) {
+		case 0:
+			return &cond{op: "&&", a: g.condition(depth - 1), b: g.condition(depth - 1)}
+		case 1:
+			return &cond{op: "||", a: g.condition(depth - 1), b: g.condition(depth - 1)}
+		case 2:
+			return &cond{op: "!", a: g.condition(depth - 1)}
+		}
+	}
 	ops := []string{"<", "<=", ">", ">=", "==", "!="}
 	return &cond{op: ops[g.random.Intn(len(ops))], l: g.expr(2), r: g.expr(2)}
+}
+
+func (c *cond) source() string {
+	switch c.op {
+	case "&&", "||":
+		return fmt.Sprintf("(%s %s %s)", c.a.source(), c.op, c.b.source())
+	case "!":
+		return fmt.Sprintf("!(%s)", c.a.source())
+	}
+	return fmt.Sprintf("%s %s %s", c.l.source(), c.op, c.r.source())
 }
 
 // block makes statements. What they declare is gone when the block ends.
@@ -144,6 +173,10 @@ func (g *generator) stmt(depth int) *stmt {
 				return &stmt{kind: "set", name: g.pick(names), value: g.expr(3)}
 			}
 		case choice == 4:
+			if g.random.Intn(4) == 0 {
+				// A condition as a value: worked out into a variable
+				return &stmt{kind: "printcond", cond: g.cond()}
+			}
 			return &stmt{kind: "print", value: g.expr(3)}
 		case choice == 5 && depth > 0:
 			return &stmt{kind: "if", cond: g.cond(), body: g.block(depth-1, 1+g.random.Intn(3)), other: g.block(depth-1, g.random.Intn(3))}
@@ -252,8 +285,10 @@ func writeBlock(out *strings.Builder, stmts []*stmt, indent string) {
 			fmt.Fprintf(out, "%s = %s;\n", s.name, s.value.source())
 		case "print":
 			fmt.Fprintf(out, "println(%s);\n", s.value.source())
+		case "printcond":
+			fmt.Fprintf(out, "println(%s);\n", s.cond.source())
 		case "if":
-			fmt.Fprintf(out, "if %s %s %s {\n", s.cond.l.source(), s.cond.op, s.cond.r.source())
+			fmt.Fprintf(out, "if %s {\n", s.cond.source())
 			writeBlock(out, s.body, indent+"    ")
 			out.WriteString(indent + "} else {\n")
 			writeBlock(out, s.other, indent+"    ")
@@ -383,6 +418,14 @@ func (ev *evaluator) eval(e *expr, s *scope) int {
 }
 
 func (ev *evaluator) test(c *cond, s *scope) bool {
+	switch c.op {
+	case "&&":
+		return ev.test(c.a, s) && ev.test(c.b, s)
+	case "||":
+		return ev.test(c.a, s) || ev.test(c.b, s)
+	case "!":
+		return !ev.test(c.a, s)
+	}
 	l, r := ev.eval(c.l, s), ev.eval(c.r, s)
 	switch c.op {
 	case "<":
@@ -406,6 +449,8 @@ func (ev *evaluator) run(stmts []*stmt, s *scope) {
 			s.ints[st.name] = ev.eval(st.value, s)
 		case "print":
 			fmt.Fprintln(&ev.out, ev.eval(st.value, s))
+		case "printcond":
+			fmt.Fprintln(&ev.out, ev.test(st.cond, s))
 		case "if":
 			if ev.test(st.cond, s) {
 				ev.run(st.body, s)

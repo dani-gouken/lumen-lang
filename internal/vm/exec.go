@@ -38,6 +38,11 @@ type chunkCache struct {
 	// The same for the host functions the chunk names
 	externs []Value
 
+	// The text of each string of the chunk, made the first time the
+	// program reaches it. A text never changes, so the one object serves
+	// every time: a text written in a loop is not made again at each turn.
+	strings []Value
+
 	// The values that are made once and handed out each time (see
 	// ObjectIsConstant), by the instruction that makes them. Not there
 	// until a first one is made.
@@ -211,11 +216,12 @@ func (vm *VM) noSuchMethod(v Value, chunk *Chunk, nameConst uint16) error {
 // cacheFor returns what is kept for a chunk.
 func (vm *VM) cacheFor(chunk *Chunk) *chunkCache {
 	cache, ok := vm.caches[chunk]
-	if !ok || len(cache.fields) != len(chunk.Code) || len(cache.funcs) != len(chunk.Prototypes) || len(cache.externs) != len(chunk.ExternNames) {
+	if !ok || len(cache.fields) != len(chunk.Code) || len(cache.funcs) != len(chunk.Prototypes) || len(cache.externs) != len(chunk.ExternNames) || len(cache.strings) != len(chunk.StringPool) {
 		cache = &chunkCache{
 			fields:  make([]fieldCache, len(chunk.Code)),
 			funcs:   make([]Value, len(chunk.Prototypes)),
 			externs: make([]Value, len(chunk.ExternNames)),
+			strings: make([]Value, len(chunk.StringPool)),
 		}
 		vm.caches[chunk] = cache
 	}
@@ -378,11 +384,11 @@ func (vm *VM) concatenate(a, b Value) (Value, error) {
 	if !ok {
 		return NewNull(), vm.runtimeError(fmt.Sprintf("ADD cannot concatenate String and %s", typeName(b)))
 	}
-	str, err := vm.newString(sa + sb)
+	str, _, err := vm.heap.AllocJoined(sa, sb)
 	if err != nil {
 		return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
 	}
-	return str, nil
+	return valueOf(&str.header), nil
 }
 
 // compare applies an ordering instruction to operands that are not two
@@ -1299,12 +1305,18 @@ func (vm *VM) execute(base int) (Value, error) {
 			upval.Set(regs[instr.B])
 
 		case OpNEWSTR:
-			// Create a string from string pool
-			strObj, shouldGC, err := vm.heap.AllocString(chunk.StringPool[intOf(consts[instr.B])])
+			// The text of a string of the pool: one object per string
+			index := intOf(consts[instr.B])
+			if made := kept.strings[index]; made != 0 {
+				regs[instr.A] = made
+				break
+			}
+			strObj, shouldGC, err := vm.heap.AllocString(chunk.StringPool[index])
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
 			}
 			regs[instr.A] = valueOf(&strObj.header)
+			kept.strings[index] = regs[instr.A]
 			if shouldGC {
 				vm.CollectGarbage()
 			}

@@ -193,6 +193,28 @@ end:                             JMP end
 
 `||` is the same as `&&` with the branch targets swapped. This is the only place the operators are lowered: the desugarer leaves them in the tree in every position (conditions, `let` initializers, return values, arguments), so the semantics are the same everywhere and the type checker still sees the whole condition.
 
+### Conditions
+
+Where `a && b` is the condition of an `if` or a `while`, its value is not needed, only where it leads. It is compiled for that (`compileCondition`): if `a` does not hold, straight to where "not" leads; otherwise `b` decides. The same for `||` and `!`, to any depth:
+
+```rust
+if n > 2 && n % 2 == 1 { odd += 1; }
+```
+```
+	%v5 = GT, %v2, %v4
+	BR %v5, b7, b5          ; not above 2: past the block
+b7:
+	%v8 = MOD, %v2, %v6
+	%v10 = EQ, %v8, %v9
+	BR %v10, b4, b5
+b4:
+	...                     ; odd += 1
+```
+
+No register holds the answer, and each test sits right before the branch on it, which is what lets bytecode generation write the two as one instruction ([bytecode_generation.md](bytecode_generation.md#one-instruction-for-several)).
+
+The blocks made on the way are placed where they run: those of a condition before the block it guards, which was made first because they lead to it (`Builder.PlaceBefore`), and what follows a loop after the loop's own blocks (`Builder.PlaceLast`). Blocks are written out in the order they are in, and a block that follows the one leading to it needs no jump to be reached.
+
 ## Structs and Methods
 
 A struct literal becomes an object with its fields set **by name**:

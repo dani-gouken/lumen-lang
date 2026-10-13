@@ -41,6 +41,44 @@ func (b *Builder) NewBlock() *BasicBlock {
 	return bb
 }
 
+// PlaceBefore moves the blocks made since there were `since` of them to
+// just before a block. Blocks are written out in the order they are in, and
+// a block that follows the one that leads to it needs no jump to be
+// reached: the blocks a condition makes on its way belong before the code
+// the condition guards, which was made first because they lead to it.
+func (b *Builder) PlaceBefore(target *BasicBlock, since int) {
+	blocks := b.Func.Blocks
+	if since >= len(blocks) {
+		return
+	}
+	at := -1
+	for i, bb := range blocks[:since] {
+		if bb == target {
+			at = i
+			break
+		}
+	}
+	if at < 0 {
+		return
+	}
+	moved := append([]*BasicBlock(nil), blocks[since:]...)
+	rest := append([]*BasicBlock(nil), blocks[at:since]...)
+	b.Func.Blocks = append(append(blocks[:at], moved...), rest...)
+}
+
+// PlaceLast moves a block after all the others made so far: where what
+// follows a loop belongs, once the loop's own blocks are known.
+func (b *Builder) PlaceLast(target *BasicBlock) {
+	blocks := b.Func.Blocks
+	for i, bb := range blocks {
+		if bb == target {
+			copy(blocks[i:], blocks[i+1:])
+			blocks[len(blocks)-1] = target
+			return
+		}
+	}
+}
+
 // SetBlock sets the current block for insertion
 func (b *Builder) SetBlock(bb *BasicBlock) {
 	b.CurrentBlock = bb

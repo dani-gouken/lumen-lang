@@ -827,3 +827,101 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 		`["b", "a"] [2, 3] ["a", "b"] 2`,
 		`700 3000 4 ["the", "quick", "fox", "and", "lazy", "dog", "cat"] [3, 1, 1, 2, 1, 1, 1]`)
 }
+
+// Conditions made of several tests, in every place a condition goes, with
+// tests that leave a trace when they are made: only those whose turn
+// comes are, in order; and texts built piece by piece from texts written
+// in the program, in loops.
+func TestConditionsAndTextsBuiltInLoops(t *testing.T) {
+	out, err := runWith(t, 64<<20, `
+		import std.arrays;
+		import std.strings;
+
+		struct Trace { asked: [String]; }
+
+		impl Trace {
+			// A test that says it was made
+			fn is(name: String, answer: Bool) -> Bool {
+				push(self.asked, name);
+				return answer;
+			}
+			fn took() -> String {
+				let said = strings.join(self.asked, "");
+				arrays.clear(self.asked);
+				return said;
+			}
+		}
+
+		fn classify(c: String) -> String {
+			if (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") { return "letter"; }
+			if c >= "0" && c <= "9" { return "digit"; }
+			if c == " " || c == "\t" || c == "\n" { return "space"; }
+			if !(c == "." || c == "," || c == "!") { return "other"; }
+			return "mark";
+		}
+
+		fn main() -> Int {
+			let t = Trace { asked: [] };
+
+			// Which tests are made, for every way two can go
+			let seen: [String] = [];
+			for a in [true, false] {
+				for b in [true, false] {
+					let line = "";
+					if t.is("a", a) && t.is("b", b) { line = line + "and "; }
+					line = line + t.took() + " ";
+					if t.is("a", a) || t.is("b", b) { line = line + "or "; }
+					line = line + t.took() + " ";
+					if !(t.is("a", a) && !t.is("b", b)) { line = line + "not "; }
+					line = line + t.took() + " ";
+					if (t.is("a", a) || t.is("b", b)) && (t.is("c", !a) || t.is("d", b)) { line = line + "both "; }
+					line = line + t.took();
+					push(seen, line);
+				}
+			}
+			for line in seen { println(line); }
+
+			// The same as a value, and as what a loop goes by
+			let kept = t.is("x", false) && t.is("y", true) || t.is("z", true);
+			println(kept, t.took());
+			let n = 0;
+			while t.is("w", n < 3) && (n != 1 || t.is("v", true)) { n += 1; }
+			println(n, t.took());
+
+			// A text taken apart and put together again, a character at a time
+			let source = "Héllo, wörld! 12 日本語.";
+			let kinds = "";
+			let letters = "";
+			let rest = "";
+			for i in 0..strings.len(source) {
+				let c = source[i];
+				let kind = classify(c);
+				kinds = kinds + strings.substring(kind, 0, 1);
+				if kind == "letter" || kind == "other" && c != "!" { letters = letters + c; } else { rest = rest + c; }
+			}
+			println(kinds);
+			println(letters, "|", rest, strings.len(letters) + strings.len(rest) == strings.len(source));
+
+			// The same text written twice is the same text; built two ways too
+			let dot = ".";
+			let built = "";
+			for i in 0..40 { built = built + dot + "-"; }
+			println(dot == ".", built == strings.repeat(".-", 40), strings.len(built), built[78] + built[79]);
+			return 0;
+		}`, nil)
+	if err != nil {
+		t.Fatalf("the program was stopped: %v", err)
+	}
+	expectLines(t, out,
+		// a and b true; then a alone; then b alone; then neither
+		"and ab or a not ab both acd",
+		"ab or a ab acd",
+		"a or ab not a both abc",
+		"a ab not a ab",
+		"true xz",
+		"3 wwvww",
+		// é and ö are not between a and z: they are "other", like the three of 日本語
+		"lolllmslolllmsddsooom",
+		"Héllowörld日本語 | , ! 12 . true",
+		"true true 80 .-")
+}

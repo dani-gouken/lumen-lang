@@ -459,6 +459,12 @@ the length and `strings.substring` do not depend on how long the text is. The
 texts of one ASCII character, which is what indexing mostly gives, are made
 once each.
 
+A text written in the program is one object, made the first time the
+program reaches it: a text never changes, so a loop that compares each
+character with `"."` does not make a `"."` at every turn. Two texts joined
+(`a + b`) that come to 64 bytes or less are one allocation, the object and
+its bytes together. A text is 48 bytes before its characters.
+
 ### When the VM itself goes wrong
 
 A Go panic in the VM or in a native function does not take the process down:

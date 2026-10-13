@@ -76,6 +76,8 @@ if err != nil {
 }
 ```
 
+A text written in the program is made once and kept for as long as the program runs (`NEWSTR` hands out the same object each time). `AllocJoined(a, b)` makes the text of two texts one after the other, which is what `+` does: up to 64 bytes it is one allocation holding the object and its bytes.
+
 ### 2. Array Objects
 
 Dynamic arrays that can grow:

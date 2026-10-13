@@ -36,11 +36,12 @@ type StringObj struct {
 	// Positions are counted in characters, the bytes of the text are
 	// UTF-8. What makes one into the other is worked out the first time it
 	// is asked for and kept: the number of characters, and for a text that
-	// is not plain ASCII where every runeStride-th character starts.
+	// is not plain ASCII where every runeStride-th character starts. That
+	// last part is rare and kept apart: a text is 48 bytes without it.
+	runes    int32
 	measured bool
 	ascii    bool
-	runes    int
-	starts   []uint32
+	starts   *[]uint32
 }
 
 // runeStride is how far apart the recorded character positions are: the
@@ -69,17 +70,18 @@ func (s *StringObj) measure() {
 		}
 	}
 	if s.ascii {
-		s.runes = len(s.data)
+		s.runes = int32(len(s.data))
 		return
 	}
+	var starts []uint32
 	n := 0
 	for offset := range s.data {
 		if n%runeStride == 0 {
-			s.starts = append(s.starts, uint32(offset))
+			starts = append(starts, uint32(offset))
 		}
 		n++
 	}
-	s.runes = n
+	s.runes, s.starts = int32(n), &starts
 }
 
 // RuneLen is the length of the text in characters.
@@ -87,7 +89,7 @@ func (s *StringObj) RuneLen() int {
 	if !s.measured {
 		s.measure()
 	}
-	return s.runes
+	return int(s.runes)
 }
 
 // offsetOf is where the character at a position starts among the bytes of
@@ -99,10 +101,10 @@ func (s *StringObj) offsetOf(i int) int {
 	if s.ascii {
 		return i
 	}
-	if i >= s.runes {
+	if i >= int(s.runes) {
 		return len(s.data)
 	}
-	offset := int(s.starts[i/runeStride])
+	offset := int((*s.starts)[i/runeStride])
 	for skip := i % runeStride; skip > 0; skip-- {
 		_, size := utf8.DecodeRuneInString(s.data[offset:])
 		offset += size

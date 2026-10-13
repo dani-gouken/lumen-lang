@@ -516,3 +516,122 @@ func TestASwitchGoesToTheCaseOfTheType(t *testing.T) {
 		}
 	}
 }
+
+// A text written in a program is one object, however often the program
+// reaches it: making it again at every turn of a loop is what a loop that
+// compares characters with "." used to spend its time on.
+func TestATextWrittenInTheProgramIsMadeOnce(t *testing.T) {
+	chunk := NewChunk()
+	chunk.StringPool = []string{"same", "other"}
+	chunk.Constants = []Value{NewInt(0), NewInt(1)}
+	chunk.Code = []Instr{
+		NewInstr(OpNEWARRAY, 0, 0, 0), // 0
+		NewInstr(OpLOADI, 1, 300, 0),  // 1
+		NewInstr(OpNEWSTR, 2, 0, 0),   // 2: "same", three hundred times
+		NewInstr(OpNEWSTR, 3, 0, 0),   // 3: and from another instruction
+		NewInstr(OpNEWSTR, 4, 1, 0),   // 4: "other"
+		NewInstr(OpGC, 0, 0, 0),       // 5
+		NewInstr(OpSUBI, 1, 1, 1),     // 6
+		NewInstr(OpJNEQI, 1, 0, 2),    // 7
+		NewInstr(OpARRPUSH, 0, 2, 0),  // 8
+		NewInstr(OpARRPUSH, 0, 3, 0),  // 9
+		NewInstr(OpARRPUSH, 0, 4, 0),  // 10
+		NewInstr(OpRET, 0, 0, 0),      // 11
+	}
+	chunk.Prototypes = []FunctionPrototype{{Name: "main", CodeSize: len(chunk.Code), RegisterCount: 5}}
+
+	machine := NewVM()
+	result, err := machine.Exec(chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if FormatValue(result) != `["same", "same", "other"]` {
+		t.Fatalf("got %s", FormatValue(result))
+	}
+	held := (*ArrayObj)(unsafe.Pointer(header(result)))
+	if held.Get(0) != held.Get(1) || held.Get(0) == held.Get(2) {
+		t.Error("the same text is two objects, or two texts are one")
+	}
+	// Two texts, and the array: not six hundred
+	texts := 0
+	for h := machine.heap.objects; h != nil; h = h.Next {
+		if h.Type == ObjTypeString {
+			texts++
+		}
+	}
+	if texts != 2 {
+		t.Errorf("%d texts were made for two written in the program", texts)
+	}
+
+	// Another program has its own, and what the first returned is whole
+	machine.regs = []Value{result}
+	if _, err := machine.Exec(chunk); err != nil {
+		t.Fatal(err)
+	}
+	if FormatValue(result) != `["same", "same", "other"]` {
+		t.Errorf("after another program: %s", FormatValue(result))
+	}
+}
+
+// Two texts joined are the text of both, whatever their lengths and
+// whatever they hold: short ones come with their bytes in one piece.
+func TestJoinedTextsAreWhatTheyAreMadeOf(t *testing.T) {
+	if size := unsafe.Sizeof(StringObj{}); size > 48 {
+		t.Errorf("a text takes %d bytes before its characters", size)
+	}
+
+	parts := []string{"", "a", "é", "日本", "🙂", "0123456789", "étoile filante", strings.Repeat("x", 15), strings.Repeat("y", 16),
+		strings.Repeat("z", 17), strings.Repeat("ä", 16), strings.Repeat("w", 33), strings.Repeat("v", 64), strings.Repeat("u", 65), strings.Repeat("🙂", 40)}
+	machine := NewVM()
+	before := machine.heap.BytesAllocated()
+	for _, a := range parts {
+		for _, b := range parts {
+			obj, _, err := machine.heap.AllocJoined(a, b)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if obj.Data() != a+b || obj.header.Type != ObjTypeString {
+				t.Fatalf("%q and %q joined are %q", a, b, obj.Data())
+			}
+			// Positions are those of the characters, as for any text
+			runes := []rune(a + b)
+			if obj.RuneLen() != len(runes) {
+				t.Fatalf("%q + %q: %d characters, expected %d", a, b, obj.RuneLen(), len(runes))
+			}
+			for i := 0; i < len(runes); i += 1 + len(runes)/6 {
+				if obj.RuneAt(i) != string(runes[i]) {
+					t.Fatalf("%q + %q: character %d is %q", a, b, i, obj.RuneAt(i))
+				}
+			}
+		}
+	}
+
+	// One allocation for a short one, the object and its bytes together
+	for _, pair := range [][2]string{{"ab", "cd"}, {strings.Repeat("x", 20), "tail"}, {strings.Repeat("x", 40), strings.Repeat("y", 24)}} {
+		allocations := testing.AllocsPerRun(100, func() { joined(pair[0], pair[1]) })
+		if allocations != 1 {
+			t.Errorf("joining %d and %d bytes: %v allocations", len(pair[0]), len(pair[1]), allocations)
+		}
+	}
+
+	// Counted in, and out again when nothing holds them
+	if machine.heap.BytesAllocated() <= before {
+		t.Error("the joined texts were not counted")
+	}
+	machine.CollectGarbage()
+	if left := machine.heap.BytesAllocated(); left != before {
+		t.Errorf("%d bytes counted for texts that are gone", left-before)
+	}
+
+	// A text taken out of a joined one outlives it
+	whole, _, _ := machine.heap.AllocJoined("hello, ", "world")
+	piece, _ := machine.newString(whole.Slice(7, 12))
+	machine.regs = []Value{piece}
+	whole = nil
+	for i := 0; i < 3; i++ {
+		machine.CollectGarbage()
+	}
+	if s, _ := stringValue(piece); s != "world" {
+		t.Errorf("the piece is %q", s)
+	}
+}
