@@ -101,7 +101,7 @@ func (vm *VM) markObject(h *ObjHeader) {
 	}
 	h.Marked = true
 	switch h.Type {
-	case ObjTypeString, ObjTypeExternFunction:
+	case ObjTypeString, ObjTypeExternFunction, ObjTypeIndex:
 		// These hold no other object
 	default:
 		vm.gray = append(vm.gray, h)

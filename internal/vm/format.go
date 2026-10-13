@@ -115,6 +115,8 @@ func (f *formatter) formatValue(v Value, depth int) string {
 		return "<fn " + (*FunctionObj)(ptr).Proto().Name + ">"
 	case ObjTypeExternFunction:
 		return "<fn " + (*ExternFunctionObj)(ptr).Name() + ">"
+	case ObjTypeIndex:
+		return "<index>"
 	}
 	return v.String()
 }
@@ -178,6 +180,8 @@ func typeName(v Value) string {
 		return "struct"
 	case ObjTypeFunction, ObjTypeExternFunction:
 		return "function"
+	case ObjTypeIndex:
+		return "index"
 	}
 	return "unknown"
 }

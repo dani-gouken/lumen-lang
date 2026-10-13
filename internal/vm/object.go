@@ -12,6 +12,7 @@ const (
 	ObjTypeFunction       // Phase A: Basic functions (Phase B will add upvalues)
 	ObjTypeExternFunction // External (host) functions
 	ObjTypeUpvalue        // Phase B: For closure support
+	ObjTypeIndex          // Where the keys of a large dictionary are (see native_dict.go)
 )
 
 // ObjHeader is the header for all heap-allocated objects.
@@ -540,4 +541,24 @@ func (u *UpvalueObj) Close() {
 		u.closed = u.stack.vals[u.slot]
 		u.stack = nil
 	}
+}
+
+// IndexObj says where each key of a dictionary is among its keys: what
+// makes finding one take the same time however many there are. A
+// dictionary of a few keys has none, and looks through them.
+type IndexObj struct {
+	header ObjHeader
+	at     map[string]int32
+
+	// What the index is counted for against the limit: it grows with
+	// every key, and what was counted is what is taken off when it goes
+	counted uint64
+}
+
+func (i *IndexObj) Header() *ObjHeader {
+	return &i.header
+}
+
+func (i *IndexObj) String() string {
+	return "[index]"
 }

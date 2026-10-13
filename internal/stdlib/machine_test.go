@@ -703,3 +703,127 @@ func TestAFieldAndAMethodOfTheSameName(t *testing.T) {
 		"7 700 lamp hall dial 1",
 		`702 {count: 7, mode: On, name: "hall"}`)
 }
+
+// A dictionary through its whole life: a few keys, then many, keys taken
+// away and set again, in the order they were first set throughout. What it
+// holds is checked against two arrays kept alongside.
+func TestADictionaryFromAFewKeysToMany(t *testing.T) {
+	out, err := runWith(t, 64<<20, `
+		import std.arrays;
+		import std.dict;
+		import std.dict.{Dict};
+		import std.strings;
+
+		struct Stock { item: String; count: Int; }
+
+		// Whether a dictionary holds exactly these keys with these values,
+		// in this order, by every way of asking
+		fn same(held: Dict<Int>, keys: [String], values: [Int]) -> Bool {
+			if held.size() != arrays.len(keys) || held.isEmpty() != (arrays.len(keys) == 0) { return false; }
+			let listed = held.keys();
+			let worth = held.values();
+			if arrays.len(listed) != arrays.len(keys) || arrays.len(worth) != arrays.len(keys) { return false; }
+			for i, key in keys {
+				if listed[i] != key || worth[i] != values[i] { return false; }
+				if !held.has(key) || held.get(key) != values[i] || held.getOr(key, -1) != values[i] { return false; }
+				if held[key] != values[i] { return false; }
+			}
+			let at = 0;
+			for (key, value) in held.entries() {
+				if key != keys[at] || value != values[at] { return false; }
+				at++;
+			}
+			let seen = 0;
+			held.each((key, value) -> { if key == keys[seen] && value == values[seen] { seen++; } });
+			let looped = 0;
+			for key in held { if key == keys[looped] { looped++; } }
+			return seen == arrays.len(keys) && looped == arrays.len(keys)
+				&& !held.has("never set") && held.get("never set") == null && held.getOr("never set", -7) == -7;
+		}
+
+		fn main() -> Int {
+			let held = dict.empty<Int>();
+			let keys: [String] = [];
+			let values: [Int] = [];
+			println(same(held, keys, values), held.remove("nothing"));
+
+			// One key at a time, past the number that is looked through
+			let ok = true;
+			for i in 0..40 {
+				let key = "key" + toString(i * 3 % 41);
+				held.set(key, i);
+				push(keys, key);
+				push(values, i);
+				if !same(held, keys, values) { ok = false; }
+			}
+			println(ok, held.size());
+
+			// Set again: the value changes, the place does not
+			for i in 0..40 {
+				if i % 4 == 0 {
+					held.set(keys[i], values[i] * 100);
+					values[i] = values[i] * 100;
+				}
+			}
+			held["key0"] = -5;
+			values[arrays.indexOf(keys, "key0") ?? 0] = -5;
+			held.update("key3", 0, n -> n + 1000);
+			values[arrays.indexOf(keys, "key3") ?? 0] += 1000;
+			println(same(held, keys, values));
+
+			// Taken away one by one, down to none: enough of them for the
+			// empty places to be taken out several times on the way
+			let removed = true;
+			for round in 0..40 {
+				let at = (round * 7) % arrays.len(keys);
+				if !held.remove(keys[at]) || held.remove(keys[at]) { removed = false; }
+				keys = arrays.without(keys, at);
+				values = arrays.without(values, at);
+				if !same(held, keys, values) { removed = false; }
+				// A key set again after it was taken away goes to the end
+				if round % 9 == 4 {
+					held.set("back" + toString(round), round);
+					push(keys, "back" + toString(round));
+					push(values, round);
+				}
+			}
+			println(removed, held.size(), held.keys());
+
+			// Few keys again, and the same ones a second time
+			for key in held.keys() { held.remove(key); }
+			held.set("a", 1);
+			held.set("b", 2);
+			held.remove("a");
+			held.set("a", 3);
+			println(held.keys(), held.values(), held.sortedKeys(), held.size());
+
+			// Many keys, counted and grouped
+			let stock = dict.empty<Stock>();
+			for i in 0..3000 {
+				let name = "item" + toString(i % 700);
+				let entry = stock.get(name);
+				if entry == null {
+					stock.set(name, Stock { item: name, count: 1 });
+				} else {
+					entry.count++;
+				}
+			}
+			let total = 0;
+			for name in stock { total += stock.getOr(name, Stock { item: "", count: 0 }).count; }
+			let words = strings.split("the quick fox and the lazy dog and the cat", " ");
+			let counts = arrays.countBy(words, w -> w);
+			println(stock.size(), total, stock.getOr("item699", Stock { item: "", count: 0 }).count, counts.keys(), counts.values());
+			return 0;
+		}`, nil)
+	if err != nil {
+		t.Fatalf("the program was stopped: %v", err)
+	}
+	expectLines(t, out,
+		"true false",
+		"true 40",
+		"true",
+		// Checked at every step against the two arrays: what is left is what they hold
+		`true 4 ["key1", "key13", "key37", "back31"]`,
+		`["b", "a"] [2, 3] ["a", "b"] 2`,
+		`700 3000 4 ["the", "quick", "fox", "and", "lazy", "dog", "cat"] [3, 1, 1, 2, 1, 1, 1]`)
+}

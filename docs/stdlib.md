@@ -360,7 +360,9 @@ The field `items` is the array itself, for a `for` loop: `for name in names.item
 
 ## `std.dict`
 
-`Dict<V>` (a dictionary) finds values by a text key. It is a hash table: finding a key takes about the same time however many there are.
+`Dict<V>` (a dictionary) finds values by a text key: finding a key takes about the same time however many there are.
+
+Its keys and values are two arrays, in the order the keys were set. Up to eight keys are simply looked through, so a small dictionary is three objects and costs next to nothing to make; a program can have one per record, per scope, per request. Past eight the machine keeps an index of where each key is.
 
 ```rust
 import std.dict;

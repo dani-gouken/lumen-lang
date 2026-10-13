@@ -94,6 +94,8 @@ func sizeOf(header *ObjHeader) uint64 {
 		return uint64(unsafe.Sizeof(ExternFunctionObj{})) + uint64(len(obj.name))
 	case ObjTypeUpvalue:
 		return uint64(unsafe.Sizeof(UpvalueObj{}))
+	case ObjTypeIndex:
+		return (*IndexObj)(unsafe.Pointer(header)).counted
 	}
 	return uint64(unsafe.Sizeof(ObjHeader{}))
 }
@@ -264,6 +266,23 @@ func (h *Heap) AllocUpvalue(stack *regStack, slot int) (*UpvalueObj, bool, error
 	}
 	h.track(obj)
 	return obj, h.ShouldCollect(), nil
+}
+
+// indexEntrySize is what one key of an index is counted for: its place in
+// the table, and the text of the key, which the index shares with the
+// dictionary's own keys.
+const indexEntrySize = 48
+
+// AllocIndex allocates the index of a dictionary, with room for a number
+// of keys.
+func (h *Heap) AllocIndex(keys int) (*IndexObj, error) {
+	size := uint64(unsafe.Sizeof(IndexObj{})) + uint64(keys)*indexEntrySize
+	if err := h.reserve(size); err != nil {
+		return nil, err
+	}
+	obj := &IndexObj{header: ObjHeader{Type: ObjTypeIndex}, at: make(map[string]int32, keys), counted: size}
+	h.track(obj)
+	return obj, nil
 }
 
 // ShouldCollect returns true if GC should run.
