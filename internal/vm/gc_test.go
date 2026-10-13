@@ -93,8 +93,9 @@ func TestGCFromStack(t *testing.T) {
 
 	// Allocate object and put on stack
 	str, _, _ := vm.heap.AllocString("on stack")
-	vm.stack[0] = NewHeapPtr(uintptr(unsafe.Pointer(str)))
-	vm.sp = 1
+	vm.stk = newRegStack(4)
+	vm.stk.vals[0] = NewHeapPtr(uintptr(unsafe.Pointer(str)))
+	vm.regs = vm.window(0, 1)
 
 	// Allocate garbage
 	for i := 0; i < 5; i++ {
@@ -253,7 +254,9 @@ func TestGCKeepsWhatAClosureHeldAsAValueCaptured(t *testing.T) {
 
 	captured, _, _ := vm.heap.AllocString("captured")
 	slot := NewHeapPtr(uintptr(unsafe.Pointer(captured)))
-	upvalue, _, _ := vm.heap.AllocUpvalue(&slot)
+	stack := newRegStack(1)
+	stack.vals[0] = slot
+	upvalue, _, _ := vm.heap.AllocUpvalue(stack, 0)
 	upvalue.Close()
 	closure, _, _ := vm.heap.AllocFunction(chunk, 0, 1)
 	closure.SetUpvalue(0, upvalue)

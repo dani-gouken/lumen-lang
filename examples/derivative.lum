@@ -40,22 +40,22 @@ impl Expr {
 
     // As show, with parentheses around a sum.
     fn factor() -> String {
-        match self {
-            case Expr.Add(_, _): { return "(" + self.show() + ")"; }
-            default: { return self.show(); }
-        }
+        return match self {
+            case Expr.Add(_, _): "(" + self.show() + ")";
+            default: self.show();
+        };
     }
 
     // The value of the formula for a given x.
     fn at(x: Int) -> Int {
-        match self {
-            case Expr.Num(n): { return n; }
-            case Expr.Var: { return x; }
-            case Expr.Neg(inner): { return -inner.at(x); }
-            case Expr.Add(left, right): { return left.at(x) + right.at(x); }
-            case Expr.Mul(left, right): { return left.at(x) * right.at(x); }
-            case Expr.Pow(base, power): { return math.pow(base.at(x), power); }
-        }
+        return match self {
+            case Expr.Num(n): n;
+            case Expr.Var: x;
+            case Expr.Neg(inner): -inner.at(x);
+            case Expr.Add(left, right): left.at(x) + right.at(x);
+            case Expr.Mul(left, right): left.at(x) * right.at(x);
+            case Expr.Pow(base, power): math.pow(base.at(x), power);
+        };
     }
 }
 

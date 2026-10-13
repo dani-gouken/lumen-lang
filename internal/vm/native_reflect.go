@@ -64,8 +64,8 @@ func kindName(v Value) string {
 // made with, not the methods attached to it.
 func fieldNames(obj *ObjectObj) []string {
 	var names []string
-	for key, value := range obj.fields {
-		if !isFunction(value) {
+	for i, key := range obj.shape.keys {
+		if !isFunction(obj.slots[i]) {
 			names = append(names, key)
 		}
 	}

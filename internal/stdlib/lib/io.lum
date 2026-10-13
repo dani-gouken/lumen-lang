@@ -125,14 +125,14 @@ pub fn failure(operation: String, path: String) -> Error {
 }
 
 fn kindOf(name: String) -> ErrorKind {
-    match name {
-        case "not found": { return ErrorKind.NotFound; }
-        case "permission denied": { return ErrorKind.PermissionDenied; }
-        case "is a directory": { return ErrorKind.IsDirectory; }
-        case "not a directory": { return ErrorKind.NotDirectory; }
-        case "already exists": { return ErrorKind.AlreadyExists; }
-        default: { return ErrorKind.Other; }
-    }
+    return match name {
+        case "not found": ErrorKind.NotFound;
+        case "permission denied": ErrorKind.PermissionDenied;
+        case "is a directory": ErrorKind.IsDirectory;
+        case "not a directory": ErrorKind.NotDirectory;
+        case "already exists": ErrorKind.AlreadyExists;
+        default: ErrorKind.Other;
+    };
 }
 
 // Provided by the runtime: the operations themselves, which only say

@@ -191,8 +191,8 @@ func (d *Desugarer) validateMatchPattern(pattern ast.Node) bool {
 	case nil:
 		// `default:` has no pattern and always matches
 		return true
-	case *ast.Literal, *ast.UnaryExpr:
-		// Literals (including negative numbers) are always valid
+	case *ast.Literal, *ast.UnaryExpr, *ast.RangeExpr:
+		// Literals (including negative numbers) and ranges are always valid
 		return true
 	case *ast.Ident, *ast.VariantPattern:
 		// Identifiers are valid (variable binding or enum variant)

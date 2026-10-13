@@ -45,19 +45,19 @@ enum Result { Win, Draw, Loss }
 
 impl Result {
     fn score() -> Score {
-        match self {
-            case Result.Win: { return Score { points: 3, wins: 1, played: 1 }; }
-            case Result.Draw: { return Score { points: 1, played: 1 }; }
-            case Result.Loss: { return Score { played: 1 }; }
-        }
+        return match self {
+            case Result.Win: Score { points: 3, wins: 1, played: 1 };
+            case Result.Draw: Score { points: 1, played: 1 };
+            case Result.Loss: Score { played: 1 };
+        };
     }
 
     fn other() -> Result {
-        match self {
-            case Result.Win: { return Result.Loss; }
-            case Result.Draw: { return Result.Draw; }
-            case Result.Loss: { return Result.Win; }
-        }
+        return match self {
+            case Result.Win: Result.Loss;
+            case Result.Draw: Result.Draw;
+            case Result.Loss: Result.Win;
+        };
     }
 }
 

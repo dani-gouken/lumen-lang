@@ -23,6 +23,11 @@ const (
 	KindLibrary    ErrorKind = "library"    // A function of the standard library refused its arguments
 	KindDeadlock   ErrorKind = "deadlock"   // Every task waits for another
 	KindOther      ErrorKind = "other"      // Anything else: a mistake in the bytecode, mostly
+
+	// The two that follow end the program whatever it does: `attempt` does
+	// not recover from them.
+	KindInternal    ErrorKind = "internal"    // A mistake of the VM or of a native function, not of the program
+	KindInterrupted ErrorKind = "interrupted" // The program was told to stop from outside (VM.Interrupt)
 )
 
 // StackFrame is one place in the program: an instruction, with the source
@@ -65,6 +70,9 @@ var runtimeCodes = map[ErrorKind]string{
 	KindLibrary:    "R0007",
 	KindOther:      "R0008",
 	KindDeadlock:   "R0009",
+
+	KindInternal:    "R0010",
+	KindInterrupted: "R0011",
 }
 
 // Code is the code of the error: R0002 for an index out of bounds.
@@ -91,6 +99,8 @@ func (e *RuntimeError) Suggestion() string {
 		return "A function that calls itself needs a case where it stops; if the depth is intended, raise the limit with --max-depth=N"
 	case KindMemory:
 		return "Keep less alive at once, or raise the limit with --heap-mb=N"
+	case KindInternal:
+		return "This is a defect of Lumen, not of the program: please report it, with the program that shows it"
 	case KindDeadlock:
 		return "A task that receives from a channel waits until a value is sent or the channel is closed: close it once nothing more will come"
 	}
@@ -236,7 +246,9 @@ func kindOf(message string) ErrorKind {
 		return KindArithmetic
 	case strings.HasPrefix(message, "stack overflow"):
 		return KindDepth
-	case strings.HasPrefix(message, "out of memory"):
+	case strings.Contains(message, "out of memory"):
+		// Also when it says first what could not be made: "string
+		// allocation failed: out of memory: ..."
 		return KindMemory
 	case strings.HasPrefix(message, "std."):
 		return KindLibrary

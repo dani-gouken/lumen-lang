@@ -39,11 +39,11 @@ pub enum Severity { Error, Warning, Info }
 
 impl Severity {
     pub fn name() -> String {
-        match self {
-            case Severity.Error: { return "error"; }
-            case Severity.Warning: { return "warning"; }
-            case Severity.Info: { return "info"; }
-        }
+        return match self {
+            case Severity.Error: "error";
+            case Severity.Warning: "warning";
+            case Severity.Info: "info";
+        };
     }
 }
 
@@ -64,10 +64,10 @@ impl Problem {
     }
 
     pub fn isError() -> Bool {
-        match self.severity {
-            case Severity.Error: { return true; }
-            default: { return false; }
-        }
+        return match self.severity {
+            case Severity.Error: true;
+            default: false;
+        };
     }
 }
 
@@ -95,30 +95,30 @@ pub fn check(path: String, source: String) -> [Problem] {
 }
 
 fn severityOf(name: String) -> Severity {
-    match name {
-        case "error": { return Severity.Error; }
-        case "warning": { return Severity.Warning; }
-        default: { return Severity.Info; }
-    }
+    return match name {
+        case "error": Severity.Error;
+        case "warning": Severity.Warning;
+        default: Severity.Info;
+    };
 }
 
 // What a declaration, or a suggestion, is.
 pub enum SymbolKind { Function, Method, Struct, Field, Enum, Variant, Trait, Constant, Variable, Module, Keyword }
 
 fn kindOf(name: String) -> SymbolKind {
-    match name {
-        case "function": { return SymbolKind.Function; }
-        case "method": { return SymbolKind.Method; }
-        case "struct": { return SymbolKind.Struct; }
-        case "field": { return SymbolKind.Field; }
-        case "enum": { return SymbolKind.Enum; }
-        case "variant": { return SymbolKind.Variant; }
-        case "trait": { return SymbolKind.Trait; }
-        case "constant": { return SymbolKind.Constant; }
-        case "module": { return SymbolKind.Module; }
-        case "keyword": { return SymbolKind.Keyword; }
-        default: { return SymbolKind.Variable; }
-    }
+    return match name {
+        case "function": SymbolKind.Function;
+        case "method": SymbolKind.Method;
+        case "struct": SymbolKind.Struct;
+        case "field": SymbolKind.Field;
+        case "enum": SymbolKind.Enum;
+        case "variant": SymbolKind.Variant;
+        case "trait": SymbolKind.Trait;
+        case "constant": SymbolKind.Constant;
+        case "module": SymbolKind.Module;
+        case "keyword": SymbolKind.Keyword;
+        default: SymbolKind.Variable;
+    };
 }
 
 // Something a file declares.

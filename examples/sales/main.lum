@@ -49,11 +49,11 @@ enum Flaw {
 
 impl Flaw {
     fn describe() -> String {
-        match self {
-            case Flaw.NotANumber(column, value): { return "${column} is '${value}', not a number"; }
-            case Flaw.NotADate(value): { return "'${value}' is not a date"; }
-            case Flaw.Nothing(column): { return "no ${column}"; }
-        }
+        return match self {
+            case Flaw.NotANumber(column, value): "${column} is '${value}', not a number";
+            case Flaw.NotADate(value): "'${value}' is not a date";
+            case Flaw.Nothing(column): "no ${column}";
+        };
     }
 }
 

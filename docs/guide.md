@@ -136,13 +136,55 @@ for i, item in items { ... }      // with the position, starting at 0
 for i, item in items {
     items[i] = item * 2;          // change the collection through the index;
 }                                 // `item = ...` and `i = ...` are errors
+for i in 0..10 { ... }            // the numbers 0 to 9: no array is made
+for i in 1..=10 { ... }           // 1 to 10, the last included
 
 match n {
     case 0: { println("zero"); }
-    case 1: { println("one"); }
+    case 1 | 2: { println("one or two"); }        // any of several patterns
+    case 3..10: { println("a few"); }             // a range, 10 left out
+    case 10..=99 if n % 10 == 0: { println("round"); }   // and a condition
     default: { println("many"); }
 }
 ```
+
+Where a value is expected, a `match` gives the value of the case that runs:
+
+```rust
+let word = match n {
+    case 0: "zero";
+    case 1: "one";
+    default: "many";
+};
+
+fn area(shape: Shape) -> Float {
+    return match shape {
+        case Shape.Circle(r): 3.14159 * r * r;
+        case Shape.Rect(w, h): w * h;
+    };
+}
+```
+
+Each case is an expression, all of the same type (a `null` among them makes the whole optional), or a block that leaves: `case 0: { return null; }`, `{ continue; }`, `{ panic("..."); }`. Such a match has to give a value whatever is matched: it handles every variant of an enum, or has a `default` (`E2028`).
+
+A range is for looping over and for matching against; it is not a value to keep (`E2038`). `arrays.range(0, 10)` makes the array. Its two ends are worked out once, before the loop starts, and `..` binds looser than arithmetic: `0..count - 1`.
+
+`defer` sets something aside to run when the block it is written in is left, whichever way: at its end, by `return`, `break`, `continue` or `?`, or because something failed.
+
+```rust
+fn export(path: String) -> Result<Int, String> {
+    let lock = acquire(path);
+    defer lock.release();            // one statement
+    defer {                          // or several
+        count++;
+        println("export over");
+    }
+    let rows = read(path)?;          // leaves through both
+    return Result.Ok(write(rows));
+}
+```
+
+Several defers of a block run last first. One written in the body of a loop runs at the end of every iteration. More in [errors.md](errors.md#cleaning-up-defer).
 
 `&&` and `||` skip their right side when the left side decides the result. `a ?? b` is `a` unless it is `null`.
 
@@ -671,7 +713,7 @@ All of it is in [errors.md](errors.md).
 
 These are rejected with a clear error rather than miscompiled:
 
-*   variables outside functions (constants are allowed), `match` used as an expression
+*   variables outside functions (constants are allowed)
 
 Things to be aware of:
 

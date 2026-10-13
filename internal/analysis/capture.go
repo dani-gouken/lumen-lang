@@ -120,6 +120,8 @@ func (a *Analyzer) visitStmt(stmt ast.Stmt, scope *functionScope) {
 				a.visitStmt(body, scope)
 			}
 		}
+	case *ast.DeferStmt:
+		a.visitStmt(s.Body, scope)
 	case *ast.ExprStmt:
 		a.visitExpr(s.Expr, scope)
 	case *ast.BreakStmt, *ast.ContinueStmt:
@@ -175,6 +177,15 @@ func (a *Analyzer) visitExpr(expr ast.Expr, scope *functionScope) {
 		for _, fieldValue := range e.Fields {
 			a.visitExpr(fieldValue, scope)
 		}
+	case *ast.BlockExpr:
+		for _, st := range e.Stmts {
+			a.visitStmt(st, scope)
+		}
+		a.visitExpr(e.Value, scope)
+	case *ast.CondExpr:
+		a.visitExpr(e.Cond, scope)
+		a.visitExpr(e.Then, scope)
+		a.visitExpr(e.Else, scope)
 	case *ast.FnExpr:
 		// Nested lambda - recurse
 		a.visitFunction(e, e.Body, e.Params)

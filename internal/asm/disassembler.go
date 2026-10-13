@@ -337,6 +337,12 @@ func FormatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 	case vm.OpCLOSEUP:
 		return fmt.Sprintf("CLOSEUP r%d", instr.A)
 
+	case vm.OpENDTRY:
+		return "ENDTRY"
+
+	case vm.OpRETHROW:
+		return "RETHROW"
+
 	case vm.OpGC:
 		return "GC"
 
@@ -354,6 +360,8 @@ func formatLongInstruction(instr vm.Instr, targetIP int, offset int32) string {
 		return fmt.Sprintf("JMPIF32 r%d", instr.A)
 	case vm.OpJMPIFNOT32:
 		return fmt.Sprintf("JMPIFNOT32 r%d", instr.A)
+	case vm.OpTRY32:
+		return "TRY32"
 	default:
 		return fmt.Sprintf("UNKNOWN_LONG(%d)", instr.Op)
 	}

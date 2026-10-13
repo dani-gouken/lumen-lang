@@ -35,6 +35,46 @@ type Heap struct {
 	// onFree, when set, is told of every object the collector frees. Tests
 	// use it to spoil freed objects, so that using one shows.
 	onFree func(*ObjHeader)
+
+	// The shape of an object without fields: where every object starts
+	rootShape *Shape
+}
+
+const (
+	valueSize   = uint64(unsafe.Sizeof(Value(0)))
+	pointerSize = uint64(unsafe.Sizeof(uintptr(0)))
+
+	// maxArrayCapacity bounds what one array may be asked to hold, well
+	// above what any heap limit allows: a number beyond it is a mistake,
+	// not a request to be tried.
+	maxArrayCapacity = 1 << 40
+)
+
+// sizeOf is what an object counts for against the limit. It is asked when
+// the object is made and again when it is freed, and what grew it in
+// between (see grow) has to be counted the same way here: the two must
+// agree, or the count drifts away from what is really in use.
+func sizeOf(header *ObjHeader) uint64 {
+	switch header.Type {
+	case ObjTypeString:
+		obj := (*StringObj)(unsafe.Pointer(header))
+		return uint64(unsafe.Sizeof(StringObj{})) + uint64(len(obj.data))
+	case ObjTypeArray:
+		obj := (*ArrayObj)(unsafe.Pointer(header))
+		return uint64(unsafe.Sizeof(ArrayObj{})) + uint64(cap(obj.elements))*valueSize
+	case ObjTypeObject:
+		obj := (*ObjectObj)(unsafe.Pointer(header))
+		return uint64(unsafe.Sizeof(ObjectObj{})) + uint64(cap(obj.slots))*valueSize
+	case ObjTypeFunction:
+		obj := (*FunctionObj)(unsafe.Pointer(header))
+		return uint64(unsafe.Sizeof(FunctionObj{})) + uint64(len(obj.upvalues))*pointerSize
+	case ObjTypeExternFunction:
+		obj := (*ExternFunctionObj)(unsafe.Pointer(header))
+		return uint64(unsafe.Sizeof(ExternFunctionObj{})) + uint64(len(obj.name))
+	case ObjTypeUpvalue:
+		return uint64(unsafe.Sizeof(UpvalueObj{}))
+	}
+	return uint64(unsafe.Sizeof(ObjHeader{}))
 }
 
 // NewHeap creates a new heap with the given size limit.
@@ -58,6 +98,7 @@ func NewHeap(maxBytes uint64) *Heap {
 		nextGC:         start,
 		maxBytes:       maxBytes,
 		minGC:          start,
+		rootShape:      newShape(),
 	}
 }
 
@@ -89,80 +130,51 @@ func (h *Heap) Collections() int {
 	return h.collections
 }
 
-// allocate allocates memory for an object and tracks it.
-func (h *Heap) allocate(obj Obj, size uint64) error {
-	if err := h.reserve(size); err != nil {
-		return err
-	}
-
-	// Add to object list
+// track puts a new object on the list of objects and counts it. Room for
+// it has been reserved before it was made.
+func (h *Heap) track(obj Obj) {
 	header := obj.Header()
 	header.Next = h.objects
 	h.objects = header
-
-	// Track allocation
-	h.bytesAllocated += size
-
-	return nil
+	h.bytesAllocated += sizeOf(header)
 }
 
 // AllocString allocates a string object.
 // Returns the object and a boolean indicating if GC should run.
 func (h *Heap) AllocString(s string) (*StringObj, bool, error) {
-	obj := &StringObj{
-		header: ObjHeader{
-			Type:   ObjTypeString,
-			Marked: false,
-			Next:   nil,
-		},
-		data: s,
-	}
-
-	size := uint64(unsafe.Sizeof(StringObj{})) + uint64(len(s))
-	if err := h.allocate(obj, size); err != nil {
+	if err := h.reserve(uint64(unsafe.Sizeof(StringObj{})) + uint64(len(s))); err != nil {
 		return nil, false, err
 	}
-
+	obj := &StringObj{header: ObjHeader{Type: ObjTypeString}, data: s}
+	h.track(obj)
 	return obj, h.ShouldCollect(), nil
 }
 
 // AllocArray allocates an array object.
 // Returns the object and a boolean indicating if GC should run.
+//
+// The room is reserved before the elements are: an array larger than the
+// limit is refused without the memory ever being asked of the machine.
 func (h *Heap) AllocArray(capacity int) (*ArrayObj, bool, error) {
-	obj := &ArrayObj{
-		header: ObjHeader{
-			Type:   ObjTypeArray,
-			Marked: false,
-			Next:   nil,
-		},
-		elements: make([]Value, 0, capacity),
+	if capacity < 0 || capacity > maxArrayCapacity {
+		return nil, false, fmt.Errorf("out of memory: an array of %d elements cannot be made", capacity)
 	}
-
-	size := uint64(unsafe.Sizeof(ArrayObj{})) + uint64(capacity)*uint64(unsafe.Sizeof(Value(0)))
-	if err := h.allocate(obj, size); err != nil {
+	if err := h.reserve(uint64(unsafe.Sizeof(ArrayObj{})) + uint64(capacity)*valueSize); err != nil {
 		return nil, false, err
 	}
-
+	obj := &ArrayObj{header: ObjHeader{Type: ObjTypeArray}, elements: make([]Value, 0, capacity)}
+	h.track(obj)
 	return obj, h.ShouldCollect(), nil
 }
 
 // AllocObject allocates a map/object.
 // Returns the object and a boolean indicating if GC should run.
 func (h *Heap) AllocObject() (*ObjectObj, bool, error) {
-	obj := &ObjectObj{
-		header: ObjHeader{
-			Type:   ObjTypeObject,
-			Marked: false,
-			Next:   nil,
-		},
-		fields: make(map[string]Value),
-	}
-
-	size := uint64(unsafe.Sizeof(ObjectObj{}))
-	if err := h.allocate(obj, size); err != nil {
+	if err := h.reserve(uint64(unsafe.Sizeof(ObjectObj{}))); err != nil {
 		return nil, false, err
 	}
-
+	obj := &ObjectObj{header: ObjHeader{Type: ObjTypeObject}, shape: h.rootShape, root: h.rootShape}
+	h.track(obj)
 	return obj, h.ShouldCollect(), nil
 }
 
@@ -173,67 +185,53 @@ func (h *Heap) AllocFunction(chunk *Chunk, protoIdx int, upvalueCount int) (*Fun
 	if protoIdx < 0 || protoIdx >= len(chunk.Prototypes) {
 		return nil, false, fmt.Errorf("invalid prototype index: %d (chunk has %d prototypes)", protoIdx, len(chunk.Prototypes))
 	}
-
-	obj := &FunctionObj{
-		header: ObjHeader{
-			Type:   ObjTypeFunction,
-			Marked: false,
-			Next:   nil,
-		},
-		chunk:    chunk,
-		protoIdx: protoIdx,
-		upvalues: make([]*UpvalueObj, upvalueCount),
+	if upvalueCount < 0 {
+		return nil, false, fmt.Errorf("invalid number of captured variables: %d", upvalueCount)
 	}
-
-	size := uint64(unsafe.Sizeof(FunctionObj{})) + uint64(upvalueCount)*uint64(unsafe.Sizeof(&UpvalueObj{}))
-	if err := h.allocate(obj, size); err != nil {
+	if err := h.reserve(uint64(unsafe.Sizeof(FunctionObj{})) + uint64(upvalueCount)*pointerSize); err != nil {
 		return nil, false, err
 	}
-
+	obj := &FunctionObj{
+		header:   ObjHeader{Type: ObjTypeFunction},
+		chunk:    chunk,
+		protoIdx: protoIdx,
+		proto:    &chunk.Prototypes[protoIdx],
+		upvalues: make([]*UpvalueObj, upvalueCount),
+	}
+	h.track(obj)
 	return obj, h.ShouldCollect(), nil
 }
 
 // AllocExternFunction allocates an external function object.
 // Returns the object and a boolean indicating if GC should run.
 func (h *Heap) AllocExternFunction(name string, function ExternFunc, argCount int) (*ExternFunctionObj, bool, error) {
+	if err := h.reserve(uint64(unsafe.Sizeof(ExternFunctionObj{})) + uint64(len(name))); err != nil {
+		return nil, false, err
+	}
 	obj := &ExternFunctionObj{
-		header: ObjHeader{
-			Type:   ObjTypeExternFunction,
-			Marked: false,
-			Next:   nil,
-		},
+		header:   ObjHeader{Type: ObjTypeExternFunction},
 		name:     name,
 		function: function,
 		argCount: argCount,
 	}
-
-	size := uint64(unsafe.Sizeof(ExternFunctionObj{})) + uint64(len(name))
-	if err := h.allocate(obj, size); err != nil {
-		return nil, false, err
-	}
-
+	h.track(obj)
 	return obj, h.ShouldCollect(), nil
 }
 
 // AllocUpvalue allocates an upvalue object.
 // Returns the object and a boolean indicating if GC should run.
-// The upvalue starts in the "open" state, pointing to a stack location.
-func (h *Heap) AllocUpvalue(location *Value) (*UpvalueObj, bool, error) {
-	obj := &UpvalueObj{
-		header: ObjHeader{
-			Type:   ObjTypeUpvalue,
-			Marked: false,
-			Next:   nil,
-		},
-		location: location,
-		closed:   NewNull(),
-	}
-
-	size := uint64(unsafe.Sizeof(UpvalueObj{}))
-	if err := h.allocate(obj, size); err != nil {
+// The upvalue starts in the "open" state, naming a register on a stack.
+func (h *Heap) AllocUpvalue(stack *regStack, slot int) (*UpvalueObj, bool, error) {
+	if err := h.reserve(uint64(unsafe.Sizeof(UpvalueObj{}))); err != nil {
 		return nil, false, err
 	}
-
+	obj := &UpvalueObj{
+		header: ObjHeader{Type: ObjTypeUpvalue},
+		stack:  stack,
+		slot:   slot,
+		closed: NewNull(),
+	}
+	h.track(obj)
 	return obj, h.ShouldCollect(), nil
 }
 

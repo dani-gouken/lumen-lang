@@ -194,6 +194,8 @@ The exit code is 1.
 | `R0007` | Library | A function of the standard library given arguments it cannot work with |
 | `R0008` | Other | Anything else; in practice, bytecode written by hand |
 | `R0009` | Deadlock | Every [task](tasks.md#how-a-program-ends) waits for another. Nothing catches it |
+| `R0010` | Internal | A mistake of Lumen itself, in the virtual machine or a native function, not of the program. Nothing catches it; please report it |
+| `R0011` | Interrupted | The program was stopped from outside: Ctrl-C, or `VM.Interrupt`. The message says where it was. Nothing catches it, and `lumen` exits with status 130 |
 
 A function calling itself gives the same line many times: it is shown once, with how often. Beyond twelve different calls the rest is counted, and the outermost, where it all started, is named.
 
@@ -246,10 +248,37 @@ Rarely. It is a boundary, not a way to handle errors:
 
 A failure that is expected is better returned as a `Result` by the function that meets it: the caller is then made to deal with it, by the compiler, instead of having to remember to wrap the call.
 
+## Cleaning Up: `defer`
+
+A function that takes something it has to give back (a lock, a worker from a pool, a flag it set) can leave in many ways: at its end, by any of its `return`s, by a `?` that passes a failure on, or because something it called stopped the program and an `attempt` further out survived that. `defer` says once what has to happen, next to where the thing was taken:
+
+```rust
+fn transfer(from: Account, to: Account, amount: Int) -> Result<Int, String> {
+    from.locked = true;
+    defer { from.locked = false; }
+
+    let fee = feeFor(amount)?;                 // leaves here: unlocked
+    if amount + fee > from.balance {
+        panic("not enough on the account");    // or here: unlocked
+    }
+    from.balance -= amount + fee;
+    to.balance += amount;
+    return Result.Ok(from.balance);            // or here: unlocked
+}
+```
+
+*   `defer statement;` or `defer { ... }`. It runs when the **block** it is written in is left: a function body, the body of a loop (then at the end of every iteration, and on `break` and `continue`), an `if`, a block of its own.
+*   Several defers of a block run in the opposite order: what was taken last is given back first. Only those that were reached run.
+*   What a function returns is worked out first, then its defers run: assigning to a variable in a defer does not change the value on its way out.
+*   A defer sees its variables as they are when it runs, not as they were when it was written.
+*   When a failure passes through, every call in progress runs its defers, the innermost first; then the failure goes on to the `attempt` that waits for it, or stops the program with the same message and the same calls as without them. If a defer fails itself, the others still run, and its failure is the one that goes on.
+*   A defer cannot leave: no `return`, no `?`, no `break` or `continue` of a loop around it (`E2039`). Loops of its own are its business.
+*   `os.exit` ends the program there and then, without running anything.
+
 ## What Is Not There
 
 *   **`try` / `catch`.** By design: there is one way to return a failure (`Result`) and one to survive a stop (`attempt`). A second error mechanism next to `Result` would have to be chosen between at every function.
-*   **Cleanup that runs whatever happens** (`defer`, `finally`). Nothing in the standard library keeps something open between calls yet, so nothing is leaked by stopping half way; that changes the day there are files that are opened and closed.
+*   **`finally`.** There is `defer`, which does not need the `try` around it.
 *   **`attempt` with arguments.** The function it runs takes none.
 *   **A common shape for errors.** `io.Error`, `Failure` and an error type of your own each have a `describe()`, by convention only: traits cannot yet be required of a type parameter, so nothing can ask for "any error".
 

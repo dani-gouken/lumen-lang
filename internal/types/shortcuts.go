@@ -73,6 +73,11 @@ func (c *Checker) checkSafeAccess(e *ast.BinaryExpr) Type {
 // way the function has to be one that can return that; in a function
 // that returns nothing, `value?` on an optional simply ends it.
 func (c *Checker) checkTry(e *ast.UnaryExpr) Type {
+	if c.inDefer {
+		c.errorfWithSuggestion(e.Token(), ErrBadDefer,
+			"A defer runs while its block is being left and cannot return; handle the failure there, with a match or orElse",
+			"'?' inside a defer")
+	}
 	operand := c.checkExpr(e.Expr)
 	if operand == nil || isUnknown(operand) {
 		return Unknown

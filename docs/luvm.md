@@ -65,19 +65,26 @@ truncate the pointer.
 
 ### Registers and Stack
 
-luvm is a **register and stack hybrid**:
+luvm is a **register machine**: an instruction names the registers it reads
+and writes, and a function declares how many it needs.
 
-- **Registers**: Local variables and temporaries stored in a register array
-- **Stack**: Call frames pushed onto a stack for function invocation
-- **FP (Frame Pointer)**: Points to the base of the current call frame
-- **SP (Stack Pointer)**: Points to the top of the stack
-- **IP (Instruction Pointer)**: Points to the next instruction to execute
+The registers of every call in progress are on one **stack**, a call after
+the other. A call takes its registers from the top (the arguments first, the
+rest set to null) and gives them back when it returns, so calling a function
+allocates nothing. Each task has a stack of its own.
 
-Each call frame contains:
+- **Registers**: the window on the stack that belongs to the function running
+- **Base**: where that window starts
+- **IP (Instruction Pointer)**: the instruction being executed
+- **Frames**: for each call in progress, where its caller was: function,
+  instruction, base and number of registers
 
-```
-[saved FP][saved IP][register array...]
-```
+The stack grows by moving to a larger array, so nothing keeps the address of
+a register. A variable a closure captured is named by its place on the stack
+while the call that owns it is in progress, and moves into the closure when
+that call returns (see [closure-spec.md](closure-spec.md)).
+
+`RET` puts the result in the caller's `r0`.
 
 ### Execution Loop
 
@@ -86,6 +93,40 @@ Each call frame contains:
 3. Execute operation
 4. Advance IP
 5. Repeat
+
+The loop reads the code, the registers and the instruction pointer from
+variables of its own, and takes them from the VM again after what can change
+them: a call, a return, a host function (which may call back into the program
+or let another task have the turn).
+
+### Checked before it runs
+
+`Exec` verifies a chunk before running it (`vm.Verify`), and refuses one that
+could make the VM read outside its tables:
+
+- a function's code lies inside the chunk, it has between 1 and 65536
+  registers and no more arguments than registers;
+- every operand that names a register names one the function has, and a call
+  does not reach past them with its arguments;
+- constants, strings, functions, host functions and captured variables named
+  by an instruction exist;
+- a jump lands on an instruction of the same function, not in the middle of a
+  long jump;
+- a function ends with a return or a jump, so that it cannot run into the next.
+
+Bytecode from the compiler passes by construction. A `.lc` file damaged on the
+way, or assembly written by hand with a mistake, is refused with a message that
+names the function and the instruction:
+
+```
+invalid bytecode: function 'fib': instruction 0: register r60000 of a function that has 7
+```
+
+Reading a `.lc` file checks every length it gives against what is left of the
+file before making anything to hold it, and refuses a constant that is a
+pointer. What depends on the values a program computes is checked when it
+runs: that a register holds a function when it is called, an array when it is
+indexed.
 
 ## Chunk Structure
 
@@ -329,7 +370,7 @@ half in B (`EncodeOffset32` / `DecodeOffset32`).
 
 luvm uses **mark-sweep** garbage collection:
 
-1. **Mark Phase**: Starting from roots (registers, stack), recursively mark all reachable objects
+1. **Mark Phase**: Starting from roots (the registers of every call in progress, of every task), mark all reachable objects. Objects found are put on a list to be looked into, rather than followed by a call each: a list of a million nodes is marked without a million calls inside each other
 2. **Sweep Phase**: Iterate through heap, free unmarked objects
 
 **When it runs.** The first collection happens once 1 MB has been allocated.
@@ -355,7 +396,75 @@ captured variables.
 Calls may nest 10000 deep by default (`VM.SetMaxCallDepth`, `--max-depth=N`);
 beyond that the program stops with `stack overflow`. The frame stack grows as
 needed, so the limit is a guard against runaway recursion, not a reserved
-size.
+size. The registers of all the calls in progress are bounded as well, at 256
+per call the depth limit allows.
+
+### Fields
+
+A struct value holds its fields in slots, and shares with every other value
+made the same way a **shape**: which field is in which slot. Adding a field
+moves an object to the shape of those that have it; values of one struct all
+end up with the same one.
+
+An instruction that reads or writes a field remembers the shape of the last
+object it met and where the field was. While it keeps meeting values of the
+same struct, which is nearly always, the field is found by comparing one
+pointer, without looking the name up. A struct value takes the room of its
+slots; the names are kept once per shape.
+
+### Texts
+
+Positions in a text are characters; its bytes are UTF-8. A text of plain
+ASCII is indexed directly. For any other, where every 32nd character starts is
+worked out the first time a position is asked for and kept, so `text[i]`,
+the length and `strings.substring` do not depend on how long the text is. The
+texts of one ASCII character, which is what indexing mostly gives, are made
+once each.
+
+### When the VM itself goes wrong
+
+A Go panic in the VM or in a native function does not take the process down:
+`Exec` turns it into an error of kind `internal` (`R0010`), with the place the
+program was at, and the VM can run the next program. Nothing in the program
+catches it.
+
+### Stopping a program from outside
+
+`VM.Interrupt()` may be called from any thread. The program ends with an error
+of kind `interrupted` (`R0011`) that says where it was: at its next call or
+jump backwards if it is computing, at once if it sleeps. `attempt` does not
+catch it and no `defer` runs. The `lumen` command does this on Ctrl-C, and
+exits with status 130.
+
+### Threads
+
+A VM runs one program at a time, and a program one [task](tasks.md) at a
+time: the heap, the collector and the registers are only touched by whoever
+has the turn, which is what lets them go without locks. From any thread, at
+any time:
+
+- `Exec`: a second program waits for the first to end;
+- `Interrupt`;
+- anything on another VM. VMs share nothing that changes, so several run side
+  by side, one per thread, each on a processor of its own.
+
+Everything else configures a VM (`SetOutput`, `RegisterExtern`, the limits)
+and is done before `Exec`. `make test-race` runs the tests under Go's race
+detector.
+
+Tasks of one program do not run on several processors. That would take a
+collector that stops every thread at a safe point, allocation and objects
+safe to use from two threads at once, and none of it is there; see
+[missing.md](missing.md#3-runtime-and-vm).
+
+### What the process holds
+
+The heap limit is on the values of the program. `lumen` also watches what
+the whole process holds, and ends it with `out of memory` when that passes
+four times the limit plus 1 GB: a guard for what the count does not cover,
+which would otherwise only stop when the machine has no memory left
+(`internal/memguard`). The test packages that run programs use the same guard,
+at 4 GB.
 
 ### Heap Object Header
 
@@ -373,7 +482,7 @@ Object types:
 
 - `StringObj` - Immutable string
 - `ArrayObj` - Dynamic array
-- `ObjectObj` - Field map (struct values)
+- `ObjectObj` - Slots and a shape (struct and enum values)
 - `FunctionObj` - Function closure
 - `ExternFunctionObj` - Host function
 - `UpvalueObj` - Captured variable

@@ -1,4 +1,4 @@
-.PHONY: help build clean test test-unit test-e2e test-integration run
+.PHONY: help build clean test test-unit test-e2e test-integration test-race bench run
 
 # Go binary location
 GO := /usr/local/go/bin/go
@@ -12,6 +12,8 @@ help:
 	@echo "  make test-unit          Run Go unit tests"
 	@echo "  make test-e2e           Run end-to-end tests (lumen run on .lum files)"
 	@echo "  make test-integration   Run integration tests (toolchain)"
+	@echo "  make test-race          Run the tests that run programs under the race detector"
+	@echo "  make bench              Measure the virtual machine"
 	@echo "  make clean              Clean build artifacts and test output"
 	@echo "  make run                Run lumen CLI (shows help)"
 
@@ -20,13 +22,29 @@ build:
 	@$(GO) build -o lumen ./cmd/lumen
 	@echo "Build complete: ./lumen"
 
+# Every run of the tests has a time limit, and the packages that run
+# programs end themselves if they come to hold too much memory (see
+# internal/memguard): a test that goes wrong fails, it does not take the
+# machine with it.
+TEST_TIMEOUT := 300s
+
 test-unit:
 	@echo "Running unit tests..."
-	@$(GO) test ./internal/...
+	@$(GO) test -timeout $(TEST_TIMEOUT) ./internal/...
 
 test-e2e:
 	@echo "Running end-to-end tests..."
-	@$(GO) test ./test/e2e
+	@$(GO) test -timeout $(TEST_TIMEOUT) ./test/e2e
+
+# The race detector also checks every conversion of a number into a
+# pointer, which is how the VM keeps its objects in its values (see
+# docs/luvm.md): that check is turned off, the rest is what is wanted.
+test-race:
+	@echo "Running tests under the race detector..."
+	@$(GO) test -race -gcflags=all=-d=checkptr=0 -timeout 900s ./internal/vm ./internal/stdlib ./internal/memguard ./test/e2e
+
+bench:
+	@$(GO) test ./internal/vm -run '^$$' -bench . -benchmem
 
 
 test-integration:

@@ -137,6 +137,7 @@ func (fc *FunctionCompiler) compileBreakStmt(stmt *ast.BreakStmt) {
 		return
 	}
 	ctx := fc.loopStack[len(fc.loopStack)-1]
+	fc.runDefers(ctx.scopeDepth)
 	fc.builder.CreateJmp(ctx.breakTarget)
 	fc.startDeadBlock()
 }
@@ -148,6 +149,7 @@ func (fc *FunctionCompiler) compileContinueStmt(stmt *ast.ContinueStmt) {
 		return
 	}
 	ctx := fc.loopStack[len(fc.loopStack)-1]
+	fc.runDefers(ctx.scopeDepth)
 	// `continue` ends the iteration too
 	fc.endIteration(ctx)
 	fc.builder.CreateJmp(ctx.continueTarget)
@@ -169,5 +171,9 @@ func (fc *FunctionCompiler) blockEndsWithTerminator() bool {
 		return false
 	}
 	last := fc.builder.CurrentBlock.Instructions[len(fc.builder.CurrentBlock.Instructions)-1]
-	return last.Op == ir.OpRet || last.Op == ir.OpJmp || last.Op == ir.OpBr
+	switch last.Op {
+	case ir.OpRet, ir.OpJmp, ir.OpBr, ir.OpTry, ir.OpRethrow:
+		return true
+	}
+	return false
 }

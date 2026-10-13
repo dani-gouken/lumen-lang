@@ -30,6 +30,7 @@ const (
 	IN
 	BREAK
 	CONTINUE
+	DEFER
 	RETURN
 
 	// Declarations
@@ -120,6 +121,8 @@ const (
 	DOT       // .
 	ARROW     // ->
 	ELLIPSIS  // ...
+	DOTDOT    // ..
+	DOTDOT_EQ // ..=
 	delimiter_end
 )
 
@@ -208,6 +211,8 @@ func (typ TokenType) String() string {
 		return "BREAK"
 	case CONTINUE:
 		return "CONTINUE"
+	case DEFER:
+		return "DEFER"
 	case RETURN:
 		return "RETURN"
 
@@ -354,6 +359,10 @@ func (typ TokenType) String() string {
 		return "ARROW"
 	case ELLIPSIS:
 		return "ELLIPSIS"
+	case DOTDOT:
+		return "DOTDOT"
+	case DOTDOT_EQ:
+		return "DOTDOT_EQ"
 
 	default:
 		return "UNKNOWN"
@@ -372,6 +381,7 @@ var keywords = map[string]TokenType{
 	"in":       IN,
 	"break":    BREAK,
 	"continue": CONTINUE,
+	"defer":    DEFER,
 	"return":   RETURN,
 
 	// Declarations

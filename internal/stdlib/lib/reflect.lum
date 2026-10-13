@@ -40,19 +40,19 @@ pub enum Kind {
 
 // Which sort of value this is.
 pub fn kind(value: Any) -> Kind {
-    match kindName(value) {
-        case "null": { return Kind.Null; }
-        case "bool": { return Kind.Bool; }
-        case "int": { return Kind.Int; }
-        case "float": { return Kind.Float; }
-        case "string": { return Kind.String; }
-        case "array": { return Kind.Array; }
-        case "tuple": { return Kind.Tuple; }
-        case "struct": { return Kind.Struct; }
-        case "variant": { return Kind.Variant; }
-        case "function": { return Kind.Function; }
-        default: { return Kind.Other; }
-    }
+    return match kindName(value) {
+        case "null": Kind.Null;
+        case "bool": Kind.Bool;
+        case "int": Kind.Int;
+        case "float": Kind.Float;
+        case "string": Kind.String;
+        case "array": Kind.Array;
+        case "tuple": Kind.Tuple;
+        case "struct": Kind.Struct;
+        case "variant": Kind.Variant;
+        case "function": Kind.Function;
+        default: Kind.Other;
+    };
 }
 
 // The name of a value's type: "Int", "String", "array", and for a value

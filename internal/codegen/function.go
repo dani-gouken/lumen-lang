@@ -124,7 +124,11 @@ func body(bb *ir.BasicBlock) []*ir.Instruction {
 }
 
 func isTerminator(op ir.OpType) bool {
-	return op == ir.OpRet || op == ir.OpJmp || op == ir.OpBr
+	switch op {
+	case ir.OpRet, ir.OpJmp, ir.OpBr, ir.OpTry, ir.OpRethrow:
+		return true
+	}
+	return false
 }
 
 // successors returns the blocks a block can jump to.
@@ -433,6 +437,23 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 			return
 		}
 		f.emit(vm.OpRET, f.reg(instr.Operands[0]), 0, 0)
+
+	case ir.OpTry:
+		// The handler is given as a jump is, by how far away it is; then
+		// the code goes on at the body
+		handler, ok1 := f.blockOperand(instr, 0)
+		bodyBlock, ok2 := f.blockOperand(instr, 1)
+		if !ok1 || !ok2 {
+			return
+		}
+		f.emitJump(vm.OpTRY32, 0, handler)
+		if bodyBlock != next {
+			f.emitJump(vm.OpJMP32, 0, bodyBlock)
+		}
+	case ir.OpEndTry:
+		f.emit(vm.OpENDTRY, 0, 0, 0)
+	case ir.OpRethrow:
+		f.emit(vm.OpRETHROW, 0, 0, 0)
 
 	case ir.OpCall:
 		f.generateCall(instr)

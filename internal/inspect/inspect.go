@@ -464,7 +464,9 @@ func eachPattern(node ast.Node, visit func(*ast.VariantPattern)) {
 	types.WalkStmts(node, func(stmt ast.Stmt) {
 		if match, ok := stmt.(*ast.MatchStmt); ok {
 			for _, matchCase := range match.Cases {
-				walk(matchCase.Pattern)
+				for _, pattern := range matchCase.Patterns() {
+					walk(pattern)
+				}
 			}
 		}
 	})
@@ -1005,7 +1007,7 @@ func member(prog *ast.Program, owner, name string) (ast.Node, string) {
 // --- What could be written ---
 
 var keywords = []string{
-	"fn", "let", "const", "return", "if", "else", "while", "for", "in", "break", "continue",
+	"fn", "let", "const", "return", "if", "else", "while", "for", "in", "break", "continue", "defer",
 	"match", "case", "default", "struct", "enum", "trait", "impl", "import", "pub", "extern",
 	"true", "false", "null", "self", "as", "is",
 }

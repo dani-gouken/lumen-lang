@@ -161,6 +161,47 @@ fn describe(value: Any) -> String {
 }
 ```
 
+### A match that gives a value
+
+Where a value is expected, a `match` is an expression. Each case gives the value of the whole:
+
+```rust
+fn area(shape: Shape) -> Float {
+    return match shape {
+        case Shape.Circle(r): 3.14159 * r * r;
+        case Shape.Rect(w, h): w * h;
+        case Shape.Empty: 0.0;
+    };
+}
+
+let total = price * match customer {
+    case Customer.Member(years) if years >= 5: 80;
+    case Customer.Member(_): 90;
+    case Customer.Guest: 100;
+} / 100;
+```
+
+*   A case is an expression followed by `;` (a `,` does as well, and the last case needs neither), or a block that leaves: `{ return ...; }`, `{ break; }`, `{ continue; }`, `{ panic(...); }`. A block that reaches its end gives nothing, and is refused (`E2040`).
+*   The cases give the same type (`E2001`). One of them `null` makes the value optional; a type expected where the match stands (a declared variable, a return type) takes cases of different structs that implement the same trait.
+*   It must have a value whatever is matched: every variant handled, or a `default` (`E2028`). On anything but an enum that means a `default`.
+
+### Conditions, and several patterns for a case
+
+```rust
+match shape {
+    case Shape.Circle(r) if r > 10.0: { println("a big circle"); }
+    case Shape.Circle(_) | Shape.Empty: { println("round, or nothing"); }
+    case Shape.Rect(w, h) if w == h: { println("a square"); }
+    case Shape.Rect(_, _): { println("a rectangle"); }
+}
+```
+
+`if` after the pattern adds a condition, which may use the names of the pattern. It is only asked when the pattern matched, and when it does not hold the cases below are tried. A case with a condition handles nothing for certain: the check that a match is complete does not count it, so the variant needs another case (`case Shape.Circle(_)` above).
+
+`|` between patterns makes a case run for any of them. They can be variants, literals, ranges or types (`case Int | Float:`), and name nothing (`E2029`): whichever matched, the body is the same.
+
+A case on a number can be a range: `case 0..10:` (10 left out), `case 90..=100:`, with `Int` or `Float` ends.
+
 ## Generic Enums
 
 ```rust
@@ -276,11 +317,9 @@ What tuples add is reading a value by its position, `pair.0`, and being printed 
 ## What Is Not There
 
 *   **Named values** in a variant (`Rect { width: Float, height: Float }`): values are told apart by position.
-*   **Conditions on a case** (`case Shape.Circle(r) if r > 10.0:`): use an `if` inside the case.
-*   **Several patterns for one case** (`case Light.Red | Light.Amber:`).
+*   **Names in a case with several patterns** (`case Shape.Circle(r) | Shape.Square(r):`): write `_`, or give each pattern its case.
 *   **Patterns on structs, arrays and optionals**: only enums are taken apart; a struct inside a variant is bound to a name and used as usual.
 *   **`value is Shape.Circle`**: `is` tests for a type; use a `match` to test for a variant.
-*   **`match` as an expression** with a value.
 *   **A variant by itself**: `Circle(2.0)` has to be written `Shape.Circle(2.0)`; there is no way to import the variants of an enum as bare names.
 
 ## How It Is Compiled

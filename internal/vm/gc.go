@@ -6,36 +6,32 @@ import "unsafe"
 func (vm *VM) CollectGarbage() {
 	// Mark phase: mark all reachable objects
 	vm.markRoots()
+	vm.markReachable()
 
 	// Sweep phase: free unmarked objects
 	vm.heap.sweep()
 }
 
-// markRoots marks all objects reachable from GC roots.
+// markRoots marks the objects the program holds directly: in the registers
+// of its calls in progress, and in what the VM keeps for it. What those
+// objects hold in turn is left for markReachable.
 func (vm *VM) markRoots() {
 	// Mark current function
 	if vm.currentFunction != nil {
-		vm.markFunction(vm.currentFunction)
+		vm.markObject(&vm.currentFunction.header)
 	}
 
-	// Mark objects in registers
+	// The registers of the task whose turn it is: those of every call in
+	// progress, which are the stack up to the end of the innermost call
+	vm.markStack(vm.stk, vm.base+len(vm.regs))
 	for i := 0; i < len(vm.regs); i++ {
 		vm.markValue(vm.regs[i])
 	}
 
-	// Mark objects on the stack
-	for i := 0; i < vm.sp; i++ {
-		vm.markValue(vm.stack[i])
-	}
-
-	// Mark saved registers and functions in call frames
+	// The functions whose calls are in progress
 	for i := 0; i < vm.frameCount; i++ {
-		frame := &vm.frames[i]
-		if frame.function != nil {
-			vm.markFunction(frame.function)
-		}
-		for j := 0; j < len(frame.regs); j++ {
-			vm.markValue(frame.regs[j])
+		if fn := vm.frames[i].function; fn != nil {
+			vm.markObject(&fn.header)
 		}
 	}
 
@@ -50,113 +46,98 @@ func (vm *VM) markRoots() {
 		vm.markValue(v)
 	}
 
-	// Function objects kept for reuse (see functionObject, NEWEXFUNC)
+	// Function objects kept for reuse (see functionObject, NEWEXFUNC), and
+	// the texts of one character
 	for _, cached := range vm.funcObjs {
 		vm.markValue(cached)
 	}
 	for _, cached := range vm.externObjs {
 		vm.markValue(cached)
 	}
-
-	// Mark open upvalues (they are roots because they point to stack)
-	for _, upval := range vm.openUpvalues {
-		if upval != nil && !upval.header.Marked {
-			upval.header.Marked = true
-			// Open upvalues point to stack, which is marked by stack scan.
-		}
+	for _, cached := range vm.charStrings {
+		vm.markValue(cached)
 	}
 }
 
-// markValue marks a value and recursively marks its children.
+// markStack marks what a stack holds below top, and the variables on it
+// that closures share.
+func (vm *VM) markStack(stack *regStack, top int) {
+	if stack == nil {
+		return
+	}
+	if top > len(stack.vals) {
+		top = len(stack.vals)
+	}
+	for _, v := range stack.vals[:top] {
+		vm.markValue(v)
+	}
+	for _, upval := range stack.open {
+		vm.markObject(&upval.header)
+	}
+}
+
+// markValue marks the object a value points at, if it does.
 func (vm *VM) markValue(v Value) {
-	if !v.IsHeapPtr() {
-		return
-	}
-
-	ptr := v.AsHeapPtr()
-	if ptr == 0 {
-		return
-	}
-
-	// Get the object header
-	obj := (*ObjHeader)(unsafe.Pointer(ptr))
-
-	// Already marked?
-	if obj.Marked {
-		return
-	}
-
-	// Mark this object
-	obj.Marked = true
-
-	// Recursively mark children based on type
-	switch obj.Type {
-	case ObjTypeString:
-		// Strings have no children
-
-	case ObjTypeArray:
-		// Mark all elements in the array
-		arrayObj := (*ArrayObj)(unsafe.Pointer(ptr))
-		for i := 0; i < len(arrayObj.elements); i++ {
-			vm.markValue(arrayObj.elements[i])
-		}
-
-	case ObjTypeObject:
-		// Mark all values in the object
-		objObj := (*ObjectObj)(unsafe.Pointer(ptr))
-		for _, value := range objObj.fields {
-			vm.markValue(value)
-		}
-
-	case ObjTypeFunction:
-		// The header is marked above; what a closure captured is still
-		// to be
-		vm.markUpvalues((*FunctionObj)(unsafe.Pointer(ptr)))
-
-	case ObjTypeExternFunction:
-		// Extern functions have no children
-
-	case ObjTypeUpvalue:
-		// Mark upvalue object
-		upval := (*UpvalueObj)(unsafe.Pointer(ptr))
-		// If closed, mark the closed value
-		if upval.location == nil {
-			vm.markValue(upval.closed)
-		}
+	if h := header(v); h != nil {
+		vm.markObject(h)
 	}
 }
 
-// markFunction marks a function object.
-func (vm *VM) markFunction(funcObj *FunctionObj) {
-	if funcObj == nil {
+// markObject marks an object. If it can hold others it is put aside to
+// be looked into by markReachable, rather than looked into here: a list of
+// a million nodes, each holding the next, would otherwise be followed a
+// million calls deep.
+func (vm *VM) markObject(h *ObjHeader) {
+	if h.Marked {
 		return
 	}
-
-	header := funcObj.Header()
-	if header.Marked {
-		return
+	h.Marked = true
+	switch h.Type {
+	case ObjTypeString, ObjTypeExternFunction:
+		// These hold no other object
+	default:
+		vm.gray = append(vm.gray, h)
 	}
-
-	// Mark the function object
-	header.Marked = true
-	vm.markUpvalues(funcObj)
 }
 
-// markUpvalues marks the variables a closure captured.
-func (vm *VM) markUpvalues(funcObj *FunctionObj) {
-	for _, upval := range funcObj.upvalues {
-		if upval != nil {
-			// Mark the upvalue object itself
-			if !upval.header.Marked {
-				upval.header.Marked = true
-				// If closed, mark the closed value
-				if upval.location == nil {
-					vm.markValue(upval.closed)
+// markReachable marks everything that can be reached from the objects
+// marked so far.
+func (vm *VM) markReachable() {
+	for len(vm.gray) > 0 {
+		h := vm.gray[len(vm.gray)-1]
+		vm.gray = vm.gray[:len(vm.gray)-1]
+
+		switch h.Type {
+		case ObjTypeArray:
+			for _, v := range (*ArrayObj)(unsafe.Pointer(h)).elements {
+				vm.markValue(v)
+			}
+		case ObjTypeObject:
+			for _, v := range (*ObjectObj)(unsafe.Pointer(h)).slots {
+				vm.markValue(v)
+			}
+		case ObjTypeFunction:
+			// The variables a closure captured
+			for _, upval := range (*FunctionObj)(unsafe.Pointer(h)).upvalues {
+				if upval != nil {
+					vm.markObject(&upval.header)
 				}
+			}
+		case ObjTypeUpvalue:
+			// An open one names a register, which its stack keeps alive
+			if upval := (*UpvalueObj)(unsafe.Pointer(h)); upval.stack == nil {
+				vm.markValue(upval.closed)
 			}
 		}
 	}
+	if cap(vm.gray) > maxKeptGray {
+		vm.gray = nil
+	}
 }
+
+// maxKeptGray is how large a list of objects to look into is kept from one
+// collection to the next, rather than made again.
+const maxKeptGray = 1 << 16
 
 // sweep walks the object list and frees unmarked objects.
 func (h *Heap) sweep() {
@@ -180,7 +161,6 @@ func (h *Heap) sweep() {
 				h.objects = current
 			}
 
-			// Free the object (estimate size for stats)
 			h.freeObject(unreached)
 		}
 	}
@@ -199,48 +179,18 @@ func (h *Heap) sweep() {
 	}
 }
 
-// freeObject frees an individual object and updates stats.
+// freeObject takes an object off the count of what is in use. The memory
+// itself goes back when Go's collector finds nothing pointing at it, which
+// taking it off the list of objects has just made true.
 func (h *Heap) freeObject(header *ObjHeader) {
-	if h.onFree != nil {
-		// After the size has been taken off the count below
-		defer h.onFree(header)
-	}
-	var size uint64
-
-	switch header.Type {
-	case ObjTypeString:
-		obj := (*StringObj)(unsafe.Pointer(header))
-		size = uint64(unsafe.Sizeof(StringObj{})) + uint64(len(obj.data))
-
-	case ObjTypeArray:
-		obj := (*ArrayObj)(unsafe.Pointer(header))
-		size = uint64(unsafe.Sizeof(ArrayObj{})) + uint64(cap(obj.elements))*uint64(unsafe.Sizeof(Value(0)))
-
-	case ObjTypeObject:
-		obj := (*ObjectObj)(unsafe.Pointer(header))
-		size = uint64(unsafe.Sizeof(ObjectObj{}))
-		// What SETFIELD counted when each field was added
-		size += uint64(len(obj.fields)) * objectFieldSize
-
-	case ObjTypeFunction:
-		// Phase A: Just the function object size (no upvalue array yet)
-		size = uint64(unsafe.Sizeof(FunctionObj{}))
-		// Phase B will add: upvalue array size
-
-	case ObjTypeExternFunction:
-		obj := (*ExternFunctionObj)(unsafe.Pointer(header))
-		size = uint64(unsafe.Sizeof(ExternFunctionObj{})) + uint64(len(obj.name))
-
-	default:
-		size = uint64(unsafe.Sizeof(ObjHeader{}))
-	}
-
+	size := sizeOf(header)
 	if h.bytesAllocated >= size {
 		h.bytesAllocated -= size
 	} else {
 		h.bytesAllocated = 0
 	}
-
-	// Note: In Go, we don't manually free memory - GC will handle it
-	// We just remove the object from our tracking list
+	header.Next = nil
+	if h.onFree != nil {
+		h.onFree(header)
+	}
 }

@@ -29,61 +29,61 @@ pub enum Result<T, E> {
 
 impl<T, E> Result<T, E> {
     pub fn isOk() -> Bool {
-        match self {
-            case Result.Ok(_): { return true; }
-            case Result.Err(_): { return false; }
-        }
+        return match self {
+            case Result.Ok(_): true;
+            case Result.Err(_): false;
+        };
     }
 
     pub fn isErr() -> Bool { return !self.isOk(); }
 
     // The value, or null if there is none.
     pub fn value() -> T? {
-        match self {
-            case Result.Ok(value): { return value; }
-            case Result.Err(_): { return null; }
-        }
+        return match self {
+            case Result.Ok(value): value;
+            case Result.Err(_): null;
+        };
     }
 
     // The reason, or null if there was a value.
     pub fn reason() -> E? {
-        match self {
-            case Result.Ok(_): { return null; }
-            case Result.Err(reason): { return reason; }
-        }
+        return match self {
+            case Result.Ok(_): null;
+            case Result.Err(reason): reason;
+        };
     }
 
     // The value, or `fallback` if there is none.
     pub fn orElse(fallback: T) -> T {
-        match self {
-            case Result.Ok(value): { return value; }
-            case Result.Err(_): { return fallback; }
-        }
+        return match self {
+            case Result.Ok(value): value;
+            case Result.Err(_): fallback;
+        };
     }
 
     // The value turned into another; a reason is passed on unchanged.
     pub fn map<U>(convert: fn(T) -> U) -> Result<U, E> {
-        match self {
-            case Result.Ok(value): { return Result.Ok(convert(value)); }
-            case Result.Err(reason): { return Result.Err(reason); }
-        }
+        return match self {
+            case Result.Ok(value): Result.Ok(convert(value));
+            case Result.Err(reason): Result.Err(reason);
+        };
     }
 
     // The reason turned into another; a value is passed on unchanged.
     pub fn mapErr<F>(convert: fn(E) -> F) -> Result<T, F> {
-        match self {
-            case Result.Ok(value): { return Result.Ok(value); }
-            case Result.Err(reason): { return Result.Err(convert(reason)); }
-        }
+        return match self {
+            case Result.Ok(value): Result.Ok(value);
+            case Result.Err(reason): Result.Err(convert(reason));
+        };
     }
 
     // A next step that can fail too: it runs only if there is a value, and
     // the first reason met is the one that comes out.
     pub fn then<U>(step: fn(T) -> Result<U, E>) -> Result<U, E> {
-        match self {
-            case Result.Ok(value): { return step(value); }
-            case Result.Err(reason): { return Result.Err(reason); }
-        }
+        return match self {
+            case Result.Ok(value): step(value);
+            case Result.Err(reason): Result.Err(reason);
+        };
     }
 
     // The value. Stops the program with `message` if there is none: for
@@ -234,16 +234,16 @@ pub fn failureOf(parts: [String]) -> Failure {
 }
 
 fn kindOf(name: String) -> Kind {
-    match name {
-        case "panic": { return Kind.Panic; }
-        case "bounds": { return Kind.Bounds; }
-        case "cast": { return Kind.Cast; }
-        case "arithmetic": { return Kind.Arithmetic; }
-        case "depth": { return Kind.Depth; }
-        case "memory": { return Kind.Memory; }
-        case "library": { return Kind.Library; }
-        default: { return Kind.Other; }
-    }
+    return match name {
+        case "panic": Kind.Panic;
+        case "bounds": Kind.Bounds;
+        case "cast": Kind.Cast;
+        case "arithmetic": Kind.Arithmetic;
+        case "depth": Kind.Depth;
+        case "memory": Kind.Memory;
+        case "library": Kind.Library;
+        default: Kind.Other;
+    };
 }
 
 // Provided by the runtime: run a function without letting its failure end

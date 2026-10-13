@@ -3,6 +3,7 @@ package vm
 import (
 	"fmt"
 	"math"
+	"unsafe"
 )
 
 // Value represents a NaN-boxed 64-bit value.
@@ -15,11 +16,11 @@ import (
 type Value uint64
 
 const (
-	expMask      uint64 = 0x7FF0000000000000
-	mantMask     uint64 = 0x000FFFFFFFFFFFFF
-	tagMask      uint64 = 0x000F000000000000
-	payloadMask  uint64 = 0x0000FFFFFFFFFFFF // 48 bits for payload (no tag bits)
-	fullPayload  uint64 = 0x000FFFFFFFFFFFFF // 52 bits (tag + payload)
+	expMask     uint64 = 0x7FF0000000000000
+	mantMask    uint64 = 0x000FFFFFFFFFFFFF
+	tagMask     uint64 = 0x000F000000000000
+	payloadMask uint64 = 0x0000FFFFFFFFFFFF // 48 bits for payload (no tag bits)
+	fullPayload uint64 = 0x000FFFFFFFFFFFFF // 52 bits (tag + payload)
 
 	tagFloat   uint64 = 0x0000000000000000 // infinity and NaN
 	tagBool    uint64 = 0x0001000000000000
@@ -32,6 +33,18 @@ const (
 	// The one bit pattern used for a float NaN. Go's NaNs set mantissa bits
 	// that would read as a tag.
 	canonicalNaN uint64 = nanBase | tagFloat | 1
+
+	// What tells the kinds apart: the exponent and the tag together. Each
+	// boxed kind is one comparison against its own pattern.
+	kindMask    uint64 = expMask | tagMask
+	kindBool    uint64 = nanBase | tagBool
+	kindInt     uint64 = nanBase | tagInt
+	kindHeapPtr uint64 = nanBase | tagHeapPtr
+	kindNull    uint64 = nanBase | tagNull
+
+	valueNull  Value = Value(kindNull)
+	valueTrue  Value = Value(kindBool | 1)
+	valueFalse Value = Value(kindBool)
 )
 
 // Constructors
@@ -83,22 +96,22 @@ func (v Value) IsNaN() bool {
 
 // IsNull returns true if v is Null.
 func (v Value) IsNull() bool {
-	return v.IsNaN() && (uint64(v)&tagMask) == tagNull
+	return uint64(v)&kindMask == kindNull
 }
 
 // IsBool returns true if v is a Bool.
 func (v Value) IsBool() bool {
-	return v.IsNaN() && (uint64(v)&tagMask) == tagBool
+	return uint64(v)&kindMask == kindBool
 }
 
 // IsInt returns true if v is an Int.
 func (v Value) IsInt() bool {
-	return v.IsNaN() && (uint64(v)&tagMask) == tagInt
+	return uint64(v)&kindMask == kindInt
 }
 
 // IsHeapPtr returns true if v is a HeapPtr.
 func (v Value) IsHeapPtr() bool {
-	return v.IsNaN() && (uint64(v)&tagMask) == tagHeapPtr
+	return uint64(v)&kindMask == kindHeapPtr
 }
 
 // Accessors
@@ -124,6 +137,38 @@ func (v Value) AsInt() int64 {
 		payload |= 0xFFFF000000000000
 	}
 	return int64(payload)
+}
+
+// The unchecked accessors are for the instruction loop, which has just
+// tested the kind itself.
+
+// intOf reads an Int without checking that it is one. Shifting the payload
+// up and back down extends its sign.
+func intOf(v Value) int64 {
+	return int64(uint64(v)<<16) >> 16
+}
+
+func floatOf(v Value) float64 {
+	return math.Float64frombits(uint64(v))
+}
+
+// header returns the object a heap value points at, or nil for anything
+// else. Every conversion of a value into a pointer goes through here.
+//
+// The pointer is kept in the value as a number, which Go's collector does
+// not follow: what keeps an object alive is the heap's own list of objects
+// (Heap.objects), where it stays until the VM's collector frees it. That
+// holds as long as Go does not move heap objects, which it does not.
+func header(v Value) *ObjHeader {
+	if uint64(v)&kindMask != kindHeapPtr {
+		return nil
+	}
+	return (*ObjHeader)(unsafe.Pointer(uintptr(uint64(v) & payloadMask)))
+}
+
+// valueOf is the value that points at a heap object.
+func valueOf(h *ObjHeader) Value {
+	return Value(kindHeapPtr | (uint64(uintptr(unsafe.Pointer(h))) & payloadMask))
 }
 
 // AsBool returns the Bool value.

@@ -173,6 +173,8 @@ func (d *Desugarer) desugarStmt(stmt ast.Stmt) ast.Stmt {
 		return d.desugarMatchStmt(stmt)
 	case *ast.ExprStmt:
 		return d.desugarExprStmt(stmt)
+	case *ast.DeferStmt:
+		return &ast.DeferStmt{BaseNode: stmt.BaseNode, Body: d.desugarBlockStmt(stmt.Body)}
 	case *ast.BreakStmt, *ast.ContinueStmt:
 		return stmt // No desugaring needed
 	default:
@@ -317,6 +319,8 @@ func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
 		return &ast.VariantTestExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Enum: expr.Enum, Variant: expr.Variant}
 	case *ast.VariantFieldExpr:
 		return &ast.VariantFieldExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Enum: expr.Enum, Variant: expr.Variant, Index: expr.Index}
+	case *ast.MatchExpr:
+		return d.desugarMatchExpr(expr)
 	case *ast.Literal:
 		return expr // No desugaring needed
 	default:

@@ -47,6 +47,8 @@ func (fc *FunctionCompiler) compileStmt(stmt ast.Stmt) {
 		fc.compileContinueStmt(s)
 	case *ast.MatchStmt:
 		fc.compileMatchStmt(s)
+	case *ast.DeferStmt:
+		fc.compileDeferStmt(s)
 	default:
 		fc.gen.errorAt(stmt, ErrUnsupportedConstruct, "Unsupported statement type in IR generation", "")
 	}
@@ -75,8 +77,9 @@ func (fc *FunctionCompiler) compileLetStmt(stmt *ast.LetStmt) {
 func (fc *FunctionCompiler) compileReturnStmt(stmt *ast.ReturnStmt) {
 	var val ir.Value
 	if stmt.Value != nil {
-		val = fc.compileExpr(stmt.Value)
+		val = fc.returned(fc.compileExpr(stmt.Value))
 	}
+	fc.runDefers(0)
 	fc.builder.CreateRet(val)
 	fc.startDeadBlock()
 }

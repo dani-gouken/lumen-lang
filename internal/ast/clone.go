@@ -137,8 +137,19 @@ func (c *Cloner) Stmt(stmt Stmt) Stmt {
 			one := *mc
 			one.Pattern = c.node(mc.Pattern)
 			one.Body = c.node(mc.Body)
+			if mc.Alternatives != nil {
+				one.Alternatives = make([]Node, len(mc.Alternatives))
+				for j, alt := range mc.Alternatives {
+					one.Alternatives[j] = c.node(alt)
+				}
+			}
+			one.Guard = c.Expr(mc.Guard)
 			copy.Cases[i] = &one
 		}
+		return &copy
+	case *DeferStmt:
+		copy := *s
+		copy.Body = c.Block(s.Body)
 		return &copy
 	case *ExprStmt:
 		copy := *s
@@ -267,6 +278,29 @@ func (c *Cloner) Expr(expr Expr) Expr {
 	case *VariantFieldExpr:
 		copy := *e
 		copy.Expr = c.Expr(e.Expr)
+		return &copy
+	case *MatchExpr:
+		copy := *e
+		copy.Match = c.Stmt(e.Match).(*MatchStmt)
+		return &copy
+	case *RangeExpr:
+		copy := *e
+		copy.Low = c.Expr(e.Low)
+		copy.High = c.Expr(e.High)
+		return &copy
+	case *BlockExpr:
+		copy := *e
+		copy.Stmts = make([]Stmt, len(e.Stmts))
+		for i, stmt := range e.Stmts {
+			copy.Stmts[i] = c.Stmt(stmt)
+		}
+		copy.Value = c.Expr(e.Value)
+		return &copy
+	case *CondExpr:
+		copy := *e
+		copy.Cond = c.Expr(e.Cond)
+		copy.Then = c.Expr(e.Then)
+		copy.Else = c.Expr(e.Else)
 		return &copy
 	}
 	return expr

@@ -36,11 +36,11 @@ pub enum Refusal {
 
 impl Refusal {
     pub fn describe() -> String {
-        match self {
-            case Refusal.Missing(field): { return "${field} is required"; }
-            case Refusal.TooLong(field, most): { return "${field} may hold ${most} characters at most"; }
-            case Refusal.Duplicate(title): { return "there is already a note called '${title}'"; }
-        }
+        return match self {
+            case Refusal.Missing(field): "${field} is required";
+            case Refusal.TooLong(field, most): "${field} may hold ${most} characters at most";
+            case Refusal.Duplicate(title): "there is already a note called '${title}'";
+        };
     }
 }
 

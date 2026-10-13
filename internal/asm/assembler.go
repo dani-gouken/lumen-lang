@@ -901,6 +901,32 @@ func parseInstructionWithDebugAndFuncTable(chunk *vm.Chunk, line string, labels 
 		}
 		instr = vm.NewInstr(vm.OpSETINDEX, a, b, c)
 
+	case "TRY":
+		// TRY.L handler: a failure in this call, from here on, continues
+		// at the label. Always written long: LONG + TRY32 + offset
+		if !isLong || len(args) != 1 {
+			return fmt.Errorf("TRY is written TRY.L label")
+		}
+		addr, ok := labels[args[0]]
+		if !ok {
+			return fmt.Errorf("TRY.L requires a label, got: %s", args[0])
+		}
+		offset := int32(addr - (len(chunk.Code) + 3))
+		chunk.AddInstructionWithDebug(vm.NewInstr(vm.OpLONG, 0, 0, 0), debugInfo)
+		chunk.AddInstruction(vm.NewInstr(vm.OpTRY32, 0, 0, 0))
+		chunk.AddInstruction(vm.EncodeOffset32(offset))
+		return nil
+
+	case "ENDTRY", "RETHROW":
+		if len(args) != 0 {
+			return fmt.Errorf("%s takes no arguments, got %d", mnemonic, len(args))
+		}
+		op := vm.OpENDTRY
+		if mnemonic == "RETHROW" {
+			op = vm.OpRETHROW
+		}
+		instr = vm.NewInstr(op, 0, 0, 0)
+
 	case "CLOSEUP":
 		if len(args) != 1 {
 			return fmt.Errorf("CLOSEUP requires 1 argument, got %d", len(args))

@@ -24,6 +24,13 @@ type FunctionCompiler struct {
 
 	// Loop context stack (for break/continue)
 	loopStack []*loopContext
+
+	// The defers of each open scope, in the order they were written; one
+	// list per entry of scopes (see defer.go)
+	defers [][]*deferred
+
+	// Blocks started after a return, break or continue: nothing reaches them
+	dead map[*ir.BasicBlock]bool
 }
 
 // loopContext tracks loop blocks for break/continue
@@ -92,6 +99,8 @@ func (g *IRGenerator) newFunctionCompiler(fn ast.Node, name string) *FunctionCom
 		varRegs:   make(map[int]bool),
 		upvalues:  make(map[string]int),
 		loopStack: make([]*loopContext, 0),
+		defers:    make([][]*deferred, 1),
+		dead:      make(map[*ir.BasicBlock]bool),
 	}
 }
 
@@ -164,10 +173,17 @@ func (fc *FunctionCompiler) addImplicitReturn() {
 
 func (fc *FunctionCompiler) pushScope() {
 	fc.scopes = append(fc.scopes, make(map[string]*ir.Register))
+	fc.defers = append(fc.defers, nil)
 }
 
+// popScope closes the innermost scope. Reaching the end of a scope is one
+// of the ways of leaving it: what it deferred runs here.
 func (fc *FunctionCompiler) popScope() {
+	if !fc.unreachable() {
+		fc.runDefers(len(fc.scopes) - 1)
+	}
 	fc.scopes = fc.scopes[:len(fc.scopes)-1]
+	fc.defers = fc.defers[:len(fc.defers)-1]
 }
 
 // declare binds a variable name to a register in the innermost scope.
@@ -205,5 +221,13 @@ func (fc *FunctionCompiler) setPos(node ast.Node) {
 // startDeadBlock switches to a fresh block after a terminator, so code that
 // follows a return/break/continue does not land in a finished block.
 func (fc *FunctionCompiler) startDeadBlock() {
-	fc.builder.SetBlock(fc.builder.NewBlock())
+	block := fc.builder.NewBlock()
+	fc.dead[block] = true
+	fc.builder.SetBlock(block)
+}
+
+// unreachable reports whether the code being emitted can never run: it
+// follows a return, break or continue, or the block is already finished.
+func (fc *FunctionCompiler) unreachable() bool {
+	return fc.dead[fc.builder.CurrentBlock] || fc.blockEndsWithTerminator()
 }

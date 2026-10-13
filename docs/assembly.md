@@ -548,6 +548,39 @@ CLOSEUP r1          ; reader keeps 10
 LOADI r1 20         ; not seen by reader
 ```
 
+#### TRY.L, ENDTRY, RETHROW - Cleanup When Something Fails
+```assembly
+TRY.L handler
+ENDTRY
+RETHROW
+```
+What `defer` is compiled to. `TRY.L label` leaves the label with the VM and
+goes on with the next instruction: from here, if anything fails in this call
+or in a call it makes, the calls made since are dropped and this one
+continues at the label, with the failure put aside. `ENDTRY` takes the last
+handler of the call back: the code it covered is over. `RETHROW` ends a
+handler by passing the failure on, to the next handler or out of the program.
+
+`TRY` is always written long (`LONG`, `TRY32`, offset word), like `JMP.L`.
+
+```assembly
+.func careful 3 0
+  TRY.L on_failure
+  NEWFUNC r0 risky
+  CALL r0 0
+  ENDTRY                ; nothing failed: the handler is not needed
+  ; ... the cleanup ...
+  RET r0
+on_failure:
+  ; ... the same cleanup ...
+  RETHROW
+.endfunc
+```
+
+**Error Conditions:**
+- Runtime error for `ENDTRY` when the call has no handler left
+- Runtime error for `RETHROW` when no failure is being handled
+
 #### ARRPUSH - Append to Array
 ```assembly
 ARRPUSH r_array r_value

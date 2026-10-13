@@ -31,18 +31,18 @@ enum Outcome {
 
 impl Outcome {
     fn isBuilt() -> Bool {
-        match self {
-            case Outcome.Built(_): { return true; }
-            default: { return false; }
-        }
+        return match self {
+            case Outcome.Built(_): true;
+            default: false;
+        };
     }
 
     fn describe() -> String {
-        match self {
-            case Outcome.Built(worker): { return "built by worker ${worker}"; }
-            case Outcome.Failed(reason): { return "FAILED: ${reason}"; }
-            case Outcome.Skipped(needed): { return "skipped, needs ${needed}"; }
-        }
+        return match self {
+            case Outcome.Built(worker): "built by worker ${worker}";
+            case Outcome.Failed(reason): "FAILED: ${reason}";
+            case Outcome.Skipped(needed): "skipped, needs ${needed}";
+        };
     }
 }
 
@@ -67,7 +67,7 @@ fn newBuild(targets: [Target], workers: Int) -> Build {
         events: task.channel<Event>(0),
     };
     for target in targets { build.targets.set(target.name, target); }
-    for worker in arrays.range(1, workers + 1) { build.workers.send(worker); }
+    for worker in 1..=workers { build.workers.send(worker); }
     return build;
 }
 
@@ -114,13 +114,14 @@ impl Build {
             }
         }
 
-        // Then a worker: with none free, this waits for one to come back
+        // Then a worker: with none free, this waits for one to come back.
+        // It goes back whichever way the build ends.
         let worker = self.workers.receive() ?? 0;
+        defer self.workers.send(worker);
         self.events.send(Event.Started(target.name, worker));
-        let worked = result.guard(fn() { compile(target); });
-        self.workers.send(worker);
 
-        if worked != null { return Outcome.Failed(worked.message); }
+        let failure = result.guard(fn() { compile(target); });
+        if failure != null { return Outcome.Failed(failure.message); }
         return Outcome.Built(worker);
     }
 
@@ -158,7 +159,7 @@ impl Build {
 // The work itself. Each step lets the other tasks have their turn, as
 // reading a file or running a compiler would.
 fn compile(target: Target) {
-    for step in arrays.range(0, target.steps) { task.pause(); }
+    for step in 0..target.steps { task.pause(); }
     if target.broken { panic("${target.name} does not compile"); }
 }
 

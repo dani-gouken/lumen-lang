@@ -29,35 +29,20 @@ func checkBlockSupported(block *ast.BlockStmt, unsupported func(ast.Node, string
 	if block == nil {
 		return
 	}
-	for _, stmt := range block.Stmts {
-		checkStmtSupported(stmt, unsupported)
-	}
-}
-
-func checkStmtSupported(stmt ast.Stmt, unsupported func(ast.Node, string, string)) {
-	switch s := stmt.(type) {
-	case *ast.BlockStmt:
-		checkBlockSupported(s, unsupported)
-	case *ast.IfStmt:
-		checkBlockSupported(s.Then, unsupported)
-		if s.Else != nil {
-			checkStmtSupported(s.Else, unsupported)
+	ast.Walk(block, func(ast.Expr) {}, func(stmt ast.Stmt) {
+		match, ok := stmt.(*ast.MatchStmt)
+		if !ok {
+			return
 		}
-	case *ast.WhileStmt:
-		checkBlockSupported(s.Body, unsupported)
-	case *ast.ForStmt:
-		checkBlockSupported(s.Body, unsupported)
-	case *ast.MatchStmt:
-		for _, c := range s.Cases {
-			switch c.Pattern.(type) {
-			case nil, *ast.Literal, *ast.UnaryExpr, *ast.Type, *ast.VariantPattern:
-				// Value patterns, type patterns, enum variants and `default`
-			default:
-				unsupported(c, "this kind of match pattern is", "Match on literal values, on types or on the variants of an enum")
-			}
-			if body, ok := c.Body.(*ast.BlockStmt); ok {
-				checkBlockSupported(body, unsupported)
+		for _, c := range match.Cases {
+			for _, pattern := range c.Patterns() {
+				switch pattern.(type) {
+				case *ast.Literal, *ast.UnaryExpr, *ast.Type, *ast.VariantPattern, *ast.RangeExpr:
+					// Value patterns, ranges, type patterns and enum variants
+				default:
+					unsupported(c, "this kind of match pattern is", "Match on literal values, on ranges of numbers, on types or on the variants of an enum")
+				}
 			}
 		}
-	}
+	})
 }

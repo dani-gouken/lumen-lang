@@ -90,6 +90,12 @@ const (
 	// Detach closures from a register: A = register. Closures that captured
 	// it keep the value it has now and no longer follow the register.
 	OpCLOSEUP
+
+	// Cleanup (defer). A handler is where a call goes on when something
+	// fails in it, or in what it calls, instead of being abandoned at once.
+	OpTRY32   // After OpLONG, followed by an offset word: from here a failure in this call continues at the offset
+	OpENDTRY  // The innermost handler of this call no longer applies
+	OpRETHROW // Pass on the failure the handler was run for
 )
 
 // MaxOperand is the largest value an instruction operand can hold. It bounds
@@ -222,6 +228,12 @@ func (i Instr) String() string {
 		return formatInstr("SETELEM", i.A, i.B, i.C)
 	case OpCLOSEUP:
 		return formatInstr("CLOSEUP", i.A)
+	case OpTRY32:
+		return "TRY32"
+	case OpENDTRY:
+		return "ENDTRY"
+	case OpRETHROW:
+		return "RETHROW"
 	case OpGC:
 		return "GC"
 	default:

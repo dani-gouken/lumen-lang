@@ -904,6 +904,16 @@ func (p *Parser) parseStmt() ast.Stmt {
 		return stmt
 	case token.MATCH:
 		return p.parseMatchStmt()
+	case token.DEFER:
+		// defer call(); or defer { ... }: what to do when the block is left
+		p.next()
+		stmt := &ast.DeferStmt{BaseNode: base(tok)}
+		if p.at(token.LBRACE) {
+			stmt.Body = p.parseBlock()
+		} else {
+			stmt.Body = &ast.BlockStmt{BaseNode: base(tok), Stmts: []ast.Stmt{p.parseExprStmt()}}
+		}
+		return stmt
 	case token.RETURN:
 		p.next()
 		stmt := &ast.ReturnStmt{BaseNode: base(tok)}
@@ -1037,9 +1047,29 @@ func (p *Parser) parseIfStmt() *ast.IfStmt {
 // parseMatchStmt parses a match statement. A `default:` case is stored with a
 // nil pattern.
 func (p *Parser) parseMatchStmt() *ast.MatchStmt {
+	return p.parseMatch(false)
+}
+
+// parseMatch parses a match: the statement, or the one that gives a value
+// (asValue), which only differ in what ends a case. In a statement a case
+// that is an expression ends with ';'. Where a value is expected it may
+// end with ',' as well, and the last one with nothing.
+//
+//	case 1: ...                          a value
+//	case 1..10: ...                      a range of numbers
+//	case Int: ...                        a type
+//	case Shape.Rect(w, h): ...           a variant, its values named
+//	case Light.Red | Light.Amber: ...    any of several patterns
+//	case Shape.Circle(r) if r > 10.0:    a pattern and a condition
+func (p *Parser) parseMatch(asValue bool) *ast.MatchStmt {
 	tok := p.expect(token.MATCH, "'match'")
 	stmt := &ast.MatchStmt{BaseNode: base(tok)}
 	stmt.Cond = p.parseHeaderExpr()
+
+	// Struct literals are fine again between the braces of the match
+	saved := p.noStructLit
+	p.noStructLit = false
+	defer func() { p.noStructLit = saved }()
 
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
@@ -1050,17 +1080,28 @@ func (p *Parser) parseMatchStmt() *ast.MatchStmt {
 			p.next()
 		} else {
 			p.expect(token.CASE, "'case' or 'default'")
-			if typ := p.tryTypePattern(); typ != nil {
-				matchCase.Pattern = typ
-			} else {
-				matchCase.Pattern = p.variantPattern(p.parseHeaderExpr(), true)
+			matchCase.Pattern = p.parseCasePattern()
+			for p.accept(token.PIPE) {
+				matchCase.Alternatives = append(matchCase.Alternatives, p.parseCasePattern())
+			}
+			if p.accept(token.IF) {
+				matchCase.Guard = p.parseHeaderExpr()
 			}
 		}
 		p.expect(token.COLON, "':'")
 
-		if p.at(token.LBRACE) {
+		switch {
+		case p.at(token.LBRACE):
 			matchCase.Body = p.parseBlock()
-		} else {
+			if asValue {
+				p.accept(token.COMMA)
+			}
+		case asValue:
+			matchCase.Body = p.parseExpr()
+			if !p.accept(token.COMMA) && !p.accept(token.SEMICOLON) && !p.at(token.RBRACE) {
+				p.fail("expected ';' after the value of a case, found %s", describe(p.cur()))
+			}
+		default:
 			matchCase.Body = p.parseExpr()
 			p.expectSemicolon()
 		}
@@ -1068,6 +1109,14 @@ func (p *Parser) parseMatchStmt() *ast.MatchStmt {
 	}
 	p.expect(token.RBRACE, "'}'")
 	return stmt
+}
+
+// parseCasePattern parses one pattern of a case.
+func (p *Parser) parseCasePattern() ast.Node {
+	if typ := p.tryTypePattern(); typ != nil {
+		return typ
+	}
+	return p.variantPattern(p.parseHeaderExpr(), true)
 }
 
 // tryTypePattern parses the pattern of a match case as a type when it can
@@ -1095,9 +1144,10 @@ func (p *Parser) tryTypePattern() (typ *ast.Type) {
 		p.fail("not a type pattern")
 	}
 
-	parsed := p.parseType()
+	// One type: `Int | String` is two patterns, each read on its own
+	parsed := p.parsePostfixType()
 	bareName := parsed.Kind == ast.TypeBasic && len(parsed.Generics) == 0 && !isBuiltinTypeToken(parsed.Tok.Type)
-	if bareName || !p.at(token.COLON) {
+	if bareName || !(p.at(token.COLON) || p.at(token.PIPE) || p.at(token.IF)) {
 		p.fail("not a type pattern")
 	}
 	return parsed
@@ -1169,7 +1219,15 @@ func (p *Parser) parseNestedExpr() ast.Expr {
 }
 
 func (p *Parser) parseExpr() ast.Expr {
-	return p.parseBinary(1)
+	left := p.parseBinary(1)
+
+	// low..high and low..=high: looser than every operator, so that
+	// 0..count - 1 is the range up to count - 1
+	if tok := p.cur(); tok.Type == token.DOTDOT || tok.Type == token.DOTDOT_EQ {
+		p.next()
+		return &ast.RangeExpr{BaseNode: base(tok), Low: left, High: p.parseBinary(1), Inclusive: tok.Type == token.DOTDOT_EQ}
+	}
+	return left
 }
 
 func binaryPrecedence(typ token.TokenType) int {
@@ -1351,6 +1409,10 @@ func (p *Parser) parsePrimary() ast.Expr {
 	case token.NULL:
 		p.next()
 		return &ast.Literal{BaseNode: base(tok), Value: tok.Literal, Kind: "null"}
+
+	case token.MATCH:
+		// A match where a value is expected gives the value of its case
+		return &ast.MatchExpr{BaseNode: base(tok), Match: p.parseMatch(true)}
 
 	case token.IDENT:
 		if isShortFnArrow(p.peekAt(1)) {

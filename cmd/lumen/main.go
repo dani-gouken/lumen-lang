@@ -14,8 +14,11 @@ import (
 	"github.com/dani-gouken/lumen/internal/errors"
 	_ "github.com/dani-gouken/lumen/internal/inspect" // The natives of std.compiler
 	"github.com/dani-gouken/lumen/internal/lsp"
+	"github.com/dani-gouken/lumen/internal/memguard"
 	"github.com/dani-gouken/lumen/internal/project"
 	"github.com/dani-gouken/lumen/internal/vm"
+	"os/signal"
+	"time"
 )
 
 // Limits of the virtual machine, settable from the command line and from
@@ -132,10 +135,14 @@ func parseOptions(args []string) []string {
 // newVM creates a virtual machine with the limits from the command line
 // and the project file.
 func newVM() *vm.VM {
-	machine := vm.NewVM()
+	var machine *vm.VM
 	if heapMB > 0 {
 		machine = vm.NewVMWithHeapSize(uint64(heapMB) * 1024 * 1024)
+	} else {
+		machine = vm.NewVM()
 	}
+	stopOnInterrupt(machine)
+	guardMemory(machine)
 	if maxDepth > 0 {
 		machine.SetMaxCallDepth(maxDepth)
 	}
@@ -269,11 +276,50 @@ func compileSource(inputFile string) *compiler.Result {
 }
 
 // leaveIfAsked ends the process with the status the program asked for, if
-// the run ended by a call of std.os.exit and not by a failure.
+// the run ended by a call of std.os.exit and not by a failure. A program
+// stopped from the keyboard ends as the shell expects, having said where
+// it was.
 func leaveIfAsked(err error) {
 	if status, asked := vm.ExitCode(err); asked {
 		os.Exit(status & 0xFF)
 	}
+	if vm.IsInterrupted(err) {
+		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
+		os.Exit(interruptedStatus)
+	}
+}
+
+// guardMemory ends the process if it comes to hold far more than the
+// program may. The VM refuses a program more values than its limit; this
+// is for what that count does not cover, and would otherwise only stop
+// when the machine has no memory left: several times the limit, and room
+// for lumen itself.
+func guardMemory(machine *vm.VM) {
+	const own = 1 << 30
+	memguard.Enforce(4*machine.GetHeap().MaxBytes()+own, "the program")
+}
+
+// interruptedStatus is what a process stopped by Ctrl-C ends with: 128
+// plus the number of the signal.
+const interruptedStatus = 130
+
+// stopOnInterrupt makes Ctrl-C stop the program a VM runs rather than the
+// process: the program ends with an error that says where it was, which
+// is what one wants to know of a program that would not end. A program
+// that does not get to it, because it waits for something that does not
+// come, is ended the plain way a moment later; so is one interrupted twice.
+func stopOnInterrupt(machine *vm.VM) {
+	signals := make(chan os.Signal, 2)
+	signal.Notify(signals, os.Interrupt)
+	go func() {
+		<-signals
+		machine.Interrupt()
+		select {
+		case <-signals:
+		case <-time.After(2 * time.Second):
+		}
+		os.Exit(interruptedStatus)
+	}()
 }
 
 // programFile is the file being run, for the program to find what comes

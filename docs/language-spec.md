@@ -10,7 +10,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 ## 1. Lexical Structure
 - Source files: UTF-8 `.lum`, one file = one module (see [Modules & Imports](#6-modules--imports)).
 - Identifiers: `Letter {Letter | Digit | _}`, case-sensitive.
-- Keywords: `fn let const struct enum trait impl if else match case while for in break continue return true false null import as pub extern`, plus the type names `Int Float Bool String Any Void Self`.
+- Keywords: `fn let const struct enum trait impl if else match case while for in break continue defer return true false null import as pub extern`, plus the type names `Int Float Bool String Any Void Self`.
 - Literals: ints (`123`), floats (`1.0`, `10e3`), strings (`"hi"`), bools, `null`. No char literal in v0. A leading `-` is the unary operator, so `-42` is the negation of `42`.
 - String literals stay on one line and support the escapes `\n \t \r \0 \\ \" \$`.
 - **Interpolation.** `${expr}` inside a string literal is replaced by the text of the expression's value, as `toString` gives it: `"total: ${n} items"`. The expression is any expression, including strings with interpolation of their own, and must close on the same line. The literal is then an expression of type `String`, equal to the concatenation of its parts; the expressions are evaluated left to right, each time the string is. `$` not followed by `{` and `{` not preceded by `$` are ordinary characters; `\$` writes a dollar sign that does not start an interpolation.
@@ -39,6 +39,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
   - `while` with `Bool` condition.
   - `for item in items { ... }` over arrays or strings; a string yields its characters.
   - `for i, item in items { ... }` also gives the position, from 0.
+  - `for i in low..high { ... }` counts from `low` up to, not including, `high`; `low..=high` includes it. Both are `Int`, worked out once before the first iteration; nothing runs when `low` is not below `high`. A range is only written there and as a `match` pattern; anywhere else it is `E2038`.
   - The loop's variables cannot be assigned (`E2026`). Assigning to the index would not move the loop, and assigning to the element would not change the collection; both look like they would. To change the collection write `items[i] = ...`; to control the position use `while`. Changing a value *through* the element is fine: `for p in points { p.x = 0; }`.
   - `break`/`continue` only in loops.
 
@@ -101,6 +102,7 @@ Full description: [enums.md](enums.md).
 - Length: `arrays.len(items)` and `strings.len(text)`, from the standard library, give the number of elements of an array and of characters of a string. Arrays and strings have no members: `items.length` is an error (`E2033`) that names the function to use. A dot only reaches a field or a method of a struct or an enum.
 - Safe access `a?.b`, `a?.m(args)`: `a: T?`; null when `a` is null, otherwise the rest of the postfix chain applied to `a` as a `T` (`a?.b.c` reads `c` only when `a` is not null). The result is optional. An error (`E2035`) when `a` cannot be null.
 - Try `a?` (postfix): for `a: T?`, the value as a `T`, or `return null;` from the enclosing function, which must return an optional or nothing. For `a: Result<T, E>`, the value as a `T`, or a return of the failure, from a function that returns `Result<U, E>`. Anything else is `E2034`. In a function expression the enclosing function is that expression.
+- Match as a value: `match x { case p: expr; ... }` where an expression is expected. The cases are expressions of one type (`null` among them makes it optional; the type expected at that place may take them all), or blocks that always leave. Without a `default` it must be complete over an enum (`E2028`); a case that gives nothing is `E2040`.
 - Tuples: `(a, b)` of type `(A, B)`, two to six values. `pair.0`, `pair.1` read by position; `let (a, b) = pair;` and `for (a, b) in pairs` name the values, `_` skipping one. Compared by content, immutable, matched with `case (a, b):` and checked for completeness like an enum (which is what a tuple is: see [enums.md](enums.md#tuples)).
 - Calls: `callee(args...)` with arity/type check. Method calls: `value.method(args...)`.
 - Array literals: `[1, 2, 3]`, `[]`. All elements have the same type.
@@ -156,6 +158,8 @@ Full description: [modules.md](modules.md).
 - **`Any`** accepts every value, and that is all it does: a value of type `Any` can be passed along, printed, converted with `toString` and compared with `==`. It cannot be used as a number, indexed, called, iterated or assigned to a more specific type without a cast.
 - **Casts.** `value as Type` treats a value as a more specific type: out of `Any`, out of an optional or union, or from a trait to a struct implementing it. The cast is verified when it runs and stops the program if the value is something else. A cast that can never succeed (`1 as String`) is a compile error (`E2021`); one to a wider type is free. `as` binds tighter than the binary operators: `v as Int + 1` is `(v as Int) + 1`. The check goes into the value: every element of an array, and the fields of a generic struct that depend on its type arguments. A function type is compared with the signature of the function: it must accept at least what the type passes and return what it promises.
 - **Constants.** A name declared with `const` cannot be assigned (`E2022`). The value it refers to can still be changed: `const xs = [1]; xs[0] = 2;` is fine.
+- **Cases.** `case a | b:` runs for either pattern and names nothing (`E2029`). `case p if cond:` runs when `p` matches and `cond`, which sees the names of `p`, holds; it is not counted when a match is checked for completeness. `case low..high:` and `case low..=high:` match numbers (`Int` or `Float`).
+- **Defer.** `defer stmt;` and `defer { ... }` run when the enclosing block is left, by any way out, a failure passing through included; the defers of a block run last first, after the value of a `return` has been worked out. The body cannot leave the defer: `return`, `?`, and `break`/`continue` of an outer loop are `E2039`.
 - **Returns.** A function with a return type other than `Void` must return a value on every path (`E2004`). `while true` without a `break`, and a `match` whose cases all return and which has a `default` or handles every variant of an enum, count as returning. Statements that can never run, after a `return`, `break` or `continue`, produce a warning (`E2023`).
 - **Arrays.** All elements share one type. A literal takes its element type from its first element, or from the place it is used when that place has a type: `let shapes: [Shape] = [rect, square];`. An empty literal needs such a place: `let xs: [Int] = [];` (a bare `let xs = [];` is `E2020`). `push(xs, v)` requires `v` to fit the element type.
 - **Structs.** A literal gives every field a value (`E2018`), and only declared fields can be read or written (`E2014`).
@@ -233,7 +237,8 @@ Field        = Ident ":" Type ;
 
 Block        = "{" { Stmt } "}" ;
 Stmt         = LetDecl | IfStmt | WhileStmt | ForStmt | ReturnStmt | MatchStmt
-             | BreakStmt | ContinueStmt | Block | AssignStmt | ExprStmt ;
+             | BreakStmt | ContinueStmt | DeferStmt | Block | AssignStmt | ExprStmt ;
+DeferStmt    = "defer" ( Block | AssignStmt | ExprStmt ) ;
 BreakStmt    = "break" ";" ;
 ContinueStmt = "continue" ";" ;
 AssignStmt   = AssignTarget AssignOp Expr ";" | AssignTarget ( "++" | "--" ) ";" ;
@@ -242,13 +247,15 @@ AssignTarget = Ident | PostfixExpr Index | PostfixExpr Member ;
 LetDecl      = ("let" | "const") Ident [ ":" Type ] "=" Expr ";" ;
 IfStmt       = "if" Expr Block [ "else" (Block | IfStmt) ] ;
 WhileStmt    = "while" Expr Block ;
-ForStmt      = "for" [ Ident "," ] ( Ident | TupleNames ) "in" Expr Block ;
+ForStmt      = "for" [ Ident "," ] ( Ident | TupleNames ) "in" ( Expr | Range ) Block ;
+Range        = OrExpr ( ".." | "..=" ) OrExpr ;
 LetTuple     = ( "let" | "const" ) TupleNames "=" Expr ";" ;
 TupleNames   = "(" Ident "," Ident { "," Ident } ")" ;         (* "_" skips a value *)
 ReturnStmt   = "return" [ Expr ] ";" ;
 MatchStmt    = "match" Expr "{" { MatchCase } "}" ;
-MatchCase    = ( "case" Pattern | "default" ) ":" ( Block | Expr ";" ) ;
-Pattern      = Literal | [ "-" ] Literal | Type | VariantPat | TuplePat ;
+MatchCase    = ( "case" Pattern { "|" Pattern } [ "if" Expr ] | "default" ) ":" ( Block | Expr ";" ) ;
+MatchExpr    = MatchStmt ;       (* as a primary expression; a case may end with "," and the last with nothing *)
+Pattern      = Literal | [ "-" ] Literal | Range | Type | VariantPat | TuplePat ;
 TuplePat     = "(" SubPattern "," SubPattern { "," SubPattern } ")" ;
 VariantPat   = Ident [TypeArgs] { "." Ident } [ "(" [ SubPattern { "," SubPattern } ] ")" ] ;
 SubPattern   = Ident | "_" | Literal | [ "-" ] Literal | VariantPat | TuplePat ;
@@ -326,6 +333,10 @@ known defects are inventoried in [missing.md](missing.md).
 | Generic functions | Supported | Type arguments are inferred from the arguments, or written: `f<Int>(x)` |
 | Variadic functions | Supported | Packed at direct calls |
 | `match` on literals, `default` | Supported | |
+| `match` as a value: `let x = match v { case 1: "one"; default: "many"; };` | Supported | Complete over an enum, or with a `default` |
+| Conditions and several patterns: `case Shape.Circle(r) if r > 1.0:`, `case 1 \| 2:` | Supported | A case with several patterns names nothing |
+| Ranges: `for i in 0..10`, `0..=10`, `case 1..10:` | Supported | Not a value: `arrays.range` makes the array |
+| `defer` | Supported | Runs when its block is left, also by a failure |
 | `match` on types (`case Int:`), `value is Type` | Supported | Narrows the tested variable or field |
 | Enums: variants with values, generic enums, methods and traits on them | Supported | See [enums.md](enums.md) |
 | `match` on enum variants, with names, literals and nested patterns | Supported | Checked for completeness |

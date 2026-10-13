@@ -98,7 +98,7 @@
       "patterns": [
         {
           "name": "keyword.control.lumen",
-          "match": "\\b(if|else|match|case|default|while|for|in|break|continue|return)\\b"
+          "match": "\\b(if|else|match|case|default|while|for|in|break|continue|defer|return)\\b"
         },
         {
           "name": "storage.type.lumen",

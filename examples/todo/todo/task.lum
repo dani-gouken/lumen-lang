@@ -11,30 +11,30 @@ pub enum Priority { Low, Normal, High }
 
 impl Priority {
     pub fn name() -> String {
-        match self {
-            case Priority.Low: { return "low"; }
-            case Priority.Normal: { return "normal"; }
-            case Priority.High: { return "high"; }
-        }
+        return match self {
+            case Priority.Low: "low";
+            case Priority.Normal: "normal";
+            case Priority.High: "high";
+        };
     }
 
     // Higher first when sorting.
     pub fn rank() -> Int {
-        match self {
-            case Priority.High: { return 0; }
-            case Priority.Normal: { return 1; }
-            case Priority.Low: { return 2; }
-        }
+        return match self {
+            case Priority.High: 0;
+            case Priority.Normal: 1;
+            case Priority.Low: 2;
+        };
     }
 }
 
 pub fn priorityOf(name: String) -> Priority? {
-    match strings.lower(name) {
-        case "low": { return Priority.Low; }
-        case "normal": { return Priority.Normal; }
-        case "high": { return Priority.High; }
-        default: { return null; }
-    }
+    return match strings.lower(name) {
+        case "low": Priority.Low;
+        case "normal": Priority.Normal;
+        case "high": Priority.High;
+        default: null;
+    };
 }
 
 pub enum State {

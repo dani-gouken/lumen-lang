@@ -339,6 +339,12 @@ func (r *rewriter) stmt(stmt ast.Stmt) {
 			// The names a pattern binds are variables of its case
 			r.scoped(func() {
 				c.Pattern = r.pattern(c.Pattern)
+				for i, alternative := range c.Alternatives {
+					c.Alternatives[i] = r.pattern(alternative)
+				}
+				if c.Guard != nil {
+					c.Guard = r.expr(c.Guard)
+				}
 				switch body := c.Body.(type) {
 				case *ast.BlockStmt:
 					r.block(body)
@@ -347,6 +353,8 @@ func (r *rewriter) stmt(stmt ast.Stmt) {
 				}
 			})
 		}
+	case *ast.DeferStmt:
+		r.block(s.Body)
 	case *ast.ExprStmt:
 		s.Expr = r.expr(s.Expr)
 	}
@@ -473,6 +481,11 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 		e.Index = r.expr(e.Index)
 	case *ast.ArrayLiteralExpr:
 		r.exprs(e.Elements)
+	case *ast.MatchExpr:
+		r.stmt(e.Match)
+	case *ast.RangeExpr:
+		e.Low = r.expr(e.Low)
+		e.High = r.expr(e.High)
 
 	case *ast.StructInitExpr:
 		e.Name = r.typeName(e.Name, e.Token())

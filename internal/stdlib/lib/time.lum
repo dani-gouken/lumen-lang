@@ -57,15 +57,15 @@ pub enum Weekday { Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunda
 
 impl Weekday {
     pub fn name() -> String {
-        match self {
-            case Weekday.Monday: { return "Monday"; }
-            case Weekday.Tuesday: { return "Tuesday"; }
-            case Weekday.Wednesday: { return "Wednesday"; }
-            case Weekday.Thursday: { return "Thursday"; }
-            case Weekday.Friday: { return "Friday"; }
-            case Weekday.Saturday: { return "Saturday"; }
-            case Weekday.Sunday: { return "Sunday"; }
-        }
+        return match self {
+            case Weekday.Monday: "Monday";
+            case Weekday.Tuesday: "Tuesday";
+            case Weekday.Wednesday: "Wednesday";
+            case Weekday.Thursday: "Thursday";
+            case Weekday.Friday: "Friday";
+            case Weekday.Saturday: "Saturday";
+            case Weekday.Sunday: "Sunday";
+        };
     }
 
     pub fn isWeekend() -> Bool {

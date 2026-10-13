@@ -283,6 +283,59 @@ if (shape is Shape.Rect) && (shape.Rect#1 == 0.0) {
 
 A use of a top-level constant is replaced by its value: the expression it is declared with, in which the constants it uses are replaced in turn, so that only literals and operators remain. The declarations are dropped. The new nodes are positioned at the use, so a failure while working the value out (a division by zero) is reported where the constant is used. There is no folding: `WIDTH * 3` stays a multiplication, done when the program runs.
 
+#### Conditions, several patterns, ranges
+
+A case is one test in the chain, whatever its pattern is made of:
+
+| Case | Test |
+|------|------|
+| `case 1 \| 2:` | `x == 1 \|\| x == 2` |
+| `case 1..10:`, `case 1..=10:` | `x >= 1 && x < 10`, `x >= 1 && x <= 10` |
+| `case Shape.Circle(r) if r > 1.0:` | `x is Shape.Circle && { let r = x.Circle#0; r > 1.0 }` |
+
+The condition of a case uses the names of its pattern before the case has started, so they are declared a first time for it, in a `BlockExpr` (below), and again at the start of the body. A case with a condition is never the unconditional last `else`.
+
+#### A match that gives a value
+
+`let size = match shape { ... };` cannot become an `if` statement: it stands where a value does. It becomes a chain of two expressions that only desugaring makes:
+
+*   `CondExpr{Cond, Then, Else}`: one of two values, only the chosen one evaluated;
+*   `BlockExpr{Stmts, Value}`: statements, then the expression that gives their value. Without a value the statements always leave (a case written as a block ends in `return`, `break`, `continue` or `panic`).
+
+```rust
+let size = match shape {
+    case Shape.Circle(r) if r > 10.0: "big";
+    case Shape.Circle(_): "round";
+    default: { return null; }
+};
+```
+
+```
+let size = cond(shape is Shape.Circle && { let r = shape.Circle#0; r > 10.0 },
+                { let r = shape.Circle#0; "big" },
+                cond(shape is Shape.Circle, "round", { return null; }));
+```
+
+The type checker gives a `CondExpr` the type its two sides share when the program is checked again after this stage, so nothing has to be declared for the result. IR generation compiles it like `&&`: one register written on both paths.
+
+### 2b. Loops over a range
+
+`for i in low..high` does not go through an array: it counts.
+
+```rust
+{
+    let __iter_N: Int = low;
+    let __len_N: Int = high;
+    while __iter_N < __len_N {        // <= for low..=high
+        let i: Int = __iter_N;
+        __iter_N = __iter_N + 1;
+        body
+    }
+}
+```
+
+`defer` is not desugared: its body is, and the statement goes on to IR generation, which knows the ways out of a block ([ir_generation.md](ir_generation.md)).
+
 ### 3. Optional Chaining (Future)
 
 **Goal**: Transform optional chaining into explicit null checks.

@@ -18,6 +18,9 @@ type Resolver struct {
 	current     *Scope
 	errs        *errors.Handler
 	sourceLines map[int]string // Source lines for error context
+
+	// Inside a pattern that is not the first of its case
+	namesNothing bool
 }
 
 func NewResolver(errs *errors.Handler) *Resolver {
@@ -295,6 +298,8 @@ func (r *Resolver) visitStmt(stmt ast.Stmt) {
 		r.visitForStmt(s)
 	case *ast.MatchStmt:
 		r.visitMatchStmt(s)
+	case *ast.DeferStmt:
+		r.visitBlockStmt(s.Body)
 	case *ast.ExprStmt:
 		r.visitExpr(s.Expr)
 	case *ast.BreakStmt, *ast.ContinueStmt:
@@ -347,6 +352,17 @@ func (r *Resolver) visitMatchCase(c *ast.MatchCase) {
 
 	// Visit pattern - this handles pattern matching variable binding
 	r.visitPattern(c.Pattern)
+	// A case with several patterns names nothing: the type checker says
+	// so, better than a complaint here about a name declared twice
+	r.namesNothing = true
+	for _, alternative := range c.Alternatives {
+		r.visitPattern(alternative)
+	}
+	r.namesNothing = false
+	// The condition of the case sees the names of its pattern
+	if c.Guard != nil {
+		r.visitExpr(c.Guard)
+	}
 
 	// Body can be either BlockStmt or Expr
 	switch body := c.Body.(type) {
@@ -373,7 +389,7 @@ func (r *Resolver) visitPattern(pattern ast.Node) {
 		}
 
 	case *ast.BindingPattern:
-		if !p.Ignored() {
+		if !p.Ignored() && !r.namesNothing {
 			r.declare(p.Name, SymbolVar, p)
 		}
 
@@ -475,6 +491,24 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 		r.visitExpr(e.Expr)
 	case *ast.VariantFieldExpr:
 		r.visitExpr(e.Expr)
+	case *ast.MatchExpr:
+		r.visitMatchStmt(e.Match)
+	case *ast.RangeExpr:
+		r.visitExpr(e.Low)
+		r.visitExpr(e.High)
+	case *ast.BlockExpr:
+		r.pushScope(e)
+		for _, stmt := range e.Stmts {
+			r.visitStmt(stmt)
+		}
+		if e.Value != nil {
+			r.visitExpr(e.Value)
+		}
+		r.popScope()
+	case *ast.CondExpr:
+		r.visitExpr(e.Cond)
+		r.visitExpr(e.Then)
+		r.visitExpr(e.Else)
 	case *ast.Ident:
 		r.resolveIdent(e)
 	case *ast.Literal:

@@ -98,12 +98,12 @@ pub fn ordinal(n: Int) -> String {
     let last = math.abs(n) % 10;
     let lastTwo = math.abs(n) % 100;
     if lastTwo >= 11 && lastTwo <= 13 { return "${n}th"; }
-    match last {
-        case 1: { return "${n}st"; }
-        case 2: { return "${n}nd"; }
-        case 3: { return "${n}rd"; }
-        default: { return "${n}th"; }
-    }
+    return match last {
+        case 1: "${n}st";
+        case 2: "${n}nd";
+        case 3: "${n}rd";
+        default: "${n}th";
+    };
 }
 
 // A count with its noun: plural(1, "file", "files") is "1 file".

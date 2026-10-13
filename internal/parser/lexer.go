@@ -423,6 +423,8 @@ var multiCharOps = []struct {
 	typ  token.TokenType
 }{
 	{"...", token.ELLIPSIS},
+	{"..=", token.DOTDOT_EQ},
+	{"..", token.DOTDOT},
 	{"->", token.ARROW},
 	{"=>", token.FAT_ARROW},
 	{"==", token.EQ},

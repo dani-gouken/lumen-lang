@@ -133,18 +133,18 @@ impl Equal for Json {
 
 impl Json {
     pub fn isNull() -> Bool {
-        match self {
-            case Json.Null: { return true; }
-            default: { return false; }
-        }
+        return match self {
+            case Json.Null: true;
+            default: false;
+        };
     }
 
     // The value of a key, if this is an object that has it.
     pub fn get(key: String) -> Json? {
-        match self {
-            case Json.Object(fields): { return fields.get(key); }
-            default: { return null; }
-        }
+        return match self {
+            case Json.Object(fields): fields.get(key);
+            default: null;
+        };
     }
 
     // The item at a position, if this is an array that long.
@@ -174,18 +174,18 @@ impl Json {
 
     // The text, if this is one.
     pub fn text() -> String? {
-        match self {
-            case Json.String(text): { return text; }
-            default: { return null; }
-        }
+        return match self {
+            case Json.String(text): text;
+            default: null;
+        };
     }
 
     // The number, if this is one.
     pub fn number() -> Float? {
-        match self {
-            case Json.Number(x): { return x; }
-            default: { return null; }
-        }
+        return match self {
+            case Json.Number(x): x;
+            default: null;
+        };
     }
 
     // The number, if this is one and it is whole.
@@ -201,26 +201,26 @@ impl Json {
     }
 
     pub fn bool() -> Bool? {
-        match self {
-            case Json.Bool(b): { return b; }
-            default: { return null; }
-        }
+        return match self {
+            case Json.Bool(b): b;
+            default: null;
+        };
     }
 
     // The items, if this is an array.
     pub fn items() -> [Json]? {
-        match self {
-            case Json.Array(items): { return items; }
-            default: { return null; }
-        }
+        return match self {
+            case Json.Array(items): items;
+            default: null;
+        };
     }
 
     // The keys and their values, if this is an object.
     pub fn fields() -> Dict<Json>? {
-        match self {
-            case Json.Object(fields): { return fields; }
-            default: { return null; }
-        }
+        return match self {
+            case Json.Object(fields): fields;
+            default: null;
+        };
     }
 
     // On one line, as short as it gets: {"a":[1,2]}

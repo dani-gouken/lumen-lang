@@ -1,0 +1,19 @@
+[ERROR] E2028: match on Light does not handle Light.Amber, Light.Green
+control_errors.lum:7:12
+[ERROR] E2028: a match that gives a value needs a case for every value, and this one has no 'default'
+Add a case for what is left: default: value;
+[ERROR] E2001: this case gives string, the cases above give int
+Every case of a match that gives a value gives the same type
+[ERROR] E2040: this case gives no value
+control_errors.lum:25:9
+[ERROR] E2029: a case with several patterns cannot name a value: 'r'
+Write '_' in its place, or give the pattern a case of its own
+[ERROR] E2038: a range is not a value
+Loop over it (for i in 0..10 { ... }), match against it (case 0..10:), or make the array: arrays.range(0, 10)
+[ERROR] E2038: the bounds of a range are whole numbers, this is float
+[ERROR] E2026: cannot assign to loop variable 'i'
+'i' follows the range; use a while loop to control the count
+[ERROR] E2029: a value of type string is never in a range of int
+[ERROR] E2039: 'return' inside a defer
+[ERROR] E2039: 'break' inside a defer would leave it
+control_errors.lum:50:17

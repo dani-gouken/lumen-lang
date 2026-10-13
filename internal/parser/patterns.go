@@ -19,44 +19,33 @@ func classifyPatterns(prog *ast.Program) {
 		}
 	}
 
-	var visitBlock func(block *ast.BlockStmt)
-	visitStmt := func(stmt ast.Stmt) {}
-	visitStmt = func(stmt ast.Stmt) {
-		switch s := stmt.(type) {
-		case *ast.BlockStmt:
-			visitBlock(s)
-		case *ast.IfStmt:
-			visitBlock(s.Then)
-			if s.Else != nil {
-				visitStmt(s.Else)
-			}
-		case *ast.WhileStmt:
-			visitBlock(s.Body)
-		case *ast.ForStmt:
-			visitBlock(s.Body)
-		case *ast.MatchStmt:
-			for _, c := range s.Cases {
-				if ident, ok := c.Pattern.(*ast.Ident); ok && typeNames[ident.Name] {
-					c.Pattern = &ast.Type{
-						BaseNode: ident.BaseNode,
-						Kind:     ast.TypeBasic,
-						Name:     ident.Name,
-						Generics: ident.TypeArgs,
-					}
-				}
-				if body, ok := c.Body.(*ast.BlockStmt); ok {
-					visitBlock(body)
-				}
+	classify := func(pattern ast.Node) ast.Node {
+		if ident, ok := pattern.(*ast.Ident); ok && typeNames[ident.Name] {
+			return &ast.Type{
+				BaseNode: ident.BaseNode,
+				Kind:     ast.TypeBasic,
+				Name:     ident.Name,
+				Generics: ident.TypeArgs,
 			}
 		}
+		return pattern
 	}
-	visitBlock = func(block *ast.BlockStmt) {
+	visitBlock := func(block *ast.BlockStmt) {
 		if block == nil {
 			return
 		}
-		for _, stmt := range block.Stmts {
-			visitStmt(stmt)
-		}
+		ast.Walk(block, func(ast.Expr) {}, func(stmt ast.Stmt) {
+			match, ok := stmt.(*ast.MatchStmt)
+			if !ok {
+				return
+			}
+			for _, c := range match.Cases {
+				c.Pattern = classify(c.Pattern)
+				for i, alt := range c.Alternatives {
+					c.Alternatives[i] = classify(alt)
+				}
+			}
+		})
 	}
 
 	for _, decl := range prog.Decls {

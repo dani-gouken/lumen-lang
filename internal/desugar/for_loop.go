@@ -28,6 +28,11 @@ import (
 func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 	pos := forStmt.Position()
 
+	// A loop over numbers counts, and makes no array
+	if numbers, ok := forStmt.Iterable.(*ast.RangeExpr); ok {
+		return d.desugarRangeLoop(forStmt, numbers)
+	}
+
 	// A loop over a struct goes through the array the struct gives
 	forStmt = d.iterated(forStmt)
 
@@ -211,6 +216,74 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 	// Record the mapping
 	d.info.Mapping[forStmt] = block
 
+	return block
+}
+
+// desugarRangeLoop transforms a loop over a range into a while loop that
+// counts:
+//
+//	for i in low..high {
+//	  body
+//	}
+//
+// becomes
+//
+//	{
+//	  let __iter_N: Int = low;
+//	  let __len_N: Int = high;
+//	  while __iter_N < __len_N {       // <= for low..=high
+//	    let i: Int = __iter_N;
+//	    __iter_N = __iter_N + 1;
+//	    body
+//	  }
+//	}
+//
+// Both ends are worked out once, before the first iteration. With a
+// position, `for n, i in low..high`, n is how far i is from where it began.
+func (d *Desugarer) desugarRangeLoop(forStmt *ast.ForStmt, numbers *ast.RangeExpr) ast.Stmt {
+	pos := forStmt.Position()
+	at := ast.BaseNode{Pos: pos}
+	intType := func() *ast.Type { return &ast.Type{BaseNode: at, Kind: ast.TypeBasic, Name: "Int"} }
+	iterVar, endVar := d.generateIterVar(), d.generateLenVar()
+	iter := func() ast.Expr { return d.createIdent(iterVar, pos) }
+
+	stmts := []ast.Stmt{
+		&ast.LetStmt{BaseNode: at, Name: iterVar, Type: intType(), Value: d.desugarExpr(numbers.Low)},
+		&ast.LetStmt{BaseNode: at, Name: endVar, Type: intType(), Value: d.desugarExpr(numbers.High)},
+	}
+
+	body := []ast.Stmt{&ast.LetStmt{BaseNode: at, Name: forStmt.Var, Type: intType(), Value: iter()}}
+	if forStmt.Index != nil {
+		startVar := d.generateTmpVar()
+		stmts = append(stmts, &ast.LetStmt{BaseNode: at, Name: startVar, Type: intType(), Value: iter()})
+		body = append(body, &ast.LetStmt{
+			BaseNode: forStmt.Index.BaseNode,
+			Name:     forStmt.Index.Name,
+			Type:     intType(),
+			Value:    d.createBinaryExpr(iter(), "-", d.createIdent(startVar, pos), pos),
+		})
+	}
+	// The increment comes before the body so that `continue` cannot skip it
+	body = append(body, &ast.ExprStmt{BaseNode: at, Expr: &ast.BinaryExpr{
+		BaseNode: at,
+		Left:     iter(),
+		Op:       "=",
+		Right:    d.createBinaryExpr(iter(), "+", d.createIntLiteral("1", pos), pos),
+	}})
+	body = append(body, d.desugarBlockStmt(forStmt.Body).Stmts...)
+
+	before := "<"
+	if numbers.Inclusive {
+		before = "<="
+	}
+	stmts = append(stmts, &ast.WhileStmt{
+		BaseNode: at,
+		Cond:     d.createBinaryExpr(iter(), before, d.createIdent(endVar, pos), pos),
+		Body:     &ast.BlockStmt{BaseNode: at, Stmts: body},
+	})
+
+	block := d.wrapInBlock(stmts, pos)
+	d.info.Mapping[forStmt] = block
 	return block
 }
 

@@ -142,6 +142,39 @@ exit:                            index = index + 1
 
 A `match` that reaches IR generation was not desugared, meaning its patterns are not supported; it is reported as `E5001` rather than compiled incorrectly.
 
+## Defer
+
+`defer` is compiled here because this is the stage that sees every way out of a block. Each scope keeps the list of what it deferred (`internal/irgen/defer.go`).
+
+The ways out the compiler writes get a copy of the deferred statements, the last deferred first:
+
+| Way out | Defers run |
+|---------|------------|
+| The end of a block | those of the block |
+| `return`, and the return of a `?` | those of every open scope of the function, after the value is in its register |
+| `break`, `continue` | those of the scopes inside the loop |
+
+A failure can come from any instruction, so it is not a way out the compiler can write a copy for. Where the `defer` stands, the function leaves a handler with the VM instead:
+
+```
+defer close();        TRY handler, body
+work();               body:    work()
+                               END_TRY            ; the end of the block:
+                               close()            ; the handler is taken back, then the cleanup
+                      handler: close()
+                               RETHROW            ; a failure in work() comes here
+```
+
+Every copy starts with `END_TRY`: from there a failure, in the cleanup itself for one, belongs to the handlers further out. The handler block is entered by the VM only; `TRY` names it as an operand so that the bytecode generator sees it as reachable and keeps the variables it reads in registers of their own.
+
+The statements are compiled once per copy, each time with the variables that were in scope where the `defer` was written: a name declared after it does not hide the one it meant.
+
+A function without `defer` compiles exactly as before.
+
+## Values With Statements Inside
+
+Desugaring turns a `match` that gives a value into `CondExpr` and `BlockExpr` ([desugaring.md](desugaring.md)). A `CondExpr` is a branch whose two sides move their value into one register, as `&&` does. A `BlockExpr` is a scope: its statements, then its value. One without a value ends in a `return`, `break` or `continue`, whose jump is already emitted; the register it gives is never read.
+
 ## Short-Circuit Operators
 
 `&&`, `||` and `??` evaluate their right operand only when needed. The result lives in one register that is written on both paths:

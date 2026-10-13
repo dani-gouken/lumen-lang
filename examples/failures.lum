@@ -30,11 +30,11 @@ struct ConfigError {
 
 impl ConfigError {
     fn describe() -> String {
-        match self.reason {
-            case Reason.Empty: { return "${self.key} is empty"; }
-            case Reason.NotANumber(text): { return "${self.key} should be a number, not '${text}'"; }
-            case Reason.OutOfRange(n): { return "${self.key} should be from 1 to 100, not ${n}"; }
-        }
+        return match self.reason {
+            case Reason.Empty: "${self.key} is empty";
+            case Reason.NotANumber(text): "${self.key} should be a number, not '${text}'";
+            case Reason.OutOfRange(n): "${self.key} should be from 1 to 100, not ${n}";
+        };
     }
 }
 

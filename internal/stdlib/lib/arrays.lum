@@ -16,22 +16,14 @@ pub fn len<T>(items: [T]) -> Int {
 // The whole numbers from `from` up to, not including, `to`.
 pub fn range(from: Int, to: Int) -> [Int] {
     let out: [Int] = [];
-    let n = from;
-    while n < to {
-        push(out, n);
-        n++;
-    }
+    for n in from..to { push(out, n); }
     return out;
 }
 
 // An array of `count` times the same value.
 pub fn fill<T>(count: Int, value: T) -> [T] {
     let out: [T] = [];
-    let i = 0;
-    while i < count {
-        push(out, value);
-        i++;
-    }
+    for i in 0..count { push(out, value); }
     return out;
 }
 

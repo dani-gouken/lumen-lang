@@ -105,12 +105,15 @@ val := arr.Get(0)  // Returns 42
 
 ### 3. Object/Map
 
-Hash table with string keys:
+The values of an object in slots, and a shape that says which field is in
+which slot. Objects with the same fields, added in the same order, share one
+shape: the names are kept once, not in every object.
 
 ```go
 type ObjectObj struct {
     header ObjHeader
-    fields map[string]Value
+    shape  *Shape   // Which field is in which slot
+    slots  []Value
 }
 ```
 
@@ -118,7 +121,8 @@ type ObjectObj struct {
 - `AllocObject()` - Allocate empty object
 - `Get(key string)` - Get value by key (returns value and bool)
 - `Set(key string, v Value)` - Set key-value pair
-- `Keys()` - Get all keys as slice
+- `Delete(key string)` - Take a field away
+- `Keys()` - The names, in the order the fields were added
 
 **Example:**
 ```go
@@ -150,14 +154,15 @@ Captured variables for closures:
 
 ```go
 type UpvalueObj struct {
-    header   ObjHeader
-    location *Value
-    closed   Value
+    header ObjHeader
+    stack  *regStack // The stack the variable is on; nil once closed
+    slot   int       // Its place there
+    closed Value     // The value, once closed
 }
 ```
 
 **Operations:**
-- `AllocUpvalue(location *Value)` - Allocate a new upvalue
+- `AllocUpvalue(stack, slot)` - Allocate a new upvalue, open on a register of a stack
 
 ## Garbage Collection
 
@@ -167,19 +172,15 @@ Lumen uses a classic two-phase mark-and-sweep garbage collector:
 
 #### Phase 1: Mark
 
-Starting from **GC roots** (registers and stack), recursively mark all reachable objects:
+Starting from the **GC roots**, mark all reachable objects. Marking an object
+that can hold others puts it on a list; the list is then emptied, marking
+what each object on it holds:
 
 ```go
-func (vm *VM) markRoots() {
-    // Mark objects in registers
-    for i := 0; i < len(vm.regs); i++ {
-        vm.markValue(vm.regs[i])
-    }
-
-    // Mark objects on stack
-    for i := 0; i < vm.sp; i++ {
-        vm.markValue(vm.stack[i])
-    }
+func (vm *VM) CollectGarbage() {
+    vm.markRoots()      // What the program holds directly
+    vm.markReachable()  // What those objects hold, and so on
+    vm.heap.sweep()
 }
 ```
 
@@ -187,7 +188,11 @@ The marking process:
 1. Check if value is a heap pointer
 2. Skip if already marked (prevents cycles)
 3. Set `Marked = true` on the object header
-4. Recursively mark children (array elements, object fields)
+4. Put it on the list of objects to look into, unless it holds none (a string)
+
+Nothing here calls itself for each object held: how deep a structure goes
+costs memory for the list, not stack. A linked list of millions of nodes is
+marked like any other value.
 
 #### Phase 2: Sweep
 
@@ -242,9 +247,26 @@ An allocation, or the growth of an array or object, that would exceed the heap l
 
 Objects reachable from these locations are never collected:
 
-1. **Registers** - Current function's register file
-2. **Stack** - All values on the VM stack
-3. **Constants** - String constants in the constant pool (if stored as heap pointers)
+1. **Registers** - of every call in progress, of every task: each task's stack up to the end of its innermost call
+2. **Functions** - whose calls are in progress
+3. **Pins** - values a native function is working with, and what a protected call returned until the program takes it
+4. **Caches** - the function objects made once (see `NEWFUNC`), the texts of one character
+
+### What is counted
+
+Every object counts against the limit for its own size plus what it holds
+directly: the bytes of a text, the capacity of an array, the slots of an
+object, the captured variables of a closure. Growth after creation is counted
+when it happens.
+
+The same function gives the size when an object is made and when it is freed
+(`sizeOf` in `heap.go`). The two have to agree: an object counted for more
+going in than coming out leaves the difference behind for good, and a program
+that runs long enough is refused memory it has. A test makes and drops every
+kind of object and checks that the count comes back to where it started.
+
+Room is reserved before the memory is asked of the machine: an array larger
+than the limit is refused without being made.
 
 ### Performance Characteristics
 
@@ -523,6 +545,8 @@ Current implementation has these limitations:
 4. **Simple allocator** - Not optimized for performance
 5. **No weak references** - All reachable objects are kept
 6. **No finalizers** - No cleanup hooks when objects are freed
+7. **One thread** - The collector assumes nothing else touches the heap while it runs, and nothing does: tasks take turns. Tasks on several processors would need a collector made for it
+8. **Pointers kept as numbers** - A value holds the address of its object as a number, which Go's own collector does not follow; the heap's list of objects is what keeps them alive. This relies on Go not moving heap objects, and is why the race detector's pointer check is turned off for the tests (`make test-race`)
 
 ## Future Improvements
 

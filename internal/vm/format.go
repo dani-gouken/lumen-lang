@@ -15,10 +15,24 @@ const maxFormatDepth = 8
 // print/println and returned by toString. Unlike Value.String, which is a
 // debug representation, it follows heap pointers.
 func FormatValue(v Value) string {
-	return formatValue(v, 0)
+	f := formatter{room: maxFormatLength}
+	return f.formatValue(v, 0)
 }
 
-func formatValue(v Value, depth int) string {
+// maxFormatLength bounds what one value is written as. Depth alone does
+// not: an array holding itself fifty times over is fifty to the power of
+// the depth, more than will ever be read or waited for.
+const maxFormatLength = 1 << 20
+
+// formatter writes a value, keeping count of the room left.
+type formatter struct {
+	room int
+}
+
+// elided is written in place of what there is no room left for.
+const elided = "..."
+
+func (f *formatter) formatValue(v Value, depth int) string {
 	switch {
 	case v.IsInt():
 		return strconv.FormatInt(v.AsInt(), 10)
@@ -42,9 +56,13 @@ func formatValue(v Value, depth int) string {
 			return "[...]"
 		}
 		arr := (*ArrayObj)(ptr)
-		parts := make([]string, arr.Len())
-		for i := range parts {
-			parts[i] = formatNested(arr.Get(i), depth+1)
+		parts := make([]string, 0, arr.Len())
+		for i := 0; i < arr.Len(); i++ {
+			if f.room <= 0 {
+				parts = append(parts, elided)
+				break
+			}
+			parts = append(parts, f.formatNested(arr.Get(i), depth+1))
 		}
 		return "[" + strings.Join(parts, ", ") + "]"
 
@@ -58,11 +76,15 @@ func formatValue(v Value, depth int) string {
 			name := obj.typeName[strings.LastIndex(obj.typeName, ".")+1:]
 			var values []string
 			for i := 0; ; i++ {
-				value, ok := obj.fields[strconv.Itoa(i)]
+				value, ok := obj.Get(strconv.Itoa(i))
 				if !ok {
 					break
 				}
-				values = append(values, formatNested(value, depth+1))
+				if f.room <= 0 {
+					values = append(values, elided)
+					break
+				}
+				values = append(values, f.formatNested(value, depth+1))
 			}
 			if len(values) == 0 {
 				return name
@@ -81,7 +103,11 @@ func formatValue(v Value, depth int) string {
 			if isFunction(value) {
 				continue // Methods attached to a struct value are not data
 			}
-			parts = append(parts, key+": "+formatNested(value, depth+1))
+			if f.room <= 0 {
+				parts = append(parts, elided)
+				break
+			}
+			parts = append(parts, key+": "+f.formatNested(value, depth+1))
 		}
 		return "{" + strings.Join(parts, ", ") + "}"
 
@@ -95,11 +121,16 @@ func formatValue(v Value, depth int) string {
 
 // formatNested formats a value inside an array or object, where strings are
 // quoted to keep them apart from the surrounding syntax.
-func formatNested(v Value, depth int) string {
+func (f *formatter) formatNested(v Value, depth int) string {
+	var text string
 	if s, ok := stringValue(v); ok {
-		return strconv.Quote(s)
+		text = strconv.Quote(s)
+	} else {
+		text = f.formatValue(v, depth)
 	}
-	return formatValue(v, depth)
+	// Two more for what sets it apart from the next
+	f.room -= len(text) + 2
+	return text
 }
 
 // heapType returns the object type of a heap value.

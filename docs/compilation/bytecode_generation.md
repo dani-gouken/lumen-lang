@@ -144,6 +144,8 @@ A reachable block that does not end in a terminator gets `LOADNULL r0; RET r0`, 
 | `MAKE_CLOSURE` | `NEWFUNC`, then one `CAPLOCAL` (register capture) or `CAPUPVAL` (upvalue capture) per captured variable |
 | `LOAD_UPVALUE` / `STORE_UPVALUE` | `LDCAP` / `STCAP` |
 | `CLOSE_UPVALUES` | one `CLOSEUP` per register |
+| `TRY handler, body` | `LONG`, `TRY32`, the offset of `handler`; then a jump to `body` unless it is the next block. Ends its block, with both as successors: the handler is reachable though nothing jumps to it |
+| `END_TRY` / `RETHROW` | `ENDTRY` / `RETHROW` (`RETHROW` ends its block) |
 | `AND` `OR` `CALL_TRAIT` | none: `E6004` |
 
 ## Chunk Tables

@@ -23,12 +23,12 @@ fn join(separator: String, parts: ...String) -> String {
 }
 
 fn spell(n: Int) -> String {
-    match n {
-        case 0: { return "zero"; }
-        case 1: { return "one"; }
-        case 2: { return "two"; }
-        default: { return "many"; }
-    }
+    return match n {
+        case 0: "zero";
+        case 1: "one";
+        case 2: "two";
+        default: "many";
+    };
 }
 
 fn main() -> Int {

@@ -53,10 +53,10 @@ pub fn routes(notes: Book) -> Router {
             case Result.Ok(document): {
                 let outcome = notes.replace(idOf(request), document);
                 if outcome == null { return noSuchNote(request); }
-                match outcome {
-                    case Result.Ok(note): { return http.sendJson(200, note.toJson()); }
-                    case Result.Err(refusal): { return refused(refusal); }
-                }
+                return match outcome {
+                    case Result.Ok(note): http.sendJson(200, note.toJson());
+                    case Result.Err(refusal): refused(refusal);
+                };
             }
             case Result.Err(error): { return problem(400, "the body is not JSON: ${error.describe()}"); }
         }
@@ -93,9 +93,9 @@ fn noSuchNote(request: Request) -> Response {
 // Each kind of refusal has its status: the compiler makes sure a new
 // kind is given one.
 fn refused(refusal: Refusal) -> Response {
-    match refusal {
-        case Refusal.Missing(_): { return problem(400, refusal.describe()); }
-        case Refusal.TooLong(_, _): { return problem(413, refusal.describe()); }
-        case Refusal.Duplicate(_): { return problem(409, refusal.describe()); }
-    }
+    return match refusal {
+        case Refusal.Missing(_): problem(400, refusal.describe());
+        case Refusal.TooLong(_, _): problem(413, refusal.describe());
+        case Refusal.Duplicate(_): problem(409, refusal.describe());
+    };
 }

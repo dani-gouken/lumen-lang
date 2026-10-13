@@ -19,11 +19,11 @@ pub enum StoreError {
 
 impl StoreError {
     pub fn describe() -> String {
-        match self {
-            case StoreError.File(error): { return error.describe(); }
-            case StoreError.NotJson(error): { return "the list is damaged at ${error.describe()}"; }
-            case StoreError.NotTasks(why): { return "the list is damaged: ${why}"; }
-        }
+        return match self {
+            case StoreError.File(error): error.describe();
+            case StoreError.NotJson(error): "the list is damaged at ${error.describe()}";
+            case StoreError.NotTasks(why): "the list is damaged: ${why}";
+        };
     }
 }
 

@@ -41,12 +41,12 @@ enum Outcome { Ok, Redirect, ClientError, ServerError }
 
 impl Outcome {
     fn label() -> String {
-        match self {
-            case Outcome.Ok: { return "2xx ok"; }
-            case Outcome.Redirect: { return "3xx not modified, moved"; }
-            case Outcome.ClientError: { return "4xx refused, not found"; }
-            case Outcome.ServerError: { return "5xx the server failed"; }
-        }
+        return match self {
+            case Outcome.Ok: "2xx ok";
+            case Outcome.Redirect: "3xx not modified, moved";
+            case Outcome.ClientError: "4xx refused, not found";
+            case Outcome.ServerError: "5xx the server failed";
+        };
     }
 }
 
@@ -79,10 +79,10 @@ struct BadLine {
 
 impl BadLine {
     fn describe() -> String {
-        match self.problem {
-            case Problem.Shape: { return "line ${self.number}: not a log line: ${strings.first(self.text, 40)}..."; }
-            case Problem.Date(date): { return "line ${self.number}: no such date: ${date}"; }
-        }
+        return match self.problem {
+            case Problem.Shape: "line ${self.number}: not a log line: ${strings.first(self.text, 40)}...";
+            case Problem.Date(date): "line ${self.number}: no such date: ${date}";
+        };
     }
 }
 

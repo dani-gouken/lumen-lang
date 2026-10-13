@@ -3,6 +3,7 @@ package vm
 import (
 	"encoding/binary"
 	"fmt"
+	"math"
 )
 
 const (
@@ -194,264 +195,194 @@ func SerializeChunk(chunk *Chunk) ([]byte, error) {
 	return buf, nil
 }
 
+// byteReader reads the parts of a bytecode file in order. Nothing in a
+// file is trusted: every length is checked against what is left of the
+// file before anything is read or made to hold it, so that a damaged file
+// is refused with a message instead of asking for memory it names but
+// does not have.
+type byteReader struct {
+	data   []byte
+	offset int
+}
+
+func (r *byteReader) left() int {
+	return len(r.data) - r.offset
+}
+
+func (r *byteReader) uint32(what string) (uint32, error) {
+	if r.left() < 4 {
+		return 0, fmt.Errorf("bytecode truncated: cannot read %s", what)
+	}
+	v := binary.LittleEndian.Uint32(r.data[r.offset:])
+	r.offset += 4
+	return v, nil
+}
+
+// count reads a number of items that each take at least size bytes.
+func (r *byteReader) count(what string, size int) (int, error) {
+	n, err := r.uint32(what + " count")
+	if err != nil {
+		return 0, err
+	}
+	if int64(n)*int64(size) > int64(r.left()) {
+		return 0, fmt.Errorf("bytecode truncated: cannot read %d %s", n, what)
+	}
+	return int(n), nil
+}
+
+func (r *byteReader) string(what string) (string, error) {
+	n, err := r.uint32(what + " length")
+	if err != nil {
+		return "", err
+	}
+	if int64(n) > int64(r.left()) {
+		return "", fmt.Errorf("bytecode truncated: cannot read %s", what)
+	}
+	s := string(r.data[r.offset : r.offset+int(n)])
+	r.offset += int(n)
+	return s, nil
+}
+
 // DeserializeChunk converts binary bytecode to a Chunk.
+//
+// It checks that the file is whole and well formed, not that the program
+// in it makes sense: that is Verify, which Exec applies to every chunk.
 func DeserializeChunk(data []byte) (*Chunk, error) {
 	if len(data) < 8 {
 		return nil, fmt.Errorf("bytecode too short: minimum 8 bytes required")
 	}
+	r := &byteReader{data: data}
 
-	offset := 0
-
-	// Read and verify magic number
-	magic := binary.LittleEndian.Uint32(data[offset:])
-	offset += 4
-	if magic != bytecodeFileMagic {
+	if magic, _ := r.uint32("magic number"); magic != bytecodeFileMagic {
 		return nil, fmt.Errorf("invalid magic number: expected 0x%X, got 0x%X", bytecodeFileMagic, magic)
 	}
-
-	// Read and verify version
-	version := binary.LittleEndian.Uint32(data[offset:])
-	offset += 4
-	if version != bytecodeVersion {
+	if version, _ := r.uint32("version"); version != bytecodeVersion {
 		return nil, fmt.Errorf("unsupported bytecode version: expected %d, got %d", bytecodeVersion, version)
 	}
 
 	chunk := NewChunk()
 
-	// Read constant pool
-	if offset+4 > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read constant count")
-	}
-	constCount := binary.LittleEndian.Uint32(data[offset:])
-	offset += 4
-
-	if offset+int(constCount)*8 > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read %d constants", constCount)
+	// Constant pool
+	constCount, err := r.count("constants", 8)
+	if err != nil {
+		return nil, err
 	}
 	chunk.Constants = make([]Value, constCount)
-	for i := uint32(0); i < constCount; i++ {
-		val := binary.LittleEndian.Uint64(data[offset:])
-		chunk.Constants[i] = Value(val)
-		offset += 8
+	for i := range chunk.Constants {
+		constant := Value(binary.LittleEndian.Uint64(r.data[r.offset:]))
+		r.offset += 8
+		if constant.IsHeapPtr() {
+			// An address means something in the program that wrote it,
+			// and nothing here
+			return nil, fmt.Errorf("invalid bytecode: constant %d is a pointer", i)
+		}
+		chunk.Constants[i] = constant
 	}
 
-	// Read code
-	if offset+4 > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read code count")
-	}
-	codeCount := binary.LittleEndian.Uint32(data[offset:])
-	offset += 4
-
-	if offset+int(codeCount)*instrSize > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read %d instructions", codeCount)
+	// Code
+	codeCount, err := r.count("instructions", instrSize)
+	if err != nil {
+		return nil, err
 	}
 	chunk.Code = make([]Instr, codeCount)
-	for i := uint32(0); i < codeCount; i++ {
+	for i := range chunk.Code {
+		at := r.data[r.offset:]
 		chunk.Code[i] = Instr{
-			Op: OpCode(data[offset]),
-			A:  binary.LittleEndian.Uint16(data[offset+1:]),
-			B:  binary.LittleEndian.Uint16(data[offset+3:]),
-			C:  binary.LittleEndian.Uint16(data[offset+5:]),
+			Op: OpCode(at[0]),
+			A:  binary.LittleEndian.Uint16(at[1:]),
+			B:  binary.LittleEndian.Uint16(at[3:]),
+			C:  binary.LittleEndian.Uint16(at[5:]),
 		}
-		offset += instrSize
+		r.offset += instrSize
 	}
 
-	// Read function prototypes
-	if offset+4 > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read prototype count")
+	// Function prototypes: a name, five numbers and a signature each
+	protoCount, err := r.count("prototypes", 4+20+4)
+	if err != nil {
+		return nil, err
 	}
-	protoCount := binary.LittleEndian.Uint32(data[offset:])
-	offset += 4
-
 	chunk.Prototypes = make([]FunctionPrototype, protoCount)
-	for i := uint32(0); i < protoCount; i++ {
-		// Read function name
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read function name length")
+	for i := range chunk.Prototypes {
+		proto := &chunk.Prototypes[i]
+		if proto.Name, err = r.string("function name"); err != nil {
+			return nil, err
 		}
-		nameLen := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-
-		if offset+int(nameLen) > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read function name")
-		}
-		name := string(data[offset : offset+int(nameLen)])
-		offset += int(nameLen)
-
-		// Read metadata
-		if offset+20 > len(data) {
+		if r.left() < 20 {
 			return nil, fmt.Errorf("bytecode truncated: cannot read function metadata")
 		}
-		codeStart := int(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
-		codeSize := int(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
-		registerCount := int(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
-		argCount := int(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
-		upvalueCount := int(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
-
-		// Read signature
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read function signature length")
+		for _, field := range []*int{&proto.CodeStart, &proto.CodeSize, &proto.RegisterCount, &proto.ArgCount, &proto.UpvalueCount} {
+			n, _ := r.uint32("function metadata")
+			if n > math.MaxInt32 {
+				return nil, fmt.Errorf("invalid bytecode: function '%s' has a size of %d", proto.Name, n)
+			}
+			*field = int(n)
 		}
-		signatureLen := int(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
-		if signatureLen < 0 || offset+signatureLen > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read function signature")
-		}
-		signature := string(data[offset : offset+signatureLen])
-		offset += signatureLen
-
-		chunk.Prototypes[i] = FunctionPrototype{
-			Name:          name,
-			CodeStart:     codeStart,
-			CodeSize:      codeSize,
-			RegisterCount: registerCount,
-			ArgCount:      argCount,
-			UpvalueCount:  upvalueCount,
-			Signature:     signature,
+		if proto.Signature, err = r.string("function signature"); err != nil {
+			return nil, err
 		}
 	}
 
-	// Read extern names
-	if offset+4 > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read extern count")
+	// Extern names
+	externCount, err := r.count("extern names", 4)
+	if err != nil {
+		return nil, err
 	}
-	externCount := binary.LittleEndian.Uint32(data[offset:])
-	offset += 4
-
 	chunk.ExternNames = make([]string, externCount)
-	for i := uint32(0); i < externCount; i++ {
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read extern name length")
+	for i := range chunk.ExternNames {
+		if chunk.ExternNames[i], err = r.string("extern name"); err != nil {
+			return nil, err
 		}
-		nameLen := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-
-		if offset+int(nameLen) > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read extern name")
-		}
-		chunk.ExternNames[i] = string(data[offset : offset+int(nameLen)])
-		offset += int(nameLen)
 	}
 
-	// Read string pool
-	if offset+4 > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read string pool count")
+	// String pool
+	stringCount, err := r.count("strings", 4)
+	if err != nil {
+		return nil, err
 	}
-	stringPoolCount := binary.LittleEndian.Uint32(data[offset:])
-	offset += 4
-
-	chunk.StringPool = make([]string, stringPoolCount)
-	for i := uint32(0); i < stringPoolCount; i++ {
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read string length")
+	chunk.StringPool = make([]string, stringCount)
+	for i := range chunk.StringPool {
+		if chunk.StringPool[i], err = r.string("string"); err != nil {
+			return nil, err
 		}
-		strLen := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-
-		if offset+int(strLen) > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read string")
-		}
-		chunk.StringPool[i] = string(data[offset : offset+int(strLen)])
-		offset += int(strLen)
 	}
 
-	// Read debug info
-	if offset+4 > len(data) {
-		return nil, fmt.Errorf("bytecode truncated: cannot read debug info count")
+	// Debug info: an instruction, a file, a line, a column, four texts
+	debugCount, err := r.count("debug info entries", 4+4+8+4*4)
+	if err != nil {
+		return nil, err
 	}
-	debugCount := binary.LittleEndian.Uint32(data[offset:])
-	offset += 4
-
-	for i := uint32(0); i < debugCount; i++ {
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read debug info instruction index")
+	for i := 0; i < debugCount; i++ {
+		debug := &DebugInfo{}
+		instrIdx, err := r.uint32("debug info instruction index")
+		if err != nil {
+			return nil, err
 		}
-		instrIdx := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-
-		// Read file path
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read file path length")
+		if debug.FilePath, err = r.string("file path"); err != nil {
+			return nil, err
 		}
-		filePathLen := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-		if offset+int(filePathLen) > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read file path")
+		line, err := r.uint32("line")
+		if err != nil {
+			return nil, err
 		}
-		filePath := string(data[offset : offset+int(filePathLen)])
-		offset += int(filePathLen)
-
-		// Read line and column
-		if offset+8 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read line/column")
+		column, err := r.uint32("column")
+		if err != nil {
+			return nil, err
 		}
-		line := int(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
-		column := int(binary.LittleEndian.Uint32(data[offset:]))
-		offset += 4
-
-		// Read source line
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read source line length")
+		debug.Line, debug.Column = int(line), int(column)
+		if debug.SourceLine, err = r.string("source line"); err != nil {
+			return nil, err
 		}
-		sourceLineLen := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-		if offset+int(sourceLineLen) > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read source line")
+		if debug.FuncName, err = r.string("function name"); err != nil {
+			return nil, err
 		}
-		sourceLine := string(data[offset : offset+int(sourceLineLen)])
-		offset += int(sourceLineLen)
-
-		// Read function name
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read function name length")
+		if debug.Description, err = r.string("description"); err != nil {
+			return nil, err
 		}
-		funcNameLen := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-		if offset+int(funcNameLen) > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read function name")
+		if debug.Notes, err = r.string("notes"); err != nil {
+			return nil, err
 		}
-		funcName := string(data[offset : offset+int(funcNameLen)])
-		offset += int(funcNameLen)
-
-		// Read description
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read description length")
-		}
-		descLen := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-		if offset+int(descLen) > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read description")
-		}
-		description := string(data[offset : offset+int(descLen)])
-		offset += int(descLen)
-
-		// Read notes
-		if offset+4 > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read notes length")
-		}
-		notesLen := binary.LittleEndian.Uint32(data[offset:])
-		offset += 4
-		if offset+int(notesLen) > len(data) {
-			return nil, fmt.Errorf("bytecode truncated: cannot read notes")
-		}
-		notes := string(data[offset : offset+int(notesLen)])
-		offset += int(notesLen)
-
-		// Create debug info
-		debug := &DebugInfo{
-			FilePath:    filePath,
-			Line:        line,
-			Column:      column,
-			SourceLine:  sourceLine,
-			FuncName:    funcName,
-			Description: description,
-			Notes:       notes,
+		if int(instrIdx) >= len(chunk.Code) {
+			return nil, fmt.Errorf("invalid bytecode: debug info for instruction %d of %d", instrIdx, len(chunk.Code))
 		}
 		chunk.DebugInfo[int(instrIdx)] = debug
 	}

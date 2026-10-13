@@ -16,23 +16,27 @@ import (
 // state is what has to be restored when a call is abandoned half way.
 type state struct {
 	frameCount int
-	regs       []Value
+	base       int
+	size       int
 	function   *FunctionObj
 	chunk      *Chunk
 	ip         int
-	fp         int
 	pinned     int
+	handlers   int
+	pending    int
 }
 
 func (vm *VM) saveState() state {
 	return state{
 		frameCount: vm.frameCount,
-		regs:       vm.regs,
+		base:       vm.base,
+		size:       len(vm.regs),
 		function:   vm.currentFunction,
 		chunk:      vm.chunk,
 		ip:         vm.ip,
-		fp:         vm.fp,
 		pinned:     len(vm.pinned),
+		handlers:   len(vm.handlers),
+		pending:    len(vm.pending),
 	}
 }
 
@@ -43,20 +47,27 @@ func (vm *VM) saveState() state {
 // of its variables: each such variable is moved to the closure first, as
 // happens when a function returns normally.
 func (vm *VM) unwind(to state) {
-	vm.closeUpvalues(0) // The innermost function's variables
-	for i := vm.frameCount - 1; i > to.frameCount; i-- {
-		vm.regs = vm.frames[i].regs
-		vm.closeUpvalues(0)
-	}
+	vm.closeUpvalues(to.base + to.size)
 
+	for i := to.frameCount; i < vm.frameCount && i < len(vm.frames); i++ {
+		vm.frames[i] = CallFrame{}
+	}
 	vm.frameCount = to.frameCount
 	vm.frames = vm.frames[:to.frameCount]
-	vm.regs = to.regs
+	vm.base = to.base
+	vm.regs = vm.window(to.base, to.size)
 	vm.currentFunction = to.function
 	vm.chunk = to.chunk
 	vm.ip = to.ip
-	vm.fp = to.fp
 	vm.pinned = vm.pinned[:to.pinned]
+	// The handlers of the abandoned calls have run by now; what a program
+	// ending on the way left behind goes with them
+	if len(vm.handlers) > to.handlers {
+		vm.handlers = vm.handlers[:to.handlers]
+	}
+	if len(vm.pending) > to.pending {
+		vm.pending = vm.pending[:to.pending]
+	}
 }
 
 // callFunction calls a function value of the program with the given
@@ -80,44 +91,18 @@ func (vm *VM) callFunction(fn Value, args []Value) (Value, error) {
 	if len(args) != proto.ArgCount {
 		return NewNull(), fmt.Errorf("function %s expects %d arguments, got %d", proto.Name, proto.ArgCount, len(args))
 	}
-	if vm.frameCount >= vm.maxCallDepth {
-		return NewNull(), vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", vm.maxCallDepth))
-	}
 
 	// The same steps as the CALL instruction
-	vm.frames = append(vm.frames[:vm.frameCount], CallFrame{
-		function: vm.currentFunction,
-		chunk:    vm.chunk,
-		ip:       vm.ip,
-		fp:       vm.fp,
-		regs:     vm.regs,
-	})
-	vm.frameCount++
-
-	regs := make([]Value, proto.RegisterCount)
-	for i := range regs {
-		regs[i] = NewNull()
+	if err := vm.enter(funcObj, args); err != nil {
+		return NewNull(), err
 	}
-	copy(regs, args)
-
-	vm.currentFunction = funcObj
-	vm.chunk = funcObj.chunk
-	vm.regs = regs
-	vm.ip = proto.CodeStart
-
 	result, err := vm.run(vm.frameCount)
 	if err != nil {
 		return NewNull(), err
 	}
 
 	// The same steps as RET, without storing the result in a register
-	vm.frameCount--
-	frame := vm.frames[vm.frameCount]
-	vm.currentFunction = frame.function
-	vm.chunk = frame.chunk
-	vm.ip = frame.ip
-	vm.fp = frame.fp
-	vm.regs = frame.regs
+	vm.leave()
 	return result, nil
 }
 

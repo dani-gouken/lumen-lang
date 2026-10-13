@@ -25,11 +25,7 @@ fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
 
 fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
     let out: [T] = [];
-    let i = from;
-    while i < to {
-        push(out, items[i]);
-        i++;
-    }
+    for i in from..to { push(out, items[i]); }
     return out;
 }
 
@@ -65,13 +61,11 @@ fn sortRange<T>(items: [T], low: Int, high: Int, before: fn(T, T) -> Bool) {
     }
     let pivot = items[high];
     let boundary = low;
-    let i = low;
-    while i < high {
+    for i in low..high {
         if before(items[i], pivot) {
             swap<T>(items, i, boundary);
             boundary++;
         }
-        i++;
     }
     swap<T>(items, boundary, high);
     sortRange<T>(items, low, boundary - 1, before);

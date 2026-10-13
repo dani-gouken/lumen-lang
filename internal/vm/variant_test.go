@@ -260,11 +260,11 @@ func TestVariantValuesSurviveCollection(t *testing.T) {
 		if obj.typeName == "List.Nil" {
 			break
 		}
-		head := obj.fields["0"]
+		head, _ := obj.Get("0")
 		if !head.IsInt() || head.AsInt() != int64(length-1-count) {
 			t.Fatalf("position %d: expected %d, got %s", count, length-1-count, FormatValue(head))
 		}
-		current = obj.fields[strconv.Itoa(1)]
+		current, _ = obj.Get(strconv.Itoa(1))
 	}
 	if count != length {
 		t.Errorf("expected %d values in the chain, got %d", length, count)

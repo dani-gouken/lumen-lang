@@ -1,0 +1,295 @@
+package types
+
+import (
+	"fmt"
+
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/resolve"
+)
+
+// --- match ---
+
+func (c *Checker) checkMatchStmt(s *ast.MatchStmt) {
+	c.checkMatch(s, false, nil)
+}
+
+// checkMatch checks a match: the statement, or the one that gives a value
+// (asValue), whose type it returns. expected is the type the value is
+// wanted as, when something says so.
+//
+// A match that gives a value has to give one whatever is matched: its
+// cases cover every variant of the enum, or one of them is `default`. And
+// each case gives a value of the same type, or leaves.
+func (c *Checker) checkMatch(s *ast.MatchStmt, asValue bool, expected Type) Type {
+	condType := c.checkExpr(s.Cond)
+
+	// The facts of each case are worked out first, the bodies checked
+	// after: only one case runs, so each body starts from what was known
+	// before the match, whatever the cases above it assign.
+	caseFacts := make([]facts, len(s.Cases))
+	covered := make([][]string, len(s.Cases))
+	hasDefault := false
+	for i, matchCase := range s.Cases {
+		known := newFacts()
+		caseFacts[i] = known
+		hasDefault = hasDefault || matchCase.IsDefault()
+
+		patterns := matchCase.Patterns()
+		covered[i] = make([]string, len(patterns))
+		for j, pattern := range patterns {
+			switch pattern := pattern.(type) {
+			case *ast.VariantPattern:
+				// `case Shape.Rect(w, h):` names the values of the variant
+				if name, covers := c.checkVariantPattern(pattern, condType); covers {
+					covered[i][j] = name
+				}
+				if len(patterns) > 1 {
+					c.checkNamesNothing(pattern)
+				}
+			case *ast.Type:
+				// `case Int:` asks what the value is; inside the case it is one
+				target := c.resolveType(pattern)
+				if condType != nil && !isUnknown(condType) && !isUnknown(target) &&
+					!c.assignable(target, condType) && !c.assignable(condType, target) {
+					c.errorf(pattern.Token(), ErrInvalidCast, "%s can never be %s", condType, target)
+				} else if _, ok := c.castDescriptor(target); !ok {
+					c.errorf(pattern.Token(), ErrInvalidCast, "a test for %s cannot be made", target)
+				} else if len(patterns) == 1 {
+					// With several types, which one it is stays open
+					c.learn(s.Cond, target, known)
+				}
+			case *ast.RangeExpr:
+				c.checkRangePattern(pattern, condType)
+			case ast.Expr:
+				patternType := c.checkExpr(pattern)
+				if condType != nil && patternType != nil && !c.comparable(condType, patternType) {
+					c.errorf(pattern.Token(), ErrTypeMismatch, "pattern of type %s can never match a value of type %s", patternType, condType)
+				}
+			}
+		}
+	}
+
+	c.checkExhaustive(s, withoutNullOrNil(condType), covered)
+	if asValue && !hasDefault && !s.Exhaustive {
+		c.errorfWithSuggestion(s.Token(), ErrNonExhaustiveMatch,
+			"Add a case for what is left: default: value;",
+			"a match that gives a value needs a case for every value, and this one has no 'default'")
+	}
+
+	// What the cases give: the first type that says something, widened by
+	// the ones after it, made optional when one of them is null
+	var result Type
+	sawNull := false
+	give := func(body ast.Expr, t Type) {
+		switch {
+		case t == nil || isUnknown(t):
+		case t.Equals(Void):
+			c.errorfWithSuggestion(body.Token(), ErrMatchValue,
+				"Every case of a match that gives a value is a value, or leaves with return, break, continue or panic",
+				"this case gives no value")
+		case t.Equals(Null):
+			sawNull = true
+		case expected != nil && !isUnknown(expected) && c.assignable(expected, t):
+			// What is wanted here takes every case: a trait its structs
+			// implement, a union, an optional
+			result = expected
+		case result == nil || c.assignable(t, result):
+			result = t
+		case !c.assignable(result, t):
+			c.errorfWithSuggestion(body.Token(), ErrTypeMismatch,
+				"Every case of a match that gives a value gives the same type",
+				"this case gives %s, the cases above give %s", t, result)
+		}
+	}
+
+	c.withBranches(len(s.Cases), func(i int) facts { return caseFacts[i] }, func(i int) {
+		matchCase := s.Cases[i]
+		body := func() {
+			switch body := matchCase.Body.(type) {
+			case *ast.BlockStmt:
+				c.checkBlockStmt(body)
+				if asValue && !exits(body) {
+					c.errorfWithSuggestion(matchCase.Token(), ErrMatchValue,
+						"Write the value as an expression (case ...: value;), or leave the block with return, break, continue or panic",
+						"this case gives no value")
+				}
+			case ast.Expr:
+				switch {
+				case !asValue:
+					c.checkExpr(body)
+				case isPanic(&ast.ExprStmt{Expr: body}):
+					// Nothing comes after a panic: no value is needed
+					c.checkExpr(body)
+				default:
+					want := expected
+					if want == nil {
+						want = result
+					}
+					give(body, c.checkExprAs(body, want))
+				}
+			}
+		}
+
+		if matchCase.Guard == nil {
+			body()
+			return
+		}
+		// The condition sees what the pattern established, and the body
+		// what the condition did
+		guardType := c.checkExpr(matchCase.Guard)
+		if guardType != nil && !guardType.Equals(Bool) && !isUnknown(guardType) {
+			c.errorfWithSuggestion(matchCase.Guard.Token(), ErrInvalidCondition, "The condition of a case must evaluate to a boolean", "condition must be bool, got %s", guardType)
+		}
+		c.withNarrowing(c.factsFrom(matchCase.Guard, true), body)
+	})
+
+	if !asValue {
+		return nil
+	}
+	switch {
+	case result == nil && sawNull:
+		return Null
+	case result == nil:
+		return Unknown
+	case sawNull && !nullable(result):
+		return optional(result)
+	}
+	return result
+}
+
+// checkNamesNothing reports the names in a pattern that is one of several
+// of its case: whichever pattern matched, the body is the same, and a name
+// only some of them give would not always exist.
+func (c *Checker) checkNamesNothing(p *ast.VariantPattern) {
+	for _, arg := range p.Args {
+		switch a := arg.(type) {
+		case *ast.BindingPattern:
+			if !a.Ignored() {
+				c.errorfWithSuggestion(a.Token(), ErrInvalidPattern,
+					"Write '_' in its place, or give the pattern a case of its own",
+					"a case with several patterns cannot name a value: '%s'", a.Name)
+			}
+		case *ast.VariantPattern:
+			c.checkNamesNothing(a)
+		}
+	}
+}
+
+// --- Ranges ---
+
+// checkRangeBounds checks the two ends of a range. Those of a loop are
+// whole numbers; a case may also be a range of floats.
+func (c *Checker) checkRangeBounds(r *ast.RangeExpr, whole bool) Type {
+	var of Type
+	for _, bound := range []ast.Expr{r.Low, r.High} {
+		t := c.checkExpr(bound)
+		switch {
+		case t == nil || isUnknown(t):
+		case t.Equals(Int), !whole && t.Equals(Float):
+			if of == nil {
+				of = t
+			}
+		case whole:
+			c.errorfWithSuggestion(bound.Token(), ErrBadRange,
+				"A range goes from one Int to another: 0..10, or 0..=10 to include the last",
+				"the bounds of a range are whole numbers, this is %s", t)
+		default:
+			c.errorf(bound.Token(), ErrBadRange, "the bounds of a range are numbers, this is %s", t)
+		}
+	}
+	return of
+}
+
+func (c *Checker) checkRangePattern(r *ast.RangeExpr, subject Type) {
+	of := c.checkRangeBounds(r, false)
+	if of != nil && subject != nil && !isUnknown(subject) && !c.comparable(subject, of) {
+		c.errorf(r.Token(), ErrInvalidPattern, "a value of type %s is never in a range of %s", subject, of)
+	}
+}
+
+// --- defer ---
+
+// checkDeferStmt checks the body of a defer. It runs later, when the block
+// is left: like the body of a function written there, it can only rely on
+// what was established about variables that never change.
+func (c *Checker) checkDeferStmt(s *ast.DeferStmt) {
+	outer := c.flowSnapshot()
+	narrowed := make(map[*resolve.Symbol]Type)
+	for sym, typ := range c.narrowed {
+		if !c.reassigned[sym] {
+			narrowed[sym] = typ
+		}
+	}
+	c.narrowed = narrowed
+	c.narrowedPaths = make(map[string]pathFact)
+
+	inDefer, loops := c.inDefer, c.loopsInDefer
+	c.inDefer, c.loopsInDefer = true, 0
+	c.checkBlockStmt(s.Body)
+	c.inDefer, c.loopsInDefer = inDefer, loops
+
+	c.flowRestore(outer)
+}
+
+// checkLeavesDefer reports a break or continue that would leave a defer.
+// Those of a loop inside the defer are its own business.
+func (c *Checker) checkLeavesDefer(stmt ast.Stmt) {
+	if !c.inDefer || c.loopsInDefer > 0 {
+		return
+	}
+	word := "break"
+	if _, ok := stmt.(*ast.ContinueStmt); ok {
+		word = "continue"
+	}
+	c.errorfWithSuggestion(stmt.Token(), ErrBadDefer,
+		"A defer runs while its block is being left and cannot decide where to go",
+		fmt.Sprintf("'%s' inside a defer would leave it", word))
+}
+
+// --- What desugaring makes ---
+
+// checkBlockExpr types statements that end in a value. One without a value
+// always leaves, and has no type: nil.
+func (c *Checker) checkBlockExpr(e *ast.BlockExpr) Type {
+	state := c.flowSnapshot()
+	defer c.flowRestore(state)
+
+	for _, stmt := range e.Stmts {
+		c.checkStmt(stmt)
+	}
+	if e.Value == nil {
+		return nil
+	}
+	return c.checkExpr(e.Value)
+}
+
+// checkCondExpr types a choice between two values: the type both have, the
+// wider when one takes the other, optional when one is null.
+func (c *Checker) checkCondExpr(e *ast.CondExpr) Type {
+	c.checkExpr(e.Cond)
+
+	var then, otherwise Type
+	c.withNarrowing(c.factsFrom(e.Cond, true), func() { then = c.checkExpr(e.Then) })
+	c.withNarrowing(c.factsFrom(e.Cond, false), func() { otherwise = c.checkExpr(e.Else) })
+
+	says := func(t Type) bool { return t != nil && !isUnknown(t) && !t.Equals(Null) }
+	isNull := func(t Type) bool { return t != nil && t.Equals(Null) }
+	switch {
+	case says(then) && says(otherwise):
+		if c.assignable(otherwise, then) {
+			return otherwise
+		}
+		return then
+	case says(then) && isNull(otherwise):
+		return optional(then)
+	case says(otherwise) && isNull(then):
+		return optional(otherwise)
+	case says(then):
+		return then
+	case says(otherwise):
+		return otherwise
+	case isNull(then) || isNull(otherwise):
+		return Null
+	}
+	return Unknown
+}

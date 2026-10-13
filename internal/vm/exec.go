@@ -1,0 +1,1082 @@
+package vm
+
+import (
+	"fmt"
+	"math"
+	"strings"
+	"unsafe"
+)
+
+// fieldCache is what an instruction that reaches a field remembers of the
+// last object it met: its shape, and where the field is in objects of that
+// shape. Values of one struct share a shape, so an instruction that keeps
+// meeting the same struct finds the field without looking its name up.
+type fieldCache struct {
+	shape *Shape // The shape the object had
+	next  *Shape // For a field that was added: the shape the object got
+	slot  int32  // Where the field is; -1 if objects of that shape have none
+}
+
+// cacheFor returns the field caches of a chunk, one per instruction.
+func (vm *VM) cacheFor(chunk *Chunk) []fieldCache {
+	cache, ok := vm.fieldCaches[chunk]
+	if !ok || len(cache) != len(chunk.Code) {
+		cache = make([]fieldCache, len(chunk.Code))
+		vm.fieldCaches[chunk] = cache
+	}
+	return cache
+}
+
+// Exec executes a chunk of bytecode.
+//
+// The chunk is checked first (see Verify): one that could make the VM
+// read outside its registers or its tables is refused rather than run. A
+// VM runs one program at a time; a second call waits for the first.
+func (vm *VM) Exec(chunk *Chunk) (result Value, err error) {
+	if chunk == nil {
+		return NewNull(), fmt.Errorf("cannot execute nil chunk")
+	}
+	if err := Verify(chunk); err != nil {
+		return NewNull(), err
+	}
+
+	vm.execMu.Lock()
+	defer vm.execMu.Unlock()
+	defer vm.clearInterrupt()
+
+	mainIdx := chunk.FindPrototype("main")
+	if mainIdx == -1 {
+		return NewNull(), fmt.Errorf("entry function 'main' not found")
+	}
+	mainProto := &chunk.Prototypes[mainIdx]
+
+	// A mistake of the VM itself, or of a native function, must not take
+	// the host program down with it: it ends this program, as an error.
+	defer func() {
+		if r := recover(); r != nil {
+			vm.sched.stop()
+			result, err = NewNull(), vm.internalError(r)
+		}
+	}()
+
+	// What the last program left behind is not this one's
+	vm.chunk = chunk
+	vm.currentFunction = nil
+	vm.frameCount = 0
+	vm.frames = vm.frames[:0]
+	vm.stk = newRegStack(1024)
+	vm.base = 0
+	vm.regs = nil
+	vm.pinned = vm.pinned[:0]
+	vm.outcome, vm.failure = NewNull(), nil
+	vm.handlers, vm.pending = nil, nil
+	vm.fieldCaches = map[*Chunk][]fieldCache{}
+
+	// Cached function objects belong to the chunk being run
+	vm.funcObjs = make([]Value, len(chunk.Prototypes))
+
+	// The program starts as one task, main
+	vm.sched.stop()
+	vm.sched = newScheduler()
+
+	// Main function doesn't capture any upvalues (upvalueCount = 0)
+	mainFunc, _, err := vm.heap.AllocFunction(chunk, mainIdx, 0)
+	if err != nil {
+		return NewNull(), fmt.Errorf("failed to allocate main function: %v", err)
+	}
+	if mainProto.RegisterCount > len(vm.stk.vals) {
+		vm.stk.grow(mainProto.RegisterCount)
+	}
+	vm.regs = vm.window(0, mainProto.RegisterCount)
+	for i := range vm.regs {
+		vm.regs[i] = valueNull
+	}
+	vm.ip = mainProto.CodeStart
+	vm.currentFunction = mainFunc
+	vm.collectIfNeeded()
+
+	return vm.finish(vm.run(0))
+}
+
+// internalError makes the error for a failure that is not the program's
+// doing: something in the VM or in a native function went wrong.
+func (vm *VM) internalError(r interface{}) error {
+	failure := &RuntimeError{Kind: KindInternal, Message: fmt.Sprintf("internal error: %v", r), instruction: vm.ip}
+	func() {
+		// Where the program was, if the VM is still in a state to tell
+		defer func() { _ = recover() }()
+		failure.Stack = vm.callStack()
+	}()
+	return failure
+}
+
+func bothInts(a, b Value) bool {
+	return uint64(a)&kindMask == kindInt && uint64(b)&kindMask == kindInt
+}
+
+func bothNumbers(a, b Value) bool {
+	return a.IsNumber() && b.IsNumber()
+}
+
+// arithmeticError says why an arithmetic instruction cannot work on its
+// operands.
+func (vm *VM) arithmeticError(name, symbol string, a, b Value) error {
+	return vm.runtimeError(fmt.Sprintf("%s requires numeric operands, got: %s %s %s", name, a.String(), symbol, b.String()))
+}
+
+// concatenate is ADD on something other than two numbers of a kind: it
+// joins two strings.
+func (vm *VM) concatenate(a, b Value) (Value, error) {
+	sa, ok := stringValue(a)
+	if !ok {
+		return NewNull(), vm.arithmeticError("ADD", "+", a, b)
+	}
+	sb, ok := stringValue(b)
+	if !ok {
+		return NewNull(), vm.runtimeError(fmt.Sprintf("ADD cannot concatenate String and %s", typeName(b)))
+	}
+	str, err := vm.newString(sa + sb)
+	if err != nil {
+		return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
+	}
+	return str, nil
+}
+
+// compare applies an ordering instruction to operands that are not two
+// Ints: two Numbers or two Strings.
+func (vm *VM) compare(op OpCode, a, b Value) (bool, error) {
+	if bothNumbers(a, b) {
+		x, y := floatOf(a), floatOf(b)
+		switch op {
+		case OpLT:
+			return x < y, nil
+		case OpLE:
+			return x <= y, nil
+		case OpGT:
+			return x > y, nil
+		default:
+			return x >= y, nil
+		}
+	}
+	if sa, sb, ok := stringPair(a, b); ok {
+		return compareStrings(op, sa, sb), nil
+	}
+	name, symbol := "LT", "<"
+	switch op {
+	case OpLE:
+		name, symbol = "LE", "<="
+	case OpGT:
+		name, symbol = "GT", ">"
+	case OpGE:
+		name, symbol = "GE", ">="
+	}
+	return false, vm.arithmeticError(name, symbol, a, b)
+}
+
+// shift applies SHL or SHR. A shift to the left that pushes bits out of an
+// Int fails, as every other operation whose result does not fit does.
+func (vm *VM) shift(op OpCode, a, b Value) (Value, error) {
+	name, symbol := "SHL", "<<"
+	if op == OpSHR {
+		name, symbol = "SHR", ">>"
+	}
+	if !bothInts(a, b) {
+		return NewNull(), vm.runtimeError(fmt.Sprintf("%s requires integer operands, got: %s %s %s", name, a.String(), symbol, b.String()))
+	}
+	n, count := intOf(a), intOf(b)
+	if count < 0 {
+		return NewNull(), vm.runtimeError(name + " shift count must be non-negative")
+	}
+	if op == OpSHR {
+		if count > 63 {
+			count = 63
+		}
+		return NewInt(n >> uint(count)), nil
+	}
+	if n == 0 {
+		return a, nil
+	}
+	if count >= 48 {
+		return NewNull(), vm.runtimeError("integer overflow")
+	}
+	shifted := n << uint(count)
+	if shifted>>uint(count) != n {
+		return NewNull(), vm.runtimeError("integer overflow")
+	}
+	return vm.intResult(shifted)
+}
+
+// toInt is TOINT on a Number: the whole part, if an Int can hold it.
+func (vm *VM) toInt(f float64) (Value, error) {
+	if f != f {
+		return NewNull(), vm.runtimeError("integer overflow: NaN has no Int value")
+	}
+	f = math.Trunc(f)
+	if f < float64(MinInt) || f > float64(MaxInt) {
+		return NewNull(), vm.runtimeError("integer overflow")
+	}
+	return NewInt(int64(f)), nil
+}
+
+// callExtern calls a host function with the arguments the registers hold,
+// and makes of an error it returns the failure of the program.
+func (vm *VM) callExtern(externObj *ExternFunctionObj, args []Value) (Value, error) {
+	// Optional argument count validation (if argCount >= 0)
+	if externObj.argCount >= 0 && len(args) != externObj.argCount {
+		return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s expects %d arguments, got %d", externObj.name, externObj.argCount, len(args)))
+	}
+
+	// The function may pin values; a native that calls back into the
+	// program (see callFunction) runs other natives meanwhile, whose pins
+	// come and go above its own.
+	pinned := len(vm.pinned)
+	retVal, err := externObj.function(vm, args)
+	if err == nil {
+		return retVal, nil
+	}
+
+	vm.pinned = vm.pinned[:pinned]
+	if failure, ok := err.(*RuntimeError); ok {
+		// Raised by the program the function called back into: already
+		// complete, with its own place
+		return NewNull(), failure
+	}
+	if leaving(err) {
+		// The program is ending: not a failure
+		return NewNull(), err
+	}
+	if stop, ok := err.(*panicError); ok {
+		return NewNull(), vm.runtimeErrorOf(KindPanic, stop.message)
+	}
+	outOfMemory := strings.HasPrefix(err.Error(), "out of memory")
+	if IsNative(externObj.name) && !outOfMemory {
+		// A function of the standard library: named as the program
+		// names it
+		return NewNull(), vm.runtimeError(externObj.name + ": " + err.Error())
+	}
+	if strings.HasPrefix(externObj.name, "__") || outOfMemory {
+		// Compiler intrinsic: the user wrote an operator, not a call, so
+		// the function name means nothing. Running out of memory is not
+		// the function's doing either.
+		return NewNull(), vm.runtimeError(err.Error())
+	}
+	return NewNull(), vm.runtimeError(fmt.Sprintf("extern function %s failed: %v", externObj.name, err))
+}
+
+// run executes instructions until the function that was running when it
+// was called returns, and gives back what it returned. base is the number
+// of frames at that moment: 0 for main, more for a function called from a
+// native function (see callFunction).
+//
+// A failure does not always end it: a call in progress that left a handler
+// goes on there first (see handlers.go).
+func (vm *VM) run(base int) (Value, error) {
+	for {
+		result, err := vm.execute(base)
+		if err == nil || !vm.handle(base, err) {
+			return result, err
+		}
+	}
+}
+
+// execute is run without the handlers: it stops at the first failure.
+//
+// The loop works on its own copies of what it reads at every instruction:
+// the code, the registers, the instruction pointer. vm.ip is kept up to
+// date, since errors, natives and the collector look at it; the others
+// are taken from the VM again after anything that changes them, which is
+// a call, a return, and a host function (it may call back into the
+// program, or let another task have the turn).
+func (vm *VM) execute(base int) (Value, error) {
+	chunk := vm.chunk
+	code := chunk.Code
+	consts := chunk.Constants
+	cache := vm.cacheFor(chunk)
+	regs := vm.regs
+	ip := vm.ip
+	hooked := vm.debugHook != nil
+
+	for ip < len(code) {
+		vm.ip = ip
+		if hooked {
+			vm.debugHook(vm.Snapshot())
+		}
+
+		instr := code[ip]
+
+		switch instr.Op {
+		case OpNOP:
+			// Do nothing
+
+		case OpMOV:
+			regs[instr.A] = regs[instr.B]
+
+		case OpLOADK:
+			regs[instr.A] = consts[instr.B]
+
+		case OpLOADNULL:
+			regs[instr.A] = valueNull
+
+		case OpLOADBOOL:
+			regs[instr.A] = NewBool(instr.B != 0)
+
+		case OpLOADI:
+			regs[instr.A] = NewInt(int64(instr.B))
+
+		case OpADD:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				sum := intOf(a) + intOf(b)
+				if sum < MinInt || sum > MaxInt {
+					return NewNull(), vm.runtimeError("integer overflow")
+				}
+				regs[instr.A] = NewInt(sum)
+			} else if bothNumbers(a, b) {
+				regs[instr.A] = NewNumber(floatOf(a) + floatOf(b))
+			} else {
+				str, err := vm.concatenate(a, b)
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = str
+				vm.collectIfNeeded()
+			}
+
+		case OpSUB:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				diff := intOf(a) - intOf(b)
+				if diff < MinInt || diff > MaxInt {
+					return NewNull(), vm.runtimeError("integer overflow")
+				}
+				regs[instr.A] = NewInt(diff)
+			} else if bothNumbers(a, b) {
+				regs[instr.A] = NewNumber(floatOf(a) - floatOf(b))
+			} else {
+				return NewNull(), vm.arithmeticError("SUB", "-", a, b)
+			}
+
+		case OpMUL:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				// Both operands fit in 48 bits, so their product can exceed
+				// 64; dividing back detects that as well
+				x, y := intOf(a), intOf(b)
+				product := x * y
+				if (x != 0 && product/x != y) || product < MinInt || product > MaxInt {
+					return NewNull(), vm.runtimeError("integer overflow")
+				}
+				regs[instr.A] = NewInt(product)
+			} else if bothNumbers(a, b) {
+				regs[instr.A] = NewNumber(floatOf(a) * floatOf(b))
+			} else {
+				return NewNull(), vm.arithmeticError("MUL", "*", a, b)
+			}
+
+		case OpDIV:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				if intOf(b) == 0 {
+					return NewNull(), vm.runtimeError("division by zero")
+				}
+				// The smallest Int divided by -1 has no Int result
+				quotient, err := vm.intResult(intOf(a) / intOf(b))
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = quotient
+			} else if bothNumbers(a, b) {
+				regs[instr.A] = NewNumber(floatOf(a) / floatOf(b))
+			} else {
+				return NewNull(), vm.arithmeticError("DIV", "/", a, b)
+			}
+
+		case OpMOD:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				if intOf(b) == 0 {
+					return NewNull(), vm.runtimeError("division by zero")
+				}
+				regs[instr.A] = NewInt(intOf(a) % intOf(b))
+			} else if bothNumbers(a, b) {
+				regs[instr.A] = NewNumber(math.Mod(floatOf(a), floatOf(b)))
+			} else {
+				return NewNull(), vm.arithmeticError("MOD", "%", a, b)
+			}
+
+		case OpNEG:
+			a := regs[instr.B]
+			switch {
+			case a.IsInt():
+				negated, err := vm.intResult(-intOf(a))
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = negated
+			case a.IsNumber():
+				regs[instr.A] = NewNumber(-floatOf(a))
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("NEG requires numeric operand, got: %s", a.String()))
+			}
+
+		case OpNOT:
+			a := regs[instr.B]
+			if !a.IsBool() {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("NOT requires boolean operand, got: %s", a.String()))
+			}
+			regs[instr.A] = NewBool(a != valueTrue)
+
+		case OpTOINT:
+			a := regs[instr.B]
+			switch {
+			case a.IsInt():
+				regs[instr.A] = a
+			case a.IsNumber():
+				whole, err := vm.toInt(floatOf(a))
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = whole
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("TOINT requires number or int, got: %s", a.String()))
+			}
+
+		case OpTONUM:
+			a := regs[instr.B]
+			switch {
+			case a.IsNumber():
+				regs[instr.A] = a
+			case a.IsInt():
+				regs[instr.A] = NewNumber(float64(intOf(a)))
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("TONUM requires int or number, got: %s", a.String()))
+			}
+
+		case OpBAND:
+			a, b := regs[instr.B], regs[instr.C]
+			if !bothInts(a, b) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("BAND requires integer operands, got: %s & %s", a.String(), b.String()))
+			}
+			regs[instr.A] = NewInt(intOf(a) & intOf(b))
+
+		case OpBOR:
+			a, b := regs[instr.B], regs[instr.C]
+			if !bothInts(a, b) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("BOR requires integer operands, got: %s | %s", a.String(), b.String()))
+			}
+			regs[instr.A] = NewInt(intOf(a) | intOf(b))
+
+		case OpBXOR:
+			a, b := regs[instr.B], regs[instr.C]
+			if !bothInts(a, b) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("BXOR requires integer operands, got: %s ^ %s", a.String(), b.String()))
+			}
+			regs[instr.A] = NewInt(intOf(a) ^ intOf(b))
+
+		case OpSHL, OpSHR:
+			shifted, err := vm.shift(instr.Op, regs[instr.B], regs[instr.C])
+			if err != nil {
+				return NewNull(), err
+			}
+			regs[instr.A] = shifted
+
+		case OpEQ:
+			a, b := regs[instr.B], regs[instr.C]
+			regs[instr.A] = NewBool(a == b || valuesEqual(a, b))
+
+		case OpNE:
+			a, b := regs[instr.B], regs[instr.C]
+			regs[instr.A] = NewBool(a != b && !valuesEqual(a, b))
+
+		case OpLT:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				regs[instr.A] = NewBool(intOf(a) < intOf(b))
+			} else {
+				result, err := vm.compare(OpLT, a, b)
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = NewBool(result)
+			}
+
+		case OpLE:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				regs[instr.A] = NewBool(intOf(a) <= intOf(b))
+			} else {
+				result, err := vm.compare(OpLE, a, b)
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = NewBool(result)
+			}
+
+		case OpGT:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				regs[instr.A] = NewBool(intOf(a) > intOf(b))
+			} else {
+				result, err := vm.compare(OpGT, a, b)
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = NewBool(result)
+			}
+
+		case OpGE:
+			a, b := regs[instr.B], regs[instr.C]
+			if bothInts(a, b) {
+				regs[instr.A] = NewBool(intOf(a) >= intOf(b))
+			} else {
+				result, err := vm.compare(OpGE, a, b)
+				if err != nil {
+					return NewNull(), err
+				}
+				regs[instr.A] = NewBool(result)
+			}
+
+		case OpLONG:
+			// LONG prefix: the next word is the jump, the one after its
+			// 32-bit offset, counted from the end of the three
+			jump := code[ip+1]
+			target := ip + 3 + int(DecodeOffset32(code[ip+2]))
+
+			taken := true
+			switch jump.Op {
+			case OpTRY32:
+				// Not a jump: where this call goes on if something fails
+				vm.handlers = append(vm.handlers, handler{depth: vm.frameCount, ip: target, pinned: len(vm.pinned)})
+				ip += 3
+				continue
+			case OpJMP32:
+			case OpJMPIF32:
+				taken = regs[jump.A] == valueTrue
+			case OpJMPIFNOT32:
+				taken = regs[jump.A] == valueFalse
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("LONG: invalid opcode %v", jump.Op))
+			}
+			if !taken {
+				ip += 3
+				continue
+			}
+			if target <= ip && vm.interrupted.Load() {
+				return NewNull(), vm.interruption()
+			}
+			ip = target
+			continue
+
+		case OpJMP:
+			// JMP: A = target instruction address
+			target := int(instr.A)
+			if target <= ip && vm.interrupted.Load() {
+				return NewNull(), vm.interruption()
+			}
+			ip = target
+			continue
+
+		case OpJMPIF, OpJMPIFNOT:
+			// A = condition register, B = target address
+			wanted := valueTrue
+			if instr.Op == OpJMPIFNOT {
+				wanted = valueFalse
+			}
+			if regs[instr.A] == wanted {
+				target := int(instr.B)
+				if target <= ip && vm.interrupted.Load() {
+					return NewNull(), vm.interruption()
+				}
+				ip = target
+				continue
+			}
+
+		case OpCALL:
+			// CALL: A = func_reg (register containing FunctionObj or ExternFunctionObj), B = nargs
+			// Arguments are in r(func_reg+1), r(func_reg+2), ... r(func_reg+nargs)
+			funcReg := int(instr.A)
+			nargs := int(instr.B)
+
+			callee := header(regs[funcReg])
+			if callee == nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("CALL requires function object in register r%d, got %v", funcReg, regs[funcReg]))
+			}
+			args := regs[funcReg+1 : funcReg+1+nargs : funcReg+1+nargs]
+
+			switch callee.Type {
+			case ObjTypeFunction:
+				// User-defined function
+				funcObj := (*FunctionObj)(unsafe.Pointer(callee))
+				proto := funcObj.proto
+
+				// STRICT validation: argument count must match exactly
+				if nargs != proto.ArgCount {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("function %s expects %d arguments, got %d", proto.Name, proto.ArgCount, nargs))
+				}
+				if vm.interrupted.Load() {
+					return NewNull(), vm.interruption()
+				}
+				if err := vm.enter(funcObj, args); err != nil {
+					return NewNull(), err
+				}
+				if vm.chunk != chunk {
+					chunk = vm.chunk
+					code, consts, cache = chunk.Code, chunk.Constants, vm.cacheFor(chunk)
+				}
+				regs = vm.regs
+				ip = vm.ip
+				continue
+
+			case ObjTypeExternFunction:
+				// External (host) function. The arguments are handed over
+				// where they are, in the caller's registers.
+				pinned := len(vm.pinned)
+				retVal, err := vm.callExtern((*ExternFunctionObj)(unsafe.Pointer(callee)), args)
+				if err != nil {
+					return NewNull(), err
+				}
+
+				// The function may have called back into the program, or
+				// let other tasks run: the registers may have moved. With
+				// the result in r0 it is a root, and whatever the function
+				// kept alive no longer needs to be.
+				regs = vm.regs
+				regs[0] = retVal
+				vm.pinned = vm.pinned[:pinned]
+
+				// Extern functions may allocate; collect now that the result is rooted
+				vm.collectIfNeeded()
+
+			default:
+				return NewNull(), vm.runtimeError(fmt.Sprintf("CALL requires function object, got %v", callee.Type))
+			}
+
+		case OpENDTRY:
+			n := len(vm.handlers)
+			if n == 0 || vm.handlers[n-1].depth != vm.frameCount {
+				return NewNull(), vm.runtimeError("ENDTRY without a handler in this call")
+			}
+			vm.handlers = vm.handlers[:n-1]
+
+		case OpRETHROW:
+			n := len(vm.pending)
+			if n == 0 {
+				return NewNull(), vm.runtimeError("RETHROW without a failure to pass on")
+			}
+			failure := vm.pending[n-1].failure
+			vm.pending = vm.pending[:n-1]
+			return NewNull(), failure
+
+		case OpRET:
+			// RET: A = register containing return value
+			retVal := regs[instr.A]
+
+			// Variables of this call that closures captured move into the
+			// closures: its registers are about to be someone else's
+			if len(vm.stk.open) > 0 {
+				vm.closeUpvalues(vm.base)
+			}
+
+			// The function this run was started for has returned
+			if vm.frameCount == base {
+				return retVal, nil
+			}
+
+			// Back to the caller, with the return value in its r0
+			vm.leave()
+			if vm.chunk != chunk {
+				chunk = vm.chunk
+				code, consts, cache = chunk.Code, chunk.Constants, vm.cacheFor(chunk)
+			}
+			regs = vm.regs
+			regs[0] = retVal
+			ip = vm.ip + 1
+			continue
+
+		case OpNEWFUNC:
+			// NEWFUNC: A = dest_reg, B = proto_idx
+			// Creates a function object. If the prototype specifies upvalues,
+			// they are allocated but not initialized.
+			protoIdx := int(instr.B)
+			proto := &chunk.Prototypes[protoIdx]
+
+			// A function that captures nothing is the same object every
+			// time; only closures need one of their own
+			shared := proto.UpvalueCount == 0 && protoIdx < len(vm.funcObjs)
+			if shared && vm.funcObjs[protoIdx] != 0 {
+				regs[instr.A] = vm.funcObjs[protoIdx]
+				break
+			}
+
+			funcObj, shouldGC, err := vm.heap.AllocFunction(chunk, protoIdx, proto.UpvalueCount)
+			if err != nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("function allocation failed: %v", err))
+			}
+			regs[instr.A] = valueOf(&funcObj.header)
+			if shared {
+				vm.funcObjs[protoIdx] = regs[instr.A]
+			}
+			if shouldGC {
+				vm.CollectGarbage()
+			}
+
+		case OpCAPLOCAL:
+			// CAPLOCAL: A = dest_func_reg, B = upvalue_idx, C = local_reg_idx
+			funcObj, err := vm.closureOperand("CAPLOCAL", regs[instr.A], int(instr.B))
+			if err != nil {
+				return NewNull(), err
+			}
+			upval, err := vm.findOrCreateUpvalue(vm.base + int(instr.C))
+			if err != nil {
+				return NewNull(), vm.runtimeError(err.Error())
+			}
+			funcObj.upvalues[instr.B] = upval
+			vm.collectIfNeeded()
+
+		case OpCAPUPVAL:
+			// CAPUPVAL: A = dest_func_reg, B = upvalue_idx, C = parent_upval_idx
+			funcObj, err := vm.closureOperand("CAPUPVAL", regs[instr.A], int(instr.B))
+			if err != nil {
+				return NewNull(), err
+			}
+			parent := vm.currentFunction.upvalues
+			if int(instr.C) >= len(parent) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("parent upvalue index out of bounds: %d", instr.C))
+			}
+			funcObj.upvalues[instr.B] = parent[instr.C]
+
+		case OpNEWEXFUNC:
+			// NEWEXFUNC: A = dest_reg, B = extern_idx
+			externName := chunk.ExternNames[instr.B]
+
+			// One object per host function is enough
+			if cached, ok := vm.externObjs[externName]; ok {
+				regs[instr.A] = cached
+				break
+			}
+
+			externFunc, ok := vm.externFuncs[externName]
+			if !ok {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("unknown extern function: %s", externName))
+			}
+
+			// argCount is -1: the function checks its arguments itself
+			funcObj, shouldGC, err := vm.heap.AllocExternFunction(externName, externFunc, -1)
+			if err != nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("extern function allocation failed: %v", err))
+			}
+			funcObj.signature = vm.externSignatures[externName]
+
+			regs[instr.A] = valueOf(&funcObj.header)
+			vm.externObjs[externName] = regs[instr.A]
+			if shouldGC {
+				vm.CollectGarbage()
+			}
+
+		case OpCLOSEUP:
+			// CLOSEUP: A = register. Closures that captured this register
+			// get their own copy of its value and stop following it. Used
+			// at the end of a loop iteration, so that each iteration's
+			// closures keep that iteration's variables.
+			if len(vm.stk.open) > 0 {
+				vm.closeUpvalueAt(vm.base + int(instr.A))
+			}
+
+		case OpLDCAP:
+			// LDCAP: A = dest_reg, B = upvalue_idx
+			upvalues := vm.currentFunction.upvalues
+			if int(instr.B) >= len(upvalues) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("LDCAP: upvalue index out of bounds: %d", instr.B))
+			}
+			upval := upvalues[instr.B]
+			if upval == nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("LDCAP: uninitialized upvalue at index %d", instr.B))
+			}
+			regs[instr.A] = upval.Get()
+
+		case OpSTCAP:
+			// STCAP: A = upvalue_idx, B = src_reg
+			upvalues := vm.currentFunction.upvalues
+			if int(instr.A) >= len(upvalues) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("STCAP: upvalue index out of bounds: %d", instr.A))
+			}
+			upval := upvalues[instr.A]
+			if upval == nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("STCAP: uninitialized upvalue at index %d", instr.A))
+			}
+			upval.Set(regs[instr.B])
+
+		case OpNEWSTR:
+			// Create a string from string pool
+			strObj, shouldGC, err := vm.heap.AllocString(chunk.StringPool[intOf(consts[instr.B])])
+			if err != nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
+			}
+			regs[instr.A] = valueOf(&strObj.header)
+			if shouldGC {
+				vm.CollectGarbage()
+			}
+
+		case OpNEWARRAY:
+			// Allocate a new array
+			obj, shouldGC, err := vm.heap.AllocArray(int(instr.B))
+			if err != nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("array allocation failed: %v", err))
+			}
+			regs[instr.A] = valueOf(&obj.header)
+			if shouldGC {
+				vm.CollectGarbage()
+			}
+
+		case OpNEWOBJ:
+			// Allocate a new object: A = dest. With C = 1, B is the constant
+			// index of the name of the struct the object is a value of.
+			obj, shouldGC, err := vm.heap.AllocObject()
+			if err != nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("object allocation failed: %v", err))
+			}
+			if instr.C == ObjectIsNamed || instr.C == ObjectIsVariant {
+				obj.typeName = chunk.StringPool[intOf(consts[instr.B])]
+				obj.variant = instr.C == ObjectIsVariant
+			}
+			regs[instr.A] = valueOf(&obj.header)
+			if shouldGC {
+				vm.CollectGarbage()
+			}
+
+		case OpGETINDEX:
+			// Get element: A = dest, B = array or string, C = index
+			indexVal := regs[instr.C]
+			if !indexVal.IsInt() {
+				return NewNull(), vm.runtimeError("GETINDEX requires integer index")
+			}
+			index := int(intOf(indexVal))
+
+			target := header(regs[instr.B])
+			if target != nil && target.Type == ObjTypeArray {
+				elements := (*ArrayObj)(unsafe.Pointer(target)).elements
+				if index < 0 || index >= len(elements) {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, len(elements)))
+				}
+				regs[instr.A] = elements[index]
+				break
+			}
+			if target == nil || target.Type != ObjTypeString {
+				_, err := vm.arrayOperand("GETINDEX", regs[instr.B])
+				return NewNull(), err
+			}
+
+			// Indexing a string yields the character as a string
+			str := (*StringObj)(unsafe.Pointer(target))
+			if length := str.RuneLen(); index < 0 || index >= length {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, length))
+			}
+			char := str.RuneAt(index)
+			if len(char) == 1 {
+				// One of 128 texts, each made once
+				value, err := vm.charString(char[0])
+				if err != nil {
+					return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
+				}
+				regs[instr.A] = value
+				break
+			}
+			value, err := vm.newString(char)
+			if err != nil {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
+			}
+			regs[instr.A] = value
+			vm.collectIfNeeded()
+
+		case OpSETINDEX:
+			// Set array element: A = array, B = index, C = value
+			indexVal := regs[instr.B]
+			if !indexVal.IsInt() {
+				return NewNull(), vm.runtimeError("SETINDEX requires integer index")
+			}
+			index := int(intOf(indexVal))
+
+			arrayObj, err := vm.arrayOperand("SETINDEX", regs[instr.A])
+			if err != nil {
+				return NewNull(), err
+			}
+			// Writing past the length grows the array, up to its capacity
+			// (which was accounted for when the array was created)
+			if index < 0 || index >= cap(arrayObj.elements) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
+			}
+			arrayObj.Set(index, regs[instr.C])
+
+		case OpSETELEM:
+			// Replace an array element: A = array, B = index, C = value.
+			// Unlike SETINDEX it never grows the array: the index has to
+			// name an existing element. This is what `xs[i] = v` compiles to.
+			indexVal := regs[instr.B]
+			if !indexVal.IsInt() {
+				return NewNull(), vm.runtimeError("SETELEM requires integer index")
+			}
+			index := int(intOf(indexVal))
+
+			arrayObj, err := vm.arrayOperand("SETELEM", regs[instr.A])
+			if err != nil {
+				return NewNull(), err
+			}
+			if index < 0 || index >= len(arrayObj.elements) {
+				return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, arrayObj.Len()))
+			}
+			arrayObj.elements[index] = regs[instr.C]
+
+		case OpGETFIELD:
+			// Get object field: A = dest, B = object, C = const index (field name)
+			target := header(regs[instr.B])
+			if target == nil || target.Type != ObjTypeObject {
+				_, err := vm.objectOperand("GETFIELD", regs[instr.B])
+				return NewNull(), err
+			}
+			obj := (*ObjectObj)(unsafe.Pointer(target))
+
+			// The same shape as last time: the field is where it was
+			known := &cache[ip]
+			if known.shape != obj.shape {
+				name, err := vm.fieldName("GETFIELD", instr.C)
+				if err != nil {
+					return NewNull(), err
+				}
+				known.shape, known.slot = obj.shape, -1
+				if slot, ok := obj.shape.index[name]; ok {
+					known.slot = int32(slot)
+				}
+			}
+			if known.slot >= 0 {
+				regs[instr.A] = obj.slots[known.slot]
+			} else {
+				regs[instr.A] = valueNull
+			}
+
+		case OpSETFIELD:
+			// Set object field: A = object, B = const index (field name), C = value
+			target := header(regs[instr.A])
+			if target == nil || target.Type != ObjTypeObject {
+				_, err := vm.objectOperand("SETFIELD", regs[instr.A])
+				return NewNull(), err
+			}
+			obj := (*ObjectObj)(unsafe.Pointer(target))
+
+			known := &cache[ip]
+			if known.shape != obj.shape {
+				name, err := vm.fieldName("SETFIELD", instr.B)
+				if err != nil {
+					return NewNull(), err
+				}
+				known.shape, known.next = obj.shape, nil
+				if slot, ok := obj.shape.index[name]; ok {
+					known.slot = int32(slot)
+				} else {
+					known.slot = int32(len(obj.shape.keys))
+					known.next = obj.shape.with(name)
+				}
+			}
+			if known.next == nil {
+				obj.slots[known.slot] = regs[instr.C]
+				break
+			}
+
+			// A new field: the object takes the shape of those that have it
+			before := cap(obj.slots)
+			obj.slots = append(obj.slots, regs[instr.C])
+			obj.shape = known.next
+			if after := cap(obj.slots); after > before {
+				if _, err := vm.heap.grow(uint64(after-before) * valueSize); err != nil {
+					return NewNull(), vm.runtimeError(err.Error())
+				}
+				vm.collectIfNeeded()
+			}
+
+		case OpARRLEN:
+			// Get length: A = dest, B = array or string.
+			// On an object it reads the field named "length".
+			target := header(regs[instr.B])
+			if target == nil {
+				_, err := vm.arrayOperand("ARRLEN", regs[instr.B])
+				return NewNull(), err
+			}
+			switch target.Type {
+			case ObjTypeArray:
+				regs[instr.A] = NewInt(int64(len((*ArrayObj)(unsafe.Pointer(target)).elements)))
+			case ObjTypeString:
+				regs[instr.A] = NewInt(int64((*StringObj)(unsafe.Pointer(target)).RuneLen()))
+			case ObjTypeObject:
+				regs[instr.A], _ = (*ObjectObj)(unsafe.Pointer(target)).Get("length")
+			default:
+				_, err := vm.arrayOperand("ARRLEN", regs[instr.B])
+				return NewNull(), err
+			}
+
+		case OpARRPUSH:
+			// Push value into array: A = array, B = value
+			arrayObj, err := vm.arrayOperand("ARRPUSH", regs[instr.A])
+			if err != nil {
+				return NewNull(), err
+			}
+			before := cap(arrayObj.elements)
+			arrayObj.elements = append(arrayObj.elements, regs[instr.B])
+			if after := cap(arrayObj.elements); after > before {
+				if _, err := vm.heap.grow(uint64(after-before) * valueSize); err != nil {
+					return NewNull(), vm.runtimeError(err.Error())
+				}
+				vm.collectIfNeeded()
+			}
+
+		case OpHASFIELD:
+			// Check if object has field: A = dest bool, B = object, C = const index
+			objObj, err := vm.objectOperand("HASFIELD", regs[instr.B])
+			if err != nil {
+				return NewNull(), err
+			}
+			fieldName, err := vm.fieldName("HASFIELD", instr.C)
+			if err != nil {
+				return NewNull(), err
+			}
+			_, ok := objObj.Get(fieldName)
+			regs[instr.A] = NewBool(ok)
+
+		case OpDELFIELD:
+			// Delete object field: A = dest bool, B = object, C = const index
+			objObj, err := vm.objectOperand("DELFIELD", regs[instr.B])
+			if err != nil {
+				return NewNull(), err
+			}
+			fieldName, err := vm.fieldName("DELFIELD", instr.C)
+			if err != nil {
+				return NewNull(), err
+			}
+			regs[instr.A] = NewBool(objObj.Delete(fieldName))
+
+		case OpGC:
+			// Manually trigger garbage collection
+			vm.CollectGarbage()
+
+		default:
+			return NewNull(), vm.runtimeError(fmt.Sprintf("unimplemented opcode: %v", instr.Op))
+		}
+
+		ip++
+	}
+
+	vm.ip = ip
+	return NewNull(), nil
+}
+
+// closureOperand returns the function a capturing instruction fills in,
+// having checked that it has the upvalue the instruction names.
+func (vm *VM) closureOperand(op string, v Value, upvalue int) (*FunctionObj, error) {
+	h := header(v)
+	if h == nil || h.Type != ObjTypeFunction {
+		return nil, vm.runtimeError(fmt.Sprintf("%s requires function object, got %s", op, typeName(v)))
+	}
+	funcObj := (*FunctionObj)(unsafe.Pointer(h))
+	if upvalue >= len(funcObj.upvalues) {
+		return nil, vm.runtimeError(fmt.Sprintf("upvalue index out of bounds: %d", upvalue))
+	}
+	return funcObj, nil
+}

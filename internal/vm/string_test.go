@@ -107,7 +107,7 @@ func TestStringPoolMultipleStrings(t *testing.T) {
 	mainProto := FunctionPrototype{
 		Name:          "main",
 		CodeStart:     0,
-		CodeSize:      2,
+		CodeSize:      len(chunk.Code),
 		RegisterCount: 5,
 		ArgCount:      0,
 	}
@@ -327,7 +327,7 @@ func TestStringErrorInvalidPoolIndex(t *testing.T) {
 		t.Fatal("Expected error for invalid string pool index")
 	}
 
-	if !contains(err.Error(), "string pool index out of bounds") {
+	if !contains(err.Error(), "string 999 of 1") {
 		t.Errorf("Expected string pool error, got: %v", err)
 	}
 }
@@ -356,7 +356,7 @@ func TestStringErrorNonIntegerConstant(t *testing.T) {
 		t.Fatal("Expected error for non-integer constant")
 	}
 
-	if !contains(err.Error(), "NEWSTR requires string pool index") {
+	if !contains(err.Error(), "is not the number of a string") {
 		t.Errorf("Expected string pool index error, got: %v", err)
 	}
 }
@@ -383,7 +383,7 @@ func TestStringGarbageCollection(t *testing.T) {
 	mainProto := FunctionPrototype{
 		Name:          "main",
 		CodeStart:     0,
-		CodeSize:      2,
+		CodeSize:      len(chunk.Code),
 		RegisterCount: 1,
 		ArgCount:      0,
 	}

@@ -29,11 +29,9 @@ pub fn empty<V>() -> Dict<V> {
 
 fn newBuckets(size: Int) -> [[Int]] {
     let buckets: [[Int]] = [];
-    let i = 0;
-    while i < size {
+    for i in 0..size {
         let bucket: [Int] = [];
         push(buckets, bucket);
-        i++;
     }
     return buckets;
 }

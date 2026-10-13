@@ -35,15 +35,15 @@ pub enum Method { Get, Post, Put, Patch, Delete, Head, Options }
 
 impl Method {
     pub fn name() -> String {
-        match self {
-            case Method.Get: { return "GET"; }
-            case Method.Post: { return "POST"; }
-            case Method.Put: { return "PUT"; }
-            case Method.Patch: { return "PATCH"; }
-            case Method.Delete: { return "DELETE"; }
-            case Method.Head: { return "HEAD"; }
-            case Method.Options: { return "OPTIONS"; }
-        }
+        return match self {
+            case Method.Get: "GET";
+            case Method.Post: "POST";
+            case Method.Put: "PUT";
+            case Method.Patch: "PATCH";
+            case Method.Delete: "DELETE";
+            case Method.Head: "HEAD";
+            case Method.Options: "OPTIONS";
+        };
     }
 }
 
@@ -465,14 +465,14 @@ fn noAnswer(url: String) -> Error {
 }
 
 fn kindOf(name: String) -> ErrorKind {
-    match name {
-        case "timeout": { return ErrorKind.Timeout; }
-        case "refused": { return ErrorKind.Refused; }
-        case "unknown host": { return ErrorKind.UnknownHost; }
-        case "bad url": { return ErrorKind.BadUrl; }
-        case "in use": { return ErrorKind.InUse; }
-        default: { return ErrorKind.Other; }
-    }
+    return match name {
+        case "timeout": ErrorKind.Timeout;
+        case "refused": ErrorKind.Refused;
+        case "unknown host": ErrorKind.UnknownHost;
+        case "bad url": ErrorKind.BadUrl;
+        case "in use": ErrorKind.InUse;
+        default: ErrorKind.Other;
+    };
 }
 
 extern fn exchange(method: String, url: String, headers: [String], body: String, timeout: Int) -> [String]?;

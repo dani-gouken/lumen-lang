@@ -64,6 +64,7 @@ Lumen uses a pragmatic, three-level testing approach focused on **concise, high-
 - A few Go tests cover the other commands: `build` then `exec`, `build` to a `.lasm` listing, `ir`, a missing file, and usage errors.
 - A run that takes longer than 20 seconds fails the test. `limits_memory.lum` builds an array of a million and a half elements; it takes a fraction of a second, and took minutes when appending was quadratic. Performance that regresses that far is caught here.
 - The `modules_*.lum` cases import the modules in `cases/game/`: a working program, private names and methods, missing modules, a runtime error inside a module. Files in subfolders of `cases/` are not run on their own, so that is where modules go. `TestModulesThroughCommands` takes a multi-file program through `build`, `exec`, `ir` and `lumdbg`; `TestModulesAreFoundNextToTheEntryFile` runs one from another directory by absolute path.
+- `control.lum` runs a parcel depot on `match` that gives a value, cases with conditions and several patterns, ranges in loops and in cases, and `defer` around a dock that must be given back, also when the loading fails. `control_errors.lum` gets each wrong. `defer_failure.lum` stops on a failure nothing catches: the defers of every call in progress have printed their lines before the error, which is the same as it would be without them.
 - `shortcuts.lum` reads the stock of a shop from text with tuples, `?`, `?.`, texts over several lines and tests that reach into function expressions; `shortcuts_errors.lum` gets each of them wrong and checks what is said.
 - `traits.lum` works out the standings of a tournament with traits that give structs operators, loops and brackets, traits with type parameters and default methods, requirements on type parameters, field defaults and methods as values; `traits_errors.lum` gets each wrong.
 - `lambdas.lum` works over a reading list with functions written without types: as arguments of generic functions, as fields, returned, nested, giving nothing back.
@@ -247,6 +248,17 @@ lumen/
 ```bash
 make test             # unit + end-to-end + toolchain
 ```
+
+### Under the race detector, and measured
+
+```bash
+make test-race   # the packages that run programs, with Go's race detector
+make bench       # the virtual machine: calls, fields
+```
+
+### Limits on the tests themselves
+
+Every `make` target runs the tests with a time limit, and the packages that run programs (`internal/vm`, `internal/stdlib`, `internal/compiler`, `internal/inspect`) end themselves if the test binary comes to hold more than 4 GB (`internal/memguard`, from a `TestMain` in each). A test that goes wrong, by a loop that never ends or a value that grows without end, fails; it does not take the machine down. When running `go test` by hand, pass `-timeout`.
 
 ### One Level
 ```bash

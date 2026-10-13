@@ -50,42 +50,51 @@ const (
 type execution struct {
 	frames     []CallFrame
 	frameCount int
-	fp         int
 	ip         int
+	stk        *regStack
+	base       int
 	regs       []Value
 	function   *FunctionObj
 	chunk      *Chunk
 	pinned     []Value
 	outcome    Value
 	failure    *RuntimeError
+	handlers   []handler
+	pending    []pendingFailure
 }
 
 func (vm *VM) execution() execution {
 	return execution{
 		frames:     vm.frames,
 		frameCount: vm.frameCount,
-		fp:         vm.fp,
 		ip:         vm.ip,
+		stk:        vm.stk,
+		base:       vm.base,
 		regs:       vm.regs,
 		function:   vm.currentFunction,
 		chunk:      vm.chunk,
 		pinned:     vm.pinned,
 		outcome:    vm.outcome,
 		failure:    vm.failure,
+		handlers:   vm.handlers,
+		pending:    vm.pending,
 	}
 }
 
 func (vm *VM) setExecution(c execution) {
 	vm.frames = c.frames
 	vm.frameCount = c.frameCount
-	vm.fp = c.fp
 	vm.ip = c.ip
+	vm.stk = c.stk
+	vm.base = c.base
 	vm.regs = c.regs
 	vm.currentFunction = c.function
 	vm.chunk = c.chunk
 	vm.pinned = c.pinned
 	vm.outcome = c.outcome
 	vm.failure = c.failure
+	vm.handlers = c.handlers
+	vm.pending = c.pending
 }
 
 // stackOf lists where a task is: the instruction being run, then the call
@@ -343,14 +352,23 @@ func (vm *VM) blocking(wait func()) error {
 // pause waits that long, or until the program ends.
 func (vm *VM) pause(d time.Duration) error {
 	quit := vm.sched.quit
-	return vm.blocking(func() {
+	interrupted := vm.interruptSignal()
+	if err := vm.blocking(func() {
 		timer := time.NewTimer(d)
 		defer timer.Stop()
 		select {
 		case <-timer.C:
 		case <-quit:
+		case <-interrupted:
 		}
-	})
+	}); err != nil {
+		return err
+	}
+	if vm.interrupted.Load() {
+		// Woken to be stopped, not because the time has passed
+		return vm.interruption()
+	}
+	return nil
 }
 
 // spawn makes a task that will run a function of the program taking no
@@ -391,13 +409,14 @@ func (vm *VM) runTask(s *scheduler, t *task) {
 
 	fn := (*FunctionObj)(unsafe.Pointer(t.fn.AsHeapPtr()))
 	proto := fn.Proto()
-	regs := make([]Value, proto.RegisterCount)
+	stack := newRegStack(proto.RegisterCount)
+	regs := stack.vals[:proto.RegisterCount:proto.RegisterCount]
 	for i := range regs {
 		regs[i] = NewNull()
 	}
-	vm.setExecution(execution{regs: regs, function: fn, chunk: fn.chunk, ip: proto.CodeStart, outcome: NewNull()})
+	vm.setExecution(execution{stk: stack, regs: regs, function: fn, chunk: fn.chunk, ip: proto.CodeStart, outcome: NewNull()})
 
-	_, err := vm.run(0)
+	_, err := vm.runGuarded()
 
 	var failure *RuntimeError
 	var fatal error
@@ -419,10 +438,6 @@ func (vm *VM) runTask(s *scheduler, t *task) {
 		// A closure made by the task may live on in a value it shared,
 		// still pointing at one of its variables
 		vm.closeUpvalues(0)
-		for i := vm.frameCount - 1; i >= 0; i-- {
-			vm.regs = vm.frames[i].regs
-			vm.closeUpvalues(0)
-		}
 	}
 
 	s.mu.Lock()
@@ -445,6 +460,17 @@ func (vm *VM) runTask(s *scheduler, t *task) {
 	}
 	s.dispatch(t)
 	s.mu.Unlock()
+}
+
+// runGuarded runs a task's function. A mistake of the VM or of a native
+// function ends the whole program, as an error, rather than the host.
+func (vm *VM) runGuarded() (result Value, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			result, err = NewNull(), &fatalError{vm.internalError(r)}
+		}
+	}()
+	return vm.run(0)
 }
 
 // finish ends the program once main has returned or failed: it lets the
@@ -504,18 +530,12 @@ func (vm *VM) markTasks() {
 		vm.markValue(t.fn)
 		c := &t.ctx
 		if c.function != nil {
-			vm.markFunction(c.function)
+			vm.markObject(&c.function.header)
 		}
-		for _, v := range c.regs {
-			vm.markValue(v)
-		}
+		vm.markStack(c.stk, c.base+len(c.regs))
 		for i := 0; i < c.frameCount; i++ {
-			frame := &c.frames[i]
-			if frame.function != nil {
-				vm.markFunction(frame.function)
-			}
-			for _, v := range frame.regs {
-				vm.markValue(v)
+			if fn := c.frames[i].function; fn != nil {
+				vm.markObject(&fn.header)
 			}
 		}
 		vm.markValue(c.outcome)

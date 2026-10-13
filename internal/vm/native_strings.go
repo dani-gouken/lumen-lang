@@ -7,6 +7,7 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+	"unsafe"
 )
 
 // Positions in a string count characters, not bytes, as `text[i]` and
@@ -53,8 +54,7 @@ func init() {
 			return NewInt(int64(len(s))), nil
 		}},
 		native{"substring", 3, func(vm *VM, args []Value) (Value, error) {
-			s, err := argString(args, 0)
-			if err != nil {
+			if _, err := argString(args, 0); err != nil {
 				return NewNull(), err
 			}
 			from, err := argInt(args, 1)
@@ -65,11 +65,16 @@ func init() {
 			if err != nil {
 				return NewNull(), err
 			}
-			runes := []rune(s)
-			if from < 0 || to > int64(len(runes)) || from > to {
-				return NewNull(), fmt.Errorf("range %d..%d is outside a text of %d characters", from, to, len(runes))
+			// Positions are found through what the text keeps of where
+			// its characters are, not by going through it from the start
+			text := (*StringObj)(unsafe.Pointer(header(args[0])))
+			if length := int64(text.RuneLen()); from < 0 || to > length || from > to {
+				return NewNull(), fmt.Errorf("range %d..%d is outside a text of %d characters", from, to, length)
 			}
-			return vm.newString(string(runes[from:to]))
+			if from == 0 && to == int64(text.RuneLen()) {
+				return args[0], nil
+			}
+			return vm.newString(text.Slice(int(from), int(to)))
 		}},
 		find("indexOf", strings.Index),
 		find("lastIndexOf", strings.LastIndex),

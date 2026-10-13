@@ -525,13 +525,128 @@ type MatchCase struct {
 	BaseNode
 	Pattern Node // Can be Expr (value) or Type (type check)
 	Body    Node // Can be *BlockStmt or Expr
+
+	// Alternatives are the patterns after the first of a case that takes
+	// several, `case Light.Red | Light.Amber:`. The case runs when any of
+	// them matches.
+	Alternatives []Node
+
+	// Guard is the condition of `case Shape.Circle(r) if r > 10.0:`. The
+	// case only runs when it holds, and it may use the names of the pattern.
+	Guard Expr
 }
+
+// Patterns lists every pattern of the case: the first and its
+// alternatives. A `default` has none.
+func (c *MatchCase) Patterns() []Node {
+	if c.Pattern == nil {
+		return nil
+	}
+	return append([]Node{c.Pattern}, c.Alternatives...)
+}
+
+// IsDefault reports whether the case is `default:`.
+func (c *MatchCase) IsDefault() bool { return c.Pattern == nil }
 
 func (c *MatchCase) String() string {
 	if c.Pattern == nil {
 		return fmt.Sprintf("default: %s", c.Body.String())
 	}
-	return fmt.Sprintf("case %s: %s", c.Pattern.String(), c.Body.String())
+	var patterns []string
+	for _, pattern := range c.Patterns() {
+		patterns = append(patterns, pattern.String())
+	}
+	head := strings.Join(patterns, " | ")
+	if c.Guard != nil {
+		head += " if " + c.Guard.String()
+	}
+	return fmt.Sprintf("case %s: %s", head, c.Body.String())
+}
+
+// MatchExpr is a match that gives a value: `let size = match shape { ... };`.
+// It is the statement, in a place where a value is expected: each case
+// gives the value of the whole, as an expression, or leaves (return, break,
+// continue, panic) in a block.
+type MatchExpr struct {
+	BaseNode
+	Match *MatchStmt
+}
+
+func (e *MatchExpr) exprNode()      {}
+func (e *MatchExpr) String() string { return "(" + e.Match.String() + ")" }
+
+// RangeExpr is the whole numbers from Low up to High: `0..10` stops before
+// High, `0..=10` includes it. It is what a `for` loops over, or what a
+// case matches against; it is not a value to keep.
+type RangeExpr struct {
+	BaseNode
+	Low       Expr
+	High      Expr
+	Inclusive bool
+}
+
+func (e *RangeExpr) exprNode() {}
+func (e *RangeExpr) String() string {
+	op := ".."
+	if e.Inclusive {
+		op = "..="
+	}
+	return fmt.Sprintf("(%s%s%s)", e.Low.String(), op, e.High.String())
+}
+
+// DeferStmt is cleanup that runs when the block it is written in is left,
+// however that happens: by reaching its end, by return, break or continue,
+// or by a failure passing through. `defer file.close();` is a body of one
+// statement.
+type DeferStmt struct {
+	BaseNode
+	Body *BlockStmt
+}
+
+func (s *DeferStmt) stmtNode()      {}
+func (s *DeferStmt) String() string { return "defer " + s.Body.String() }
+
+// --- Expressions made by desugaring ---
+//
+// Nobody writes these two. Desugaring makes them for what needs statements
+// or a choice where a value stands: a match that gives a value, the
+// condition of a case.
+
+// BlockExpr is statements followed by the expression that gives their
+// value. Without one (Value is nil) the statements always leave: they end
+// in return, break, continue or panic, and no value is needed.
+type BlockExpr struct {
+	BaseNode
+	Stmts []Stmt
+	Value Expr
+}
+
+func (e *BlockExpr) exprNode() {}
+func (e *BlockExpr) String() string {
+	var sb strings.Builder
+	sb.WriteString("{ ")
+	for _, stmt := range e.Stmts {
+		sb.WriteString(stmt.String() + " ")
+	}
+	if e.Value != nil {
+		sb.WriteString(e.Value.String() + " ")
+	}
+	sb.WriteString("}")
+	return sb.String()
+}
+
+// CondExpr is one of two values, by a condition; only the one chosen is
+// evaluated.
+type CondExpr struct {
+	BaseNode
+	Cond Expr
+	Then Expr
+	Else Expr
+}
+
+func (e *CondExpr) exprNode() {}
+func (e *CondExpr) String() string {
+	return fmt.Sprintf("(if %s %s else %s)", e.Cond.String(), e.Then.String(), e.Else.String())
 }
 
 type ExprStmt struct {

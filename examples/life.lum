@@ -15,16 +15,10 @@ struct Grid {
 
 fn newGrid(width: Int, height: Int) -> Grid {
     let cells: [[Bool]] = [];
-    let y = 0;
-    while y < height {
+    for y in 0..height {
         let row: [Bool] = [];
-        let x = 0;
-        while x < width {
-            push(row, false);
-            x++;
-        }
+        for x in 0..width { push(row, false); }
         push(cells, row);
-        y++;
     }
     return Grid { width: width, height: height, cells: cells };
 }

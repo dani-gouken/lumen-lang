@@ -1055,3 +1055,72 @@ func TestParseVariantPatterns(t *testing.T) {
 		t.Errorf("expected default to have no pattern")
 	}
 }
+
+func TestParseMatchValueGuardsAndAlternatives(t *testing.T) {
+	// Where a value is expected, a match is an expression; its cases end
+	// with ';' or ',' and the last with either or nothing
+	for _, src := range []string{
+		`match n { case 1: "one"; default: "many"; }`,
+		`match n { case 1: "one", default: "many", }`,
+		`match n { case 1: "one", default: "many" }`,
+	} {
+		if got, want := parseExprString(t, src), `(match n { case 1: "one" default: "many" })`; got != want {
+			t.Errorf("%s: got %s, want %s", src, got, want)
+		}
+	}
+
+	stmts := parseBody(t, `match shape {
+		case Shape.Circle(r) if r > 10.0: { }
+		case Light.Red | Light.Amber: { }
+		case Int | String?: { }
+		case 0 | 1..5 | 9..=12 if ok: { }
+		default: { }
+	}`)
+	match := stmts[0].(*ast.MatchStmt)
+	want := []string{
+		"case Shape.Circle(r) if (r > 10.0): { }",
+		"case Light.Red | Light.Amber: { }",
+		"case Int | String?: { }",
+		"case 0 | (1..5) | (9..=12) if ok: { }",
+		"default: { }",
+	}
+	for i, c := range match.Cases {
+		if c.String() != want[i] {
+			t.Errorf("case %d: got %s, want %s", i, c.String(), want[i])
+		}
+	}
+	// Types are told from values one pattern at a time
+	if _, isType := match.Cases[2].Alternatives[0].(*ast.Type); !isType {
+		t.Errorf("expected String? to be a type pattern, got %T", match.Cases[2].Alternatives[0])
+	}
+}
+
+func TestParseRangesAndDefer(t *testing.T) {
+	// Looser than arithmetic and comparison on both sides
+	if got, want := parseExprString(t, "a + 1..b * 2"), "((a + 1)..(b * 2))"; got != want {
+		t.Errorf("got %s, want %s", got, want)
+	}
+	if got, want := parseExprString(t, "0..=n - 1"), "(0..=(n - 1))"; got != want {
+		t.Errorf("got %s, want %s", got, want)
+	}
+	// A number before the dots is not the start of a float, and a float
+	// keeps its own dot
+	if got, want := parseExprString(t, "1..2.5"), "(1..2.5)"; got != want {
+		t.Errorf("got %s, want %s", got, want)
+	}
+
+	stmts := parseBody(t, `
+		for i in 0..count { }
+		defer file.close();
+		defer { count++; }
+	`)
+	loop := stmts[0].(*ast.ForStmt)
+	if _, ok := loop.Iterable.(*ast.RangeExpr); !ok {
+		t.Errorf("expected a range to loop over, got %T", loop.Iterable)
+	}
+	for i, want := range []string{"defer { file.close(); }", "defer { (count += 1); }"} {
+		if got := stmts[i+1].String(); got != want {
+			t.Errorf("got %s, want %s", got, want)
+		}
+	}
+}

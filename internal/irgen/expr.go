@@ -54,6 +54,10 @@ func (fc *FunctionCompiler) compileExpr(expr ast.Expr) *ir.Register {
 		dest := fc.builder.NewRegister()
 		fc.builder.Emit(ir.OpGetField, dest, value, ir.Constant{Val: variantField(e.Index), Type: "String"})
 		return dest
+	case *ast.BlockExpr:
+		return fc.compileBlockExpr(e)
+	case *ast.CondExpr:
+		return fc.compileCondExpr(e)
 	default:
 		// Unsupported expression type
 		fc.gen.errorAt(expr, ErrUnsupportedConstruct, "Unsupported expression type in IR generation", "")
@@ -256,6 +260,7 @@ func (fc *FunctionCompiler) compileTry(expr *ast.UnaryExpr) *ir.Register {
 	fc.builder.CreateBr(failed, leaveBlock, goOnBlock)
 
 	fc.builder.SetBlock(leaveBlock)
+	fc.runDefers(0)
 	fc.builder.CreateRet(value)
 
 	fc.builder.SetBlock(goOnBlock)

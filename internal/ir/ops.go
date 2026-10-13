@@ -30,6 +30,13 @@ const (
 	OpCall      // Dest = Call Func(Args...)
 	OpCallTrait // Dest = CallTrait Receiver, TraitName, MethodName, Args...
 
+	// Cleanup (defer). Between a Try and its EndTry, a failure does not
+	// leave the function at once: the handler block runs first, and passes
+	// the failure on with Rethrow when it is done.
+	OpTry     // Try Handler, Body: from here on a failure goes to Handler; go on at Body
+	OpEndTry  // EndTry: the innermost Try of this function no longer applies
+	OpRethrow // Rethrow: pass on the failure the handler was run for
+
 	// Memory & Variables
 	OpMov // Dest = Src1
 
@@ -99,6 +106,12 @@ func (op OpType) String() string {
 		return "CALL"
 	case OpCallTrait:
 		return "CALL_TRAIT"
+	case OpTry:
+		return "TRY"
+	case OpEndTry:
+		return "END_TRY"
+	case OpRethrow:
+		return "RETHROW"
 	case OpMov:
 		return "MOV"
 	case OpNewStruct:

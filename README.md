@@ -43,10 +43,10 @@ make build
 
 - **Static types that stay out of the way.** Types are worked out where they can be: `let total = 0;`, `names.map(n -> strings.len(n))`.
 - **No null surprises.** A value that may be missing has a type that says so (`String?`), and the compiler makes you look before you use it. `?.`, `??` and `?` keep that short.
-- **Enums that hold values, and `match` checked for completeness.** Forget a case and the program does not compile.
-- **Failures as values.** A function that can fail returns a `Result`; `?` passes a failure on. A bug that stops the program can still be survived with `attempt`, where it matters.
+- **Enums that hold values, and `match` checked for completeness.** Forget a case and the program does not compile. A `match` gives a value where one is wanted, and a case can take several patterns, a range or a condition: `case Shape.Circle(r) if r > 10.0:`.
+- **Failures as values.** A function that can fail returns a `Result`; `?` passes a failure on. A bug that stops the program can still be survived with `attempt`, where it matters, and `defer` cleans up whichever way a block is left.
 - **Generics and traits.** `fn largest<T: Ordered>(items: [T])`, traits with type parameters and default methods, and operators, `for` loops and brackets on your own types.
-- **Closures, tuples, string interpolation, modules** with `import` and `pub`, and an optional project file.
+- **Closures, tuples, ranges (`for i in 0..10`), string interpolation, modules** with `import` and `pub`, and an optional project file.
 
 A tour of all of it: [docs/guide.md](docs/guide.md).
 
@@ -157,7 +157,7 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Language server (`lumen lsp`) and VS Code extension
 - ✅ CLI: `run`, `build`, `ir`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
 
-Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics with requirements (`<T: Ordered>`), traits with type parameters and default methods, operators on structs, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values and on types), short-circuit operators, `?.` and `?` for values that may be missing, tuples, string interpolation (`"total: ${n}"`) and texts over several lines, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library ([docs/stdlib.md](docs/stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, files and folders, dates, program arguments, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, tests, tasks with channels for doing several things at once ([docs/tasks.md](docs/tasks.md)), and reflection. An editor gets mistakes as you type, hover, go to definition, an outline and suggestions from `lumen lsp`, a language server written in Lumen ([docs/editor.md](docs/editor.md)).
+Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics with requirements (`<T: Ordered>`), traits with type parameters and default methods, operators on structs, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values, ranges and types, as a statement or for its value, with conditions and several patterns per case), loops over ranges (`for i in 0..10`), `defer`, short-circuit operators, `?.` and `?` for values that may be missing, tuples, string interpolation (`"total: ${n}"`) and texts over several lines, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library ([docs/stdlib.md](docs/stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, files and folders, dates, program arguments, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, tests, tasks with channels for doing several things at once ([docs/tasks.md](docs/tasks.md)), and reflection. An editor gets mistakes as you type, hover, go to definition, an outline and suggestions from `lumen lsp`, a language server written in Lumen ([docs/editor.md](docs/editor.md)).
 
 Not there yet:
 
@@ -264,7 +264,7 @@ Example programs in [examples/](examples/):
 - **tree.lum** - A generic binary search tree: a struct that refers to itself, optional fields
 - **derivative.lum** - Symbolic differentiation: an enum that holds itself, the rules of calculus as `match` cases with nested patterns
 - **tournament.lum** - Traits in full: operators, loops and brackets on structs, traits with type parameters and default methods, requirements on type parameters (`<T: Ordered>`), field defaults, methods as values
-- **build.lum** - Tasks and channels: a build that works on several targets at once, with a fixed number of workers
+- **build.lum** - Tasks and channels: a build that works on several targets at once, with a fixed number of workers given back by `defer`
 - **failures.lum** - `Result` for failures with a reason, an error type with a trace, `panic`, and `attempt` to survive what would stop the program
 - **words.lum** - Word counts of a text with the standard library: `std.strings`, `std.dict`, `std.arrays`, `std.list`, `std.math`
 - **modules.lum** - A program in several files: `import`, `pub`, with its modules in `zoo/`

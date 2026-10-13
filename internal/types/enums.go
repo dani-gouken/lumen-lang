@@ -467,7 +467,7 @@ func (c *Checker) bindUnknown(p *ast.VariantPattern) {
 // each case in order, the variant it handles completely ("" when it does
 // not handle one completely); it is what the warning about a case that is
 // never reached goes by.
-func (c *Checker) checkExhaustive(s *ast.MatchStmt, subject Type, covered []string) {
+func (c *Checker) checkExhaustive(s *ast.MatchStmt, subject Type, covered [][]string) {
 	decl, _ := c.enumOfType(subject)
 	if decl == nil {
 		return
@@ -477,24 +477,34 @@ func (c *Checker) checkExhaustive(s *ast.MatchStmt, subject Type, covered []stri
 	hasDefault := false
 	var rows [][]ast.Node
 	for i, matchCase := range s.Cases {
-		switch pattern := matchCase.Pattern.(type) {
-		case nil:
+		if matchCase.IsDefault() {
 			hasDefault = true
 			rows = append(rows, []ast.Node{nil})
-		case *ast.VariantPattern:
-			if name := c.patternVariant(pattern); name != "" && handled[name] {
-				c.errs.ReportWarningFromToken(ErrUnreachableCode,
-					fmt.Sprintf("this case is never reached: %s.%s is handled above", decl.Name, name),
-					pattern.Token(), c.sourceLines)
-			}
-			if covered[i] != "" {
-				handled[covered[i]] = true
-			}
-			rows = append(rows, []ast.Node{pattern})
-		case *ast.Type:
-			// `case Shape:` on a Shape takes every value
-			if target := c.resolveType(pattern); c.assignable(target, subject) {
-				rows = append(rows, []ast.Node{nil})
+			continue
+		}
+		// A case with a condition may not run although its pattern
+		// matches: it handles nothing for certain
+		certain := matchCase.Guard == nil
+		for j, pattern := range matchCase.Patterns() {
+			switch pattern := pattern.(type) {
+			case *ast.VariantPattern:
+				if name := c.patternVariant(pattern); name != "" && handled[name] {
+					c.errs.ReportWarningFromToken(ErrUnreachableCode,
+						fmt.Sprintf("this case is never reached: %s.%s is handled above", decl.Name, name),
+						pattern.Token(), c.sourceLines)
+				}
+				if !certain {
+					continue
+				}
+				if covered[i][j] != "" {
+					handled[covered[i][j]] = true
+				}
+				rows = append(rows, []ast.Node{pattern})
+			case *ast.Type:
+				// `case Shape:` on a Shape takes every value
+				if target := c.resolveType(pattern); certain && c.assignable(target, subject) {
+					rows = append(rows, []ast.Node{nil})
+				}
 			}
 		}
 	}

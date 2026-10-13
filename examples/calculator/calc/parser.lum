@@ -143,11 +143,11 @@ impl Parser {
         }
 
         let token = self.next();
-        match token.kind {
-            case "number": { return Number { value: token.value }; }
-            case "name": { return Variable { name: token.text }; }
-            case "unknown": { return self.fail("'" + token.text + "' means nothing here"); }
-            default: { return self.fail("expected a number or a name but found " + describe(token)); }
-        }
+        return match token.kind {
+            case "number": Number { value: token.value };
+            case "name": Variable { name: token.text };
+            case "unknown": self.fail("'" + token.text + "' means nothing here");
+            default: self.fail("expected a number or a name but found " + describe(token));
+        };
     }
 }

@@ -46,78 +46,159 @@ import (
 func (d *Desugarer) desugarMatchStmt(match *ast.MatchStmt) ast.Stmt {
 	pos := match.Position()
 
-	// Desugar the matched expression
-	matchedExpr := d.desugarExpr(match.Cond)
-
 	// If we have no cases, return an empty block
 	if len(match.Cases) == 0 {
+		d.desugarExpr(match.Cond)
 		return d.wrapInBlock([]ast.Stmt{}, pos)
 	}
 
-	// Validate all patterns
-	for _, caseStmt := range match.Cases {
-		if !d.validateMatchPattern(caseStmt.Pattern) {
-			// Continue processing other cases even if one fails
-			// This allows reporting multiple errors at once
-		}
-	}
-
-	// Check if we need a temporary variable
-	// We use a temporary if:
-	// 1. The expression is complex (not just an identifier or literal)
-	// 2. We have type matching or enum variant matching
-	// A plain variable is tested directly, also for type patterns: the test
-	// `value is Int` then tells the type checker that `value` is an Int
-	// inside the case, which a copy in a temporary would not.
-	needsTemp := d.isComplexExpr(matchedExpr)
-
-	var tmpVar string
-	var tmpVarExpr ast.Expr
-	var stmts []ast.Stmt
-
-	if needsTemp {
-		// Generate temporary variable: let __match_tmp_N = matched_expr;
-		tmpVar = d.generateMatchVar()
-		tmpVarType := d.inferTypeFromExpr(match.Cond, pos)
-
-		tmpInit := &ast.LetStmt{
-			BaseNode: ast.BaseNode{Pos: pos},
-			Name:     tmpVar,
-			Type:     tmpVarType,
-			Value:    matchedExpr,
-			IsConst:  false,
-		}
-
-		tmpVarExpr = d.createIdent(tmpVar, pos)
-		if exprType, ok := d.typeInfo.Types[match.Cond]; ok {
-			d.typeInfo.Types[tmpVarExpr] = exprType
-		}
-
-		stmts = append(stmts, tmpInit)
-	} else {
-		tmpVarExpr = matchedExpr
-	}
+	subject, tmpInit := d.matchSubject(match)
 
 	// Build the if-else chain
 	var ifChain ast.Stmt
 	for i := len(match.Cases) - 1; i >= 0; i-- {
 		caseStmt := match.Cases[i]
-		// When the cases cover every variant of an enum, the last one needs
-		// no test: nothing else is left. Written as the final `else`, it
-		// also shows the stages below that one of the cases always runs.
-		last := i == len(match.Cases)-1 && match.Exhaustive
-		ifChain = d.buildMatchCase(tmpVarExpr, caseStmt, ifChain, pos, last)
+		last := i == len(match.Cases)-1
+		ifChain = d.buildMatchCase(subject, caseStmt, ifChain, pos, last && d.runsForSure(match, caseStmt))
 	}
 
-	if needsTemp {
-		stmts = append(stmts, ifChain)
-		block := d.wrapInBlock(stmts, pos)
+	if tmpInit != nil {
+		block := d.wrapInBlock([]ast.Stmt{tmpInit, ifChain}, pos)
 		d.info.Mapping[match] = block
 		return block
 	}
 
 	d.info.Mapping[match] = ifChain
 	return ifChain
+}
+
+// matchSubject desugars the value a match looks at, and makes it something
+// that can be read once per case: anything but a name or a literal is kept
+// in a temporary first, by the statement returned.
+//
+// A plain variable is tested directly, also for type patterns: the test
+// `value is Int` then tells the type checker that `value` is an Int inside
+// the case, which a copy in a temporary would not.
+func (d *Desugarer) matchSubject(match *ast.MatchStmt) (subject ast.Expr, tmpInit ast.Stmt) {
+	pos := match.Position()
+	for _, caseStmt := range match.Cases {
+		for _, pattern := range caseStmt.Patterns() {
+			// Reported here; the other cases are still looked at
+			d.validateMatchPattern(pattern)
+		}
+	}
+
+	subject = d.desugarExpr(match.Cond)
+	if !d.isComplexExpr(subject) {
+		return subject, nil
+	}
+
+	// let __match_tmp_N = matched_expr;
+	tmpVar := d.generateMatchVar()
+	tmpInit = &ast.LetStmt{
+		BaseNode: ast.BaseNode{Pos: pos},
+		Name:     tmpVar,
+		Type:     d.inferTypeFromExpr(match.Cond, pos),
+		Value:    subject,
+	}
+	tmp := d.createIdent(tmpVar, pos)
+	if exprType, ok := d.typeInfo.Types[match.Cond]; ok {
+		d.typeInfo.Types[tmp] = exprType
+	}
+	return tmp, tmpInit
+}
+
+// runsForSure reports whether the last case of a match needs no test:
+// when the cases cover every variant of an enum, nothing else is left.
+// Written as the final `else`, it also shows the stages below that one of
+// the cases always runs.
+func (d *Desugarer) runsForSure(match *ast.MatchStmt, last *ast.MatchCase) bool {
+	if !match.Exhaustive || last.Guard != nil || last.IsDefault() {
+		return false
+	}
+	for _, pattern := range last.Patterns() {
+		if _, ok := pattern.(*ast.VariantPattern); !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// caseTest builds what decides whether a case runs, and the variables its
+// pattern names, to declare at the start of the case.
+//
+//	case 1:                          value == 1
+//	case 1..10:                      value >= 1 && value < 10
+//	case Int:                        value is Int
+//	case Shape.Rect(w, 0):           value is Shape.Rect && value.Rect#1 == 0
+//	case Light.Red | Light.Amber:    value is Light.Red || value is Light.Amber
+//	case Shape.Circle(r) if r > 1.0: value is Shape.Circle && { let r = value.Circle#0; r > 1.0 }
+//
+// A `default` has no test: nil.
+func (d *Desugarer) caseTest(subject ast.Expr, caseStmt *ast.MatchCase, pos token.Position) (test ast.Expr, names []ast.Stmt) {
+	if caseStmt.IsDefault() {
+		return nil, nil
+	}
+	at := ast.BaseNode{Pos: pos, Tok: caseStmt.Tok}
+
+	for _, pattern := range caseStmt.Patterns() {
+		var one ast.Expr
+		switch pattern := pattern.(type) {
+		case *ast.VariantPattern:
+			// A variant of an enum: test for it, then name its values
+			tests, bound := d.lowerPattern(subject, pattern, pos)
+			one = d.allOf(tests, pos)
+			names = append(names, bound...)
+
+		case *ast.Type:
+			// Type matching: matched_expr is Type
+			one = d.createTypeCheckCall(subject, pattern, pos)
+
+		case *ast.RangeExpr:
+			upTo := "<"
+			if pattern.Inclusive {
+				upTo = "<="
+			}
+			from := &ast.BinaryExpr{BaseNode: pattern.BaseNode, Left: subject, Op: ">=", Right: d.desugarExpr(pattern.Low)}
+			to := &ast.BinaryExpr{BaseNode: pattern.BaseNode, Left: subject, Op: upTo, Right: d.desugarExpr(pattern.High)}
+			one = &ast.BinaryExpr{BaseNode: pattern.BaseNode, Left: from, Op: "&&", Right: to}
+
+		case ast.Expr:
+			// Value matching: matched_expr == pattern
+			one = d.createBinaryExpr(subject, "==", d.desugarExpr(pattern), pos)
+			d.typeInfo.Types[one] = types.Bool
+
+		default:
+			one = d.createBoolLiteral(true, pos)
+		}
+
+		if test == nil {
+			test = one
+		} else {
+			test = &ast.BinaryExpr{BaseNode: at, Left: test, Op: "||", Right: one}
+		}
+	}
+
+	if caseStmt.Guard != nil {
+		// The condition is asked once the pattern matched, with its names
+		guard := d.desugarExpr(caseStmt.Guard)
+		if len(names) > 0 {
+			guard = &ast.BlockExpr{BaseNode: at, Stmts: copyStmts(names), Value: guard}
+		}
+		test = &ast.BinaryExpr{BaseNode: at, Left: test, Op: "&&", Right: guard}
+	}
+	return test, names
+}
+
+// copyStmts copies statements that are needed in two places of the
+// program: the stages below take each node to stand in one place.
+func copyStmts(stmts []ast.Stmt) []ast.Stmt {
+	cloner := &ast.Cloner{Types: make(map[string]*ast.Type)}
+	out := make([]ast.Stmt, len(stmts))
+	for i, stmt := range stmts {
+		out[i] = cloner.Stmt(stmt)
+	}
+	return out
 }
 
 // buildMatchCase builds a single case in the if-else chain
@@ -140,45 +221,82 @@ func (d *Desugarer) buildMatchCase(matchedExpr ast.Expr, caseStmt *ast.MatchCase
 		caseBody = d.wrapInBlock([]ast.Stmt{}, pos)
 	}
 
-	// Build the condition based on the pattern type
-	var condition ast.Expr
-
-	switch pattern := caseStmt.Pattern.(type) {
-	case *ast.VariantPattern:
-		// A variant of an enum: test for it, then name its values at the
-		// start of the case
-		tests, names := d.lowerPattern(matchedExpr, pattern, pos)
-		condition = d.allOf(tests, pos)
+	condition, names := d.caseTest(matchedExpr, caseStmt, pos)
+	if len(names) > 0 {
 		caseBody = d.wrapInBlock(append(names, caseBody.Stmts...), caseBody.Position())
-		if unconditional {
-			return caseBody
-		}
-
-	case *ast.Type:
-		// Type matching: __is_type(matched_expr, Type)
-		condition = d.createTypeCheckCall(matchedExpr, pattern, pos)
-
-	case ast.Expr:
-		// Value matching: matched_expr == pattern
-		patternExpr := d.desugarExpr(pattern)
-		condition = d.createBinaryExpr(matchedExpr, "==", patternExpr, pos)
-		d.typeInfo.Types[condition] = types.Bool
-
-	default:
-		// Default case or unsupported pattern - always true
+	}
+	if unconditional {
+		return caseBody
+	}
+	if condition == nil {
+		// Default case - always true
 		condition = d.createBoolLiteral(true, pos)
 		d.typeInfo.Types[condition] = types.Bool
 	}
 
-	// Build the if statement
-	ifStmt := &ast.IfStmt{
+	return &ast.IfStmt{
 		BaseNode: ast.BaseNode{Pos: pos},
 		Cond:     condition,
 		Then:     caseBody,
 		Else:     elseStmt,
 	}
+}
 
-	return ifStmt
+// desugarMatchExpr transforms a match that gives a value into a chain of
+// choices between the values of its cases:
+//
+//	let size = match shape {
+//	    case Shape.Circle(r) if r > 10.0: "big";
+//	    case Shape.Circle(_): "round";
+//	    default: { return null; }
+//	};
+//
+// becomes
+//
+//	let size = if shape is Shape.Circle && { let r = shape.Circle#0; r > 10.0 } { let r = shape.Circle#0; "big" }
+//	           else if shape is Shape.Circle "round"
+//	           else { return null; };
+//
+// written with the two expressions only desugaring makes: a choice
+// (CondExpr) and statements that end in a value (BlockExpr). A case that
+// is a block always leaves, the type checker saw to it: it gives none.
+func (d *Desugarer) desugarMatchExpr(expr *ast.MatchExpr) ast.Expr {
+	match := expr.Match
+	pos := match.Position()
+	subject, tmpInit := d.matchSubject(match)
+
+	// What the last `else` gives when no case is left to run. A complete
+	// match never gets there.
+	var chain ast.Expr = &ast.Literal{BaseNode: expr.BaseNode, Value: "null", Kind: "null"}
+
+	for i := len(match.Cases) - 1; i >= 0; i-- {
+		caseStmt := match.Cases[i]
+		at := ast.BaseNode{Pos: caseStmt.Position(), Tok: caseStmt.Tok}
+		test, names := d.caseTest(subject, caseStmt, pos)
+
+		var value ast.Expr
+		switch body := caseStmt.Body.(type) {
+		case *ast.BlockStmt:
+			value = &ast.BlockExpr{BaseNode: at, Stmts: append(names, d.desugarBlockStmt(body).Stmts...)}
+		case ast.Expr:
+			value = d.desugarExpr(body)
+			if len(names) > 0 {
+				value = &ast.BlockExpr{BaseNode: at, Stmts: names, Value: value}
+			}
+		}
+
+		last := i == len(match.Cases)-1
+		if test == nil || (last && d.runsForSure(match, caseStmt)) {
+			chain = value
+			continue
+		}
+		chain = &ast.CondExpr{BaseNode: at, Cond: test, Then: value, Else: chain}
+	}
+
+	if tmpInit != nil {
+		return &ast.BlockExpr{BaseNode: expr.BaseNode, Stmts: []ast.Stmt{tmpInit}, Value: chain}
+	}
+	return chain
 }
 
 // createTypeCheckCall creates the test `expr is Type` for a type pattern

@@ -421,6 +421,14 @@ func (c *Checker) checkExprAs(expr ast.Expr, expected Type) Type {
 		}
 		return typ
 	}
+	if match, ok := expr.(*ast.MatchExpr); ok {
+		// Each case is checked as the value expected here
+		typ := c.checkMatch(match.Match, true, expected)
+		if typ != nil {
+			c.info.Types[expr] = typ
+		}
+		return typ
+	}
 	if _, isCall := expr.(*ast.CallExpr); isCall || c.isVariantRef(expr) {
 		// A generic call may take the type arguments its own arguments
 		// leave open from here: let xs: [Int] = none();

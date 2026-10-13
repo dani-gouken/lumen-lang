@@ -10,11 +10,11 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | a pipe operator for chaining, ranges |
-| Failures | cleanup that always runs, one shape for all errors |
-| Types | conditions and alternatives in `match`, `match` as an expression, traits for arrays |
-| Correctness | unused variables, bytecode checked before it runs |
-| Runtime | register allocation per call, method dispatch cost |
+| Everyday syntax | a pipe operator for chaining, ranges as values |
+| Failures | one shape for all errors |
+| Types | patterns on structs and arrays, names in a case with several patterns, traits for arrays |
+| Correctness | unused variables |
+| Runtime | method dispatch cost, tasks on several processors |
 | Program structure | native code from outside (shared libraries), a way to install packages, variables outside functions |
 | Tooling | a `lumen test` command, a formatter, renaming and finding uses in the editor |
 
@@ -22,13 +22,14 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 ## 1. Syntax and Language Features
 
-### Ranges — M
+### Ranges as values — M
 
 ```rust
-for i in 0..10 { ... }
+let evens = (0..10).filter(isEven);
+for i in (0..10).step(2) { ... }
 ```
 
-**Today**: not parsed. Use `while` with a counter, or `for i in arrays.range(0, 10)`, which builds the array first.
+**Today**: `for i in 0..10`, `0..=10` and `case 0..10:` work, and count without making an array. Anywhere else a range is refused (`E2038`): it has no type of its own, no step, and cannot be kept in a variable or passed to a function. `arrays.range(0, 10)` makes the array.
 
 ### Chaining calls — S
 
@@ -48,11 +49,10 @@ The cost is an `import std.arrays;` in almost every program. Calls of the two fu
 
 ### More for failures — S to M each
 
-`Result`, `panic`, `attempt` and traces are there ([errors.md](errors.md)). Not there:
+`Result`, `panic`, `attempt`, traces and `defer` are there ([errors.md](errors.md)). Not there:
 
 | Missing | Today |
 |---------|-------|
-| Cleanup that runs whatever happens: `defer`, `finally` | Nothing; harmless while the library keeps nothing open between calls |
 | `attempt` on a function with arguments | Wrap the call in a lambda |
 | One shape for all errors | `io.Error`, `Failure` and your own each have `describe()` by convention. A trait for it can now be written and required (`<E: Describe>`); the library does not have one yet |
 | Underlining exactly what failed | A runtime error underlines the name or number that starts where the instruction's source does; the end of the expression is not recorded |
@@ -72,11 +72,10 @@ Adding a function written in Lumen means editing a file in `internal/stdlib/lib/
 
 The library is some 2,500 lines of Lumen. Most of it compiled as first written; these are the places where the language made the code longer or stranger than it should be, in the order of how often they came up.
 
-Most of this list has since been added, and the library and the examples rewritten with it: tuples, `?` to pass a failure on, `?.`, texts over several lines, what a test established reaching into a function expression, requirements on type parameters and equality a type defines for itself. Calling a function held in a field, `self.key(item)`, turned out to work all along.
+Most of this list has since been added, and the library and the examples rewritten with it: tuples, `?` to pass a failure on, `?.`, texts over several lines, what a test established reaching into a function expression, requirements on type parameters and equality a type defines for itself. Calling a function held in a field, `self.key(item)`, turned out to work all along. A `match` gives a value now, which took the `return` out of every case of some forty of them.
 
 | Missing | What it cost |
 |---------|--------------|
-| **`match` with a value** | Every `kindOf(name)` is a `match` with a `return` in each case |
 | **`${` in a text that is not an insertion** | A regex replacement naming a group is `"\${year}"`: easy to forget, and the error is "undefined identifier 'year'" |
 | **A `Result` with nothing in it** | `fs.makeDir` gives back the path it was given, for want of a `Result<Void, Error>` |
 | **Keywords as names** | `for case in cases` is a syntax error; so are `match`, `in`, `is` as names of variables |
@@ -99,15 +98,13 @@ Most of this list has since been added, and the library and the examples rewritt
 
 ### More from `match` — S to M each
 
-Patterns on literals, on types and on the variants of an enum (with names, literals and nested patterns) work, and a match on an enum is checked for completeness ([enums.md](enums.md)). Not there:
+Patterns on literals, ranges, types and the variants of an enum (with names, literals and nested patterns) work, with conditions and several patterns per case; a match gives a value where one is expected, and a match on an enum is checked for completeness ([enums.md](enums.md)). Not there:
 
 | Missing | Today |
 |---------|-------|
-| A condition on a case: `case Shape.Circle(r) if r > 10.0:` | Use an `if` inside the case |
-| Several patterns for one case: `case Light.Red \| Light.Amber:` | Repeat the case |
-| Ranges: `case 1..9:` | Use `if` |
+| Names in a case with several patterns: `case A(x) \| B(x):` | `E2029`; write `_`, or a case for each |
+| A pattern inside a pattern: `case Shape.Rect(1 \| 2, _):`, `Shape.Circle(0.0..1.0)` | Several patterns and ranges stand at the top of a case only |
 | Patterns on structs, arrays and optionals | Bind the value to a name and test it |
-| `match` as an expression: `let x = match ... ;` | Assign in each case |
 | A bare name as a pattern at the top level (`case other:`) | `default` |
 | Completeness for anything but enums and `Bool` inside them | A `match` on an `Int` or on types needs a `default` to count as returning |
 
@@ -230,7 +227,6 @@ A cast to a function type is checked against the signature recorded when the fun
 | Unused variables, parameters, functions | No warning |
 | Variadic function called through a variable | Arguments are not packed into an array; only direct calls by name are |
 | Shadowing a function with a local | Allowed silently |
-| Bytecode before it runs | A `.lc` or `.lasm` file is trusted: an instruction that names a register the function does not have stops `lumen` itself with a Go panic, not with an error. Bytecode from the compiler never does this; a file written by hand or damaged can |
 | A variable passed as an argument, changed by a later argument of the same call | The call receives the new value: in `f(count, bump())`, where `bump` is a closure that increments `count`, `f` sees the incremented count. Arguments that are plain variables are read when the call is made, not when their turn comes. Assign the variable to a `let` first if the order matters |
 
 ---
@@ -247,16 +243,24 @@ Calls on a value whose struct is known are direct. Calls through a trait look th
 
 The same lookup is used when IR generation does not know the receiver's struct, which happens more than it should: the types it works from are computed again after generics are instantiated, and that second computation loses the type arguments of generic structs. For `outer.get().get()` with `outer` a `Box<Box<Int>>`, the inner receiver is only known as "some value". The call still goes to the right method, by name when one struct has it, on the value otherwise; it is slower than it needs to be, and a method name shared by several generic structs (`get` of `List` and of `Dict`) is stored on each of their values for this reason. Keeping the first type information through the later stages would fix both.
 
-### Every call allocates its registers — M
+### Tasks on several processors — L
 
-Function objects are reused, so calling a function by name allocates nothing for the function. Each call does still allocate a fresh register array for the callee; in call-heavy code that is the main cost left. A register stack shared by all frames would remove it.
+Tasks take turns on one processor ([tasks.md](tasks.md)). Several virtual machines do run side by side, one per thread, but they are separate programs: nothing is shared between them.
+
+The collector is why tasks of one program cannot simply be given a thread each. It stops the program, marks what is reachable and frees the rest, on the assumption that nothing else touches the heap meanwhile; allocation, arrays, struct values and the caches of field positions are all written without locks on the same assumption. Two ways out, neither started:
+
+*   **A machine per task, sharing nothing**: a task gets a heap of its own, and what goes through a channel is copied. The collector stays as it is. Closures that capture variables of another task, which work today, would not;
+*   **One heap for all**: every thread stopped at a safe point to collect, allocation and every object safe to use from two threads. Much more work, and data races become something a program can have.
 
 ### Smaller items
 
 | Item | Detail |
 |------|--------|
 | `.lc` compatibility | Bytecode files carry a version (4 today) that is raised by hand when the format changes; a new opcode alone does not raise it |
-| GC roots and Go's GC | Heap objects are held as integers in registers and stay alive only through the VM's object list; correct today, fragile if Go ever moves objects |
+| GC roots and Go's GC | Heap objects are held as integers in registers and stay alive only through the VM's object list; correct today, fragile if Go ever moves objects. Every such conversion goes through one function (`header` in `value.go`) |
+| Pauses | The collector stops the program for as long as it takes to mark what is alive: not incremental, not generational. Some tens of milliseconds with millions of objects alive |
+| Stopping a program that waits | `VM.Interrupt` and Ctrl-C stop a program that computes or sleeps where it is. One that waits for a line of input or an answer from the network stops when that wait is over; `lumen` ends the process after two seconds |
+| Jumps | Every jump the compiler writes takes three words (the long form), also when the short one would do |
 | Equality | Arrays compare by identity; so do structs that do not implement `Equal` |
 | Float formatting | `println(3.0)` prints `3`, indistinguishable from an Int |
 
@@ -285,7 +289,6 @@ Function objects are reused, so calling a function by name allocates nothing for
 A sequence that keeps each step small and makes the language noticeably more comfortable early:
 
 1.  **Chaining**: the pipe operator. Small, and it changes how nested calls read.
-5.  **`match`**: conditions on cases, several patterns per case, `match` as an expression.
 6.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

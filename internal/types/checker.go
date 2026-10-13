@@ -45,6 +45,9 @@ const (
 	ErrNeverNull         = "E2035" // `value?.member` on a value that cannot be null
 	ErrBoundNotMet       = "E2036" // A type argument that does not implement what its parameter requires
 	ErrShortFn           = "E2037" // A function written with `->` where nothing says what its types are
+	ErrBadRange          = "E2038" // A range that is not of whole numbers, or used as a value
+	ErrBadDefer          = "E2039" // A defer that tries to leave: return, '?', break or continue of an outer loop
+	ErrMatchValue        = "E2040" // A match that gives a value with a case that gives none
 )
 
 type Checker struct {
@@ -68,9 +71,14 @@ type Checker struct {
 
 	// Types of the names bound by match patterns, and of the top-level
 	// constants checked so far (see enums.go)
-	bindings   map[*ast.BindingPattern]Type
-	constTypes map[*ast.ConstDecl]Type
-	constBusy  map[*ast.ConstDecl]bool
+	bindings map[*ast.BindingPattern]Type
+
+	// Inside the body of a defer, and how many loops of that body are open:
+	// a defer cannot leave, except a loop of its own
+	inDefer      bool
+	loopsInDefer int
+	constTypes   map[*ast.ConstDecl]Type
+	constBusy    map[*ast.ConstDecl]bool
 
 	// Declarations indexed by name, and which structs implement which traits
 	structs  map[string]*ast.StructDecl
@@ -209,6 +217,10 @@ func (c *Checker) checkFnDecl(d *ast.FnDecl) {
 	outer := c.flowSnapshot()
 	isFnExpr := c.enteringFnExpr
 	c.enteringFnExpr = false
+	// A function written inside a defer is a function like any other
+	inDefer, loopsInDefer := c.inDefer, c.loopsInDefer
+	c.inDefer, c.loopsInDefer = false, 0
+	defer func() { c.inDefer, c.loopsInDefer = inDefer, loopsInDefer }()
 	c.narrowed = make(map[*resolve.Symbol]Type)
 	if isFnExpr {
 		for sym, typ := range outer.facts.vars {
@@ -427,6 +439,9 @@ func (c *Checker) checkNotConst(ident *ast.Ident, sym *resolve.Symbol) {
 		// Assigning would not change the collection, which is what it
 		// looks like
 		suggestion := fmt.Sprintf("'%s' is a copy of the element; to change the collection, assign to it by index", ident.Name)
+		if _, counted := decl.Iterable.(*ast.RangeExpr); counted {
+			suggestion = fmt.Sprintf("'%s' follows the range; use a while loop to control the count", ident.Name)
+		}
 		if decl.Index != nil {
 			suggestion = fmt.Sprintf("'%s' is a copy of the element; to change the collection, assign to %s[%s]",
 				ident.Name, decl.Iterable.String(), decl.Index.Name)
@@ -648,6 +663,10 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 		c.checkExpr(s.Expr)
 	case *ast.MatchStmt:
 		c.checkMatchStmt(s)
+	case *ast.DeferStmt:
+		c.checkDeferStmt(s)
+	case *ast.BreakStmt, *ast.ContinueStmt:
+		c.checkLeavesDefer(s)
 	}
 }
 
@@ -693,6 +712,11 @@ func (c *Checker) checkLetStmt(s *ast.LetStmt) {
 }
 
 func (c *Checker) checkReturnStmt(s *ast.ReturnStmt) {
+	if c.inDefer {
+		c.errorfWithSuggestion(s.Token(), ErrBadDefer,
+			"A defer runs while its block is being left and cannot decide where to go; set a variable, or do the work before leaving",
+			"'return' inside a defer")
+	}
 	if c.currentFn == nil {
 		c.errorf(s.Token(), ErrReturnOutsideFn, "return statement outside of function")
 		return
@@ -767,10 +791,24 @@ func (c *Checker) checkWhileStmt(s *ast.WhileStmt) {
 	// The body runs again after its own assignments, so only the condition,
 	// which is tested before every iteration, can be relied on
 	c.forgetAssignedIn(s.Body)
+	c.loopsInDefer++
 	c.withNarrowing(c.factsFrom(s.Cond, true), func() { c.checkBlockStmt(s.Body) })
+	c.loopsInDefer--
 }
 
 func (c *Checker) checkForStmt(s *ast.ForStmt) {
+	c.loopsInDefer++
+	defer func() { c.loopsInDefer-- }()
+
+	// for i in 0..10: the numbers themselves, no array is made
+	if r, ok := s.Iterable.(*ast.RangeExpr); ok {
+		c.checkRangeBounds(r, true)
+		c.info.Types[r] = NewArray(Int)
+		c.forgetAssignedIn(s.Body)
+		c.checkBlockStmt(s.Body)
+		return
+	}
+
 	// Check that the iterable is actually iterable (array or string)
 	iterType := c.checkExpr(s.Iterable)
 	if iterType != nil {
@@ -798,57 +836,6 @@ func (c *Checker) checkForStmt(s *ast.ForStmt) {
 	}
 	c.forgetAssignedIn(s.Body)
 	c.checkBlockStmt(s.Body)
-}
-
-func (c *Checker) checkMatchStmt(s *ast.MatchStmt) {
-	condType := c.checkExpr(s.Cond)
-
-	// The facts of each case are worked out first, the bodies checked
-	// after: only one case runs, so each body starts from what was known
-	// before the match, whatever the cases above it assign.
-	caseFacts := make([]facts, len(s.Cases))
-	covered := make([]string, len(s.Cases))
-	for i, matchCase := range s.Cases {
-		known := newFacts()
-		caseFacts[i] = known
-
-		switch pattern := matchCase.Pattern.(type) {
-		case *ast.VariantPattern:
-			// `case Shape.Rect(w, h):` names the values of the variant
-			if name, covers := c.checkVariantPattern(pattern, condType); covers {
-				covered[i] = name
-			}
-		case *ast.Type:
-			// `case Int:` asks what the value is; inside the case it is one
-			target := c.resolveType(pattern)
-			if condType != nil && !isUnknown(condType) && !isUnknown(target) &&
-				!c.assignable(target, condType) && !c.assignable(condType, target) {
-				c.errorf(pattern.Token(), ErrInvalidCast, "%s can never be %s", condType, target)
-			} else if _, ok := c.castDescriptor(target); !ok {
-				c.errorf(pattern.Token(), ErrInvalidCast, "a test for %s cannot be made", target)
-			} else {
-				c.learn(s.Cond, target, known)
-			}
-		case ast.Expr:
-			patternType := c.checkExpr(pattern)
-			if condType != nil && patternType != nil && !c.comparable(condType, patternType) {
-				c.errorf(pattern.Token(), ErrTypeMismatch, "pattern of type %s can never match a value of type %s", patternType, condType)
-			}
-		}
-
-	}
-
-	c.checkExhaustive(s, withoutNullOrNil(condType), covered)
-
-	c.withBranches(len(s.Cases), func(i int) facts { return caseFacts[i] }, func(i int) {
-		// The body can be either a block or an expression
-		switch body := s.Cases[i].Body.(type) {
-		case *ast.BlockStmt:
-			c.checkBlockStmt(body)
-		case ast.Expr:
-			c.checkExpr(body)
-		}
-	})
 }
 
 func (c *Checker) checkExpr(expr ast.Expr) Type {
@@ -889,6 +876,18 @@ func (c *Checker) checkExpr(expr ast.Expr) Type {
 		t = Bool
 	case *ast.VariantFieldExpr:
 		t = c.checkVariantFieldExpr(e)
+	case *ast.MatchExpr:
+		t = c.checkMatch(e.Match, true, nil)
+	case *ast.RangeExpr:
+		c.checkRangeBounds(e, false)
+		c.errorfWithSuggestion(e.Token(), ErrBadRange,
+			"Loop over it (for i in 0..10 { ... }), match against it (case 0..10:), or make the array: arrays.range(0, 10)",
+			"a range is not a value")
+		t = Unknown
+	case *ast.BlockExpr:
+		t = c.checkBlockExpr(e)
+	case *ast.CondExpr:
+		t = c.checkCondExpr(e)
 	default:
 		t = Unknown
 	}
