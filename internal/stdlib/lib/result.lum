@@ -20,7 +20,7 @@
 // a stop into a Result.
 
 import std.strings;
-
+import std.arrays;
 // The value a function produced, or the reason it could not.
 pub enum Result<T, E> {
     Ok(T),
@@ -160,7 +160,7 @@ pub fn trace(message: String, stack: [Location]) -> String {
 fn locations(parts: [String], from: Int) -> [Location] {
     let out: [Location] = [];
     let i = from;
-    while i + 3 < parts.length {
+    while i + 3 < arrays.len(parts) {
         push(out, Location {
             function: parts[i],
             file: parts[i + 1],
@@ -229,7 +229,7 @@ fn caught() -> Failure {
 pub fn failureOf(parts: [String]) -> Failure {
     let stack = locations(parts, 2);
     let at = Location { function: "", file: "", line: 0, column: 0 };
-    if stack.length > 0 { at = stack[0]; }
+    if arrays.len(stack) > 0 { at = stack[0]; }
     return Failure { kind: kindOf(parts[0]), message: parts[1], at: at, stack: stack };
 }
 

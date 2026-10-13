@@ -39,7 +39,7 @@ pub fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
     let out: [T] = [];
     let i = from;
     if i < 0 { i = 0; }
-    while i < to && i < items.length {
+    while i < to && i < len(items) {
         push(out, items[i]);
         i++;
     }
@@ -56,7 +56,7 @@ pub fn concat<T>(first: [T], second: [T]) -> [T] {
 
 pub fn reversed<T>(items: [T]) -> [T] {
     let out: [T] = [];
-    let i = items.length - 1;
+    let i = len(items) - 1;
     while i >= 0 {
         push(out, items[i]);
         i--;
@@ -80,7 +80,7 @@ pub fn inserted<T>(items: [T], index: Int, value: T) -> [T] {
         if i == index { push(out, value); }
         push(out, item);
     }
-    if index >= items.length { push(out, value); }
+    if index >= len(items) { push(out, value); }
     return out;
 }
 
@@ -88,19 +88,19 @@ pub fn inserted<T>(items: [T], index: Int, value: T) -> [T] {
 
 // The first item, or null for an empty array.
 pub fn first<T>(items: [T]) -> T? {
-    if items.length == 0 { return null; }
+    if len(items) == 0 { return null; }
     return items[0];
 }
 
 // The last item, or null for an empty array.
 pub fn last<T>(items: [T]) -> T? {
-    if items.length == 0 { return null; }
-    return items[items.length - 1];
+    if len(items) == 0 { return null; }
+    return items[len(items) - 1];
 }
 
 // The item at `index`, or null if there is none there.
 pub fn at<T>(items: [T], index: Int) -> T? {
-    if index < 0 || index >= items.length { return null; }
+    if index < 0 || index >= len(items) { return null; }
     return items[index];
 }
 
@@ -132,7 +132,7 @@ pub fn indexOf<T>(items: [T], wanted: T) -> Int? {
 
 // --- Asking ---
 
-pub fn isEmpty<T>(items: [T]) -> Bool { return items.length == 0; }
+pub fn isEmpty<T>(items: [T]) -> Bool { return len(items) == 0; }
 
 // Whether an item is equal to `wanted`; see indexOf.
 pub fn contains<T>(items: [T], wanted: T) -> Bool {
@@ -204,15 +204,15 @@ pub fn each<T>(items: [T], action: fn(T) -> Void) {
 // argument must come before its second. Items that are equal in that
 // order stay in the order they were in.
 pub fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
-    if items.length < 2 { return copy<T>(items); }
-    let middle = items.length / 2;
+    if len(items) < 2 { return copy<T>(items); }
+    let middle = len(items) / 2;
     let left = sorted<T>(slice<T>(items, 0, middle), before);
-    let right = sorted<T>(slice<T>(items, middle, items.length), before);
+    let right = sorted<T>(slice<T>(items, middle, len(items)), before);
 
     let out: [T] = [];
     let l = 0;
     let r = 0;
-    while l < left.length && r < right.length {
+    while l < len(left) && r < len(right) {
         if before(right[r], left[l]) {
             push(out, right[r]);
             r++;
@@ -221,8 +221,8 @@ pub fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
             l++;
         }
     }
-    while l < left.length { push(out, left[l]); l++; }
-    while r < right.length { push(out, right[r]); r++; }
+    while l < len(left) { push(out, left[l]); l++; }
+    while r < len(right) { push(out, right[r]); r++; }
     return out;
 }
 
@@ -269,15 +269,15 @@ pub fn swap<T>(items: [T], a: Int, b: Int) {
 // The first `count` items, or all of them if there are fewer.
 pub fn take<T>(items: [T], count: Int) -> [T] {
     if count <= 0 { return []; }
-    if count >= items.length { return copy<T>(items); }
+    if count >= len(items) { return copy<T>(items); }
     return slice<T>(items, 0, count);
 }
 
 // All but the first `count` items.
 pub fn drop<T>(items: [T], count: Int) -> [T] {
     if count <= 0 { return copy<T>(items); }
-    if count >= items.length { return []; }
-    return slice<T>(items, count, items.length);
+    if count >= len(items) { return []; }
+    return slice<T>(items, count, len(items));
 }
 
 // The items in pieces of `size`, the last one shorter if it does not
@@ -286,9 +286,9 @@ pub fn chunks<T>(items: [T], size: Int) -> [[T]] {
     if size <= 0 { panic("the size of a chunk must be at least 1, got ${size}"); }
     let out: [[T]] = [];
     let from = 0;
-    while from < items.length {
+    while from < len(items) {
         let to = from + size;
-        if to > items.length { to = items.length; }
+        if to > len(items) { to = len(items); }
         push(out, slice<T>(items, from, to));
         from = to;
     }
@@ -379,7 +379,7 @@ pub fn partition<T>(items: [T], wanted: fn(T) -> Bool) -> ([T], [T]) {
 pub fn zip<A, B>(first: [A], second: [B]) -> [(A, B)] {
     let out: [(A, B)] = [];
     for i, item in first {
-        if i >= second.length { break; }
+        if i >= len(second) { break; }
         push(out, (item, second[i]));
     }
     return out;
@@ -413,7 +413,7 @@ pub fn sum(numbers: [Int]) -> Int {
 
 // The smallest number, or null for an empty array.
 pub fn smallest(numbers: [Int]) -> Int? {
-    if numbers.length == 0 { return null; }
+    if len(numbers) == 0 { return null; }
     let best = numbers[0];
     for n in numbers {
         if n < best { best = n; }
@@ -423,7 +423,7 @@ pub fn smallest(numbers: [Int]) -> Int? {
 
 // The largest number, or null for an empty array.
 pub fn largest(numbers: [Int]) -> Int? {
-    if numbers.length == 0 { return null; }
+    if len(numbers) == 0 { return null; }
     let best = numbers[0];
     for n in numbers {
         if n > best { best = n; }

@@ -32,7 +32,7 @@ pub fn grouped(n: Int) -> String {
 pub fn groupedWith(n: Int, separator: String) -> String {
     let digits = toString(math.abs(n));
     let groups: [String] = [];
-    let end = digits.length;
+    let end = strings.len(digits);
     while end > 3 {
         push(groups, strings.substring(digits, end - 3, end));
         end -= 3;
@@ -46,7 +46,7 @@ pub fn groupedWith(n: Int, separator: String) -> String {
 // A whole number with zeros in front, to a width: padded(7, 3) is "007".
 pub fn padded(n: Int, width: Int) -> String {
     let digits = toString(math.abs(n));
-    let zeros = strings.repeat("0", math.max(0, width - digits.length));
+    let zeros = strings.repeat("0", math.max(0, width - strings.len(digits)));
     if n < 0 { return "-" + zeros + digits; }
     return zeros + digits;
 }
@@ -70,7 +70,7 @@ pub fn bytes(size: Int) -> String {
     let units = ["B", "KB", "MB", "GB", "TB", "PB"];
     let amount = math.toFloat(size);
     let unit = 0;
-    while math.fabs(amount) >= 1024.0 && unit < units.length - 1 {
+    while math.fabs(amount) >= 1024.0 && unit < arrays.len(units) - 1 {
         amount = amount / 1024.0;
         unit++;
     }
@@ -119,7 +119,7 @@ pub enum Align { Left, Right, Center }
 
 // A text in a column of that width. One that is too long is left whole.
 pub fn pad(text: String, width: Int, align: Align) -> String {
-    let space = math.max(0, width - text.length);
+    let space = math.max(0, width - strings.len(text));
     match align {
         case Align.Left: { return text + strings.repeat(" ", space); }
         case Align.Right: { return strings.repeat(" ", space) + text; }
@@ -142,9 +142,9 @@ pub fn pad(text: String, width: Int, align: Align) -> String {
 pub fn table(titles: [String], rows: [[String]]) -> String {
     let aligns: [Align] = [];
     for column, _ in titles {
-        let numeric = rows.length > 0;
+        let numeric = arrays.len(rows) > 0;
         for row in rows {
-            if column < row.length && strings.parseFloat(row[column]) == null { numeric = false; }
+            if column < arrays.len(row) && strings.parseFloat(row[column]) == null { numeric = false; }
         }
         if numeric { push(aligns, Align.Right); } else { push(aligns, Align.Left); }
     }
@@ -153,10 +153,10 @@ pub fn table(titles: [String], rows: [[String]]) -> String {
 
 // The same, saying how each column is set.
 pub fn tableWith(titles: [String], aligns: [Align], rows: [[String]]) -> String {
-    let widths = arrays.map(titles, title -> title.length);
+    let widths = arrays.map(titles, title -> strings.len(title));
     for row in rows {
         for column, value in row {
-            if column < widths.length { widths[column] = math.max(widths[column], value.length); }
+            if column < arrays.len(widths) { widths[column] = math.max(widths[column], strings.len(value)); }
         }
     }
 

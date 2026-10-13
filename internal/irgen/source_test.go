@@ -24,10 +24,10 @@ func generateSource(t *testing.T, src string) (*ir.Program, *errors.Handler) {
 	for _, decl := range prog.Decls {
 		switch d := decl.(type) {
 		case *ast.FnDecl:
-			d.Module = "std.test"
+			d.Module = "std.arrays"
 		case *ast.ImplDecl:
 			for _, m := range d.Methods {
-				m.Module = "std.test"
+				m.Module = "std.arrays"
 			}
 		}
 	}

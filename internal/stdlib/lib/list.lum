@@ -3,7 +3,7 @@
 //
 //     let names = list.of(["ada", "linus"]);
 //     names.add("grace");
-//     names.filter(n -> n.length > 3).size()
+//     names.filter(n -> strings.len(n) > 3).size()
 
 import std.arrays;
 import std.ops.{Iterable, Indexed, IndexedSet};
@@ -38,9 +38,9 @@ pub fn of<T>(items: [T]) -> List<T> {
 }
 
 impl<T> List<T> {
-    pub fn size() -> Int { return self.items.length; }
+    pub fn size() -> Int { return arrays.len(self.items); }
 
-    pub fn isEmpty() -> Bool { return self.items.length == 0; }
+    pub fn isEmpty() -> Bool { return arrays.len(self.items) == 0; }
 
     // --- Changing the list ---
 
@@ -61,7 +61,7 @@ impl<T> List<T> {
     // Takes out the item at `index` and returns it, or null if there is
     // none there.
     pub fn removeAt(index: Int) -> T? {
-        if index < 0 || index >= self.items.length { return null; }
+        if index < 0 || index >= arrays.len(self.items) { return null; }
         let taken = self.items[index];
         self.items = arrays.without<T>(self.items, index);
         return taken;
@@ -69,7 +69,7 @@ impl<T> List<T> {
 
     // Takes out the last item and returns it, or null for an empty list.
     pub fn pop() -> T? {
-        return self.removeAt(self.items.length - 1);
+        return self.removeAt(arrays.len(self.items) - 1);
     }
 
     pub fn clear() {

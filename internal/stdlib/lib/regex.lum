@@ -61,7 +61,7 @@ pub fn compile(pattern: String) -> Result<Regex, PatternError> {
         return Result.Err(PatternError { pattern: pattern, message: wrong });
     }
     let names = groupNames(pattern);
-    return Result.Ok(Regex { pattern: pattern, names: arrays.slice(names, 1, names.length) });
+    return Result.Ok(Regex { pattern: pattern, names: arrays.slice(names, 1, arrays.len(names)) });
 }
 
 // The same, for a pattern written in the program: one that is wrong is a
@@ -137,7 +137,7 @@ impl Regex {
                 text: row[2],
                 start: strings.parseInt(row[0]) ?? 0,
                 end: strings.parseInt(row[1]) ?? 0,
-                groups: arrays.slice(row, 3, row.length),
+                groups: arrays.slice(row, 3, arrays.len(row)),
                 names: self.names,
             });
         }

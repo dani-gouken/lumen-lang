@@ -16,7 +16,7 @@ import std.result.{Result};
 import std.strings;
 import std.math;
 import std.ops.{Equal};
-
+import std.arrays;
 pub enum Json {
     Null,
     Bool(Bool),
@@ -112,7 +112,7 @@ impl Equal for Json {
             case (Json.Number(a), Json.Number(b)): { return a == b; }
             case (Json.String(a), Json.String(b)): { return a == b; }
             case (Json.Array(mine), Json.Array(theirs)): {
-                if mine.length != theirs.length { return false; }
+                if arrays.len(mine) != arrays.len(theirs) { return false; }
                 for i, item in mine {
                     if item != theirs[i] { return false; }
                 }
@@ -151,7 +151,7 @@ impl Json {
     pub fn at(index: Int) -> Json? {
         match self {
             case Json.Array(items): {
-                if index < 0 || index >= items.length { return null; }
+                if index < 0 || index >= arrays.len(items) { return null; }
                 return items[index];
             }
             default: { return null; }
@@ -254,7 +254,7 @@ impl Json {
             case Json.Number(x): { push(out, numeral(x)); }
             case Json.String(text): { push(out, quote(text)); }
             case Json.Array(items): {
-                if items.length == 0 { push(out, "[]"); return; }
+                if arrays.len(items) == 0 { push(out, "[]"); return; }
                 push(out, "[");
                 for i, item in items {
                     if i > 0 { push(out, ","); }

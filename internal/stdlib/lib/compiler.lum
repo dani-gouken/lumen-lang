@@ -80,7 +80,7 @@ pub fn check(path: String, source: String) -> [Problem] {
     let parts = diagnose(path, source);
     let out: [Problem] = [];
     let i = 0;
-    while i + 7 < parts.length {
+    while i + 7 < arrays.len(parts) {
         push(out, Problem {
             severity: severityOf(parts[i]),
             code: parts[i + 1],
@@ -139,7 +139,7 @@ pub fn symbols(path: String, source: String) -> [Symbol] {
     let parts = outline(path, source);
     let out: [Symbol] = [];
     let i = 0;
-    while i + 5 < parts.length {
+    while i + 5 < arrays.len(parts) {
         push(out, Symbol {
             kind: kindOf(parts[i]), name: parts[i + 1], detail: parts[i + 2], container: parts[i + 3],
             line: number(parts[i + 4]), column: number(parts[i + 5]),
@@ -164,7 +164,7 @@ pub struct Description {
 pub fn describe(path: String, source: String, line: Int, column: Int) -> Description? {
     // signature, doc, file, line, column, start column, end column
     let parts = describeAt(path, source, line, column);
-    if parts.length < 7 { return null; }
+    if arrays.len(parts) < 7 { return null; }
     let declared: Place? = null;
     if parts[2] != "" {
         declared = Place { file: parts[2], line: number(parts[3]), column: number(parts[4]) };
@@ -192,7 +192,7 @@ pub fn complete(path: String, source: String, line: Int, column: Int) -> [Sugges
     let parts = completeAt(path, source, line, column);
     let out: [Suggestion] = [];
     let i = 0;
-    while i + 2 < parts.length {
+    while i + 2 < arrays.len(parts) {
         push(out, Suggestion { label: parts[i], kind: kindOf(parts[i + 1]), detail: parts[i + 2] });
         i += 3;
     }

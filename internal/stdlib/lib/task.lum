@@ -74,7 +74,7 @@ impl<T> Task<T> {
     // times, by any number of tasks.
     pub fn wait() -> Result<T, Failure> {
         join(self.id);
-        if self.outcome.values.length > 0 {
+        if arrays.len(self.outcome.values) > 0 {
             return Result.Ok(self.outcome.values[0]);
         }
         let known = self.outcome.failure;
@@ -197,7 +197,7 @@ impl<T> Channel<T> {
     pub fn each(action: fn(T) -> Void) {
         while true {
             let next = self.take();
-            if next.length == 0 { return; }
+            if arrays.len(next) == 0 { return; }
             action(next[0]);
         }
     }
@@ -223,7 +223,7 @@ impl<T> Channel<T> {
     pub fn isClosed() -> Bool { return self.closed; }
 
     // How many values are waiting to be received.
-    pub fn length() -> Int { return self.items.length - self.head; }
+    pub fn length() -> Int { return arrays.len(self.items) - self.head; }
 
     // The next value in an array of one, or an empty array once the
     // channel is closed and empty: a value may itself be null.
@@ -237,7 +237,7 @@ impl<T> Channel<T> {
         }
         let value = self.items[self.head];
         self.head++;
-        if self.head >= 32 && self.head * 2 >= self.items.length {
+        if self.head >= 32 && self.head * 2 >= arrays.len(self.items) {
             self.items = arrays.drop(self.items, self.head);
             self.head = 0;
         }

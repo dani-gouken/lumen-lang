@@ -372,6 +372,38 @@ func TestLibraryFilesOnDisk(t *testing.T) {
 	}
 }
 
+// A file of the library opened in an editor is a module of std: its
+// extern functions are the runtime's, and what is wrong in it is said at
+// its own lines.
+func TestCheckLibraryFiles(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", filepath.Join(t.TempDir(), "cache"))
+	for _, name := range []string{"path", "math", "fs", "task", "result", "http"} {
+		copied := OnDisk("<std>/" + name + ".lum")
+		data, err := os.ReadFile(copied)
+		if err != nil {
+			t.Fatalf("std.%s: %v", name, err)
+		}
+		for _, path := range []string{copied, filepath.Join("checkout", "internal", "stdlib", "lib", name+".lum")} {
+			if got := Check(path, string(data)); len(got) != 0 {
+				t.Errorf("%s: expected nothing to report, got %+v", path, got)
+			}
+		}
+	}
+
+	path := OnDisk("<std>/path.lum")
+	data, _ := os.ReadFile(path)
+	broken := strings.Replace(string(data), "return joined(parts);", "return joined(part);", 1)
+	got := Check(path, broken)
+	if len(got) != 1 || got[0].Code != "E1001" || got[0].File != path || !strings.Contains(strings.Split(broken, "\n")[got[0].Line-1], "joined(part)") {
+		t.Errorf("expected the undefined name at its line of %s, got %+v", path, got)
+	}
+	// A file of the same name anywhere else is a program like any other
+	if got := Check(filepath.Join(t.TempDir(), "path.lum"), string(data)); len(got) == 0 {
+		t.Error("expected a file outside the library to be checked as a program")
+	}
+}
+
 // On an import line what is suggested is modules, then what a module
 // makes public.
 func TestCompleteImports(t *testing.T) {

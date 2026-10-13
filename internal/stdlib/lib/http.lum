@@ -406,18 +406,18 @@ impl Router {
 fn fit(route: [String], path: [String]) -> Dict<String>? {
     let params = dict.empty<String>();
     for i, part in route {
-        if part == "*" && i == route.length - 1 {
-            params.set("rest", strings.join(arrays.slice(path, math.min(i, path.length), path.length), "/"));
+        if part == "*" && i == arrays.len(route) - 1 {
+            params.set("rest", strings.join(arrays.slice(path, math.min(i, arrays.len(path)), arrays.len(path)), "/"));
             return params;
         }
-        if i >= path.length { return null; }
+        if i >= arrays.len(path) { return null; }
         if strings.startsWith(part, ":") {
             params.set(strings.from(part, 1), path[i]);
         } else if part != path[i] {
             return null;
         }
     }
-    if path.length != route.length { return null; }
+    if arrays.len(path) != arrays.len(route) { return null; }
     return params;
 }
 
@@ -451,7 +451,7 @@ fn pairs(headers: Dict<String>) -> [String] {
 fn paired(parts: [String], from: Int) -> Dict<String> {
     let out = dict.empty<String>();
     let i = from;
-    while i + 1 < parts.length {
+    while i + 1 < arrays.len(parts) {
         out.set(parts[i], parts[i + 1]);
         i += 2;
     }

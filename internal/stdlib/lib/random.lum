@@ -2,6 +2,7 @@
 //
 // Without a seed the numbers differ on every run. After seed(n) they are
 // the same on every run, for the same n: useful to test, or to replay.
+import std.arrays;
 
 pub extern fn seed(n: Int);
 
@@ -28,13 +29,13 @@ pub fn chance(probability: Float) -> Bool {
 
 // One of the items, or null for an empty array.
 pub fn pick<T>(items: [T]) -> T? {
-    if items.length == 0 { return null; }
-    return items[below(items.length)];
+    if arrays.len(items) == 0 { return null; }
+    return items[below(arrays.len(items))];
 }
 
 // Changes the array itself: puts its items in a random order.
 pub fn shuffle<T>(items: [T]) {
-    let i = items.length - 1;
+    let i = arrays.len(items) - 1;
     while i > 0 {
         let j = below(i + 1);
         let held = items[i];

@@ -2,7 +2,7 @@
 //
 // Positions count characters from 0, like text[i]. A range `from, to`
 // includes from and stops before to.
-
+import std.arrays;
 // How many bytes a text takes in UTF-8: "é" is one character and two
 // bytes. For what counts in bytes: a file's size, the length a protocol
 // announces.
@@ -21,21 +21,21 @@ pub extern fn substring(text: String, from: Int, to: Int) -> String;
 
 // The text from position `from` to its end.
 pub fn from(text: String, from: Int) -> String {
-    return substring(text, from, text.length);
+    return substring(text, from, len(text));
 }
 
 // The first `count` characters, or the whole text if it is shorter.
 pub fn first(text: String, count: Int) -> String {
-    if count >= text.length { return text; }
+    if count >= len(text) { return text; }
     if count < 0 { return ""; }
     return substring(text, 0, count);
 }
 
 // The last `count` characters, or the whole text if it is shorter.
 pub fn last(text: String, count: Int) -> String {
-    if count >= text.length { return text; }
+    if count >= len(text) { return text; }
     if count < 0 { return ""; }
-    return substring(text, text.length - count, text.length);
+    return substring(text, len(text) - count, len(text));
 }
 
 // The pieces between occurrences of the separator: split("a,b", ",") is
@@ -50,10 +50,10 @@ pub fn chars(text: String) -> [String] {
 pub fn lines(text: String) -> [String] {
     let parts = split(replace(text, "\r\n", "\n"), "\n");
     // A text ending in a line end has no empty line after it
-    if parts.length > 0 && parts[parts.length - 1] == "" {
+    if arrays.len(parts) > 0 && parts[arrays.len(parts) - 1] == "" {
         let out: [String] = [];
         for i, part in parts {
-            if i < parts.length - 1 { push(out, part); }
+            if i < arrays.len(parts) - 1 { push(out, part); }
         }
         return out;
     }
@@ -86,20 +86,20 @@ pub extern fn repeat(text: String, count: Int) -> String;
 
 // The text with spaces in front until it is `width` characters long.
 pub fn padLeft(text: String, width: Int) -> String {
-    if text.length >= width { return text; }
-    return repeat(" ", width - text.length) + text;
+    if len(text) >= width { return text; }
+    return repeat(" ", width - len(text)) + text;
 }
 
 // The text with spaces after it until it is `width` characters long.
 pub fn padRight(text: String, width: Int) -> String {
-    if text.length >= width { return text; }
-    return text + repeat(" ", width - text.length);
+    if len(text) >= width { return text; }
+    return text + repeat(" ", width - len(text));
 }
 
 pub fn reverse(text: String) -> String {
     let parts = chars(text);
     let out: [String] = [];
-    let i = parts.length - 1;
+    let i = arrays.len(parts) - 1;
     while i >= 0 {
         push(out, parts[i]);
         i--;
@@ -125,23 +125,23 @@ pub fn contains(text: String, part: String) -> Bool {
 //     let (name, value) = strings.cut("port=8080", "=") ?? ("", "");
 pub fn cut(text: String, separator: String) -> (String, String)? {
     let at = indexOf(text, separator)?;
-    return (first(text, at), from(text, at + separator.length));
+    return (first(text, at), from(text, at + len(separator)));
 }
 
 pub fn startsWith(text: String, start: String) -> Bool {
-    if start.length > text.length { return false; }
-    return substring(text, 0, start.length) == start;
+    if len(start) > len(text) { return false; }
+    return substring(text, 0, len(start)) == start;
 }
 
 pub fn endsWith(text: String, end: String) -> Bool {
-    if end.length > text.length { return false; }
-    return substring(text, text.length - end.length, text.length) == end;
+    if len(end) > len(text) { return false; }
+    return substring(text, len(text) - len(end), len(text)) == end;
 }
 
 // How many times `part` occurs, not counting overlaps.
 pub fn count(text: String, part: String) -> Int {
     if part == "" { return 0; }
-    return split(text, part).length - 1;
+    return arrays.len(split(text, part)) - 1;
 }
 
 // --- Changing ---
@@ -162,15 +162,15 @@ pub extern fn trimEnd(text: String) -> String;
 // The first character in upper case: capitalize("ada") is "Ada".
 pub fn capitalize(text: String) -> String {
     if text == "" { return text; }
-    return upper(substring(text, 0, 1)) + substring(text, 1, text.length);
+    return upper(substring(text, 0, 1)) + substring(text, 1, len(text));
 }
 
 // --- Asking ---
 
-pub fn isEmpty(text: String) -> Bool { return text.length == 0; }
+pub fn isEmpty(text: String) -> Bool { return len(text) == 0; }
 
 // Empty, or only spaces, tabs and line ends.
-pub fn isBlank(text: String) -> Bool { return trim(text).length == 0; }
+pub fn isBlank(text: String) -> Bool { return len(trim(text)) == 0; }
 
 // Whether every character is a digit, and there is at least one.
 pub fn isDigits(text: String) -> Bool {

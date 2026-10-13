@@ -137,14 +137,14 @@ fn dumpAt(value: Any, depth: Int) -> String {
         case "string": { return "\"" + toString(value) + "\""; }
         case "struct": {
             let names = fieldNames(value);
-            if names.length == 0 { return typeName(value) + " { }"; }
+            if arrays.len(names) == 0 { return typeName(value) + " { }"; }
             let lines = arrays.map(names, name -> "${inner}${name}: ${dumpAt(field(value, name), depth + 1)}");
             return "${typeName(value)} {\n${strings.join(lines, "\n")}\n${outer}}";
         }
         case "variant": {
             let held = arrays.map(fieldNames(value), position -> dumpAt(field(value, position), depth + 1));
             let name = "${typeName(value)}.${variantName(value)}";
-            if held.length == 0 { return name; }
+            if arrays.len(held) == 0 { return name; }
             return "${name}(${strings.join(held, ", ")})";
         }
         case "tuple": {
@@ -153,7 +153,7 @@ fn dumpAt(value: Any, depth: Int) -> String {
         }
         case "array": {
             let all = items(value);
-            if all.length == 0 { return "[]"; }
+            if arrays.len(all) == 0 { return "[]"; }
             let lines = arrays.map(all, item -> inner + dumpAt(item, depth + 1));
             return "[\n${strings.join(lines, ",\n")}\n${outer}]";
         }

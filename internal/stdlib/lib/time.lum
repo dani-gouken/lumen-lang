@@ -225,14 +225,14 @@ impl Date {
         let hour12 = (self.hour + 11) % 12 + 1;
         let out: [String] = [];
         let i = 0;
-        while i < pattern.length {
+        while i < strings.len(pattern) {
             // The longest run of the same letter
             let letter = pattern[i];
             let run = 1;
-            while i + run < pattern.length && pattern[i + run] == letter { run++; }
+            while i + run < strings.len(pattern) && pattern[i + run] == letter { run++; }
 
             if letter == "[" {
-                let close = strings.indexOf(strings.from(pattern, i), "]") ?? pattern.length - i;
+                let close = strings.indexOf(strings.from(pattern, i), "]") ?? strings.len(pattern) - i;
                 push(out, strings.substring(pattern, i + 1, i + close));
                 i += close + 1;
                 continue;
@@ -314,7 +314,7 @@ impl Date {
 
 fn pad(n: Int, width: Int) -> String {
     let digits = toString(n);
-    return strings.repeat("0", math.max(0, width - digits.length)) + digits;
+    return strings.repeat("0", math.max(0, width - strings.len(digits))) + digits;
 }
 
 extern fn fields(moment: Int, isLocal: Bool) -> [Int];

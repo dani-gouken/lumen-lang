@@ -418,7 +418,7 @@ fn port(config: Config) -> Int? {
 ```
 
 *   **`a ?? b`** is `a`, or `b` when `a` is null.
-*   **`value?.member`** reads a field or calls a method when the value is not null, and gives null when it is. All that follows on the same chain is done with the value too: in `user?.name.length`, the length is taken when there is a user. A step that may itself be null needs a `?.` of its own, as `address` above. On a value that can never be null it is an error (`E2035`): use a dot.
+*   **`value?.member`** reads a field or calls a method when the value is not null, and gives null when it is. All that follows on the same chain is done with the value too: in `user?.address.city`, the city is read when there is a user. A step that may itself be null needs a `?.` of its own, as `address` above. On a value that can never be null it is an error (`E2035`): use a dot.
 *   **`value?`** after an expression gives the value, and returns `null` from the enclosing function if there is none. The function has to be one that may return null, or one that returns nothing, which it then simply ends. The same `?` passes on the failure of a [`Result`](#failures).
 
 What a test established about a variable also holds inside a function written after it, as long as nothing ever assigns the variable again:

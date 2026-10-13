@@ -36,7 +36,7 @@ pub fn parseWith(text: String, separator: String) -> Result<[[String]], ParseErr
     if found == null {
         let parts = problem();
         let where = strings.split(parts[0], ":");
-        if where.length < 2 {
+        if arrays.len(where) < 2 {
             return Result.Err(ParseError { message: parts[1], line: 0, column: 0 });
         }
         return Result.Err(ParseError {
@@ -69,24 +69,24 @@ pub fn table(text: String) -> Result<Table, ParseError> {
 }
 
 fn asTable(all: [[String]]) -> Result<Table, ParseError> {
-    if all.length == 0 {
+    if arrays.len(all) == 0 {
         return Result.Err(ParseError { message: "there is no header row", line: 0, column: 0 });
     }
     let header = all[0];
     for i, row in all {
-        if row.length != header.length {
+        if arrays.len(row) != arrays.len(header) {
             return Result.Err(ParseError {
-                message: "expected ${header.length} values, as in the header, found ${row.length}",
+                message: "expected ${arrays.len(header)} values, as in the header, found ${arrays.len(row)}",
                 line: i + 1,
                 column: 1,
             });
         }
     }
-    return Result.Ok(Table { header: header, rows: arrays.slice(all, 1, all.length) });
+    return Result.Ok(Table { header: header, rows: arrays.slice(all, 1, arrays.len(all)) });
 }
 
 impl Table {
-    pub fn size() -> Int { return self.rows.length; }
+    pub fn size() -> Int { return arrays.len(self.rows); }
 
     // The values of a column, or null if there is none of that name.
     pub fn column(name: String) -> [String]? {
@@ -99,7 +99,7 @@ impl Table {
     // The value of a column in a row, or null.
     pub fn cell(row: Int, name: String) -> String? {
         let at = arrays.indexOf(self.header, name);
-        if at == null || row < 0 || row >= self.rows.length { return null; }
+        if at == null || row < 0 || row >= arrays.len(self.rows) { return null; }
         return self.rows[row][at];
     }
 

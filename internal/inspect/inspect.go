@@ -141,10 +141,39 @@ func Check(path, src string) []Diagnostic {
 	defer lock.Unlock()
 
 	errs := errors.NewHandler()
-	compiler.CompileOptions(src, path, options(path), errs)
+	library := libraryFile(path)
+	if library != "" {
+		// A file of the standard library is a module of std, not a
+		// program: checked as one, by a program that imports it. Its
+		// extern functions are the runtime's under that name only.
+		opts := options(path)
+		read := opts.Read
+		opts.Root = ""
+		opts.Packages = map[string]string{stdlib.Package: stdlib.Root}
+		opts.Read = func(file string) (string, error) {
+			switch {
+			case file == library:
+				return src, nil
+			case stdlib.IsPath(file):
+				return stdlib.Read(file)
+			}
+			return read(file)
+		}
+		module := stdlib.Package + "." + strings.TrimSuffix(strings.TrimPrefix(library, stdlib.Root+"/"), ".lum")
+		compiler.CompileOptions("import "+module+";\nfn main() -> Int { return 0; }\n", libraryProbe, opts, errs)
+	} else {
+		compiler.CompileOptions(src, path, options(path), errs)
+	}
 
 	out := make([]Diagnostic, 0, len(errs.Diagnostics))
 	for _, d := range errs.Diagnostics {
+		if library != "" {
+			if d.Pos.File != library {
+				// Of the program that imports it, or of another module
+				continue
+			}
+			d.Pos.File = path
+		}
 		if d.Code == missingMain {
 			// A file without a main is a module: checked as a program
 			// because that is the only way to check it, not because it
@@ -173,6 +202,29 @@ func Check(path, src string) []Diagnostic {
 		out = append(out, one)
 	}
 	return out
+}
+
+// libraryProbe is the name of the program a file of the library is
+// checked through.
+const libraryProbe = "<check>.lum"
+
+// libraryFile gives the name the library knows a file on disk by,
+// "<std>/math.lum", or "" for a file that is not one of its own: the
+// copies OnDisk writes out for an editor to open, and the sources of the
+// library in a checkout of lumen.
+func libraryFile(path string) string {
+	name := stdlib.Root + "/" + filepath.Base(path)
+	if _, err := stdlib.Read(name); err != nil {
+		return ""
+	}
+	dir := filepath.ToSlash(filepath.Dir(absolute(path)))
+	if strings.HasSuffix(dir, "/internal/stdlib/lib") {
+		return name
+	}
+	if base, err := os.UserCacheDir(); err == nil && dir == filepath.ToSlash(filepath.Join(base, "lumen", "std")) {
+		return name
+	}
+	return ""
 }
 
 // --- What a file declares ---
@@ -1040,6 +1092,15 @@ func Complete(path, src string, line, column int) []Completion {
 	// A line being typed seldom reads as a program. What it needs is
 	// around it: the same text without that line.
 	analysis := analyze(path, src)
+	if caseHead := caseHeadOf(string(before)); analysis.Info == nil && caseHead != "" {
+		// The line of a case keeps its pattern, whose names are what is
+		// being typed with: `case Shape.Circle(r) if r.`
+		kept := append([]string{}, lines...)
+		kept[line-1] = strings.TrimSuffix(caseHead, ":") + `: { panic(""); }`
+		if with := analyze(path, strings.Join(kept, "\n")); with.Info != nil {
+			analysis = with
+		}
+	}
 	if analysis.Info == nil {
 		blank := append([]string{}, lines...)
 		blank[line-1] = ""
@@ -1434,12 +1495,28 @@ func probe(path, src string, e expression) (types.Type, *ast.Program) {
 
 	var text strings.Builder
 	text.WriteString(head)
-	text.WriteString("\nlet " + probeName + " = " + e.text + ";\n")
-	open := openBrackets(head)
+	open, at := openBracketsAt(head)
+	inMatch := len(open) > 0 && open[len(open)-1] == '{' && matchBefore(runes, at[len(open)-1]) >= 0
+
+	// In a case written as an expression, `case Shape.At(place): place.`,
+	// the statement is the case: the question is asked in a block of that
+	// case, where the names of its pattern exist
+	question := "\nlet " + probeName + " = " + e.text + ";\n"
+	if caseHead := caseHeadOf(string(runes[start:e.start])); inMatch && caseHead != "" {
+		caseHead = strings.TrimSuffix(caseHead, ":") + ":"
+		question = "\n" + caseHead + " {" + question + "}\n"
+	}
+	text.WriteString(question)
+
 	for i := len(open) - 1; i >= 0; i-- {
 		switch open[i] {
 		case '{':
 			text.WriteString("}")
+			// A match that gives a value is part of a statement, which
+			// ends after it: let word = match n { ... };
+			if m := matchBefore(runes, at[i]); m >= 0 && !startsStatement(runes, m) && (i == 0 || open[i-1] == '{') {
+				text.WriteString(";")
+			}
 		case '(':
 			text.WriteString(")")
 		case '[':
@@ -1470,10 +1547,77 @@ func probe(path, src string, e expression) (types.Type, *ast.Program) {
 // probeName is the variable the expression asked about is given to.
 const probeName = "__asked"
 
+// matchBefore finds the `match` a brace opens the cases of: the position
+// of the word, or -1 when the brace at the given position opens something
+// else.
+func matchBefore(runes []rune, brace int) int {
+	for i := brace - 1; i >= 4; i-- {
+		switch runes[i] {
+		case '{', '}', ';':
+			return -1
+		}
+		if string(runes[i-4:i+1]) == "match" && (i-5 < 0 || !isNameRune(runes[i-5])) && !isNameRune(runes[i+1]) {
+			return i - 4
+		}
+	}
+	return -1
+}
+
+// startsStatement reports whether what is at a position is the first
+// thing of its statement: only space separates it from the `;` or the
+// brace before it.
+func startsStatement(runes []rune, at int) bool {
+	for i := at - 1; i >= 0; i-- {
+		switch runes[i] {
+		case ' ', '\t', '\n', '\r':
+			continue
+		case ';', '{', '}':
+			return true
+		}
+		return false
+	}
+	return true
+}
+
+// caseHeadOf gives the `case pattern:` or `default:` a text starts with,
+// colon included, or "" when it starts with something else.
+func caseHeadOf(text string) string {
+	trimmed := strings.TrimLeft(text, " \t\r\n")
+	if !strings.HasPrefix(trimmed, "case ") && !strings.HasPrefix(trimmed, "default:") {
+		return ""
+	}
+	depth, quoted := 0, false
+	for i, r := range trimmed {
+		switch {
+		case r == '"' && (i == 0 || trimmed[i-1] != '\\'):
+			quoted = !quoted
+		case quoted:
+		case r == '(' || r == '[':
+			depth++
+		case r == ')' || r == ']':
+			depth--
+		case r == ':' && depth == 0:
+			return trimmed[:i+1]
+		}
+	}
+	// The colon is still to come: a condition is being typed
+	if at := strings.Index(trimmed, " if "); at > 0 {
+		return trimmed[:at]
+	}
+	return ""
+}
+
 // openBrackets lists the brackets a text opens and does not close, in
 // order, leaving aside what texts and comments hold.
 func openBrackets(text string) []rune {
+	open, _ := openBracketsAt(text)
+	return open
+}
+
+// openBracketsAt is openBrackets with the position of each bracket.
+func openBracketsAt(text string) ([]rune, []int) {
 	var open []rune
+	var at []int
 	runes := []rune(text)
 	for i := 0; i < len(runes); i++ {
 		switch r := runes[i]; r {
@@ -1502,13 +1646,15 @@ func openBrackets(text string) []rune {
 			}
 		case '(', '[', '{':
 			open = append(open, r)
+			at = append(at, i)
 		case ')', ']', '}':
 			if len(open) > 0 {
 				open = open[:len(open)-1]
+				at = at[:len(at)-1]
 			}
 		}
 	}
-	return open
+	return open, at
 }
 
 // holderBefore looks at the text before the cursor: for `shape.ar` it
@@ -1710,6 +1856,28 @@ func localsAt(analysis *compiler.Analysis, file string, line int) map[string]typ
 	types.WalkStmts(fn.Body, func(stmt ast.Stmt) {
 		if let, ok := stmt.(*ast.LetStmt); ok && let.Position().Line < line {
 			out[let.Name] = typeOf(let.Value)
+		}
+	})
+	// The variables of loops and the names of patterns, used yet or not
+	types.WalkStmts(fn.Body, func(stmt ast.Stmt) {
+		if loop, ok := stmt.(*ast.ForStmt); ok && loop.Position().Line < line {
+			if _, listed := out[loop.Var]; !listed && !strings.HasPrefix(loop.Var, "__") {
+				out[loop.Var] = nil
+			}
+			if loop.Index != nil {
+				if _, listed := out[loop.Index.Name]; !listed {
+					out[loop.Index.Name] = nil
+				}
+			}
+		}
+	})
+	eachPattern(fn.Body, func(pattern *ast.VariantPattern) {
+		for _, arg := range pattern.Args {
+			if binding, ok := arg.(*ast.BindingPattern); ok && !binding.Ignored() && binding.Position().Line <= line {
+				if _, listed := out[binding.Name]; !listed {
+					out[binding.Name] = nil
+				}
+			}
 		}
 	})
 	if analysis.Info == nil || analysis.Table == nil {
