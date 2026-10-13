@@ -28,6 +28,26 @@ func (d *Desugarer) constOf(ident *ast.Ident) *ast.ConstDecl {
 // The new nodes are positioned at the use: if working the value out fails
 // when the program runs (a division by zero), that is the line to show.
 func (d *Desugarer) inlineConstant(value ast.Expr, at ast.BaseNode, depth int) ast.Expr {
+	switch value.(type) {
+	case *ast.StructInitExpr, *ast.ArrayLiteralExpr, *ast.MemberExpr:
+		// A struct, an array, a value of an enum: made again here, as
+		// the constant has it. Each use has its own, so that changing
+		// one does not change what the constant is elsewhere.
+		return d.desugarExpr(value)
+	case *ast.CallExpr:
+		if _, variant := d.variantOf(value.(*ast.CallExpr).Func); variant != nil {
+			return d.desugarExpr(value)
+		}
+	}
+	inlined := d.inlineConstantAsWritten(value, at, depth)
+	if node, ok := value.(ast.Widenable); ok && node.IsWidened() {
+		// const HALF: Float = 1; is a Float wherever it is used
+		return d.asFloat(inlined)
+	}
+	return inlined
+}
+
+func (d *Desugarer) inlineConstantAsWritten(value ast.Expr, at ast.BaseNode, depth int) ast.Expr {
 	// The type checker rejects a constant defined in terms of itself; this
 	// only keeps a mistake there from becoming an endless loop here
 	if depth > 1000 {

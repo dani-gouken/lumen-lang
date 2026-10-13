@@ -1487,3 +1487,77 @@ func TestWholeNumbersAreTakenForFloats(t *testing.T) {
 		"4 5 3 3 1024",
 		"3 1 Int Int true")
 }
+
+// Constants that are structs, arrays and values of enums: made of
+// constants, used anywhere, and each use a value of its own.
+func TestConstantsThatAreStructsAndArrays(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+		import std.strings;
+
+		struct Color { r: Int; g: Int; b: Int; a: Int = 255; }
+		struct Vec { x: Float; y: Float; }
+		struct Theme { name: String; ink: Color; paper: Color; margins: [Int]; }
+		enum Light { Red, Amber, Green }
+		enum Shape { Circle(Float), Rect(Float, Float) }
+
+		const SIZE = 3;
+		const RED = Color { r: 230, g: 41, b: 55 };
+		const CLEAR = Color { r: 0, g: 0, b: 0, a: SIZE - 3 };
+		const ORIGIN = Vec { x: 0, y: SIZE };
+		const PRIMES = [2, 3, 5, 7, SIZE * 4 - 1];
+		const PALETTE = [RED, CLEAR, Color { r: 1, g: 2, b: SIZE }];
+		const DAYS = ["mon", "tue", "wed"];
+		const GRID = [[1, 0], [0, 1]];
+		const START = Light.Red;
+		const ORDER = [Light.Red, Light.Amber, Light.Green];
+		const UNIT = Shape.Circle(1);
+		const PAGE = Shape.Rect(21, 29.5);
+		const ONE: Float = 1;
+		const HALF = ONE / 2;
+		const PLAIN = Theme { name: "plain ${SIZE}", ink: CLEAR, paper: Color { r: 255, g: 255, b: 255 }, margins: [SIZE, SIZE * 2] };
+
+		fn area(shape: Shape) -> Float {
+			return match shape {
+				case Shape.Circle(r): 3 * r * r;
+				case Shape.Rect(w, h): w * h;
+			};
+		}
+		fn brightest(colors: [Color]) -> Int { return arrays.largest(arrays.map(colors, c -> c.r + c.g + c.b)) ?? 0; }
+
+		fn main() {
+			println(RED.r, RED.g, RED.b, RED.a, CLEAR.a, ORIGIN.x, ORIGIN.y / 2);
+			println(PRIMES, arrays.sum(PRIMES), PRIMES[4], arrays.len(PALETTE), PALETTE[2].b, brightest(PALETTE));
+			println(DAYS |> strings.join("-"), GRID[1][1], GRID, START == Light.Red, arrays.len(ORDER), ORDER[2] == Light.Green);
+			println(area(UNIT), area(PAGE), ONE / 2, HALF, HALF * 2 == ONE);
+			println(PLAIN.name, PLAIN.ink.a, PLAIN.paper.r, PLAIN.margins, PLAIN.paper.a);
+
+			// Each use is a value of its own: changing one changes nothing else
+			let mine = RED;
+			mine.r = 0;
+			let more = PRIMES;
+			push(more, 13);
+			let theme = PLAIN;
+			theme.ink.a = 99;
+			push(theme.margins, 1);
+			println(mine.r, RED.r, more, PRIMES, theme.ink.a, PLAIN.ink.a, CLEAR.a, PLAIN.margins);
+
+			// In a loop, a pattern and a closure
+			let total = 0;
+			for p in PRIMES { total += p; }
+			let reds = arrays.map([1, 2], n -> RED.r * n);
+			match START { case Light.Red: println(total, reds, "stop"); default: println("go"); }
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out,
+		"230 41 55 255 0 0 1.5",
+		"[2, 3, 5, 7, 11] 28 11 3 3 326",
+		"mon-tue-wed 1 [[1, 0], [0, 1]] true 3 true",
+		"3 619.5 0.5 0.5 true",
+		"plain 3 0 255 [3, 6] 255",
+		"0 230 [2, 3, 5, 7, 11, 13] [2, 3, 5, 7, 11] 99 0 0 [3, 6]",
+		"28 [230, 460] stop")
+}

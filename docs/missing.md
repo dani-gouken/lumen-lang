@@ -99,9 +99,9 @@ Patterns on literals, ranges, types and the variants of an enum (with names, lit
 | Equality by content for arrays and structs inside a value | They are only equal to themselves |
 | A check of what a generic enum holds when casting: `any as Option<Int>` | Only the variant is checked; a wrong payload type shows later |
 
-### Variables outside functions, and richer constants — M
+### Variables outside functions — M
 
-**Today**: `const LIMIT = 100;` at the top level works, for numbers, texts and booleans made of literals, operators and other constants. There are no global variables, and no constant arrays, structs or enum values: a constant is replaced by its value at each use, and for those that would make a new object every time.
+**Today**: `const LIMIT = 100;` at the top level works, and a constant can be a struct, an array or a value of an enum made of constants. There are no global variables. A constant is replaced by its value at each use, so a constant struct or array is made again each time: every use is a value of its own, which is why assigning through one is refused, and two uses of a constant struct are not the same object.
 
 **Notes**: Needs storage that lives for the whole run (global slots in the VM) and an order in which initializers run across modules.
 

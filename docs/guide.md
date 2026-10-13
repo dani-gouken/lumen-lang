@@ -441,7 +441,16 @@ const RATIO: Float = 1.5;
 
 The value is made of literals, operators and other constants, and is worked out when the program is compiled. It cannot be assigned. Order does not matter: a constant can use one declared further down.
 
-Constants hold numbers, texts and booleans. For anything else, an array or a struct, write a function that returns it.
+A constant can also be a struct, an array or a value of an enum, made of constants:
+
+```rust
+const RED = Color { r: 230, g: 41, b: 55 };
+const PRIMES = [2, 3, 5, 7];
+const START = Light.Red;
+const PALETTE = [RED, Color { r: 0, g: 0, b: 0 }];
+```
+
+Such a constant is made again wherever it is used, so each use is a value of its own: `let mine = RED; mine.r = 0;` changes `mine` and nothing else, and assigning through the constant itself (`RED.r = 0;`) is an error. What a function works out is not a constant: write the function, and call it.
 
 ### Generic structs
 

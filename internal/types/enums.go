@@ -844,9 +844,38 @@ func (c *Checker) checkConstantExpr(expr ast.Expr) {
 			c.checkConstantExpr(e.Args[0])
 			return
 		}
+		// Shape.Circle(1.0): a value of an enum that holds constants
+		if c.isVariantRef(variantCallee(e)) {
+			for _, arg := range e.Args {
+				c.checkConstantExpr(arg)
+			}
+			return
+		}
+	case *ast.MemberExpr:
+		// Light.Red: a value of an enum that holds nothing
+		if c.isVariantRef(e) {
+			return
+		}
+	case *ast.StructInitExpr:
+		// Color { r: 230, g: 41, b: 55 }: a struct of constants. Named in
+		// order, so that what is wrong is reported the same way every time
+		names := make([]string, 0, len(e.Fields))
+		for name := range e.Fields {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			c.checkConstantExpr(e.Fields[name])
+		}
+		return
+	case *ast.ArrayLiteralExpr:
+		for _, elem := range e.Elements {
+			c.checkConstantExpr(elem)
+		}
+		return
 	}
 	c.errorfWithSuggestion(expr.Token(), ErrNotConstant,
-		"Use literals, operators and other constants; for anything else, write a function that returns the value",
+		"Use literals, operators, other constants, and structs, arrays and values of enums made of those; for anything else, write a function that returns the value",
 		"the value of a constant has to be known when the program is compiled")
 }
 

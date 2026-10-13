@@ -5,7 +5,7 @@
 
 Every function of the header is declared with the C types it has, every
 struct with its fields, every value of an enum as a constant, and the
-colors as functions (a constant cannot be a struct). What cannot be said in
+colors as constants. What cannot be said in
 Lumen is left out and listed at the end: functions that take a function,
 and those that take any number of arguments.
 
@@ -165,8 +165,8 @@ def generate(path):
     emit("//   raylib.InitWindow(800, 450, \"hello\");")
     emit("//   while !raylib.WindowShouldClose() {")
     emit("//       raylib.BeginDrawing();")
-    emit("//       raylib.ClearBackground(raylib.rayWhite());")
-    emit("//       raylib.DrawText(\"hello from Lumen\", 190, 200, 20, raylib.darkGray());")
+    emit("//       raylib.ClearBackground(raylib.RAYWHITE);")
+    emit("//       raylib.DrawText(\"hello from Lumen\", 190, 200, 20, raylib.DARKGRAY);")
     emit("//       raylib.EndDrawing();")
     emit("//   }")
     emit("//   raylib.CloseWindow();")
@@ -200,11 +200,7 @@ def generate(path):
     emit("")
     for match in re.finditer(r"#define (\w+)\s+CLITERAL\(Color\)\{\s*(\d+),\s*(\d+),\s*(\d+),\s*(\d+)\s*\}\s*(?://\s*(.*))?", header.text):
         constant, r, g, b, a, note = match.groups()
-        words = {"RAYWHITE": "rayWhite", "DARKGRAY": "darkGray", "LIGHTGRAY": "lightGray", "DARKGREEN": "darkGreen",
-                 "DARKBLUE": "darkBlue", "DARKPURPLE": "darkPurple", "DARKBROWN": "darkBrown", "SKYBLUE": "skyBlue"}
-        function = words.get(constant, constant.lower())
-        emit("// %s%s" % (constant, ": " + note if note else ""))
-        emit("pub fn %s() -> Color { return Color { r: %s, g: %s, b: %s, a: %s }; }" % (function, r, g, b, a))
+        emit("pub const %s = Color { r: %s, g: %s, b: %s, a: %s };%s" % (constant, r, g, b, a, "  // " + note if note else ""))
     emit("")
 
     emit("// --- Constants ---")

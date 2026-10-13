@@ -152,13 +152,13 @@ fn main() {
     raylib.SetTraceLogLevel(raylib.LOG_NONE);
 
     // Colors: four bytes in a word, in and out
-    println(raylib.ColorToInt(raylib.red()));
+    println(raylib.ColorToInt(raylib.RED));
     println(show(raylib.GetColor(4278190335)));
-    println(show(raylib.Fade(raylib.red(), 0.5)));
+    println(show(raylib.Fade(raylib.RED, 0.5)));
     println(show(raylib.ColorFromHSV(120.0, 1.0, 1.0)));
     let hsv = raylib.ColorToHSV(Color { r: 255, g: 0, b: 0, a: 255 });
     println("${hsv.x} ${hsv.y} ${hsv.z}");
-    println(raylib.ColorIsEqual(raylib.blue(), Color { r: 0, g: 121, b: 241, a: 255 }));
+    println(raylib.ColorIsEqual(raylib.BLUE, Color { r: 0, g: 121, b: 241, a: 255 }));
 
     // Rectangles and points: floats in registers
     let a = Rectangle { x: 0.0, y: 0.0, width: 10.0, height: 10.0 };
@@ -179,7 +179,7 @@ fn main() {
     println("${screen.x} ${screen.y}");
 
     // An image: an address among numbers, made and freed by raylib
-    let image = raylib.GenImageColor(4, 2, raylib.skyBlue());
+    let image = raylib.GenImageColor(4, 2, raylib.SKYBLUE);
     println("${image.width}x${image.height} ${image.mipmaps} ${image.format == raylib.PIXELFORMAT_UNCOMPRESSED_R8G8B8A8}");
     println(show(raylib.GetImageColor(image, 3, 1)));
     println(raylib.IsImageValid(image));

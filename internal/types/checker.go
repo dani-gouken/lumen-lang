@@ -366,6 +366,7 @@ func (c *Checker) checkCompoundAssignment(e *ast.BinaryExpr, op string) Type {
 		sym = c.table.Defs[ident]
 		c.checkNotConst(ident, sym)
 	} else {
+		c.checkNotInConst(e.Left)
 		if target, ok := e.Left.(*ast.IndexExpr); ok {
 			// stock["nails"] += 1 on a struct would read and write through
 			// two methods, asking for the key twice
@@ -407,6 +408,38 @@ func (c *Checker) checkCompoundAssignment(e *ast.BinaryExpr, op string) Type {
 		c.forgetFields()
 	}
 	return Void
+}
+
+// checkNotInConst reports an assignment to a field or an item of a
+// constant: ORIGIN.x = 1; A constant that is a struct or an array is made
+// again wherever it is used, so the assignment would change a value nobody
+// else sees, and look like it changed the constant.
+func (c *Checker) checkNotInConst(target ast.Expr) {
+	root := target
+	for {
+		switch e := root.(type) {
+		case *ast.MemberExpr:
+			root = e.Expr
+			continue
+		case *ast.IndexExpr:
+			root = e.Expr
+			continue
+		}
+		break
+	}
+	ident, ok := root.(*ast.Ident)
+	if !ok || root == target {
+		return
+	}
+	sym := c.table.Defs[ident]
+	if sym == nil {
+		return
+	}
+	if _, isConst := sym.Decl.(*ast.ConstDecl); isConst {
+		c.errorfWithSuggestion(target.Token(), ErrAssignToConst,
+			fmt.Sprintf("Copy it into a variable to change the copy: let mine = %s;", ident.Name),
+			"cannot change what the constant '%s' holds", ident.Name)
+	}
 }
 
 // checkNotConst reports an assignment to a name that cannot be assigned:
@@ -465,8 +498,10 @@ func (c *Checker) checkAssignment(e *ast.BinaryExpr) Type {
 
 		c.checkNotConst(ident, sym)
 	} else if value, ok := c.indexWrite(e); ok {
+		c.checkNotInConst(e.Left)
 		left = value
 	} else {
+		c.checkNotInConst(e.Left)
 		left = c.declaredTargetType(e.Left)
 		if member, ok := e.Left.(*ast.MemberExpr); ok {
 			if _, byPosition := ast.TupleIndex(member.Name); byPosition && left != nil && !isUnknown(left) {

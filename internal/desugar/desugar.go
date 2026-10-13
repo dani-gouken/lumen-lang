@@ -277,7 +277,6 @@ func (d *Desugarer) desugarExprStmt(expr *ast.ExprStmt) *ast.ExprStmt {
 func (d *Desugarer) desugarExpr(expr ast.Expr) ast.Expr {
 	lowered := d.desugarExprAsWritten(expr)
 	if node, ok := expr.(ast.Widenable); ok && node.IsWidened() {
-		node.MarkWidened(false)
 		return d.asFloat(lowered)
 	}
 	return lowered

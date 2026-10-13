@@ -54,12 +54,12 @@ struct Game {
 // The rows from the top: worth more the higher they are
 fn rowColor(row: Int) -> Color {
     return match row {
-        case 0: raylib.red();
-        case 1: raylib.orange();
-        case 2: raylib.gold();
-        case 3: raylib.lime();
-        case 4: raylib.skyBlue();
-        default: raylib.violet();
+        case 0: raylib.RED;
+        case 1: raylib.ORANGE;
+        case 2: raylib.GOLD;
+        case 3: raylib.LIME;
+        case 4: raylib.SKYBLUE;
+        default: raylib.VIOLET;
     };
 }
 
@@ -186,11 +186,11 @@ impl Game {
                 raylib.DrawRectangleRounded(brick.box, 0.3, 4, brick.color);
             }
         }
-        raylib.DrawRectangleRounded(self.paddle, 0.6, 6, raylib.rayWhite());
-        raylib.DrawCircleV(self.ball, BALL_RADIUS, raylib.yellow());
+        raylib.DrawRectangleRounded(self.paddle, 0.6, 6, raylib.RAYWHITE);
+        raylib.DrawCircleV(self.ball, BALL_RADIUS, raylib.YELLOW);
 
-        raylib.DrawText("SCORE ${self.score}", 20, 16, 22, raylib.rayWhite());
-        raylib.DrawText("LIVES ${self.lives}", WIDTH - 120, 16, 22, raylib.rayWhite());
+        raylib.DrawText("SCORE ${self.score}", 20, 16, 22, raylib.RAYWHITE);
+        raylib.DrawText("LIVES ${self.lives}", WIDTH - 120, 16, 22, raylib.RAYWHITE);
         raylib.DrawFPS(WIDTH / 2 - 40, 18);
 
         let message = match self.phase {
@@ -201,7 +201,7 @@ impl Game {
         };
         if message != "" {
             let width = raylib.MeasureText(message, 24);
-            raylib.DrawText(message, (WIDTH - width) / 2, HEIGHT / 2 + 40, 24, raylib.lightGray());
+            raylib.DrawText(message, (WIDTH - width) / 2, HEIGHT / 2 + 40, 24, raylib.LIGHTGRAY);
         }
     }
 }
