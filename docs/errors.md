@@ -55,6 +55,23 @@ fn order(text: String) -> Result<Order, Problem> {
 }
 ```
 
+### Passing a failure on: `?`
+
+Most functions that call something that can fail have nothing to do about the failure but hand it to their own caller. A `?` after the call does that:
+
+```lumen
+fn order(text: String) -> Result<Order, Problem> {
+    let n = limited(count(text)?)?;
+    return Result.Ok(Order { count: n });
+}
+```
+
+`count(text)?` is the number if there is one. If there is none, `order` returns right there, with the same failure. What comes after only runs with a value.
+
+The function has to return a `Result` whose reason is of the same type. When it is not, turn one into the other on the way: `io.readFile(path).mapErr(asProblem)?`. In `main`, which returns an `Int`, there is no caller to hand a failure to: that is where a `match` belongs.
+
+The same operator works on an optional, in a function that may return `null`: `let user = find(id)?;` gives the user, or returns `null`.
+
 **The reason can be any type.** A text is the least useful: a program cannot act on it. An enum lets the caller tell the cases apart; a struct can carry whatever helps.
 
 ### An optional or a `Result`?
@@ -231,7 +248,6 @@ A failure that is expected is better returned as a `Result` by the function that
 ## What Is Not There
 
 *   **`try` / `catch`.** By design: there is one way to return a failure (`Result`) and one to survive a stop (`attempt`). A second error mechanism next to `Result` would have to be chosen between at every function.
-*   **A shorter way to pass a failure on.** Returning the reason of a failed step to one's own caller takes a `match` or a `then`; there is no `count(text)?`.
 *   **Cleanup that runs whatever happens** (`defer`, `finally`). Nothing in the standard library keeps something open between calls yet, so nothing is leaked by stopping half way; that changes the day there are files that are opened and closed.
 *   **`attempt` with arguments.** The function it runs takes none.
 *   **A common shape for errors.** `io.Error`, `Failure` and an error type of your own each have a `describe()`, by convention only: traits cannot yet be required of a type parameter, so nothing can ask for "any error".

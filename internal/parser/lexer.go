@@ -205,8 +205,25 @@ func (l *Lexer) lexNumber(start token.Position) token.Token {
 // first token is returned and the rest are kept for the next calls. The
 // tokens of each expression are read by the lexer itself, with their real
 // positions; the ones that are made up are positioned at the `${`.
+//
+// A text over several lines is written between """ and """:
+//
+//	let help = """
+//	    usage: todo <command>
+//	      add <title>
+//	    """;
+//
+// The line end after the opening quotes and the one before the closing
+// quotes are not part of the text, and what the closing quotes are
+// indented by is taken off the front of every line. Inside, a " is an
+// ordinary character; escapes and ${...} work as elsewhere.
 func (l *Lexer) lexString(start token.Position) token.Token {
+	multi := l.hasPrefix(`"""`)
 	l.advance() // opening quote
+	if multi {
+		l.advance()
+		l.advance()
+	}
 
 	var sb strings.Builder
 	var parts []token.Token // Non-nil once a `${` was met
@@ -217,7 +234,10 @@ func (l *Lexer) lexString(start token.Position) token.Token {
 	}
 
 	for {
-		if l.pos >= len(l.src) || l.peek(0) == '\n' {
+		if l.pos >= len(l.src) && multi {
+			return token.NewToken(token.ILLEGAL, `unterminated text: one opened with """ ends with """`, start, start)
+		}
+		if l.pos >= len(l.src) || (l.peek(0) == '\n' && !multi) {
 			return token.NewToken(token.ILLEGAL, "unterminated string literal", start, l.position())
 		}
 
@@ -256,9 +276,24 @@ func (l *Lexer) lexString(start token.Position) token.Token {
 			continue
 		}
 
-		ch := l.advance()
-		if ch == '"' {
+		if multi && l.hasPrefix(`"""`) {
+			l.advance()
+			l.advance()
+			l.advance()
 			break
+		}
+		ch := l.advance()
+		if ch == '"' && !multi {
+			break
+		}
+		if multi && ch == '\r' && l.peek(0) == '\n' {
+			continue
+		}
+		if multi && ch == '\n' {
+			// Marked, to tell it from a line end written \n: only these
+			// have indentation after them to take off
+			sb.WriteRune(lineBreak)
+			continue
 		}
 		if ch != '\\' {
 			sb.WriteRune(ch)
@@ -284,16 +319,62 @@ func (l *Lexer) lexString(start token.Position) token.Token {
 	}
 
 	if parts == nil {
-		return token.NewToken(token.STRING, sb.String(), start, l.position())
+		last := sb.String()
+		if multi {
+			last = strings.TrimPrefix(unindented(last, closingIndent(&last)), "\n")
+		}
+		return token.NewToken(token.STRING, last, start, l.position())
 	}
 
 	end := l.position()
+	if multi {
+		last := sb.String()
+		indent := closingIndent(&last)
+		sb.Reset()
+		sb.WriteString(unindented(last, indent))
+		for i := range parts {
+			if parts[i].Type == token.STRING && strings.ContainsRune(parts[i].Literal, lineBreak) {
+				parts[i].Literal = unindented(parts[i].Literal, indent)
+			}
+		}
+		// The line end after the opening quotes; parts[1] is the text
+		// before the first ${
+		parts[1].Literal = strings.TrimPrefix(parts[1].Literal, "\n")
+	}
 	if sb.Len() > 0 {
 		parts = append(parts, token.NewToken(token.PLUS, "+", end, end), text(end))
 	}
 	parts = append(parts, token.NewToken(token.RPAREN, ")", end, end))
 	l.pending = append(parts[1:], l.pending...)
 	return parts[0]
+}
+
+// lineBreak stands for a line end of the source inside a text written
+// between """, until the text is complete and its indentation known. It
+// is not a character: no text holds it.
+const lineBreak = '\U0010FFFF'
+
+// closingIndent takes the last line of a text between """ off it, if that
+// line is only the indentation of the closing quotes, together with the
+// line end before it; it returns that indentation.
+func closingIndent(last *string) string {
+	at := strings.LastIndex(*last, string(lineBreak))
+	if at < 0 {
+		return ""
+	}
+	indent := (*last)[at+len(string(lineBreak)):]
+	if strings.Trim(indent, " \t") != "" {
+		return ""
+	}
+	*last = (*last)[:at]
+	return indent
+}
+
+// unindented turns the marked line ends of a text into real ones, taking
+// the indentation off the line that follows each.
+func unindented(text, indent string) string {
+	text = strings.ReplaceAll(text, string(lineBreak)+indent, "\n")
+	return strings.ReplaceAll(text, string(lineBreak), "\n")
 }
 
 // lexInterpolation reads the tokens of the expression of a `${...}`, up to
@@ -350,6 +431,7 @@ var multiCharOps = []struct {
 	{"&&", token.AND},
 	{"||", token.OR},
 	{"??", token.QUESTION_QUESTION},
+	{"?.", token.QUESTION_DOT},
 	{"+=", token.PLUS_ASSIGN},
 	{"-=", token.MINUS_ASSIGN},
 	{"*=", token.STAR_ASSIGN},

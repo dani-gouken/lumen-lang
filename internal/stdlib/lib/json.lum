@@ -5,7 +5,7 @@
 //
 //     match json.parse(text) {
 //         case Result.Ok(document): {
-//             let name = option.then(document.get("name"), json.textOf) ?? "nobody";
+//             let name = document.get("name")?.text() ?? "nobody";
 //         }
 //         case Result.Err(error): { println(error.describe()); }
 //     }
@@ -124,14 +124,13 @@ impl Json {
 
     // Follows keys and positions separated by dots: find("user.tags.0").
     pub fn find(path: String) -> Json? {
-        let here: Json? = self;
+        let here = self;
         for step in strings.split(path, ".") {
-            if here == null { return null; }
             let index = strings.parseInt(step);
             if index != null && here.items() != null {
-                here = here.at(index);
+                here = here.at(index)?;
             } else {
-                here = here.get(step);
+                here = here.get(step)?;
             }
         }
         return here;
@@ -323,7 +322,8 @@ impl Object {
     pub fn done() -> Json { return Json.Object(self.fields); }
 }
 
-// The steps of a chain, for std.option: option.then(document.get("name"), json.textOf).
+// The same accessors as functions, to hand to arrays.map and the like.
+// For one value, `document.get("name")?.text()` says it shorter.
 pub fn textOf(value: Json) -> String? { return value.text(); }
 pub fn intOf(value: Json) -> Int? { return value.int(); }
 pub fn numberOf(value: Json) -> Float? { return value.number(); }

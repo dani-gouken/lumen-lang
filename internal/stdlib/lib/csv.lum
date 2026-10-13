@@ -90,8 +90,7 @@ impl Table {
 
     // The values of a column, or null if there is none of that name.
     pub fn column(name: String) -> [String]? {
-        let at = arrays.indexOf(self.header, name);
-        if at == null { return null; }
+        let at = arrays.indexOf(self.header, name)?;
         let out: [String] = [];
         for row in self.rows { push(out, row[at]); }
         return out;

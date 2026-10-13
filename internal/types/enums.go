@@ -215,6 +215,12 @@ func (c *Checker) checkVariant(member *ast.MemberExpr, args []ast.Expr, called b
 
 	typeArgs := c.typeArgsFrom(decl, found, expected)
 	for i, arg := range typeArgs {
+		if isUnknown(arg) && ast.IsTupleName(decl.Name) {
+			c.errorfWithSuggestion(member.Token(), ErrInvalidEnumUse,
+				"Say what the tuple is where it goes: let pair: (Int, String?) = (1, null);",
+				"nothing here says what type value %d of this tuple has", i+1)
+			break
+		}
 		if isUnknown(arg) {
 			c.errorfWithSuggestion(member.Token(), ErrInvalidEnumUse,
 				fmt.Sprintf("Write the type: %s<...>.%s", decl.Name, variant.Name),
@@ -508,9 +514,13 @@ func (c *Checker) checkExhaustive(s *ast.MatchStmt, subject Type, covered []stri
 		return
 	}
 	sort.Strings(missing)
+	matched := decl.Name
+	if ast.IsTupleName(decl.Name) {
+		matched = describe(subject)
+	}
 	c.errorfWithSuggestion(s.Token(), ErrNonExhaustiveMatch,
 		fmt.Sprintf("Add a case for each, or a 'default' case: case %s: { ... }", missing[0]),
-		"match on %s does not handle %s", decl.Name, strings.Join(missing, ", "))
+		"match on %s does not handle %s", matched, strings.Join(missing, ", "))
 	// Reported once: what follows the match is checked as if it were complete
 	s.Exhaustive = true
 }
@@ -648,6 +658,10 @@ func isOptional(t Type) bool {
 // Shape.Rect when nothing of the variant is handled, Report.Line(_,
 // Event.Closed) when only some of it is.
 func describeWitness(decl *ast.EnumDecl, variant *ast.EnumVariant, inner []string) string {
+	if ast.IsTupleName(decl.Name) {
+		// A tuple is written as it is in the program
+		return "(" + strings.Join(inner, ", ") + ")"
+	}
 	name := decl.Name + "." + variant.Name
 	whole := true
 	for _, part := range inner {

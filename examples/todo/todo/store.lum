@@ -47,7 +47,7 @@ pub fn open(file: String) -> Result<Store, StoreError> {
 }
 
 fn read(text: String) -> Result<[Task], StoreError> {
-    return json.parse(text).mapErr(StoreError.NotJson).then(fromDocument);
+    return fromDocument(json.parse(text).mapErr(StoreError.NotJson)?);
 }
 
 fn fromDocument(document: Json) -> Result<[Task], StoreError> {
@@ -55,10 +55,8 @@ fn fromDocument(document: Json) -> Result<[Task], StoreError> {
     if items == null { return Result.Err(StoreError.NotTasks("expected an array of tasks")); }
     let tasks: [Task] = [];
     for item in items {
-        match task.fromJson(item) {
-            case Result.Ok(read): { push(tasks, read); }
-            case Result.Err(why): { return Result.Err(StoreError.NotTasks(why)); }
-        }
+        // The first task that cannot be read ends it, with its reason
+        push(tasks, task.fromJson(item).mapErr(StoreError.NotTasks)?);
     }
     return Result.Ok(tasks);
 }

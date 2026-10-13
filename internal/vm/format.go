@@ -67,6 +67,10 @@ func formatValue(v Value, depth int) string {
 			if len(values) == 0 {
 				return name
 			}
+			if strings.HasPrefix(obj.typeName, tuplePrefix) {
+				// A tuple, written as it is made: (1, "a")
+				name = ""
+			}
 			return name + "(" + strings.Join(values, ", ") + ")"
 		}
 		keys := obj.Keys()
@@ -146,3 +150,7 @@ func typeName(v Value) string {
 	}
 	return "unknown"
 }
+
+// tuplePrefix starts the name of the enums the compiler declares for
+// tuples (ast.TuplePrefix); a value of one prints without a name.
+const tuplePrefix = "__Tuple"

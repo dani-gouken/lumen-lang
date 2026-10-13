@@ -383,6 +383,15 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 	switch e := expr.(type) {
 	case *ast.BinaryExpr:
 		r.visitExpr(e.Left)
+		if holder := ast.SafeHolder(e); holder != nil {
+			// value?.member: the right side names the value by a name of
+			// its own, which exists there only
+			r.pushScope(e)
+			r.declare(holder.Name, SymbolVar, e)
+			r.visitExpr(e.Right)
+			r.popScope()
+			return
+		}
 		r.visitExpr(e.Right)
 	case *ast.UnaryExpr:
 		r.visitExpr(e.Expr)

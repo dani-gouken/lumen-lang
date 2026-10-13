@@ -8,7 +8,6 @@ import std.http.{Request, Response, Method, Router};
 import std.json;
 import std.json.{Json};
 import std.dict;
-import std.option;
 import std.strings;
 import std.arrays;
 import notes.api;
@@ -17,11 +16,11 @@ import notes.book;
 // A request as the server would hand it over. The address may carry a
 // query: "/notes?tag=work".
 pub fn request(method: Method, address: String, body: String) -> Request {
-    let parts = strings.split(address, "?");
+    let (path, query) = strings.cut(address, "?") ?? (address, "");
     return Request {
         method: method,
-        path: parts[0],
-        query: http.queryOf(arrays.at(parts, 1) ?? ""),
+        path: path,
+        query: http.queryOf(query),
         headers: dict.empty<String>(),
         body: body,
         params: dict.empty<String>(),
@@ -32,9 +31,9 @@ pub fn request(method: Method, address: String, body: String) -> Request {
 // A service with three notes in it.
 fn service() -> Router {
     let app = api.routes(book.empty());
-    post(app, "{\"title\": \"Groceries\", \"body\": \"milk, eggs\", \"tags\": [\"home\"]}");
-    post(app, "{\"title\": \"Standup\", \"body\": \"demo the parser\", \"tags\": [\"Work\", \" urgent \", \"work\"]}");
-    post(app, "{\"title\": \"Ideas\"}");
+    post(app, """{"title": "Groceries", "body": "milk, eggs", "tags": ["home"]}""");
+    post(app, """{"title": "Standup", "body": "demo the parser", "tags": ["Work", " urgent ", "work"]}""");
+    post(app, """{"title": "Ideas"}""");
     return app;
 }
 
@@ -53,12 +52,12 @@ fn document(response: Response) -> Json {
 
 fn titles(response: Response) -> [String] {
     return arrays.map(document(response).items() ?? [], fn(note: Json) -> String {
-        return option.then(note.get("title"), json.textOf) ?? "?";
+        return note.get("title")?.text() ?? "?";
     });
 }
 
 fn errorOf(response: Response) -> String {
-    return option.then(document(response).get("error"), json.textOf) ?? "";
+    return document(response).get("error")?.text() ?? "";
 }
 
 pub fn suite() -> Suite {

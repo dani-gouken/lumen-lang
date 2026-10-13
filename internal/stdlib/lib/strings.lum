@@ -114,6 +114,15 @@ pub fn contains(text: String, part: String) -> Bool {
     return indexOf(text, part) != null;
 }
 
+// What is before the first occurrence of a separator, and what is after
+// it; null if the text does not hold it.
+//
+//     let (name, value) = strings.cut("port=8080", "=") ?? ("", "");
+pub fn cut(text: String, separator: String) -> (String, String)? {
+    let at = indexOf(text, separator)?;
+    return (first(text, at), from(text, at + separator.length));
+}
+
 pub fn startsWith(text: String, start: String) -> Bool {
     if start.length > text.length { return false; }
     return substring(text, 0, start.length) == start;

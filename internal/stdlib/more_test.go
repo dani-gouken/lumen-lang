@@ -653,6 +653,7 @@ func TestMoreArraysAndDict(t *testing.T) {
 		import std.dict;
 		import std.random;
 		import std.option;
+		import std.regex;
 
 		struct Person { name: String; age: Int; }
 
@@ -672,6 +673,12 @@ func TestMoreArraysAndDict(t *testing.T) {
 			println(arrays.unique(["b", "a", "b", "a", "c"]), arrays.map(arrays.uniqueBy(people, fn(p: Person) -> String { return toString(p.age); }), name));
 			println(arrays.partition([1, 2, 3, 4, 5], fn(n: Int) -> Bool { return n % 2 == 0; }), arrays.partition(arrays.take([1], 0), fn(n: Int) -> Bool { return true; }));
 
+			// Side by side, and apart again
+			let names = arrays.map(people, name);
+			let (even, odd) = arrays.partition([1, 2, 3, 4, 5], fn(n: Int) -> Bool { return n % 2 == 0; });
+			let (letters, digits) = arrays.unzip([("a", 1), ("b", 2)]);
+			println(arrays.take(arrays.zip(arrays.sortedTexts(names), [36, 36]), 2), arrays.zip(names, arrays.take([1], 0)), (letters, digits), arrays.unzip(arrays.zip(arrays.take(names, 0), [1])));
+
 			// The originals are left alone
 			println(arrays.map(people, name));
 
@@ -679,6 +686,11 @@ func TestMoreArraysAndDict(t *testing.T) {
 			for word in ["x", "y", "x"] { tally.update(word, 0, fn(n: Int) -> Int { return n + 1; }); }
 			tally.set("a", 0);
 			println(tally.getOr("x", 0), tally.getOr("zz", -1), tally.sortedKeys(), tally.keys(), dict.empty<Int>().sortedKeys());
+			let shown: [String] = [];
+			for (word, count) in tally.entries() { push(shown, "${word}=${count}"); }
+			println(tally.entries(), arrays.len(tally.entries()), strings.join(shown, " "));
+			println(strings.cut("port=8080", "="), strings.cut("a=b=c", "="), strings.cut("none", "="), strings.cut("=x", "="), strings.cut("x=", "="),
+				regex.must("(\\d+)-(\\d+)").capture("on 2026-10"), regex.must("x").capture("abc"));
 
 			random.seed(7);
 			let first = random.uuid();
@@ -705,9 +717,12 @@ grace ada null 158 0
 ["g", "a", "b"] ["ada", "alan"] 0
 ["to", "be", "or", "not"] [2, 2, 1, 1] ["be", "not", "or", "to"]
 ["b", "a", "c"] ["grace", "ada", "alan"]
-[[2, 4], [1, 3, 5]] [[], []]
+([2, 4], [1, 3, 5]) ([], [])
+[("ada", 36), ("alan", 36)] [] (["a", "b"], [1, 2]) ([], [])
 ["grace", "ada", "alan", "bob"]
 2 -1 ["a", "x", "y"] ["x", "y", "a"] []
+[("x", 2), ("y", 1), ("a", 0)] 3 x=2 y=1 a=0
+("port", "8080") ("a", "b=c") null ("", "x") ("x", "") ["2026", "10"] null
 true false 36 4 4
 `
 	if out.String() != want {

@@ -137,6 +137,10 @@ func (a *Analyzer) visitExpr(expr ast.Expr, scope *functionScope) {
 		a.checkCapture(e, scope)
 	case *ast.BinaryExpr:
 		a.visitExpr(e.Left, scope)
+		if holder := ast.SafeHolder(e); holder != nil {
+			// The name the right side of `?.` gives the value is a local
+			scope.locals[holder.Name] = &resolve.Symbol{Name: holder.Name, Kind: resolve.SymbolVar, Decl: e}
+		}
 		a.visitExpr(e.Right, scope)
 	case *ast.UnaryExpr:
 		a.visitExpr(e.Expr, scope)

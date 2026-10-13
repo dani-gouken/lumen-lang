@@ -82,7 +82,8 @@ Full description: [enums.md](enums.md).
   ```
 
 ## 4. Expressions
-- Primary: literals, identifiers, grouping `(expr)`.
+- Primary: literals, identifiers, grouping `(expr)`, tuples `(a, b)`.
+- Text over several lines: `"""` ... `"""`. The line end after the opening quotes and the one before the closing quotes are dropped, and the indentation of the closing quotes is removed from every line. `"` needs no escape inside; escapes and `${...}` work.
 - Unary: `-` on `Int`/`Float`, `!` on `Bool`.
 - Binary precedence (high → low): `* / %`, `+ -`, `< <= > >=`, `== !=`, `&&`, `||`, `??`.
   - Arithmetic: `Int`/`Float`; result matches operands (no implicit int↔float coercion).
@@ -91,6 +92,9 @@ Full description: [enums.md](enums.md).
   - Null-coalescing `a ?? b`: `a: T?`, `b: T|T?`, result `T`.
 - Member/index: `user.name`, `items[0]` (`Int` index; OOB is runtime error). Indexing a string yields a one-character string.
 - Length: `arrays.len(items)` and `strings.len(text)`, from the standard library, give the number of elements of an array and of characters of a string. Arrays and strings have no members: `items.length` is an error (`E2033`) that names the function to use. A dot only reaches a field or a method of a struct or an enum.
+- Safe access `a?.b`, `a?.m(args)`: `a: T?`; null when `a` is null, otherwise the rest of the postfix chain applied to `a` as a `T` (`a?.b.c` reads `c` only when `a` is not null). The result is optional. An error (`E2035`) when `a` cannot be null.
+- Try `a?` (postfix): for `a: T?`, the value as a `T`, or `return null;` from the enclosing function, which must return an optional or nothing. For `a: Result<T, E>`, the value as a `T`, or a return of the failure, from a function that returns `Result<U, E>`. Anything else is `E2034`. In a function expression the enclosing function is that expression.
+- Tuples: `(a, b)` of type `(A, B)`, two to six values. `pair.0`, `pair.1` read by position; `let (a, b) = pair;` and `for (a, b) in pairs` name the values, `_` skipping one. Compared by content, immutable, matched with `case (a, b):` and checked for completeness like an enum (which is what a tuple is: see [enums.md](enums.md#tuples)).
 - Calls: `callee(args...)` with arity/type check. Method calls: `value.method(args...)`.
 - Array literals: `[1, 2, 3]`, `[]`. All elements have the same type.
 - Struct literals: `Point { x: 1, y: 2 }`. In the header of `if`, `while`, `for` and `match`, a `{` after a name starts the body, so a struct literal there needs parentheses: `if (Point { x: 1 }).x == 1 { ... }`.
@@ -224,13 +228,16 @@ AssignTarget = Ident | PostfixExpr Index | PostfixExpr Member ;
 LetDecl      = ("let" | "const") Ident [ ":" Type ] "=" Expr ";" ;
 IfStmt       = "if" Expr Block [ "else" (Block | IfStmt) ] ;
 WhileStmt    = "while" Expr Block ;
-ForStmt      = "for" [ Ident "," ] Ident "in" Expr Block ;
+ForStmt      = "for" [ Ident "," ] ( Ident | TupleNames ) "in" Expr Block ;
+LetTuple     = ( "let" | "const" ) TupleNames "=" Expr ";" ;
+TupleNames   = "(" Ident "," Ident { "," Ident } ")" ;         (* "_" skips a value *)
 ReturnStmt   = "return" [ Expr ] ";" ;
 MatchStmt    = "match" Expr "{" { MatchCase } "}" ;
 MatchCase    = ( "case" Pattern | "default" ) ":" ( Block | Expr ";" ) ;
-Pattern      = Literal | [ "-" ] Literal | Type | VariantPat ;
+Pattern      = Literal | [ "-" ] Literal | Type | VariantPat | TuplePat ;
+TuplePat     = "(" SubPattern "," SubPattern { "," SubPattern } ")" ;
 VariantPat   = Ident [TypeArgs] { "." Ident } [ "(" [ SubPattern { "," SubPattern } ] ")" ] ;
-SubPattern   = Ident | "_" | Literal | [ "-" ] Literal | VariantPat ;
+SubPattern   = Ident | "_" | Literal | [ "-" ] Literal | VariantPat | TuplePat ;
 ExprStmt     = Expr ";" ;
 
 Expr         = OrExpr ;
@@ -243,13 +250,15 @@ AddExpr      = MulExpr { ("+" | "-") MulExpr } ;
 MulExpr      = UnaryExpr { ("*" | "/" | "%") UnaryExpr } ;
 UnaryExpr    = ( "-" | "!" ) UnaryExpr | CastExpr ;
 CastExpr     = PostfixExpr { ( "as" | "is" ) OptType } ;
-PostfixExpr  = Primary { Call | Index | Member } ;
+PostfixExpr  = Primary { Call | Index | Member | SafeAccess | "?" } ;
+SafeAccess   = "?." ( Ident [TypeArgs] | IntLit ) { Call | Index | Member } ;
 Call         = "(" [ ArgList ] ")" ;
 ArgList      = Expr { "," Expr } ;
 Index        = "[" Expr "]" ;
-Member       = "." Ident [TypeArgs] ;
-Primary      = Literal | Ident [TypeArgs] | "(" Expr ")"
+Member       = "." ( Ident [TypeArgs] | IntLit ) ;            (* a number: a value of a tuple *)
+Primary      = Literal | Ident [TypeArgs] | "(" Expr ")" | TupleLit
              | ArrayLit | StructLit | FnExpr ;
+TupleLit     = "(" Expr "," Expr { "," Expr } [ "," ] ")" ;
 ArrayLit     = "[" [ ArgList ] "]" ;
 StructLit    = Ident [TypeArgs] "{" [ FieldInit { "," FieldInit } [ "," ] ] "}" ;
 FieldInit    = Ident ":" Expr ;
@@ -258,7 +267,8 @@ TypeArgs     = "<" Type { "," Type } ">" ;
 
 Type         = OptType { "|" OptType } ;
 OptType      = SimpleType [ "?" ] ;
-SimpleType   = BuiltinType | Ident [TypeArgs] | "[" Type "]" | "(" Type ")" | FunctionType ;
+SimpleType   = BuiltinType | Ident [TypeArgs] | "[" Type "]" | "(" Type ")" | TupleType | FunctionType ;
+TupleType    = "(" Type "," Type { "," Type } ")" ;
 BuiltinType  = "Int" | "Float" | "Bool" | "String" | "Any" | "Void" | "Self" ;
 FunctionType = "fn" [TypeParams] "(" [TypeList] ")" "->" Type ;
 TypeList     = Type { "," Type } [ "," "..." Type ] | "..." Type ;
@@ -282,6 +292,9 @@ known defects are inventoried in [missing.md](missing.md).
 | `let`, `const`, assignment, `+=` and `++`, block scopes | Supported | `++`/`--` are statements |
 | `if`/`else`, `while`, `for in`, `break`, `continue` | Supported | `for in` over arrays and strings, optionally with the index |
 | `&&`, `||`, `??` | Supported | Short-circuit |
+| `value?.member`, `value?` | Supported | Null when there is no value; return null or the failure of a `Result` to the caller |
+| Tuples: `(1, "a")`, `pair.0`, `let (a, b) = pair;` | Supported | Two to six values; equal by content; matched like enums |
+| Text over several lines: `"""..."""` | Supported | Indentation of the closing quotes is taken off |
 | Functions, recursion, functions as values | Supported | |
 | Anonymous functions and closures | Supported | Capture by reference |
 | Arrays | Supported | Grow with `push` |

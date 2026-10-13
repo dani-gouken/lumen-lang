@@ -369,14 +369,39 @@ pub fn unique(texts: [String]) -> [String] {
     return uniqueBy<String>(texts, fn(text: String) -> String { return text; });
 }
 
-// The items a function accepts, then the ones it does not.
-pub fn partition<T>(items: [T], wanted: fn(T) -> Bool) -> [[T]] {
+// The items a function accepts, and the ones it does not.
+//
+//     let (even, odd) = arrays.partition(numbers, math.isEven);
+pub fn partition<T>(items: [T], wanted: fn(T) -> Bool) -> ([T], [T]) {
     let yes: [T] = [];
     let no: [T] = [];
     for item in items {
         if wanted(item) { push(yes, item); } else { push(no, item); }
     }
-    return [yes, no];
+    return (yes, no);
+}
+
+// The items of two arrays side by side, as many as the shorter has.
+//
+//     for (name, age) in arrays.zip(names, ages) { ... }
+pub fn zip<A, B>(first: [A], second: [B]) -> [(A, B)] {
+    let out: [(A, B)] = [];
+    for i, item in first {
+        if i >= second.length { break; }
+        push(out, (item, second[i]));
+    }
+    return out;
+}
+
+// The other way round: the first values of the pairs, and the second.
+pub fn unzip<A, B>(pairs: [(A, B)]) -> ([A], [B]) {
+    let first: [A] = [];
+    let second: [B] = [];
+    for (a, b) in pairs {
+        push(first, a);
+        push(second, b);
+    }
+    return (first, second);
 }
 
 // The sum of a number worked out from each item.

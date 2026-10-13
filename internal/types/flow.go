@@ -18,7 +18,9 @@ import (
 //
 // What is known about a local variable or parameter ends where it is
 // assigned. A variable that a lambda assigns is not narrowed at all (see
-// findSharedVariables).
+// findSharedVariables). Inside a function expression, which may run at
+// any later time, only what is known about variables that are never
+// assigned after their declaration carries over.
 //
 // A field path such as `node.next` can be narrowed too, but a field can be
 // changed through any other reference to the same value. What is known
@@ -351,6 +353,15 @@ func (c *Checker) findSharedVariables(body *ast.BlockStmt) {
 	if body == nil {
 		return
 	}
+
+	// Also noted here: every variable assigned at all, anywhere in the
+	// function. The others keep, inside a function expression, what was
+	// known about them where it is written (see checkFnDecl).
+	walkExprs(body, func(expr ast.Expr) {
+		if sym := c.assignedVariable(expr); sym != nil {
+			c.reassigned[sym] = true
+		}
+	})
 
 	walkExprs(body, func(expr ast.Expr) {
 		lambda, ok := expr.(*ast.FnExpr)

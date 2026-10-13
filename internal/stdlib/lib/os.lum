@@ -31,10 +31,8 @@ pub extern fn hostname() -> String;
 pub fn environment() -> Dict<String> {
     let all = dict.empty<String>();
     for line in variables() {
-        let at = strings.indexOf(line, "=");
-        if at != null {
-            all.set(strings.first(line, at), strings.from(line, at + 1));
-        }
+        let (name, value) = strings.cut(line, "=") ?? (line, "");
+        all.set(name, value);
     }
     return all;
 }

@@ -548,8 +548,108 @@ func IsAssignment(op string) bool {
 
 func (e *BinaryExpr) exprNode() {}
 func (e *BinaryExpr) String() string {
+	if e.Op == SafeAccessOp {
+		return fmt.Sprintf("(%s?.%s)", e.Left.String(), e.Right.String())
+	}
 	return fmt.Sprintf("(%s %s %s)", e.Left.String(), e.Op, e.Right.String())
 }
+
+// SafeAccessOp is the operator of `value?.member`: a BinaryExpr whose left
+// side is the value and whose right side is everything done with it,
+// members, calls and indexes, starting from an identifier that stands for
+// the value once it is known not to be null. `user?.address.city` is
+//
+//	BinaryExpr{Left: user, Op: "?.", Right: __safe1.address.city}
+//
+// It gives null when the value is null, without evaluating the right side.
+const SafeAccessOp = "?."
+
+// SafeHolder returns the identifier that stands for the value in the
+// right side of a `?.`, or nil if e is not one.
+func SafeHolder(e *BinaryExpr) *Ident {
+	if e.Op != SafeAccessOp {
+		return nil
+	}
+	// It is what the chain of the right side starts from
+	access := e.Right
+	for {
+		switch inner := access.(type) {
+		case *MemberExpr:
+			access = inner.Expr
+		case *CallExpr:
+			access = inner.Func
+		case *IndexExpr:
+			access = inner.Expr
+		case *Ident:
+			return inner
+		default:
+			return nil
+		}
+	}
+}
+
+// Tuples: `(1, "a")`, of type `(Int, String)`.
+//
+// A tuple is a value of an enum the compiler declares for each size,
+//
+//	enum __Tuple2<A, B> { Of(A, B) }
+//
+// and the parser writes everything about tuples in terms of it: the type
+// `(Int, String)` is `__Tuple2<Int, String>`, the value `(1, "a")` is
+// `__Tuple2.Of(1, "a")`, and `case (n, text):` is a pattern on that
+// variant. What enums have, tuples have with no code of their own: type
+// arguments worked out from the values, equality by content, patterns
+// inside patterns, a check that a match is complete. The one thing added
+// is reading a value by its position, `pair.0`: a MemberExpr whose name is
+// a number.
+const (
+	TuplePrefix  = "__Tuple"
+	TupleVariant = "Of"
+	MinTupleSize = 2
+	MaxTupleSize = 6
+)
+
+// TupleName is the name of the enum behind tuples of a size.
+func TupleName(size int) string {
+	return fmt.Sprintf("%s%d", TuplePrefix, size)
+}
+
+// IsTupleName reports whether a type name is that of a tuple.
+func IsTupleName(name string) bool {
+	return strings.HasPrefix(name, TuplePrefix)
+}
+
+// TupleIndex returns the position a member name stands for, as in
+// `pair.0`, or false if it is an ordinary name.
+func TupleIndex(member string) (int, bool) {
+	if member == "" {
+		return 0, false
+	}
+	index := 0
+	for _, ch := range member {
+		if ch < '0' || ch > '9' {
+			return 0, false
+		}
+		index = index*10 + int(ch-'0')
+	}
+	return index, true
+}
+
+// TupleSource declares the enums behind tuples, as Lumen source.
+func TupleSource() string {
+	var sb strings.Builder
+	params := []string{"A", "B", "C", "D", "E", "F"}
+	for size := MinTupleSize; size <= MaxTupleSize; size++ {
+		list := strings.Join(params[:size], ", ")
+		fmt.Fprintf(&sb, "pub enum %s<%s> { %s(%s) }\n", TupleName(size), list, TupleVariant, list)
+	}
+	return sb.String()
+}
+
+// TryOp is the operator of `value?`, a UnaryExpr written after its
+// operand: the value of a Result or of an optional, or a return from the
+// enclosing function with the failure, or with null.
+const TryOp = "?"
 
 type UnaryExpr struct {
 	BaseNode
@@ -559,6 +659,9 @@ type UnaryExpr struct {
 
 func (e *UnaryExpr) exprNode() {}
 func (e *UnaryExpr) String() string {
+	if e.Op == TryOp {
+		return fmt.Sprintf("(%s?)", e.Expr.String())
+	}
 	return fmt.Sprintf("(%s%s)", e.Op, e.Expr.String())
 }
 
@@ -610,6 +713,10 @@ type MemberExpr struct {
 
 	// Type arguments of a call to a generic method: stack.map<String>(f)
 	TypeArgs []*Type
+
+	// For a value read from a tuple being taken apart, `let (a, b) = pair;`:
+	// how many names were written, which has to be what the tuple holds
+	TupleSize int
 }
 
 func (e *MemberExpr) exprNode() {}

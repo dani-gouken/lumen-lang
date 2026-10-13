@@ -65,30 +65,29 @@ fn whole(row: Dict<String>, column: String) -> Result<Int, Flaw> {
     return Result.Ok(n);
 }
 
+// The order a row describes, or the first thing wrong with it. Each `?`
+// goes on with the value if there is one, and otherwise returns the flaw
+// to whoever asked for the order.
 fn order(row: Dict<String>) -> Result<Order, Flaw> {
-    // Each step runs only if the ones before it worked; the first flaw
-    // met is the one reported
-    return whole(row, "order").then(fn(number: Int) -> Result<Order, Flaw> {
-        return whole(row, "quantity").then(fn(quantity: Int) -> Result<Order, Flaw> {
-            if quantity <= 0 { return Result.Err(Flaw.Nothing("quantity")); }
+    let number = whole(row, "order")?;
+    let quantity = whole(row, "quantity")?;
+    if quantity <= 0 { return Result.Err(Flaw.Nothing("quantity")); }
 
-            let priceText = row.getOr("unit_price", "");
-            let price = strings.parseFloat(priceText);
-            if price == null { return Result.Err(Flaw.NotANumber("unit_price", priceText)); }
+    let priceText = row.getOr("unit_price", "");
+    let price = strings.parseFloat(priceText);
+    if price == null { return Result.Err(Flaw.NotANumber("unit_price", priceText)); }
 
-            let dateText = row.getOr("date", "");
-            let date = time.parse(dateText);
-            if date == null { return Result.Err(Flaw.NotADate(dateText)); }
+    let dateText = row.getOr("date", "");
+    let date = time.parse(dateText);
+    if date == null { return Result.Err(Flaw.NotADate(dateText)); }
 
-            let customer = strings.trim(row.getOr("customer", ""));
-            if customer == "" { return Result.Err(Flaw.Nothing("customer")); }
+    let customer = strings.trim(row.getOr("customer", ""));
+    if customer == "" { return Result.Err(Flaw.Nothing("customer")); }
 
-            return Result.Ok(Order {
-                number: number, date: date, customer: customer,
-                product: row.getOr("product", ""), category: row.getOr("category", "other"),
-                quantity: quantity, unitPrice: price,
-            });
-        });
+    return Result.Ok(Order {
+        number: number, date: date, customer: customer,
+        product: row.getOr("product", ""), category: row.getOr("category", "other"),
+        quantity: quantity, unitPrice: price,
     });
 }
 
@@ -175,10 +174,10 @@ fn report(table: Table, source: String, output: String?) -> Int {
         return o.date.plusDays(-weekdayIndex(o.date)).format("DD MMM");
     });
     let best = arrays.fold(weeks.values(), 0.0, fn(most: Float, week: [Order]) -> Float { return math.fmax(most, weekRevenue(week)); });
-    weeks.each(fn(start: String, week: [Order]) {
+    for (start, week) in weeks.entries() {
         let revenue = weekRevenue(week);
         println("week of ${start}", format.pad(format.money(revenue), 9, Align.Right), " " + format.bar(math.round(revenue), math.round(best), 24));
-    });
+    }
 
     if arrays.len(flawed) > 0 {
         println("");
@@ -222,18 +221,18 @@ fn main() -> Int {
     let source = arrays.at(args, 0) ?? path.inside(path.dir(os.program()), "orders.csv");
     let output = arrays.at(args, 1);
 
-    // Reading the file and reading it as a table fail in different ways;
-    // both end as a sentence for the person at the terminal
-    let table = io.readFile(source)
-        .mapErr(fn(error: io.Error) -> String { return error.describe(); })
-        .then(fn(text: String) -> Result<Table, String> {
-            return csv.table(text).mapErr(fn(error: csv.ParseError) -> String { return "${path.base(source)}, ${error.describe()}"; });
-        });
-    match table {
+    match load(source) {
         case Result.Ok(orders): { return report(orders, source, output); }
         case Result.Err(problem): {
             println(problem);
             return 1;
         }
     }
+}
+
+// Reading the file and reading it as a table fail in different ways; both
+// end as a sentence for the person at the terminal.
+fn load(source: String) -> Result<Table, String> {
+    let text = io.readFile(source).mapErr(fn(error: io.Error) -> String { return error.describe(); })?;
+    return csv.table(text).mapErr(fn(error: csv.ParseError) -> String { return "${path.base(source)}, ${error.describe()}"; });
 }

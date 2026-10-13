@@ -67,7 +67,7 @@ pub fn walk(folder: String) -> Result<[String], Error> {
 // The files under a folder whose name fits a pattern: fs.find("src", "*.lum").
 pub fn find(folder: String, pattern: String) -> Result<[String], Error> {
     let fits = fn(file: String) -> Bool { return path.matches(pattern, path.base(file)); };
-    return walk(folder).map(fn(files: [String]) -> [String] { return arrays.filter(files, fits); });
+    return Result.Ok(arrays.filter(walk(folder)?, fits));
 }
 
 // Creates a folder, and those above it that are missing. One that is
@@ -115,8 +115,7 @@ fn done(worked: Bool, operation: String, target: String) -> Result<String, Error
 }
 
 fn describe(target: String) -> Entry? {
-    let facts = stat(target);
-    if facts == null { return null; }
+    let facts = stat(target)?;
     let kind = Kind.File;
     if isDir(target) { kind = Kind.Folder; }
     return Entry { name: path.base(target), path: target, kind: kind, size: facts[0], modified: facts[1] };

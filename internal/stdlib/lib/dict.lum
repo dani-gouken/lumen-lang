@@ -107,6 +107,17 @@ impl<V> Dict<V> {
         return out;
     }
 
+    // Each key with its value, in the order of the keys.
+    //
+    //     for (name, age) in ages.entries() { ... }
+    pub fn entries() -> [(String, V)] {
+        let out: [(String, V)] = [];
+        for entry in self.entries {
+            if entry.live { push(out, (entry.key, entry.value)); }
+        }
+        return out;
+    }
+
     // The keys in alphabetical order.
     pub fn sortedKeys() -> [String] {
         let keys = self.keys();

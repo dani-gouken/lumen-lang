@@ -828,6 +828,10 @@ func describe(t Type) string {
 		for i, arg := range t.TypeArgs {
 			args[i] = describe(arg)
 		}
+		if ast.IsTupleName(t.BaseName) {
+			// As it is written: (Int, String)
+			return "(" + strings.Join(args, ", ") + ")"
+		}
 		return t.Name + "<" + strings.Join(args, ", ") + ">"
 
 	case *BehaviorType:

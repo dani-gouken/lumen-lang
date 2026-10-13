@@ -2,6 +2,7 @@ package irgen
 
 import (
 	"fmt"
+	"github.com/dani-gouken/lumen/internal/types"
 	"sort"
 	"strconv"
 	"strings"
@@ -120,6 +121,8 @@ func (fc *FunctionCompiler) compileBinaryExpr(expr *ast.BinaryExpr) *ir.Register
 		return fc.compileAssignment(expr)
 	case "&&", "||", "??":
 		return fc.compileShortCircuit(expr)
+	case ast.SafeAccessOp:
+		return fc.compileSafeAccess(expr)
 	}
 	if base, ok := ast.CompoundOp(expr.Op); ok {
 		return fc.compileCompoundAssignment(expr, base)
@@ -198,6 +201,70 @@ func (fc *FunctionCompiler) compileShortCircuit(expr *ast.BinaryExpr) *ir.Regist
 
 	fc.builder.SetBlock(endBlock)
 	return result
+}
+
+// compileSafeAccess compiles `value?.member`: null if the value is null,
+// otherwise the access, in which the value goes by a name of its own.
+func (fc *FunctionCompiler) compileSafeAccess(expr *ast.BinaryExpr) *ir.Register {
+	value := fc.compileExpr(expr.Left)
+	fc.setPos(expr)
+
+	result := fc.builder.CreateMov(ir.Constant{Val: nil, Type: "Null"})
+	isNull := fc.builder.NewRegister()
+	fc.builder.Emit(ir.OpEq, isNull, value, result)
+
+	accessBlock := fc.builder.NewBlock()
+	endBlock := fc.builder.NewBlock()
+	fc.builder.CreateBr(isNull, endBlock, accessBlock)
+
+	fc.builder.SetBlock(accessBlock)
+	// The value may be a variable that the access assigns: keep what it
+	// was when it was tested
+	held := fc.builder.NewRegister()
+	fc.builder.Emit(ir.OpMov, held, value)
+	if holder := ast.SafeHolder(expr); holder != nil {
+		fc.declare(holder.Name, held)
+	}
+	access := fc.compileExpr(expr.Right)
+	fc.builder.Emit(ir.OpMov, result, access)
+	fc.builder.CreateJmp(endBlock)
+
+	fc.builder.SetBlock(endBlock)
+	return result
+}
+
+// compileTry compiles `value?`: the value of a Result or of an optional,
+// or a return from the function with what stands for "none". A Result
+// that is a failure is returned as it is: a value of Result<T, E> without
+// a T in it is a Result<U, E> as well.
+func (fc *FunctionCompiler) compileTry(expr *ast.UnaryExpr) *ir.Register {
+	value := fc.compileExpr(expr.Expr)
+	fc.setPos(expr)
+
+	leaveBlock := fc.builder.NewBlock()
+	goOnBlock := fc.builder.NewBlock()
+	failed := fc.builder.NewRegister()
+	isResult := fc.gen.typeInfo.Tries[expr] == types.TryResult
+	if isResult {
+		fn := fc.builder.CreateMov(ir.Constant{Val: TypeTestIntrinsic, Type: "FuncRef"})
+		desc := fc.builder.CreateMov(ir.Constant{Val: "{" + types.ResultEnum + ".Err}", Type: "String"})
+		fc.builder.Emit(ir.OpMov, failed, fc.builder.CreateCall(fn, value, desc))
+	} else {
+		null := fc.builder.CreateMov(ir.Constant{Val: nil, Type: "Null"})
+		fc.builder.Emit(ir.OpEq, failed, value, null)
+	}
+	fc.builder.CreateBr(failed, leaveBlock, goOnBlock)
+
+	fc.builder.SetBlock(leaveBlock)
+	fc.builder.CreateRet(value)
+
+	fc.builder.SetBlock(goOnBlock)
+	if !isResult {
+		return value
+	}
+	dest := fc.builder.NewRegister()
+	fc.builder.Emit(ir.OpGetField, dest, value, ir.Constant{Val: variantField(0), Type: "String"})
+	return dest
 }
 
 // compileAssignment compiles `target = value` for variables, array elements
@@ -313,6 +380,10 @@ func (fc *FunctionCompiler) compileUnaryExpr(expr *ast.UnaryExpr) *ir.Register {
 		negative := *lit
 		negative.Value = "-" + lit.Value
 		return fc.compileLiteral(&negative)
+	}
+
+	if expr.Op == ast.TryOp {
+		return fc.compileTry(expr)
 	}
 
 	operand := fc.compileExpr(expr.Expr)

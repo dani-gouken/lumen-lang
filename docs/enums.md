@@ -238,6 +238,26 @@ This goes all the way down through enums inside enums, so two trees built the sa
 
 A value **prints** the way it is made, without the enum's name: `Circle(2)`, `Empty`, `Some("x")`, `Cons(1, Cons(2, Nil))`.
 
+## Tuples
+
+A tuple, `(1, "a")` of type `(Int, String)`, is a value of an enum that the compiler declares for each size from two to six:
+
+```lumen
+enum __Tuple2<A, B> { Of(A, B) }
+```
+
+The parser writes everything about tuples in terms of it: the type `(Int, String)` is `__Tuple2<Int, String>`, the value `(1, "a")` is `__Tuple2.Of(1, "a")`, `case (n, text):` is a pattern on that variant, and `let (a, b) = pair;` is a variable per value. So what this page says of enums holds for tuples with no code of their own: type arguments worked out from the values, equality by content, patterns inside patterns, and the check that a `match` is complete.
+
+```lumen
+match (wet, cold) {
+    case (true, true): { return "snow"; }
+    case (true, false): { return "rain"; }
+    case (false, _): { return "dry"; }
+}
+```
+
+What tuples add is reading a value by its position, `pair.0`, and being printed and named in messages the way they are written: `(1, "a")`, `(Int, String)`. See the [guide](guide.md#tuples).
+
 ## What an Enum Value Is Not
 
 *   It has no fields: `shape.radius` is an error. A `match` is the only way in.

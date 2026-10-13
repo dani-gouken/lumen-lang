@@ -250,8 +250,7 @@ impl Server {
     // The same, giving up after that many milliseconds.
     pub fn nextWithin(milliseconds: Int) -> Request? {
         // The method, the path, the query, the body, the sender, then the headers
-        let parts = accept(self.id, milliseconds);
-        if parts == null { return null; }
+        let parts = accept(self.id, milliseconds)?;
         return Request {
             method: methodOf(parts[0]) ?? Method.Get,
             path: parts[1],
@@ -275,8 +274,7 @@ impl Server {
     pub fn handle(count: Int, handler: fn(Request) -> Response) {
         let done = 0;
         while done < count {
-            let request = self.next();
-            if request == null { return; }
+            let request = self.next()?;
             self.reply(answerOf(request, handler));
             done++;
         }
@@ -402,11 +400,8 @@ pub fn queryOf(query: String) -> Dict<String> {
     let out = dict.empty<String>();
     for pair in strings.split(query, "&") {
         if pair == "" { continue; }
-        let at = strings.indexOf(pair, "=") ?? pair.length;
-        let name = encoding.fromUrl(strings.first(pair, at)) ?? strings.first(pair, at);
-        let value = "";
-        if at < pair.length { value = strings.from(pair, at + 1); }
-        out.set(name, encoding.fromUrl(value) ?? value);
+        let (name, value) = strings.cut(pair, "=") ?? (pair, "");
+        out.set(encoding.fromUrl(name) ?? name, encoding.fromUrl(value) ?? value);
     }
     return out;
 }

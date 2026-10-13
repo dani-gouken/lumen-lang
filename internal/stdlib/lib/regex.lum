@@ -84,6 +84,13 @@ impl Regex {
         return arrays.first(self.found(text, 1));
     }
 
+    // What the groups of the first match took, or null if there is none.
+    //
+    //     let parts = date.capture("on 2026-10-13")?;      // ["2026", "10", "13"]
+    pub fn capture(text: String) -> [String]? {
+        return self.find(text)?.groups;
+    }
+
     // Every place it fits, from left to right, without overlap.
     pub fn findAll(text: String) -> [Match] {
         return self.found(text, -1);

@@ -21,6 +21,10 @@ type Info struct {
 	Tests       map[*ast.TypeTestExpr]string
 	TestedTypes map[*ast.TypeTestExpr]Type
 
+	// Tries maps each `value?` to what its operand is: TryResult or
+	// TryOptional. One that was refused is absent.
+	Tries map[*ast.UnaryExpr]string
+
 	// Signatures maps each function declaration and function expression to
 	// the description of its type, in the same form as Casts.
 	Signatures map[ast.Node]string
@@ -35,5 +39,6 @@ func NewInfo() *Info {
 		Tests:       make(map[*ast.TypeTestExpr]string),
 		TestedTypes: make(map[*ast.TypeTestExpr]Type),
 		Signatures:  make(map[ast.Node]string),
+		Tries:       make(map[*ast.UnaryExpr]string),
 	}
 }

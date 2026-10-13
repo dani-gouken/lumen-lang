@@ -35,6 +35,19 @@ type Parser struct {
 
 	// While speculating, syntax errors unwind without being reported.
 	speculating bool
+
+	// How many names were made up so far, for those to differ
+	made int
+
+	// The statements that follow the one just parsed, when it is short for
+	// several (`let (a, b) = pair;`)
+	pendingStmts []ast.Stmt
+}
+
+// makeName returns a name no program can write.
+func (p *Parser) makeName(prefix string) string {
+	p.made++
+	return fmt.Sprintf("__%s%d", prefix, p.made)
 }
 
 // SourceLines splits source text into a 1-based line map for diagnostics.
@@ -644,8 +657,18 @@ func (p *Parser) parsePrimaryType() *ast.Type {
 	case tok.Type == token.LPAREN:
 		p.next()
 		t := p.parseType()
+		if !p.at(token.COMMA) {
+			p.expect(token.RPAREN, "')'")
+			return t
+		}
+		// (Int, String): a tuple
+		elems := []*ast.Type{t}
+		for p.accept(token.COMMA) && !p.at(token.RPAREN) {
+			elems = append(elems, p.parseType())
+		}
 		p.expect(token.RPAREN, "')'")
-		return t
+		p.checkTupleSize(tok, len(elems))
+		return &ast.Type{BaseNode: base(tok), Kind: ast.TypeBasic, Name: ast.TupleName(len(elems)), Generics: elems}
 
 	case tok.Type == token.ELLIPSIS:
 		p.next()
@@ -691,6 +714,9 @@ func (p *Parser) parseBlock() *ast.BlockStmt {
 		if stmt := p.parseStmtRecovering(); stmt != nil {
 			block.Stmts = append(block.Stmts, stmt)
 		}
+		// What a statement that stands for several left behind
+		block.Stmts = append(block.Stmts, p.pendingStmts...)
+		p.pendingStmts = nil
 	}
 	p.noStructLit = saved
 
@@ -754,6 +780,9 @@ func (p *Parser) parseStmt() ast.Stmt {
 
 	switch tok.Type {
 	case token.LET, token.CONST:
+		if p.peekAt(1).Type == token.LPAREN {
+			return p.parseLetTuple()
+		}
 		return p.parseLetStmt()
 	case token.IF:
 		return p.parseIfStmt()
@@ -765,15 +794,31 @@ func (p *Parser) parseStmt() ast.Stmt {
 		p.next()
 		// for item in items, or for index, item in items
 		stmt := &ast.ForStmt{BaseNode: base(tok)}
-		nameTok := p.expect(token.IDENT, "loop variable name")
-		stmt.Var = nameTok.Literal
+		// for (key, value) in pairs: each item is a tuple, taken apart
+		var apart []token.Token
+		loopVar := func() string {
+			if p.at(token.LPAREN) {
+				apart = p.parseTupleNames()
+				return p.makeName("tuple")
+			}
+			return p.expect(token.IDENT, "loop variable name").Literal
+		}
+		nameTok := p.cur()
+		stmt.Var = loopVar()
 		if p.accept(token.COMMA) {
+			if apart != nil {
+				p.fail("expected 'in': the position comes first, as in for i, (key, value) in pairs")
+			}
 			stmt.Index = &ast.ForIndex{BaseNode: base(nameTok), Name: nameTok.Literal}
-			stmt.Var = p.expect(token.IDENT, "loop variable name").Literal
+			stmt.Var = loopVar()
 		}
 		p.expect(token.IN, "'in'")
 		stmt.Iterable = p.parseHeaderExpr()
 		stmt.Body = p.parseBlock()
+		if apart != nil {
+			item := &ast.Ident{BaseNode: base(nameTok), Name: stmt.Var}
+			stmt.Body.Stmts = append(p.tupleLets(apart, item, false), stmt.Body.Stmts...)
+		}
 		return stmt
 	case token.MATCH:
 		return p.parseMatchStmt()
@@ -811,6 +856,85 @@ func (p *Parser) parseLetStmt() *ast.LetStmt {
 	stmt.Value = p.parseExpr()
 	p.expectSemicolon()
 	return stmt
+}
+
+// parseLetTuple parses `let (a, b) = pair;`, which names the values of a
+// tuple. It is short for
+//
+//	let __tuple1 = pair;
+//	let a = __tuple1.0;
+//	let b = __tuple1.1;
+//
+// and is returned as the first of these, the others being kept for the
+// block to take (see parseBlock). A `_` takes a value without naming it.
+func (p *Parser) parseLetTuple() ast.Stmt {
+	tok := p.next()
+	names := p.parseTupleNames()
+	p.expect(token.ASSIGN, "'='")
+	whole := &ast.LetStmt{BaseNode: base(tok), Name: p.makeName("tuple"), Value: p.parseExpr()}
+	p.expectSemicolon()
+
+	item := &ast.Ident{BaseNode: base(tok), Name: whole.Name}
+	p.pendingStmts = append(p.pendingStmts, p.tupleLets(names, item, tok.Type == token.CONST)...)
+	return whole
+}
+
+// parseTupleNames parses the `(a, b)` of a tuple being taken apart.
+func (p *Parser) parseTupleNames() []token.Token {
+	open := p.expect(token.LPAREN, "'('")
+	var names []token.Token
+	for !p.at(token.RPAREN) {
+		names = append(names, p.expect(token.IDENT, "a name for a value of the tuple"))
+		if !p.accept(token.COMMA) {
+			break
+		}
+	}
+	p.expect(token.RPAREN, "')'")
+	if len(names) < ast.MinTupleSize {
+		p.failWith(ErrUnexpectedToken, "Name each value of the tuple: let (first, second) = pair;",
+			"a tuple has at least two values, and %d %s named here", len(names), map[bool]string{true: "is", false: "are"}[len(names) == 1])
+	}
+	p.checkTupleSize(open, len(names))
+	return names
+}
+
+// tupleLets declares a variable for each named value of a tuple.
+func (p *Parser) tupleLets(names []token.Token, tuple *ast.Ident, isConst bool) []ast.Stmt {
+	var lets []ast.Stmt
+	for i, name := range names {
+		if name.Literal == "_" {
+			continue
+		}
+		copy := *tuple
+		lets = append(lets, &ast.LetStmt{
+			BaseNode: base(name),
+			Name:     name.Literal,
+			IsConst:  isConst,
+			Value:    &ast.MemberExpr{BaseNode: base(name), Expr: &copy, Name: fmt.Sprint(i), TupleSize: len(names)},
+		})
+	}
+	return lets
+}
+
+// tuple builds the value `(a, b)`: the variant of the enum behind tuples
+// of that size.
+func (p *Parser) tuple(open token.Token, elems []ast.Expr) ast.Expr {
+	p.checkTupleSize(open, len(elems))
+	enum := &ast.Ident{BaseNode: base(open), Name: ast.TupleName(len(elems))}
+	variant := &ast.MemberExpr{BaseNode: base(open), Expr: enum, Name: ast.TupleVariant}
+	return &ast.CallExpr{BaseNode: base(open), Func: variant, Args: elems}
+}
+
+func (p *Parser) checkTupleSize(open token.Token, size int) {
+	if size <= ast.MaxTupleSize {
+		return
+	}
+	if !p.speculating {
+		p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+			fmt.Sprintf("a tuple holds %d values at most, and this one has %d", ast.MaxTupleSize, size),
+			"Use a struct: with that many values, each deserves a name", open, p.sourceLines)
+	}
+	panic(bailout{})
 }
 
 func (p *Parser) parseIfStmt() *ast.IfStmt {
@@ -882,6 +1006,12 @@ func (p *Parser) tryTypePattern() (typ *ast.Type) {
 			typ = nil
 		}
 	}()
+
+	// (a, b) is a tuple of patterns, whose names are new variables, and
+	// never the tuple type of types called a and b
+	if p.at(token.LPAREN) {
+		p.fail("not a type pattern")
+	}
 
 	parsed := p.parseType()
 	bareName := parsed.Kind == ast.TypeBasic && len(parsed.Generics) == 0 && !isBuiltinTypeToken(parsed.Tok.Type)
@@ -1006,42 +1136,100 @@ func (p *Parser) parseUnary() ast.Expr {
 func (p *Parser) parsePostfix() ast.Expr {
 	expr := p.parsePrimary()
 	for {
+		if next, ok := p.parsePostfixOp(expr); ok {
+			expr = next
+			continue
+		}
+
 		tok := p.cur()
 		switch tok.Type {
-		case token.LPAREN:
+		case token.QUESTION_DOT:
+			// value?.member: what follows is done with the value, by a name
+			// that stands for it, and only if it is not null. That goes for
+			// all that follows: in user?.address.city the city is read
+			// when there is a user, and nothing is when there is none.
 			p.next()
-			// Anchor the call at its callee so diagnostics underline the
-			// name rather than the parenthesis
-			call := &ast.CallExpr{BaseNode: base(expr.Token()), Func: expr}
-			call.Args = p.parseExprList(token.RPAREN)
-			p.expect(token.RPAREN, "')'")
-			expr = call
-		case token.LBRACKET:
-			p.next()
-			index := p.parseNestedExpr()
-			p.expect(token.RBRACKET, "']'")
-			expr = &ast.IndexExpr{BaseNode: base(tok), Expr: expr, Index: index}
-		case token.DOT:
-			p.next()
-			nameTok := p.expectMemberName("member name")
-			name := nameTok.Literal
-			// Like a generic function name, a method name may carry type
-			// arguments when a call follows: stack.map<String>(f)
-			typeArgs := p.tryTypeArgs()
-
-			// A struct of another module: module.Name { ... }
-			if owner, ok := expr.(*ast.Ident); ok && len(owner.TypeArgs) == 0 && p.at(token.LBRACE) && p.structLitFollows() {
-				qualified := owner.Tok
-				qualified.Literal = owner.Name + "." + name
-				qualified.EndPos = nameTok.EndPos
-				expr = p.parseStructInit(qualified, typeArgs)
-				continue
+			var access ast.Expr = &ast.Ident{BaseNode: base(expr.Token()), Name: p.makeName("safe")}
+			if p.at(token.INT) || p.at(token.FLOAT) {
+				access = p.parseTuplePositions(access) // pair?.0
+			} else {
+				nameTok := p.expectMemberName("member name")
+				access = &ast.MemberExpr{BaseNode: base(nameTok), Expr: access, Name: nameTok.Literal, TypeArgs: p.tryTypeArgs()}
 			}
-			expr = &ast.MemberExpr{BaseNode: base(tok), Expr: expr, Name: name, TypeArgs: typeArgs}
+			for {
+				next, ok := p.parsePostfixOp(access)
+				if !ok {
+					break
+				}
+				access = next
+			}
+			expr = &ast.BinaryExpr{BaseNode: base(tok), Left: expr, Op: ast.SafeAccessOp, Right: access}
+		case token.QUESTION:
+			// value?: the value, or leave the function with the failure
+			p.next()
+			expr = &ast.UnaryExpr{BaseNode: base(tok), Op: ast.TryOp, Expr: expr}
 		default:
 			return expr
 		}
 	}
+}
+
+// parseTuplePositions parses the number after a dot, which reads a value
+// of a tuple by its position. Two positions in a row, pair.0.1, come from
+// the lexer as one token: the number 0.1.
+func (p *Parser) parseTuplePositions(expr ast.Expr) ast.Expr {
+	numTok := p.next()
+	for _, part := range strings.Split(numTok.Literal, ".") {
+		if _, ok := ast.TupleIndex(part); !ok {
+			p.pos--
+			p.fail("expected the position of a value in a tuple, as in pair.0, found %s", describe(numTok))
+		}
+		expr = &ast.MemberExpr{BaseNode: base(numTok), Expr: expr, Name: part}
+	}
+	return expr
+}
+
+// parsePostfixOp parses one thing done to an expression, if one follows:
+// a call, an index or a member. It reports whether there was one.
+func (p *Parser) parsePostfixOp(expr ast.Expr) (ast.Expr, bool) {
+	tok := p.cur()
+	switch tok.Type {
+	case token.LPAREN:
+		p.next()
+		// Anchor the call at its callee so diagnostics underline the
+		// name rather than the parenthesis
+		call := &ast.CallExpr{BaseNode: base(expr.Token()), Func: expr}
+		call.Args = p.parseExprList(token.RPAREN)
+		p.expect(token.RPAREN, "')'")
+		return call, true
+	case token.LBRACKET:
+		p.next()
+		index := p.parseNestedExpr()
+		p.expect(token.RBRACKET, "']'")
+		return &ast.IndexExpr{BaseNode: base(tok), Expr: expr, Index: index}, true
+	case token.DOT:
+		p.next()
+		// pair.0: a value of a tuple, by its position. Two in a row,
+		// pair.0.1, reach the lexer looking like the number 0.1
+		if p.at(token.INT) || p.at(token.FLOAT) {
+			return p.parseTuplePositions(expr), true
+		}
+		nameTok := p.expectMemberName("member name")
+		name := nameTok.Literal
+		// Like a generic function name, a method name may carry type
+		// arguments when a call follows: stack.map<String>(f)
+		typeArgs := p.tryTypeArgs()
+
+		// A struct of another module: module.Name { ... }
+		if owner, ok := expr.(*ast.Ident); ok && len(owner.TypeArgs) == 0 && !strings.HasPrefix(owner.Name, "__") && p.at(token.LBRACE) && p.structLitFollows() {
+			qualified := owner.Tok
+			qualified.Literal = owner.Name + "." + name
+			qualified.EndPos = nameTok.EndPos
+			return p.parseStructInit(qualified, typeArgs), true
+		}
+		return &ast.MemberExpr{BaseNode: base(tok), Expr: expr, Name: name, TypeArgs: typeArgs}, true
+	}
+	return expr, false
 }
 
 func (p *Parser) parseExprList(end token.TokenType) []ast.Expr {
@@ -1081,8 +1269,17 @@ func (p *Parser) parsePrimary() ast.Expr {
 	case token.LPAREN:
 		p.next()
 		expr := p.parseNestedExpr()
+		if !p.at(token.COMMA) {
+			p.expect(token.RPAREN, "')'")
+			return expr
+		}
+		// (1, "a"): a tuple
+		elems := []ast.Expr{expr}
+		for p.accept(token.COMMA) && !p.at(token.RPAREN) {
+			elems = append(elems, p.parseNestedExpr())
+		}
 		p.expect(token.RPAREN, "')'")
-		return expr
+		return p.tuple(tok, elems)
 
 	case token.LBRACKET:
 		p.next()

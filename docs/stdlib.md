@@ -156,6 +156,7 @@ Building a long text piece by piece with `+=` copies everything so far at each s
 | Function | Result |
 |----------|--------|
 | `indexOf(text, part) -> Int?` | Where `part` first occurs, or `null` |
+| `cut(text, separator) -> (String, String)?` | What is before the first separator, and what is after it: `let (name, value) = strings.cut("port=80", "=") ?? ("", "");` |
 | `lastIndexOf(text, part) -> Int?` | Where it last occurs, or `null` |
 | `contains(text, part)`, `startsWith(text, start)`, `endsWith(text, end)` | |
 | `count(text, part) -> Int` | How many times `part` occurs, not counting overlaps |
@@ -275,7 +276,9 @@ Generic functions on plain arrays. Type arguments are inferred: `arrays.reversed
 | `groupBy(items, name) -> Dict<[T]>` | The items sorted into groups by a text worked out from each |
 | `countBy(items, name) -> Dict<Int>` | How many items give each text |
 | `unique(texts)`, `uniqueBy(items, name)` | Without repeats; the first of each is kept |
-| `partition(items, wanted) -> [[T]]` | The items a function accepts, then the others |
+| `partition(items, wanted) -> ([T], [T])` | The items a function accepts, and the others: `let (even, odd) = arrays.partition(numbers, math.isEven);` |
+| `zip(first, second) -> [(A, B)]` | The items of two arrays side by side, as many as the shorter has |
+| `unzip(pairs) -> ([A], [B])` | The other way round |
 | `sortedBy(items, rank)`, `sortedByText(items, name)` | In the order of a number, or of a text, worked out from each |
 | `maxBy(items, rank) -> T?`, `minBy(items, rank) -> T?` | |
 | `sumOf(items, amount) -> Int` | |
@@ -374,6 +377,7 @@ println(ages.get("nobody") ?? 0);
 | `size()`, `isEmpty()` | |
 | `keys() -> [String]` | The keys, in the order they were first set |
 | `sortedKeys() -> [String]` | In alphabetical order |
+| `entries() -> [(String, V)]` | Each key with its value: `for (name, age) in ages.entries() { ... }` |
 | `values() -> [V]` | The values, in the order of their keys |
 | `each(action)` | Calls `action(key, value)` for each |
 
@@ -745,11 +749,12 @@ pub enum Json { Null, Bool(Bool), Number(Float), String(String), Array([Json]), 
 | `stringify()`, `pretty()` | On one line; over several, indented |
 | `json.int(n)`, `json.texts(items)`, `json.ints(items)`, `json.array(items, convert)` | Making documents |
 | `json.object()` | An object built a key at a time: `.text(k, v)`, `.int`, `.number`, `.bool`, `.none`, `.set(k, json)`, then `.done()` |
-| `json.textOf`, `intOf`, `numberOf`, `boolOf`, `itemsOf` | The same accessors as functions, to chain with [`std.option`](#stdoption) |
+| `json.textOf`, `intOf`, `numberOf`, `boolOf`, `itemsOf` | The same accessors as functions, to hand to `arrays.map` and the like |
 
 ```lumen
 let document = json.parse(text).expect("a document");
-let name = option.then(document.get("name"), json.textOf) ?? "nobody";
+let name = document.get("name")?.text() ?? "nobody";
+let firstTag = document.find("user.tags.0")?.text();
 
 let reply = json.object().text("name", name).int("visits", 3).set("tags", json.texts(tags)).done();
 println(reply.stringify());         // {"name":"ada","visits":3,"tags":["a","b"]}
@@ -769,6 +774,7 @@ Regular expressions, in the syntax of RE2: no look-behind and no back-references
 | `regex.must(pattern) -> Regex` | The same for a pattern written in the program: a wrong one stops it |
 | `matches(text) -> Bool` | Whether it fits somewhere |
 | `find(text) -> Match?`, `findAll(text) -> [Match]` | |
+| `capture(text) -> [String]?` | What the groups of the first match took |
 | `all(text) -> [String]` | The text of every match |
 | `replace(text, with)` | `$1` is what the first group took |
 | `replaceWith(text, convert)` | Each match replaced by what a function makes of it |

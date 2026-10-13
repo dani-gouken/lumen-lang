@@ -87,6 +87,7 @@ const (
 	// Null coalescing
 	QUESTION          // ?
 	QUESTION_QUESTION // ??
+	QUESTION_DOT      // ?.
 
 	// Assignment
 	ASSIGN         // =
@@ -298,6 +299,8 @@ func (typ TokenType) String() string {
 		return "QUESTION"
 	case QUESTION_QUESTION:
 		return "QUESTION_QUESTION"
+	case QUESTION_DOT:
+		return "QUESTION_DOT"
 
 	// Operators - Assignment
 	case ASSIGN:

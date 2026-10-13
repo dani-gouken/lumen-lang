@@ -118,6 +118,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	if failed() {
 		return result
 	}
+	declareTuples(prog)
 	checkSupported(prog, errs, lines)
 	checkExterns(prog, errs, lines)
 	if failed() {
@@ -184,6 +185,14 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 
 	result.Chunk = chunk
 	return result
+}
+
+// declareTuples adds the enums that tuples are values of (see
+// ast.TupleName). They are the same for every module, which is why they
+// are added to the program once it is whole and not by the parser.
+func declareTuples(prog *ast.Program) {
+	declared := parser.Parse(ast.TupleSource(), "<tuples>", errors.NewHandler())
+	prog.Decls = append(declared.Decls, prog.Decls...)
 }
 
 // reanalyze recomputes names and types for a program produced by an earlier

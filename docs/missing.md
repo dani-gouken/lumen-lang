@@ -10,8 +10,8 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 | Area | Most useful next steps |
 |------|------------------------|
-| Everyday syntax | a pipe operator for chaining, short lambdas, ranges, null operators |
-| Failures | a short way to pass one on (`?`), cleanup that always runs |
+| Everyday syntax | a pipe operator for chaining, short lambdas, ranges |
+| Failures | cleanup that always runs, one shape for all errors |
 | Types | traits as bounds on type parameters, generic traits, conditions and alternatives in `match` |
 | Structs as first-class containers | `for` over a struct, `list[i]`, methods as values |
 | Correctness | unused variables, bytecode checked before it runs |
@@ -61,7 +61,6 @@ arrays.map(numbers, n => n * 2)
 
 | Missing | Today |
 |---------|-------|
-| A short way to pass a failure on: `let n = count(text)?;` | A `match`, or `then` |
 | Cleanup that runs whatever happens: `defer`, `finally` | Nothing; harmless while the library keeps nothing open between calls |
 | `attempt` on a function with arguments | Wrap the call in a lambda |
 | One shape for all errors | `io.Error`, `Failure` and your own each have `describe()` by convention; a trait cannot be required of a type parameter |
@@ -82,16 +81,14 @@ Adding a function written in Lumen means editing a file in `internal/stdlib/lib/
 
 The library is some 2,500 lines of Lumen. Most of it compiled as first written; these are the places where the language made the code longer or stranger than it should be, in the order of how often they came up.
 
+Five that headed this list have since been added, and the library and the examples rewritten with them: tuples, `?` to pass a failure on, `?.`, texts over several lines, and what a test established reaching into a function expression.
+
 | Missing | What it cost |
 |---------|--------------|
-| **A value for "several things at once"** (tuples) | `arrays.partition` returns `[[T]]` for its two halves; a native function hands back a flat `[String]` and a comment says what each position holds |
-| **A short way to pass a failure on** (`?`), and `match` with a value | `order()` in [`examples/sales`](../examples/sales/main.lum) nests a lambda per step that can fail; every `kindOf(name)` is a `match` with a `return` in each case |
-| **`a?.b`** | `option.then(document.get("name"), json.textOf)` where `document.get("name")?.text()` was meant. `std.json` has `textOf`, `intOf`, ... only so that there is a function to pass |
+| **`match` with a value** | Every `kindOf(name)` is a `match` with a `return` in each case |
 | **Something required of a type parameter** | `Set<T>` has to be given a function from an item to a text; every error type has a `describe()` by convention only |
 | **Equality by content** | `Json.equals`, `Set.equals` and `test.same` are each written by hand; `test.equal` on two arrays fails with "expected [1, 2], got [1, 2]", and has a special message for it |
 | **A function in a field, called** | `self.key(item)` is taken for a method call: `let key = self.key; key(item)` |
-| **What a test taught, inside a lambda** | `if tag == null { return ...; }` then a lambda using `tag`: it is `String?` again in there. A second variable of the plain type (`let wanted: String = tag;`) works around it. Sound, since a lambda may run later, but a variable nothing assigns afterwards could keep what was learned |
-| **A text over several lines** | The sample log of [`examples/logs`](../examples/logs/main.lum) could not be a constant in the program: it is a file next to it, found with `os.program()` |
 | **`${` in a text that is not an insertion** | A regex replacement naming a group is `"\${year}"`: easy to forget, and the error is "undefined identifier 'year'" |
 | **A `Result` with nothing in it** | `fs.makeDir` gives back the path it was given, for want of a `Result<Void, Error>` |
 | **Keywords as names** | `for case in cases` is a syntax error; so are `match`, `in`, `is` as names of variables |
@@ -193,14 +190,17 @@ The first two wait for generic traits, above.
 | A literal for dictionaries | `dict.empty<V>()` then `set`; there is no `{"a": 1}` |
 | Numbers | `Int` is 48 bits (±140 737 488 355 327), not 64; there are no unsigned or sized integers, and no bytes: a file is read as text only |
 | Characters | A character is a text of length 1; `strings.code` and `fromCode` go to and from its number |
-| Multi-line strings, `\u` escapes | Not parsed |
+| `\u` escapes in a text | Not parsed; write the character itself |
 | Formatting inside `${...}`: a width, a number of decimals | Call a function: `"${strings.padLeft(toString(n), 5)}"` |
-| Null operators: `a?.b`, `x!` | Not parsed. Test against `null`, or use `??` |
+| `x!`, to insist a value is not null | Not parsed. `x ?? panic(...)` does not type either: test against `null`, or use `?` |
 | Anything concurrent: threads, async, timers | Nothing; a program is one sequence of steps |
 | Type aliases | Not parsed |
 | Methods on builtin types (`"abc".upper()`) | `impl Trait for Int` parses, but calls are not dispatched |
 | Struct field defaults | Not parsed |
-| Tuples, destructuring `let (a, b) = ...` | Not parsed |
+| Tuples of more than six values, or of one | A struct |
+| Taking a tuple apart in a parameter (`fn(key, value)` for a function of a pair) or a struct apart at all | `let (key, value) = pair;` as the first line |
+| `?.` followed by an index: `items?[0]` | `arrays.at`, or a test against `null` |
+| `?` in `main`, to end the program with the failure | A `match` |
 
 ---
 
@@ -213,7 +213,7 @@ These programs compile today and should not, or compile and misbehave.
 A test narrows a **local variable, parameter or field path** (`node.next`) inside the guarded region: `if x != null { ... }`, after `if x == null { return; }`, in a `while x != null` body, across `&&` and `||`, and for `x is T` and `match` on types. Some things are deliberately left out:
 
 *   **a variable that a lambda assigns** is never narrowed: the lambda can run at any moment;
-*   **inside a lambda**, nothing known about the enclosing function's variables carries over: the lambda may run later;
+*   **inside a lambda**, only what is known about variables that are never assigned after their declaration carries over. For one that is assigned anywhere in the function, before or after, nothing does: the lambda may run later. What is known about fields never carries over;
 *   **fields are forgotten after anything that may assign a field**: a field assignment, or a call of a function that assigns one, directly or through what it calls. Calls that cannot (builtins, functions that only read) change nothing. A call whose target is not known counts as one that may: a function value, a function stored in a field, and a method if *any* method of that name assigns a field (the receiver's type is not used). Copy the field into a local to keep it across such calls;
 *   **elements are not narrowed**: `if xs[0] != null` says nothing about the next `xs[0]`;
 *   **the false branch of a type test** learns nothing: after `if v is Int { ... } else { ... }`, `v` is not "anything but Int";
@@ -305,6 +305,5 @@ A sequence that keeps each step small and makes the language noticeably more com
 4.  **Traits with type parameters, and as bounds**: what `for` over a `List`, `list[i]` and generic code that compares its values all wait for.
 5.  **`match`**: conditions on cases, several patterns per case, `match` as an expression.
 6.  **Native code from outside**: `extern "library" fn`, C types and structs by value, for bindings to C libraries.
-7.  **Null operators**: `x!`, `a?.b`.
 
 When an item is done, remove it here and update the status table in the [language spec](language-spec.md#13-implementation-status).

@@ -139,9 +139,7 @@ pub fn dateTime(year: Int, month: Int, day: Int, hour: Int, minute: Int, second:
 // as UTC, and the date that comes out is told in UTC whatever zone the
 // text names.
 pub fn parse(text: String) -> Date? {
-    let moment = read(text);
-    if moment == null { return null; }
-    return utc(moment);
+    return utc(read(text)?);
 }
 
 fn told(f: [Int]) -> Date {

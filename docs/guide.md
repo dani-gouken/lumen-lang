@@ -108,6 +108,18 @@ println("point: ${Point { x: 1, y: 2 }}");                   // point: {x: 1, y:
 
 Anything that is an expression can go between the braces: calls, arithmetic, fields, another string with expressions of its own. A `$` that is not followed by `{` is just a dollar sign, and braces without a `$` are just braces. To write the characters `${` themselves, escape the dollar: `"\${name}"`.
 
+A text over several lines goes between `"""` and `"""`:
+
+```lumen
+let help = """
+    usage: todo <command>
+      add "title"       quotes need no escaping here
+      list              ${count} so far
+    """;
+```
+
+The line end after the opening quotes and the one before the closing quotes are not part of the text, and what the closing quotes are indented by is taken off the front of every line: the text above starts with `usage` and its second line with two spaces. Put the closing quotes on a line of their own for that. Escapes and `${...}` work as in any text.
+
 ### Control flow
 
 ```lumen
@@ -326,9 +338,68 @@ if shape is Square { println(shape.side); }
 
 Null tests work on fields as well: after `if node.next == null { return; }`, `node.next` is a `Node`.
 
+Three operators save most of those tests:
+
+```lumen
+let city = user?.address?.city;       // String?: null if there is no user, or no address
+let name = user?.name ?? "nobody";    // with a fallback
+user?.rename("Ada");                  // called only if there is a user
+
+fn port(config: Config) -> Int? {
+    let text = config.port?;          // the value, or return null from port right here
+    return strings.parseInt(text)?;
+}
+```
+
+*   **`a ?? b`** is `a`, or `b` when `a` is null.
+*   **`value?.member`** reads a field or calls a method when the value is not null, and gives null when it is. All that follows on the same chain is done with the value too: in `user?.name.length`, the length is taken when there is a user. A step that may itself be null needs a `?.` of its own, as `address` above. On a value that can never be null it is an error (`E2035`): use a dot.
+*   **`value?`** after an expression gives the value, and returns `null` from the enclosing function if there is none. The function has to be one that may return null, or one that returns nothing, which it then simply ends. The same `?` passes on the failure of a [`Result`](#failures).
+
+What a test established about a variable also holds inside a function written after it, as long as nothing ever assigns the variable again:
+
+```lumen
+fn tagged(notes: [Note], tag: String?) -> [Note] {
+    if tag == null { return notes; }
+    return arrays.filter(notes, fn(note: Note) -> Bool { return arrays.contains(note.tags, tag); });   // tag: String
+}
+```
+
 A value of type `Any` cannot be used until it is cast or tested. A cast that cannot possibly succeed (`1 as String`) is a compile error; one that can fail stops the program with `cannot cast String to Int` and the source location.
 
 Casts look inside the value: `v as [Int]` checks every element and reports the first that does not fit (`element 2: String is not an Int`), and `v as Box<Int>` checks the fields that depend on the type argument.
+
+### Tuples
+
+A tuple is a few values together, without a struct to name them: what a function returns when it has two things to say.
+
+```lumen
+fn divide(a: Int, b: Int) -> (Int, Int) {
+    return (a / b, a % b);
+}
+
+let (quotient, rest) = divide(17, 5);       // each value gets a name
+let both = divide(17, 5);
+println(both, both.0, both.1);              // (3, 2) 3 2
+
+for (name, age) in arrays.zip(names, ages) { ... }
+for i, (name, age) in pairs { ... }
+```
+
+*   The type is written like the value: `(Int, String)`, `[(String, Int)]`, `(Int, Int)?`.
+*   Values are read by position, from 0 (`pair.0`), or all named at once with `let (a, b) = pair;`, where `_` skips one.
+*   Two tuples are equal when they hold equal values, and a tuple prints as it is written.
+*   A tuple cannot be changed once made; make a new one.
+*   A `match` takes one apart, and is checked for completeness as for an [enum](enums.md):
+
+```lumen
+match (item.quantity < 10, item.supplier != null) {
+    case (true, true): { return "reorder"; }
+    case (true, false): { return "find a supplier"; }
+    case (false, _): { return "ok"; }
+}
+```
+
+Two to six values. Beyond three, or when the values travel far from where they are made, a struct says more: `point.x` reads better than `point.0`.
 
 ### Closures
 
@@ -528,6 +599,18 @@ match io.readFile("notes.txt") {
 }
 ```
 
+Most often the caller has nothing better to do with a failure than to hand it to its own caller. `?` does that: it gives the value, or returns the failure from the enclosing function.
+
+```lumen
+fn order(row: Dict<String>) -> Result<Order, Flaw> {
+    let number = whole(row, "order")?;          // an Int, or order() returns the Flaw here
+    let quantity = whole(row, "quantity")?;
+    return Result.Ok(Order { number: number, quantity: quantity });
+}
+```
+
+The function has to return a `Result` with the same kind of failure; one of another kind is turned into it first with `mapErr(...)?`.
+
 A failure that should never happen stops the program; `attempt` is for the few places that must survive it, and gives it back as a value with its message, kind and call stack:
 
 ```lumen
@@ -549,7 +632,7 @@ These are rejected with a clear error rather than miscompiled:
 
 Things to be aware of:
 
-*   **What is known about a field ends at a call that may change a field.** `println`, and functions that only read, are fine; after calling something that assigns a field, or a function value, the field has to be tested again or copied into a local first. A variable that a lambda assigns is not narrowed at all.
+*   **What is known about a field ends at a call that may change a field.** `println`, and functions that only read, are fine; after calling something that assigns a field, or a function value, the field has to be tested again or copied into a local first. A variable that a lambda assigns is not narrowed at all, and inside a lambda only what is known about variables that are never assigned again carries over.
 *   **A type argument nothing determines has to be written**: `let xs = none();` gives no clue, so write `none<Int>()` or `let xs: [Int] = none();`.
 
 The status table in the [language spec](language-spec.md#13-implementation-status) lists what works; [missing.md](missing.md) is the full inventory of what does not.

@@ -41,6 +41,8 @@ const (
 	ErrAssignToLoopVar   = "E2026"
 	ErrPrivateMethod     = "E2027"
 	ErrNoMembers         = "E2033" // `.length` on an array or a text
+	ErrBadTry            = "E2034" // `value?` where there is no failure to pass on, or nowhere to pass it
+	ErrNeverNull         = "E2035" // `value?.member` on a value that cannot be null
 )
 
 type Checker struct {
@@ -78,11 +80,14 @@ type Checker struct {
 
 	// Flow typing (see flow.go): variables currently known to be non-null,
 	// and how often each variable has been assigned so far
-	narrowed      map[*resolve.Symbol]Type
-	narrowedPaths map[string]pathFact // field paths such as `node.next`
-	pathEpoch     int                 // advanced whenever field facts are dropped
-	writes        map[*resolve.Symbol]int
-	shared        map[*resolve.Symbol]bool // assigned by a lambda that does not own them
+	narrowed       map[*resolve.Symbol]Type
+	narrowedPaths  map[string]pathFact // field paths such as `node.next`
+	pathEpoch      int                 // advanced whenever field facts are dropped
+	writes         map[*resolve.Symbol]int
+	shared         map[*resolve.Symbol]bool // assigned by a lambda that does not own them
+	reassigned     map[*resolve.Symbol]bool // assigned somewhere after being declared
+	miscounted     map[string]bool          // tuples taken apart with the wrong number of names
+	enteringFnExpr bool                     // the function about to be checked is a function expression
 
 	// Which functions may assign a field when called (see findFieldWriters)
 	fieldWriters map[*ast.FnDecl]bool
@@ -115,6 +120,8 @@ func NewChecker(prog *ast.Program, table *resolve.Table, errs *errors.Handler) *
 		narrowedPaths: make(map[string]pathFact),
 		writes:        make(map[*resolve.Symbol]int),
 		shared:        make(map[*resolve.Symbol]bool),
+		reassigned:    make(map[*resolve.Symbol]bool),
+		miscounted:    make(map[string]bool),
 
 		fieldWriters: make(map[*ast.FnDecl]bool),
 		methodsNamed: make(map[string][]*ast.FnDecl),
@@ -176,10 +183,23 @@ func (c *Checker) checkFnDecl(d *ast.FnDecl) {
 	c.recordSignature(d, d)
 
 	// A function body may run at any later time, so it cannot rely on what
-	// is known about outer variables here; and what it assigns is no longer
-	// known afterwards.
+	// is known here about outer variables that change; and what it assigns
+	// is no longer known afterwards.
+	//
+	// A variable that is never assigned after its declaration cannot
+	// change, whenever the body runs: what a test established about it
+	// before a function expression still holds inside.
 	outer := c.flowSnapshot()
+	isFnExpr := c.enteringFnExpr
+	c.enteringFnExpr = false
 	c.narrowed = make(map[*resolve.Symbol]Type)
+	if isFnExpr {
+		for sym, typ := range outer.facts.vars {
+			if !c.reassigned[sym] {
+				c.narrowed[sym] = typ
+			}
+		}
+	}
 	c.narrowedPaths = make(map[string]pathFact)
 	c.checkBlockStmt(d.Body)
 	c.flowRestore(outer)
@@ -373,6 +393,13 @@ func (c *Checker) checkAssignment(e *ast.BinaryExpr) Type {
 		c.checkNotConst(ident, sym)
 	} else {
 		left = c.declaredTargetType(e.Left)
+		if member, ok := e.Left.(*ast.MemberExpr); ok {
+			if _, byPosition := ast.TupleIndex(member.Name); byPosition && left != nil && !isUnknown(left) {
+				c.errorfWithSuggestion(e.Token(), ErrAssignToConst,
+					"Make a new tuple with the value changed, or use a struct, whose fields can be assigned",
+					"a tuple cannot be changed once made")
+			}
+		}
 	}
 
 	var right Type
@@ -860,6 +887,15 @@ func (c *Checker) declaredIdentType(id *ast.Ident) Type {
 		case *ast.ForIndex:
 			// Position variable of `for i, item in items`
 			return Int
+		case *ast.BinaryExpr:
+			// The name the right side of `value?.member` gives the value:
+			// there, it is not null
+			if t, ok := c.info.Types[decl.Left]; ok && t != nil {
+				if value := withoutNull(t); value != nil {
+					return value
+				}
+			}
+			return Unknown
 		case *ast.ImplDecl:
 			// Implicit `self` of an impl method
 			return c.implSelfType(decl)
@@ -901,6 +937,9 @@ func (c *Checker) functionType(fn *ast.FnDecl, id *ast.Ident) Type {
 func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 	if e.Op == "=" {
 		return c.checkAssignment(e)
+	}
+	if e.Op == ast.SafeAccessOp {
+		return c.checkSafeAccess(e)
 	}
 	if base, ok := ast.CompoundOp(e.Op); ok {
 		return c.checkCompoundAssignment(e, base)
@@ -1049,6 +1088,10 @@ func (c *Checker) checkUnaryExpr(e *ast.UnaryExpr) Type {
 		return Int
 	}
 
+	if e.Op == ast.TryOp {
+		return c.checkTry(e)
+	}
+
 	operand := c.checkExpr(e.Expr)
 	if operand == nil || isUnknown(operand) {
 		return Unknown
@@ -1195,6 +1238,40 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 		}
 
 	case *StructType:
+		// pair.0: a value of a tuple, by its position
+		if index, byPosition := ast.TupleIndex(e.Name); byPosition {
+			if !ast.IsTupleName(t.BaseName) {
+				c.errorfWithSuggestion(e.Token(), ErrUnknownField, "Only the values of a tuple are read by position",
+					"%s is not a tuple: it has no value at position %d", t, index)
+				return Unknown
+			}
+			if e.TupleSize != 0 && e.TupleSize != len(t.TypeArgs) {
+				// let (a, b) = triple: said once, for the first name
+				holder, named := e.Expr.(*ast.Ident)
+				if !named || !c.miscounted[holder.Name] {
+					c.errorfWithSuggestion(e.Expr.Token(), ErrTypeMismatch,
+						"Name every value, with '_' for those that are not needed",
+						"%s holds %d values, and %d are named here", t, len(t.TypeArgs), e.TupleSize)
+				}
+				if named {
+					c.miscounted[holder.Name] = true
+				}
+				return Unknown
+			}
+			if index >= len(t.TypeArgs) {
+				c.errorfWithSuggestion(e.Token(), ErrUnknownField,
+					fmt.Sprintf("Positions count from 0: the last one is .%d", len(t.TypeArgs)-1),
+					"%s holds %d values: there is none at position %d", t, len(t.TypeArgs), index)
+				return Unknown
+			}
+			return t.TypeArgs[index]
+		}
+		if decl := c.enums[t.Name]; decl != nil && ast.IsTupleName(decl.Name) {
+			c.errorfWithSuggestion(e.Token(), ErrUnknownField,
+				"Read a value by its position, as in pair.0, or name them all: let (first, second) = pair;",
+				"a tuple has no '%s'", e.Name)
+			return Unknown
+		}
 		if decl := c.enums[t.Name]; decl != nil {
 			c.errorfWithSuggestion(e.Token(), ErrUnknownField,
 				fmt.Sprintf("Take the value apart with a match: match value { case %s.%s(...): { ... } }", decl.Name, firstVariant(decl)),
@@ -1311,6 +1388,7 @@ func (c *Checker) checkFnExpr(e *ast.FnExpr) Type {
 		// A lambda belongs to the module of the function it is written in
 		fn.Module = c.currentFn.Module
 	}
+	c.enteringFnExpr = true
 	c.checkFnDecl(fn)
 	c.recordSignature(e, fn)
 	return c.resolveFnType(fn)

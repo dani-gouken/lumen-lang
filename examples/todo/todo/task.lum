@@ -3,7 +3,6 @@
 import std.json;
 import std.json.{Json};
 import std.result.{Result};
-import std.option;
 import std.time;
 import std.time.{Date};
 import std.strings;
@@ -86,13 +85,13 @@ impl Task {
 
 // The task a document describes, or what is wrong with the document.
 pub fn fromJson(document: Json) -> Result<Task, String> {
-    let id = option.then(document.get("id"), json.intOf);
+    let id = document.get("id")?.int();
     if id == null { return Result.Err("a task needs a whole number as its id"); }
-    let title = option.then(document.get("title"), json.textOf);
+    let title = document.get("title")?.text();
     if title == null { return Result.Err("task ${id} has no title"); }
 
     let priority = Priority.Normal;
-    let named = option.then(document.get("priority"), json.textOf);
+    let named = document.get("priority")?.text();
     if named != null {
         let known = priorityOf(named);
         if known == null { return Result.Err("task ${id} has the priority '${named}', which is not low, normal or high"); }
@@ -100,14 +99,14 @@ pub fn fromJson(document: Json) -> Result<Task, String> {
     }
 
     let due: Date? = null;
-    let dueText = option.then(document.get("due"), json.textOf);
+    let dueText = document.get("due")?.text();
     if dueText != null {
         due = time.parse(dueText);
         if due == null { return Result.Err("task ${id} is due on '${dueText}', which is not a date"); }
     }
 
     let state = State.Open;
-    let doneText = option.then(document.get("done"), json.textOf);
+    let doneText = document.get("done")?.text();
     if doneText != null {
         let when = time.parse(doneText);
         if when == null { return Result.Err("task ${id} was done on '${doneText}', which is not a date"); }
