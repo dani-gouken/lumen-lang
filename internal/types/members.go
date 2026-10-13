@@ -814,6 +814,14 @@ func (c *Checker) recordSignature(node ast.Node, fn *ast.FnDecl) {
 // the fields whose type involves a type parameter.
 func (c *Checker) describeStructCast(t *StructType, visiting map[string]bool) (string, bool) {
 	decl := c.structs[t.Name]
+	if decl == nil && c.traits[t.Name] == nil {
+		// Not the name of anything declared: the type parameter of a
+		// generic struct, in one of its methods. A struct is compiled once
+		// for every type it is used with, so what the parameter stands
+		// for is not known there, and there is nothing to verify: as for
+		// the parameter of a generic function before it is used.
+		return "any", true
+	}
 	key := describe(t)
 	if decl == nil || len(decl.TypeParams) == 0 || len(t.TypeArgs) == 0 || visiting[key] {
 		return "{" + t.Name + "}", true

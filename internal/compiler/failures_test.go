@@ -286,12 +286,12 @@ fn main() -> Int {
 	want := `true index out of bounds: 2 (length 1)
 third test.lum 7 17
 index out of bounds: 2 (length 1), at test.lum:7:17 in function 'third'
-["third:7", "load:10", "lambda_0:13", "std.result.attempt:197", "main:13"]
+["third:7", "load:10", "lambda_0:13", "std.result.attempt_Int:207", "main:13"]
 index out of bounds: 2 (length 1)
   at test.lum:7:17 in function 'third'
   called from test.lum:10:12 in function 'load'
   called from test.lum:13:40 in function 'lambda_0'
-  called from <std>/result.lum:197:8 in function 'std.result.attempt'
+  called from <std>/result.lum:207:8 in function 'std.result.attempt_Int'
   called from test.lum:13:11 in function 'main'
 handled as an index problem
 `

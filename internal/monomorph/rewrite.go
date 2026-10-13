@@ -54,6 +54,14 @@ func (m *Monomorphizer) rewriteStmtCallSites(stmt ast.Stmt) {
 		m.rewriteStmtCallSites(s.Body)
 	case *ast.ExprStmt:
 		m.rewriteExprCallSites(s.Expr)
+	default:
+		exprs, stmts := insideStmt(stmt)
+		for _, inner := range exprs {
+			m.rewriteExprCallSites(inner)
+		}
+		for _, inner := range stmts {
+			m.rewriteStmtCallSites(inner)
+		}
 	}
 }
 
@@ -114,5 +122,13 @@ func (m *Monomorphizer) rewriteExprCallSites(expr ast.Expr) {
 		// make the value a different type from every place it is used.
 		// Values carry no type arguments at runtime, so one struct serves
 		// all instantiations.
+	default:
+		exprs, stmts := insideExpr(expr)
+		for _, inner := range exprs {
+			m.rewriteExprCallSites(inner)
+		}
+		for _, inner := range stmts {
+			m.rewriteStmtCallSites(inner)
+		}
 	}
 }

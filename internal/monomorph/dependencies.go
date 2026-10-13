@@ -107,6 +107,14 @@ func (m *Monomorphizer) findDepsInStmt(stmt ast.Stmt, typeArgs []types.Type, typ
 		deps = append(deps, m.findDepsInStmt(s.Body, typeArgs, typeParams)...)
 	case *ast.ExprStmt:
 		deps = append(deps, m.findDepsInExpr(s.Expr, typeArgs, typeParams)...)
+	default:
+		exprs, stmts := insideStmt(stmt)
+		for _, inner := range exprs {
+			deps = append(deps, m.findDepsInExpr(inner, typeArgs, typeParams)...)
+		}
+		for _, inner := range stmts {
+			deps = append(deps, m.findDepsInStmt(inner, typeArgs, typeParams)...)
+		}
 	}
 
 	return deps
@@ -162,6 +170,18 @@ func (m *Monomorphizer) findDepsInExpr(expr ast.Expr, typeArgs []types.Type, typ
 	case *ast.StructInitExpr:
 		for _, fieldExpr := range e.Fields {
 			deps = append(deps, m.findDepsInExpr(fieldExpr, typeArgs, typeParams)...)
+		}
+	case *ast.FnExpr:
+		if e.Body != nil {
+			deps = append(deps, m.findDepsInStmt(e.Body, typeArgs, typeParams)...)
+		}
+	default:
+		exprs, stmts := insideExpr(expr)
+		for _, inner := range exprs {
+			deps = append(deps, m.findDepsInExpr(inner, typeArgs, typeParams)...)
+		}
+		for _, inner := range stmts {
+			deps = append(deps, m.findDepsInStmt(inner, typeArgs, typeParams)...)
 		}
 	}
 

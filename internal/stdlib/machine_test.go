@@ -1561,3 +1561,141 @@ func TestConstantsThatAreStructsAndArrays(t *testing.T) {
 		"0 230 [2, 3, 5, 7, 11, 13] [2, 3, 5, 7, 11] 99 0 0 [3, 6]",
 		"28 [230, 460] stop")
 }
+
+// Casts to a type parameter, wherever the parameter comes from: a generic
+// function, a generic function called by another, a method of a generic
+// struct, and a generic function called from such a method. Where the
+// function is compiled for the type, the cast is verified; where the type
+// is not known (the methods of a generic struct are compiled once), it is
+// not, and never refuses a value for not being "a T".
+func TestCastsToTypeParameters(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		import std.arrays;
+		import std.result;
+		import std.result.{Result};
+
+		fn opt<T>(value: Any) -> T? { return value as T?; }
+		fn must<T>(value: Any) -> T { return value as T; }
+		fn items<T>(value: Any) -> [T] { return value as [T]; }
+		fn outer<T>(value: Any) -> T? { return opt<T>(value); }
+		fn deep<T>(value: Any) -> T { return must<T>(outer<T>(value)); }
+		fn isOne<T>(value: Any) -> Bool { return value is T; }
+
+		struct Box<T> { value: Any; }
+		impl<T> Box<T> {
+			fn get() -> T? { return self.value as T?; }
+			fn must() -> T { return self.value as T; }
+			fn through() -> T? { return opt<T>(self.value); }
+			fn deep() -> T { return deep<T>(self.value); }
+			fn all() -> [T] { return items<T>([self.value, self.value]); }
+			fn tried() -> Result<T, String> {
+				return match result.attempt(() -> self.must()) {
+					case Result.Ok(v): Result.Ok(v);
+					case Result.Err(failure): Result.Err(failure.message);
+				};
+			}
+		}
+		struct Pair<A, B> { first: Any; second: Any; }
+		impl<A, B> Pair<A, B> {
+			fn swap() -> Pair<B, A> { return Pair<B, A> { first: self.second, second: self.first }; }
+			fn left() -> A { return self.first as A; }
+			fn right() -> B? { return self.second as B?; }
+		}
+		fn boxed<T>(value: Any) -> T? { return Box<T> { value: value }.get(); }
+
+		fn main() {
+			// Compiled for the type: verified
+			println(opt<String>("a"), opt<Int>(null), must<Int>(3), items<Int>([1, 2]), outer<String>("b"), deep<Float>(2.5));
+			println(isOne<Int>(1), isOne<Int>("one"), isOne<String>("one"));
+
+			// In the methods of a generic struct, and what they call
+			let text = Box<String> { value: "c" };
+			println(text.get(), text.must(), text.through(), text.deep(), text.all(), text.tried());
+			let none = Box<Int> { value: null };
+			println(none.get(), none.through(), boxed<String>("d"), boxed<Int>(null));
+			let pair = Pair<Int, String> { first: 1, second: "one" };
+			println(pair.left(), pair.right(), pair.swap().left(), pair.swap().right());
+
+			// A cast that is verified still refuses
+			match result.attempt(() -> must<Int>("three")) {
+				case Result.Ok(n): println("got", n);
+				case Result.Err(failure): println(failure.message);
+			}
+			let mixed: [Any] = [1, "two"];
+			match result.attempt(() -> items<Int>(mixed)) {
+				case Result.Ok(xs): println("got", xs);
+				case Result.Err(failure): println(failure.message);
+			}
+			match result.attempt(() -> arrays.len(opt<[Int]>("text") ?? [])) {
+				case Result.Ok(n): println("got", n);
+				case Result.Err(failure): println(failure.message);
+			}
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	lines := strings.Split(strings.TrimSuffix(out, "\n"), "\n")
+	want := []string{
+		"a null 3 [1, 2] b 2.5",
+		"true false true",
+		`c c c c ["c", "c"] Ok("c")`,
+		"null null d null",
+		"1 one one 1",
+	}
+	for i, w := range want {
+		if i >= len(lines) || lines[i] != w {
+			got := "<nothing>"
+			if i < len(lines) {
+				got = lines[i]
+			}
+			t.Errorf("line %d:\n  want %s\n   got %s", i+1, w, got)
+		}
+	}
+	// The three that are refused say what the value was and was not
+	for i, part := range []string{"cannot cast String to Int", "cannot cast", "cannot cast String to"} {
+		if at := len(want) + i; at >= len(lines) || !strings.Contains(lines[at], part) {
+			t.Errorf("line %d: expected a refusal containing %q, got:\n%s", at+1, part, out)
+		}
+	}
+}
+
+// A generic function is compiled for the types it is used with wherever
+// the use is written: in what a match looks at, in its cases and their
+// conditions, in a defer, in an if or a match that gives a value. Each of
+// these calls a function whose cast is verified, with a value it must
+// refuse; none may reach the function as it was written for no type.
+func TestGenericCallsAreSpecializedEverywhere(t *testing.T) {
+	places := map[string]string{
+		"a statement":                                  `must<Int>(wrong());`,
+		"what a match looks at":                        `match must<Int>(wrong()) { case 1: { } default: { } }`,
+		"a case of a match":                            `match 1 { case 1: { must<Int>(wrong()); } default: { } }`,
+		"a case that is an expression":                 `let n = match 1 { case 1: must<Int>(wrong()); default: 0; };`,
+		"the condition of a case":                      `match 1 { case 1 if must<Int>(wrong()) > 0: { } default: { } }`,
+		"the default of a match":                       `match 2 { case 1: { } default: { must<Int>(wrong()); } }`,
+		"a function in a match":                        `match 1 { case 1: { let f = () -> must<Int>(wrong()); f(); } default: { } }`,
+		"a defer":                                      `defer { must<Int>(wrong()); }`,
+		"a defer of one call":                          `defer must<Int>(wrong());`,
+		"the branch of an if":                          `let n = if wrong() == "three" { must<Int>(wrong()) } else { 0 };`,
+		"the other branch":                             `let n = if wrong() != "three" { 0 } else { must<Int>(wrong()) };`,
+		"the condition of an if":                       `let n = if must<Int>(wrong()) > 0 { 1 } else { 0 };`,
+		"statements in a branch":                       `let n = if true { let m = must<Int>(wrong()); m } else { 0 };`,
+		"the end of a kept range":                      `let r = 0..must<Int>(wrong());`,
+		"the end of a loop":                            `for i in 0..must<Int>(wrong()) { }`,
+		"a match in a match":                           `match 1 { case 1: { match 2 { case 2: { must<Int>(wrong()); } default: { } } } default: { } }`,
+		"a generic function called by one, in a match": `match 1 { case 1: { through<Int>(wrong()); } default: { } }`,
+	}
+	for name, body := range places {
+		t.Run(name, func(t *testing.T) {
+			_, err := runWith(t, 16<<20, `
+				fn must<T>(value: Any) -> T { return value as T; }
+				fn through<T>(value: Any) -> T { return match 1 { case 1: must<T>(value); default: must<T>(value); }; }
+				fn wrong() -> Any { return "three"; }
+				fn main() { `+body+` }
+			`, nil)
+			if err == nil || !strings.Contains(err.Error(), "cannot cast String to Int") {
+				t.Errorf("expected the cast to be verified and refused, got %v", err)
+			}
+		})
+	}
+}

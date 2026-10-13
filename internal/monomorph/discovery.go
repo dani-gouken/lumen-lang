@@ -57,6 +57,14 @@ func (m *Monomorphizer) visitStmtForDiscovery(stmt ast.Stmt) {
 		m.visitStmtForDiscovery(s.Body)
 	case *ast.ExprStmt:
 		m.visitExprForDiscovery(s.Expr)
+	default:
+		exprs, stmts := insideStmt(stmt)
+		for _, inner := range exprs {
+			m.visitExprForDiscovery(inner)
+		}
+		for _, inner := range stmts {
+			m.visitStmtForDiscovery(inner)
+		}
 	}
 }
 
@@ -140,6 +148,14 @@ func (m *Monomorphizer) visitExprForDiscovery(expr ast.Expr) {
 				key := MakeInstantiationKey(e.Name, typeArgs)
 				m.recordInstantiation(key, e.Name, typeArgs, genericDecl, e)
 			}
+		}
+	default:
+		exprs, stmts := insideExpr(expr)
+		for _, inner := range exprs {
+			m.visitExprForDiscovery(inner)
+		}
+		for _, inner := range stmts {
+			m.visitStmtForDiscovery(inner)
 		}
 	}
 }
