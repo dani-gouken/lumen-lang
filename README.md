@@ -92,6 +92,7 @@ All of it: [docs/stdlib.md](docs/stdlib.md).
 - **Go to definition**, into your own files and into the standard library
 - **Suggestions**: the methods of whatever stands before the dot, the names of a module, the modules on an `import` line
 - **An outline** of what a file declares, and colours for `.lum` files
+- **Format Document**, and on save: the file written the way `lumen fmt` writes it
 
 Setting it up: [docs/editor.md](docs/editor.md).
 
@@ -128,7 +129,19 @@ All of raylib is declared in [examples/raylib](examples/raylib), with a Breakout
 
 ### The whole toolchain, in one binary
 
-`lumen run`, `build` to bytecode, a REPL, a bytecode assembler and disassembler, a debugger that shows source lines, a look at the intermediate representation, limits on memory and call depth, and `lumen lsp`.
+`lumen run`, `build` to bytecode, `test`, `fmt`, a REPL, a bytecode assembler and disassembler, a debugger that shows source lines, a look at the intermediate representation, limits on memory and call depth, and `lumen lsp`.
+
+```text
+$ lumen test
+shop/prices_test.lum
+  ok    a total adds up
+  FAIL  an empty basket costs nothing
+        expected 0, got 1
+        at shop/prices_test.lum:9
+1 passed, 1 failed
+```
+
+A test is a function `fn testATotalAddsUp()` in a file called `*_test.lum`: [docs/stdlib.md](docs/stdlib.md#test-files-lumen-test). `lumen fmt` writes every file the one way, with room in it: a block is never on the line of its brace, and what takes several lines stands apart. It is a Lumen program too: [docs/formatting.md](docs/formatting.md).
 
 ```text
 $ lumen repl
@@ -147,6 +160,7 @@ Variables, functions and types stay from one line to the next, a declaration typ
 - **Tasks and channels**: [docs/tasks.md](docs/tasks.md)
 - **Calling C libraries**: [docs/ffi.md](docs/ffi.md)
 - **Editor support**: [docs/editor.md](docs/editor.md)
+- **The formatter**: [docs/formatting.md](docs/formatting.md)
 - **The REPL**: [docs/repl.md](docs/repl.md)
 - **Syntax and semantics**: [docs/language-spec.md](docs/language-spec.md) (draft, with an implementation status table)
 - **How the compiler works**: [docs/compilation/pipeline.md](docs/compilation/pipeline.md)
@@ -180,7 +194,8 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Tasks scheduled by the virtual machine, one goroutine each, taking turns
 - ✅ Language server (`lumen lsp`) and VS Code extension
 - ✅ REPL (`lumen repl`): variables, declarations and closures kept from one input to the next
-- ✅ CLI: `run`, `build`, `ir`, `repl`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
+- ✅ Formatter (`lumen fmt`), written in Lumen, and a test runner (`lumen test`)
+- ✅ CLI: `run`, `build`, `test`, `fmt`, `ir`, `repl`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
 
 Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics with requirements (`<T: Ordered>`), traits with type parameters and default methods, operators on structs, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values, ranges and types, as a statement or for its value, with conditions and several patterns per case), loops over ranges (`for i in 0..10`), `defer`, short-circuit operators, `?.` and `?` for values that may be missing, tuples, string interpolation (`"total: ${n}"`) and texts over several lines, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library ([docs/stdlib.md](docs/stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, files and folders, dates, program arguments, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, tests, tasks with channels for doing several things at once ([docs/tasks.md](docs/tasks.md)), and reflection. An editor gets mistakes as you type, hover, go to definition, an outline and suggestions from `lumen lsp`, a language server written in Lumen ([docs/editor.md](docs/editor.md)).
 
@@ -188,7 +203,7 @@ Not there yet:
 
 - ⚠️ A way to install packages (`lumen.json` can point at folders of modules, nothing fetches them); native code from shared libraries
 - ⚠️ Several processors at once: tasks take turns on one
-- ⚠️ A formatter; renaming and finding uses in the editor
+- ⚠️ Renaming and finding uses in the editor
 
 What works is listed in the [implementation status table](docs/language-spec.md#13-implementation-status); what does not, with the way it fails today, in [docs/missing.md](docs/missing.md).
 
@@ -220,6 +235,8 @@ lumen/
     stdlib/        - The standard library, in Lumen (lib/*.lum)
     inspect/       - Questions about a program's source: std.compiler
     lsp/           - The language server, a Lumen program
+    formatter/     - lumen fmt, a Lumen program
+    testrun/       - lumen test: finding the tests, writing the main that runs them
     repl/          - The REPL: sessions, the line editor
     vm/            - Virtual machine, tasks, native functions
     asm/           - Assembler and disassembler
@@ -294,7 +311,7 @@ Example programs in [examples/](examples/):
 - **words.lum** - Word counts of a text with the standard library: `std.strings`, `std.dict`, `std.arrays`, `std.list`, `std.math`
 - **modules.lum** - A program in several files: `import`, `pub`, with its modules in `zoo/`
 - **project/** - A program with a project file (`lumen.json`): entry, module root, a package. Run it with `lumen run examples/project`
-- **calculator/** - A small language implementation in three modules: lexer, recursive-descent parser, and a tree of trait objects that evaluates itself. `lumen run examples/calculator`
+- **calculator/** - A small language implementation in three modules: lexer, recursive-descent parser, and a tree of trait objects that evaluates itself. `lumen run examples/calculator`, and `lumen test examples/calculator` for its tests
 
 Whole programs on the standard library, each a project to run by its folder:
 

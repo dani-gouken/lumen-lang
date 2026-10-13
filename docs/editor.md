@@ -8,6 +8,7 @@
 | Pointing at a name | How it is declared and the comment above its declaration: variables, functions, methods, fields, variants, types, modules |
 | Go to definition | Jumps to where a name is declared: in the file, in another file of the program, or in the standard library |
 | Outline | What the file declares: functions, structs with their fields, enums with their variants, traits, methods |
+| Format Document | The file written the way [`lumen fmt`](formatting.md) writes it, from the text in the editor, saved or not. A file that does not read as a program is left alone |
 | Suggestions | After a dot: the fields and methods of the value before it, whether a name or a chain of calls (`json.object().text("a", "b").`); the variants of an enum; the public names of a module. On an `import` line: the modules there are. Elsewhere: everything in reach |
 
 ## VS Code
@@ -19,6 +20,14 @@ cd editors/vscode
 npx --yes @vscode/vsce package --allow-missing-repository --skip-license
 code --install-extension lumen-0.1.0.vsix
 ```
+
+To format on save, turn on `editor.formatOnSave` for Lumen files in the settings; the extension already names itself as their formatter:
+
+```json
+"[lumen]": { "editor.formatOnSave": true }
+```
+
+Two commands run the [tests](stdlib.md#test-files-lumen-test) in a terminal: **Lumen: Run the tests** for the workspace, **Lumen: Run the tests of this file** for the file being edited.
 
 It looks for the `lumen` program in this order: the `lumen.path` setting, a `lumen` at the root of the workspace or in a folder above it, then the `PATH`. After rebuilding `lumen`, run **Lumen: Restart the language server** from the command palette: the server is the program that was there when it started.
 
@@ -42,10 +51,11 @@ vim.api.nvim_create_autocmd("FileType", {
 
 ## How it is built
 
-The server is a Lumen program, [`internal/lsp/server.lum`](../internal/lsp/server.lum), kept inside the `lumen` binary: some 350 lines that read messages, keep the text of the open files, and answer. It is written with three parts of the standard library:
+The server is a Lumen program, [`internal/lsp/server.lum`](../internal/lsp/server.lum), kept inside the `lumen` binary: some 400 lines that read messages, keep the text of the open files, and answer. It is written with four parts of the standard library:
 
 *   [`std.compiler`](stdlib.md#stdcompiler) answers the questions: it is the front of the compiler, parsing, names and types, reachable from a program.
 *   [`std.task`](tasks.md) waits before checking: a file is compiled 150 ms after the last keystroke, in a task that gives up if another keystroke came meanwhile.
+*   [`std.formatter`](stdlib.md#stdformatter) formats: the same module `lumen fmt` runs, so the editor and the command line write a file the same way.
 *   [`std.json`](stdlib.md#stdjson) and `io.readBytes` read and write the protocol.
 
 A file being edited is known to the compiler as it is in the editor, saved or not: a program that imports it is checked against that text.
@@ -60,7 +70,7 @@ A file without a `main` is a module: it is checked like a program, since that is
 |---------|-------|
 | Renaming, finding every use of a name | Search |
 | The parameters of a function while its arguments are typed | Point at its name |
-| Formatting | By hand |
+| Formatting a selection | The whole file is formatted |
 | Colours from the compiler (semantic tokens) | The grammar of the extension, which goes by the shape of words |
 | Understanding a file with a mistake in it | A program is understood whole or not at all: while a line does not parse, hover and definition answer nothing; suggestions still work, from the file without that line |
 | Sending only what changed | The whole text is sent with every change |

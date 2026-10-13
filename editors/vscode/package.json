@@ -1,7 +1,7 @@
 {
   "name": "lumen",
   "displayName": "Lumen",
-  "description": "The Lumen language: colours, and the language server (mistakes as you type, what a name is, where it is declared, what a file declares, what to write next).",
+  "description": "The Lumen language: colours, the language server (mistakes as you type, what a name is, where it is declared, what a file declares, what to write next), formatting and running tests.",
   "version": "0.1.0",
   "publisher": "lumen",
   "license": "MIT",
@@ -26,8 +26,17 @@
       }
     ],
     "commands": [
-      { "command": "lumen.restartServer", "title": "Lumen: Restart the language server" }
+      { "command": "lumen.restartServer", "title": "Lumen: Restart the language server" },
+      { "command": "lumen.runTests", "title": "Lumen: Run the tests" },
+      { "command": "lumen.runFileTests", "title": "Lumen: Run the tests of this file" }
     ],
+    "configurationDefaults": {
+      "[lumen]": {
+        "editor.defaultFormatter": "lumen.lumen",
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+      }
+    },
     "configuration": {
       "title": "Lumen",
       "properties": {

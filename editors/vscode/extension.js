@@ -218,6 +218,25 @@ function place(document, position) {
   return { textDocument: { uri: document.uri.toString() }, position: { line: position.line, character: position.character } };
 }
 
+// --- Commands that run lumen ---
+
+/** The terminal the commands run in, kept from one run to the next. */
+let terminal = null;
+
+/** Puts an argument the way a shell reads it as one. */
+function quoted(text) {
+  return /^[\w@%+=:,./-]+$/.test(text) ? text : `'${text.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Runs lumen with arguments in a terminal, where what it prints is read. */
+function runInTerminal(args) {
+  if (!terminal || terminal.exitStatus !== undefined) {
+    terminal = vscode.window.createTerminal("Lumen");
+  }
+  terminal.show(true);
+  terminal.sendText([programPath(), ...args].map(quoted).join(" "));
+}
+
 // --- Starting and stopping ---
 
 async function startServer() {
@@ -295,7 +314,34 @@ async function activate(context) {
         },
       },
       "."
-    )
+    ),
+    // Format Document, and formatting on save for who has turned it on
+    vscode.languages.registerDocumentFormattingEditProvider(LANGUAGE, {
+      async provideDocumentFormattingEdits(document) {
+        if (!server) return [];
+        // The server formats the text it has: the one in the editor now
+        server.change(document);
+        const edits = await server.ask("textDocument/formatting", {
+          textDocument: { uri: document.uri.toString() },
+          options: { tabSize: 4, insertSpaces: true },
+        });
+        // The server names the whole file by a line past its last one
+        const whole = new vscode.Range(0, 0, document.lineCount, 0);
+        return (edits || []).map((edit) => vscode.TextEdit.replace(document.validateRange(whole), edit.newText));
+      },
+    })
+  );
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand("lumen.runTests", () => runInTerminal(["test"])),
+    vscode.commands.registerCommand("lumen.runFileTests", () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor || editor.document.languageId !== LANGUAGE) {
+        vscode.window.showInformationMessage("Lumen: open a test file (name_test.lum) to run its tests.");
+        return;
+      }
+      editor.document.save().then(() => runInTerminal(["test", editor.document.uri.fsPath]));
+    })
   );
 
   await startServer();

@@ -1,0 +1,177 @@
+// lumen fmt: writes the files of a program the one way.
+//
+//     lumen fmt                  every .lum file under this folder
+//     lumen fmt main.lum src     these files, and those under these folders
+//     lumen fmt --check          changes nothing: names the files that would change
+//     lumen fmt -                reads a program from the input, writes it formatted
+//
+// How a program is written is std.formatter's to say. This is the part
+// that finds the files and reports what became of them.
+
+import std.formatter;
+import std.io;
+import std.os;
+import std.fs;
+import std.path;
+import std.strings;
+import std.arrays;
+import std.format;
+import std.result.{Result};
+
+const usage = """
+    Usage: lumen fmt [--check] [file.lum | folder]...
+           lumen fmt -
+    """;
+
+// What became of the files looked at.
+struct Tally {
+    changed: Int = 0;
+    kept: Int = 0;
+    failed: Int = 0;
+}
+
+// The files to format for one argument: a file, or the .lum files under
+// a folder. Folders whose name starts with a dot are not gone into: what
+// is in them is not the program's.
+fn filesOf(target: String) -> Result<[String], String> {
+    if !fs.isDir(target) {
+        if !io.exists(target) {
+            return Result.Err("${target}: no such file or folder");
+        }
+
+        return Result.Ok([target]);
+    }
+
+    match fs.find(target, "*.lum") {
+        case Result.Ok(found): {
+            // What comes after the folder that was named: that one may
+            // be hidden, it is what was asked for
+            let folder = path.clean(target);
+            let inside = 0;
+
+            if folder != "." {
+                inside = strings.len(folder) + 1;
+            }
+
+            let hidden = fn(file: String) -> Bool {
+                let below = path.parts(strings.from(path.clean(file), inside));
+                return arrays.any(below, part -> strings.startsWith(part, "."));
+            };
+
+            return Result.Ok(arrays.filter(found, file -> !hidden(file)));
+        }
+
+        case Result.Err(error): {
+            return Result.Err(error.describe());
+        }
+    }
+}
+
+// Formats one file where it is, or with `check` only says whether it
+// would change.
+fn tidy(file: String, check: Bool, tally: Tally) {
+    let source = match io.readFile(file) {
+        case Result.Ok(text): text;
+
+        case Result.Err(error): {
+            io.printError(error.describe() + "\n");
+            tally.failed++;
+            return;
+        }
+    };
+
+    match formatter.format(source) {
+        case Result.Err(problem): {
+            io.printError("${file}:${problem.describe()}\n");
+            tally.failed++;
+        }
+
+        case Result.Ok(tidy): {
+            if tidy == source {
+                tally.kept++;
+                return;
+            }
+
+            tally.changed++;
+            println(file);
+
+            if !check && io.writeFile(file, tidy).isErr() {
+                io.printError("${file}: cannot be written\n");
+                tally.failed++;
+            }
+        }
+    }
+}
+
+// The input, formatted, on the output: for an editor, which has the
+// text and wants the text.
+fn filter() -> Int {
+    let source = strings.join(io.readLines(), "\n") + "\n";
+
+    match formatter.format(source) {
+        case Result.Ok(tidy): {
+            print(tidy);
+            return 0;
+        }
+
+        case Result.Err(problem): {
+            io.printError("<input>:${problem.describe()}\n");
+            return 1;
+        }
+    }
+}
+
+fn main() -> Int {
+    let check = false;
+    let targets: [String] = [];
+
+    for argument in os.args() {
+        if argument == "-" {
+            return filter();
+        }
+
+        if argument == "--check" {
+            check = true;
+        } else if strings.startsWith(argument, "-") {
+            io.printError("lumen fmt: unknown option ${argument}\n${usage}");
+            return 2;
+        } else {
+            push(targets, argument);
+        }
+    }
+
+    if arrays.isEmpty(targets) {
+        push(targets, ".");
+    }
+
+    let tally = Tally {};
+
+    for target in targets {
+        match filesOf(target) {
+            case Result.Ok(files): {
+                for file in files {
+                    tidy(file, check, tally);
+                }
+            }
+
+            case Result.Err(reason): {
+                io.printError("lumen fmt: ${reason}\n");
+                tally.failed++;
+            }
+        }
+    }
+
+    let files = format.plural(tally.changed, "file", "files");
+
+    if check && tally.changed > 0 {
+        io.printError("${files} would change: run lumen fmt\n");
+    } else if tally.changed > 0 {
+        io.printError("${files} formatted, ${tally.kept} left as they were\n");
+    }
+
+    if tally.failed > 0 || (check && tally.changed > 0) {
+        return 1;
+    }
+
+    return 0;
+}

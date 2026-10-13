@@ -466,3 +466,94 @@ func TestLanguageServerLosesItsEditor(t *testing.T) {
 		t.Errorf("expected status 1, got %v\n%s", err, e.stderr.String())
 	}
 }
+
+// TestLanguageServerFormats asks the server to format a file, as an
+// editor does for Format Document and on save: the answer is one change
+// that replaces the file with what `lumen fmt` would write, made from the
+// text in the editor and not the one on disk. A file that is formatted
+// already, or that does not read as a program, is left alone.
+func TestLanguageServerFormats(t *testing.T) {
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "main.lum")
+	// On disk: something else than what the editor holds
+	os.WriteFile(path, []byte("fn main() {}\n"), 0o644)
+	uri := "file://" + path
+
+	e := startEditor(t, dir)
+	hello := e.ask("initialize", map[string]any{"capabilities": map[string]any{}})
+	if can := hello["result"].(map[string]any)["capabilities"].(map[string]any); can["documentFormattingProvider"] != true {
+		t.Fatalf("expected the server to offer formatting, got %v", can)
+	}
+	e.tell("initialized", map[string]any{})
+
+	format := func() ([]any, bool) {
+		t.Helper()
+		answer := e.ask("textDocument/formatting", map[string]any{
+			"textDocument": map[string]any{"uri": uri},
+			"options":      map[string]any{"tabSize": 2, "insertSpaces": false},
+		})
+		if answer["error"] != nil {
+			t.Fatalf("the server refused to format: %v", answer["error"])
+		}
+		edits, ok := answer["result"].([]any)
+		return edits, ok
+	}
+
+	dense := "import std.arrays;\n// Adds them up.\nfn total(xs:[Int])->Int{let sum=0;for x in xs{sum+=x;}return sum;}\nfn main(){println(total([1,2,3]));}"
+	tidy := "import std.arrays;\n\n// Adds them up.\nfn total(xs: [Int]) -> Int {\n    let sum = 0;\n\n    for x in xs {\n        sum += x;\n    }\n\n    return sum;\n}\n\nfn main() {\n    println(total([1, 2, 3]));\n}\n"
+	e.tell("textDocument/didOpen", map[string]any{"textDocument": map[string]any{"uri": uri, "languageId": "lumen", "version": 1, "text": dense}})
+	e.diagnostics(uri)
+
+	edits, ok := format()
+	if !ok || len(edits) != 1 {
+		t.Fatalf("expected one change, got %v", edits)
+	}
+	edit := edits[0].(map[string]any)
+	if got := edit["newText"]; got != tidy {
+		t.Errorf("expected the file formatted, got:\n%v", got)
+	}
+	// From the start to past the last line: all of it, however it ends
+	if start, end := at(edit["range"], "start"), at(edit["range"], "end"); start != [2]int{0, 0} || end[0] < 4 || end[1] != 0 {
+		t.Errorf("expected a change of the whole file, got %v to %v", start, end)
+	}
+
+	change := func(version int, text string) {
+		e.tell("textDocument/didChange", map[string]any{
+			"textDocument":   map[string]any{"uri": uri, "version": version},
+			"contentChanges": []any{map[string]any{"text": text}},
+		})
+	}
+
+	// The editor applies the change: there is nothing left to do
+	change(2, tidy)
+	if edits, ok := format(); !ok || len(edits) != 0 {
+		t.Errorf("expected nothing to change in a formatted file, got %v", edits)
+	}
+
+	// A program that does not compile is formatted all the same: names and
+	// types are not the formatter's business
+	change(3, "fn main(){println(nobody(1)+\"two\");}")
+	if edits, ok := format(); !ok || len(edits) != 1 || edits[0].(map[string]any)["newText"] != "fn main() {\n    println(nobody(1) + \"two\");\n}\n" {
+		t.Errorf("expected a program with a wrong name in it to be formatted, got %v", edits)
+	}
+
+	// One that does not read as a program is not touched
+	change(4, "fn main() {\n    let a = 1\n}")
+	if edits, ok := format(); !ok || len(edits) != 0 {
+		t.Errorf("expected a file with a syntax error to be left alone, got %v", edits)
+	}
+
+	// A file the editor never opened is nothing to format
+	answer := e.ask("textDocument/formatting", map[string]any{"textDocument": map[string]any{"uri": "file://" + filepath.Join(dir, "other.lum")}})
+	if answer["result"] != nil || answer["error"] != nil {
+		t.Errorf("expected no answer for a file that is not open, got %v", answer)
+	}
+
+	// The server is still there
+	if bye := e.ask("shutdown", nil); bye["error"] != nil {
+		t.Errorf("expected the server to shut down, got %v", bye)
+	}
+}

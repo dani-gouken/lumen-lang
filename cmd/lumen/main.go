@@ -16,11 +16,13 @@ import (
 	"github.com/dani-gouken/lumen/internal/compiler"
 	"github.com/dani-gouken/lumen/internal/debugger"
 	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/formatter"
 	_ "github.com/dani-gouken/lumen/internal/inspect" // The natives of std.compiler
 	"github.com/dani-gouken/lumen/internal/lsp"
 	"github.com/dani-gouken/lumen/internal/memguard"
 	"github.com/dani-gouken/lumen/internal/project"
 	"github.com/dani-gouken/lumen/internal/repl"
+	"github.com/dani-gouken/lumen/internal/testrun"
 	"github.com/dani-gouken/lumen/internal/vm"
 )
 
@@ -113,7 +115,9 @@ func parseOptions(args []string) []string {
 			return append(rest, args[i+1:]...)
 		}
 		isOurs := name == "--heap-mb" || name == "--max-depth" || arg == "--strip"
-		if !strings.HasPrefix(arg, "--") || (afterFile && !isOurs) {
+		// fmt and test have options of their own, which they read themselves
+		ofTool := len(rest) >= 2 && (rest[1] == "fmt" || rest[1] == "test")
+		if !strings.HasPrefix(arg, "--") || ((afterFile || ofTool) && !isOurs) {
 			rest = append(rest, arg)
 			continue
 		}
@@ -204,6 +208,12 @@ func main() {
 	case "lsp":
 		cmdLsp()
 
+	case "fmt":
+		cmdFmt()
+
+	case "test":
+		cmdTest(os.Args[2:])
+
 	case "asm":
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: lumen asm <input.lasm> <output.lc>")
@@ -251,6 +261,8 @@ func printHelp() {
 	fmt.Println("  lumen build <in> <out>     Compile .lum to .lc bytecode (or .lasm text)")
 	fmt.Println("  lumen ir <file.lum>        Print the intermediate representation")
 	fmt.Println("  lumen repl                 Type Lumen in a line at a time")
+	fmt.Println("  lumen test [files]         Run the tests: the functions test...() of the files *_test.lum")
+	fmt.Println("  lumen fmt [files]          Format .lum files where they are; --check only says which would change")
 	fmt.Println("  lumen lsp                  Start the language server, for an editor to talk to")
 	fmt.Println("  lumen asm <in> <out>       Assemble .lasm to .lc bytecode")
 	fmt.Println("  lumen disasm <in> <out>    Disassemble .lc to .lasm text")
@@ -408,24 +420,173 @@ func cmdRepl() {
 	os.Exit(repl.Run(opts))
 }
 
-// cmdLsp runs the language server: a Lumen program kept in the binary,
-// which talks to an editor over the input and the output.
-func cmdLsp() {
+// runTool runs a Lumen program kept in the binary, with what follows the
+// command as its arguments, and returns the status it ended with: what
+// its main returned, or 1 if it failed.
+func runTool(source, file string) int {
 	errs := errors.NewHandler()
-	result := compiler.Compile(lsp.Source, lsp.File, errs)
+	result := compiler.Compile(source, file, errs)
 	if errs.HasErrors() {
 		for _, d := range errs.Diagnostics {
 			fmt.Fprintln(os.Stderr, d.String())
 		}
-		os.Exit(1)
+		return 1
 	}
-	programFile = lsp.File
-	_, err := newVM().Exec(result.Chunk)
+	programFile = file
+	machine := newVM()
+	machine.SetArgs(os.Args[2:])
+	value, err := machine.Exec(result.Chunk)
 	if err != nil {
 		leaveIfAsked(err)
 		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
+		return 1
 	}
+	if value.IsInt() {
+		return int(value.AsInt() & 0xFF)
+	}
+	return 0
+}
+
+// cmdLsp runs the language server: a Lumen program kept in the binary,
+// which talks to an editor over the input and the output. It ends when
+// the editor says so, by a call of os.exit; coming back from its main
+// means the editor went away without a word.
+func cmdLsp() {
+	runTool(lsp.Source, lsp.File)
 	os.Exit(1)
+}
+
+// cmdFmt runs the formatter: a Lumen program too.
+func cmdFmt() {
+	os.Exit(runTool(formatter.Source, formatter.File))
+}
+
+// cmdTest runs the tests of the files and folders named, or of the
+// current folder: every function test...() of every file *_test.lum.
+// Each file is a program of its own, compiled with a main that runs its
+// tests (see internal/testrun). The process ends with 1 if a test failed
+// or a file could not be run.
+func cmdTest(args []string) {
+	const usage = "Usage: lumen test [--filter=text] [file_test.lum | folder]..."
+	filter := ""
+	var paths []string
+	for _, arg := range args {
+		if value, ok := strings.CutPrefix(arg, "--filter="); ok {
+			filter = value
+		} else if strings.HasPrefix(arg, "--") {
+			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", arg, usage)
+			os.Exit(2)
+		} else {
+			paths = append(paths, arg)
+		}
+	}
+	if len(paths) == 0 {
+		paths = []string{"."}
+	}
+
+	files, err := testrun.Find(paths)
+	if err != nil {
+		fatal(err)
+	}
+	if len(files) == 0 {
+		fmt.Printf("no test files: a test file is called name%s, and its tests fn %sSomething()\n", testrun.Suffix, testrun.Prefix)
+		return
+	}
+
+	ran, tests, failed, broken := 0, 0, 0, 0
+	for _, file := range files {
+		data, err := os.ReadFile(file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			broken++
+			continue
+		}
+		src := string(data)
+		found, hasMain := testrun.Tests(src)
+		if hasMain {
+			fmt.Fprintf(os.Stderr, "%s: a test file has no main: lumen test writes the one that runs its tests\n", file)
+			broken++
+			continue
+		}
+		selected := testrun.Matching(found, filter)
+		if len(selected) == 0 && !(filter == "" && testrun.Compiles(src) != nil) {
+			// Nothing to run here; a file that does not parse is still
+			// compiled below, for what is wrong with it to be said
+			continue
+		}
+
+		count, ok := runTests(file, testrun.Program(src, file, selected), ran > 0)
+		if !ok {
+			broken++
+			continue
+		}
+		ran++
+		tests += len(selected)
+		failed += count
+	}
+
+	switch {
+	case ran == 0 && broken == 0 && filter != "":
+		fmt.Printf("no test matches '%s'\n", filter)
+	case ran == 0 && broken == 0:
+		fmt.Printf("no tests: a test is a function fn %sSomething() of a test file\n", testrun.Prefix)
+	case ran+broken > 1:
+		summary := fmt.Sprintf("\n%s in %s: %d passed", plural(tests, "test"), plural(ran, "file"), tests-failed)
+		if failed > 0 {
+			summary += fmt.Sprintf(", %d failed", failed)
+		}
+		if broken > 0 {
+			summary += fmt.Sprintf("; %s did not run", plural(broken, "file"))
+		}
+		fmt.Println(summary)
+	}
+	if failed > 0 || broken > 0 {
+		os.Exit(1)
+	}
+}
+
+// plural is a count with its noun: 1 test, 2 tests.
+func plural(count int, noun string) string {
+	if count == 1 {
+		return "1 " + noun
+	}
+	return fmt.Sprintf("%d %ss", count, noun)
+}
+
+// runTests compiles and runs a test file with its main, and returns how
+// many of its tests failed. ok is false if it did not get to the end:
+// it does not compile, or it stopped outside a test. apart leaves an
+// empty line before what the tests print, after those of another file.
+func runTests(file, src string, apart bool) (failed int, ok bool) {
+	programFile = file
+	errs := errors.NewHandler()
+	result := compiler.CompileOptions(src, file, projectOptions(file), errs)
+	for _, d := range errs.Diagnostics {
+		fmt.Fprintln(os.Stderr, d.String())
+	}
+	if errs.HasErrors() {
+		return 0, false
+	}
+	if apart {
+		fmt.Println()
+	}
+
+	machine := newVM()
+	machine.SetArgs(nil)
+	value, err := machine.Exec(result.Chunk)
+	if err != nil {
+		if vm.IsInterrupted(err) {
+			leaveIfAsked(err)
+		}
+		if status, asked := vm.ExitCode(err); asked {
+			// os.exit is not a failure a suite catches: it ends the program
+			fmt.Fprintf(os.Stderr, "%s: a test ended the program with os.exit(%d): the tests after it did not run\n", file, status)
+			return 0, false
+		}
+		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
+		return 0, false
+	}
+	return int(value.AsInt()), true
 }
 
 // cmdBuild compiles a .lum file to bytecode, or to assembly text when the

@@ -15,7 +15,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Correctness | unused variables |
 | Runtime | method dispatch cost, tasks on several processors |
 | Program structure | a way to install packages, variables outside functions, C functions that call back |
-| Tooling | a `lumen test` command, a formatter, renaming and finding uses in the editor |
+| Tooling | renaming and finding uses in the editor, documentation from comments |
 
 ---
 
@@ -253,8 +253,9 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 | Machine-readable diagnostics | No `--format=json` on the command line; a program gets them as values from [`std.compiler`](stdlib.md#stdcompiler) |
 | Source-level debugging | `lumdbg` steps bytecode instructions and shows registers by number; it has no statement stepping and no variable names |
 | Compiler flags | `--heap-mb` and `--max-depth` exist; no optimization level, no warnings-as-errors |
-| Formatter; more from the language server | Colours and a language server are there, with a VS Code extension ([editor.md](editor.md)). Not there: a formatter, renaming, finding every use of a name, the parameters of a function while its arguments are typed |
-| A way to run tests | No `lumen test`, no `assert`; a program is tested by comparing what it prints |
+| More from the language server | Colours, a language server and a formatter are there, with a VS Code extension ([editor.md](editor.md), [formatting.md](formatting.md)). Not there: renaming, finding every use of a name, the parameters of a function while its arguments are typed |
+| More from `lumen test` | Test files and `lumen test` are there ([stdlib.md](stdlib.md#test-files-lumen-test)). Not there: tests run side by side, how long each took, a report a machine reads, the tests listed in the editor |
+| Options for the formatter | `lumen fmt` has none: no width to choose, no rule to turn off, no part of a file to leave alone |
 | Documentation from comments | None |
 | Optimization | Functions never reached are left out, and common sequences are written as one instruction ([bytecode_generation.md](compilation/bytecode_generation.md#one-instruction-for-several)). Not there: constant folding, inlining, anything that looks further than one block |
 | `Instr.String()` | Still renders every operand as a register; the debugger and disassembler use `asm.FormatInstruction` instead |

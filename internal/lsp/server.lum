@@ -1,6 +1,7 @@
 // The language server of Lumen: what an editor talks to, to underline
 // mistakes as they are typed, say what a name is, jump to where it is
-// declared, list what a file declares and suggest what to write next.
+// declared, list what a file declares, suggest what to write next and
+// format a file.
 //
 // It speaks the Language Server Protocol over its input and output:
 // messages of JSON, each preceded by a line saying how many bytes it is.
@@ -20,6 +21,7 @@ import std.result;
 import std.result.{Result};
 import std.task;
 import std.time;
+import std.formatter;
 import std.compiler;
 import std.compiler.{Problem, Symbol, SymbolKind, Severity, Description, Suggestion};
 
@@ -305,6 +307,29 @@ impl Server {
         });
     }
 
+    // The file, formatted: one change that replaces all of it. None for
+    // a file that is formatted already, or that does not read as a
+    // program yet: the mistake is underlined, and saying it twice helps
+    // nobody.
+    fn formatting(params: Json) -> Json {
+        let document = self.documentOf(params);
+
+        if document == null {
+            return Json.Null;
+        }
+
+        let tidy = formatter.format(document.text).value();
+
+        if tidy == null || tidy == document.text {
+            return Json.Array([]);
+        }
+
+        // From the start to past the last line, wherever that is
+        let lines = strings.count(document.text, "\n") + 1;
+        let whole = json.object().set("start", position(1, 1)).set("end", position(lines + 1, 1)).done();
+        return Json.Array([json.object().set("range", whole).text("newText", tidy).done()]);
+    }
+
     // What the server can do, told to the editor when they meet.
     fn capabilities() -> Json {
         let can = json.object()
@@ -312,6 +337,7 @@ impl Server {
             .bool("hoverProvider", true)
             .bool("definitionProvider", true)
             .bool("documentSymbolProvider", true)
+            .bool("documentFormattingProvider", true)
             .set("completionProvider", json.object().set("triggerCharacters", json.texts(["."])).done())
             .done();
         let about = json.object().text("name", "lumen").done();
@@ -330,6 +356,7 @@ impl Server {
             case "textDocument/definition": { return self.definition(params); }
             case "textDocument/documentSymbol": { return self.outline(params); }
             case "textDocument/completion": { return self.completion(params); }
+            case "textDocument/formatting": { return self.formatting(params); }
             default: { return null; }
         }
     }

@@ -1,0 +1,127 @@
+// The tests of the calculator. Run them with:  lumen test examples/calculator
+//
+// A test is a function whose name starts with `test`, in a file whose
+// name ends in _test.lum. It is reported by the words of its name.
+
+import std.test;
+import std.arrays;
+import calc.lexer;
+import calc.parser;
+import calc.tree.{Env, Problem, newEnv};
+
+// What a line works out to, or why it does not.
+enum Answer {
+    Value(Int),
+    Unreadable(String),
+    Failed(String),
+}
+
+fn work(line: String, env: Env) -> Answer {
+    let parsed = parser.parse(lexer.tokenize(line));
+
+    if parsed is Problem {
+        return Answer.Unreadable(parsed.message);
+    }
+
+    let result = (parsed as parser.Statement).run(env);
+
+    if result is Problem {
+        return Answer.Failed(result.message);
+    }
+
+    return Answer.Value(result as Int);
+}
+
+fn valueOf(line: String) -> Int {
+    return match work(line, newEnv()) {
+        case Answer.Value(n): n;
+        case Answer.Unreadable(why): panic("'${line}' cannot be read: ${why}");
+        case Answer.Failed(why): panic("'${line}' cannot be computed: ${why}");
+    };
+}
+
+// How a line was read: every operation in its parentheses.
+fn readingOf(line: String) -> String {
+    let parsed = parser.parse(lexer.tokenize(line));
+
+    if parsed is Problem {
+        return "cannot be read: ${parsed.message}";
+    }
+
+    return (parsed as parser.Statement).show();
+}
+
+fn testTokensAreNumbersNamesAndSigns() {
+    let texts = lexer.tokenize("area = width*(12 - 2)") |> arrays.map(token -> token.text);
+    test.same(arrays.take(texts, 9), ["area", "=", "width", "*", "(", "12", "-", "2", ")"]);
+}
+
+fn testMultiplicationBindsTighterThanAddition() {
+    test.equal(valueOf("1 + 2 * 3"), 7);
+    test.equal(valueOf("(1 + 2) * 3"), 9);
+    test.equal(readingOf("1 + 2 * 3"), "(1 + (2 * 3))");
+}
+
+fn testOperatorsOfOneLevelGoLeftToRight() {
+    test.equal(valueOf("10 - 4 - 3"), 3);
+    test.equal(valueOf("100 / 10 / 5"), 2);
+    test.equal(readingOf("10 - 4 - 3"), "((10 - 4) - 3)");
+}
+
+fn testAMinusSignNegatesWhatFollows() {
+    test.equal(valueOf("-3 + 5"), 2);
+    test.equal(valueOf("100 % 7 - -3"), 5);
+    test.equal(valueOf("-(2 + 3) * 2"), -10);
+}
+
+fn testVariablesAreRemembered() {
+    let env = newEnv();
+    test.equal(work("width = 4", env), Answer.Value(4));
+    test.equal(work("height = width * 3 - 2", env), Answer.Value(10));
+    test.equal(work("width * height", env), Answer.Value(40));
+    test.equal(test.present(env.get("height"), "a height"), 10);
+    test.absent(env.get("depth"), "depth");
+}
+
+fn testAVariableCanBeGivenANewValue() {
+    let env = newEnv();
+    work("n = 1", env);
+    work("n = n + 1", env);
+    test.equal(work("n", env), Answer.Value(2));
+}
+
+fn testWhatCannotBeReadSaysWhy() {
+    for line in ["4 + $", "2 * (3 +", "1 2", "= 3", ""] {
+        match work(line, newEnv()) {
+            case Answer.Unreadable(why): {
+                test.isTrue(why != "", "a reason for '${line}'");
+            }
+
+            default: {
+                test.fail("'${line}' was read, and should not have been");
+            }
+        }
+    }
+}
+
+fn testWhatCannotBeComputedSaysWhy() {
+    match work("depth * 2", newEnv()) {
+        case Answer.Failed(why): {
+            test.contains(why, "depth");
+        }
+
+        default: {
+            test.fail("a variable nobody set has no value");
+        }
+    }
+
+    match work("8 / (4 - 4)", newEnv()) {
+        case Answer.Failed(why): {
+            test.contains(why, "zero");
+        }
+
+        default: {
+            test.fail("nothing is divided by zero");
+        }
+    }
+}

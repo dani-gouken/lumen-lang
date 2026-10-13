@@ -44,7 +44,9 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.reflect`](#stdreflect) | Asking a value what it is while the program runs: its type, its fields |
 | [`std.compiler`](#stdcompiler) | Asking the compiler about a program: its mistakes, its declarations, what a name is |
 | [`std.ffi`](#stdffi) | Memory for the functions of C libraries |
-| [`std.test`](#stdtest) | Tests and checks |
+| [`std.test`](#stdtest) | Tests and checks; what `lumen test` runs |
+| [`std.layout`](#stdlayout) | Text laid out to fit a width |
+| [`std.formatter`](#stdformatter) | The formatter of Lumen: what `lumen fmt` runs |
 | [`std.ops`](#stdops) | The traits behind operators, loops and brackets; `sorted`, `max`, `join` for any type that has them |
 
 The modules are imported and used like any other ([modules.md](modules.md)): `import std.math;` then `math.abs(-3)`, or `import std.math.{abs};` then `abs(-3)`.
@@ -1162,6 +1164,107 @@ A check that does not hold stops its test; the suite goes on with the next and r
 | `contains(text, part)` | |
 | `fails(kind, action) -> Failure` | The function must stop with a failure of that [kind](errors.md#surviving-attempt) |
 | `fail(message)` | For a check of your own |
+
+### Test files: `lumen test`
+
+A suite needs a `main` that builds it. `lumen test` writes that `main` for you: put the tests in a file whose name ends in `_test.lum`, one function each, named `test...`.
+
+```rust
+// prices_test.lum
+import std.test;
+import shop.prices;
+
+fn testATotalAddsUp() {
+    test.equal(prices.total([1, 2, 3]), 6);
+}
+
+fn testAnEmptyBasketCostsNothing() {
+    test.equal(prices.total([]), 0);
+}
+```
+```text
+$ lumen test
+shop/prices_test.lum
+  ok    a total adds up
+  ok    an empty basket costs nothing
+2 passed
+```
+
+| | |
+|---|---|
+| `lumen test` | Every test file under the current folder, however deep. Folders whose name starts with a dot are left out |
+| `lumen test shop prices_test.lum` | The test files under these folders, and these files |
+| `lumen test --filter=basket` | Only the tests whose name holds the text, whatever its case |
+
+A test is a function at the top of a test file whose name starts with `test`, that takes nothing and gives nothing back. It is reported by the words of its name: `testReadsJSONText` is "reads JSON text". The other functions of the file are helpers, and so is a `testData()` that returns something.
+
+Each test file is a program of its own, with the modules of its [project](project.md) in reach, and no `main`. The tests of a file run in the order they are written; one that fails does not stop the next. The status of `lumen test` is 0 when every test passed, and 1 when one failed or a file could not be run: it does not compile, or a test ended the program with `os.exit`.
+
+[`examples/calculator`](../examples/calculator/calc_test.lum) has a test file: `lumen test examples/calculator`.
+
+---
+
+## `std.layout`
+
+Text laid out to fit a width. What is to be written is described once, as a document: pieces of text, and the places where a line may end. Writing it out decides which of those places are used.
+
+```rust
+import std.layout;
+import std.layout.{Doc};
+
+fn list(items: [Doc]) -> Doc {
+    return layout.group(layout.concat([
+        layout.text("["),
+        layout.indent(layout.concat([Doc.Soft, layout.join(items, layout.concat([layout.text(","), Doc.Line]))])),
+        Doc.Soft,
+        layout.text("]"),
+    ]));
+}
+
+print(layout.render(list(words), 80, 4));     // [one, two, three], or an item to a line
+```
+
+A group is written on one line if it fits, and otherwise every line end directly in it is taken: all or none. Groups inside it decide for themselves.
+
+| | |
+|---|---|
+| `layout.text(text)`, `concat(parts)`, `join(items, separator)` | Text, and documents one after the other |
+| `layout.group(doc)` | On one line if it fits. `layout.broken(doc)` takes its line ends whether it fits or not |
+| `layout.indent(doc)` | The lines that start inside it start one step further in |
+| `Doc.Line`, `Doc.Soft` | Where a line may end: a space, or nothing, in a group that fits |
+| `Doc.Hard` | Where a line ends. Two in a row leave an empty line; more leave no more than that |
+| `Doc.IfBroken(taken, fitting)` | One document or the other, by whether the group around it fits: the comma after a last item |
+| `layout.fill(items)` | Items separated by commas that fill each line before starting the next |
+| `Doc.Trailing(comment)` | A comment for the end of the line, wherever that comes to be; those of lines that follow each other start in one column |
+| `Doc.Item(doc, open)`, `Doc.Gap` | Things written under each other: one that comes to take several lines gets an empty line around it |
+| `Doc.Verbatim(text, indent)` | Text over several lines, written as it is |
+| `layout.render(doc, width, step) -> String` | The text: lines of `width` characters at most where it can be helped, `step` spaces a level |
+| `layout.forces(doc) -> Bool` | Whether it holds a line end that is always taken |
+
+It is what the formatter is written with, and serves as well for printing JSON, a query, or a program in another language.
+
+---
+
+## `std.formatter`
+
+The formatter of Lumen as a function: the one [`lumen fmt`](formatting.md) and the language server run.
+
+```rust
+import std.formatter;
+
+match formatter.format(source) {
+    case Result.Ok(tidy): { io.writeFile("main.lum", tidy); }
+    case Result.Err(problem): { println(problem.describe()); }      // 12:5: expected ';', found 'let'
+}
+```
+
+| | |
+|---|---|
+| `formatter.format(source) -> Result<String, Problem>` | The text of a program, formatted. A text that is formatted already comes back as it is |
+| `Problem` | Where the text stops reading as a program: `line`, `column`, `message`, `describe()` |
+| `formatter.width`, `formatter.step` | 100 and 4: how long a line may be, how far a level is indented |
+
+What it decides is in [formatting.md](formatting.md). It needs a text whose brackets close and whose statements end; names and types it does not look at.
 
 ---
 
