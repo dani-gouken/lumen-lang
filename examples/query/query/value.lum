@@ -4,9 +4,6 @@
 // with: an operation on NULL gives NULL, two whole numbers divide to a
 // whole number, a number sorts before any text, and NULL before both.
 
-import std.math;
-import std.strings;
-
 pub enum Value {
     Null,
     Int(Int),

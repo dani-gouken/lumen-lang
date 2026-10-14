@@ -11,10 +11,9 @@ A complete program using both: [`examples/failures.lum`](../examples/failures.lu
 
 ## Returning a Failure: `Result`
 
-`Result<T, E>` is an enum of the standard library: the value a function produced, or the reason there is none.
+`Result<T, E>` is an enum of the standard library: the value a function produced, or the reason there is none. Its name needs no import.
 
 ```rust
-import std.result.{Result};
 
 enum Problem { Empty, NotANumber(String) }
 
@@ -205,7 +204,7 @@ A function calling itself gives the same line many times: it is shown once, with
 `attempt` runs a function. If the function stops, for any of the reasons above, the program does not: the failure comes back as a value.
 
 ```rust
-import std.result.{Result, Kind, attempt};
+import std.result.{Kind, attempt};
 
 for i, job in jobs {
     match attempt(job) {

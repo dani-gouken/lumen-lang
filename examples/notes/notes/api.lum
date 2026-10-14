@@ -12,8 +12,6 @@ import std.http;
 import std.http.{Request, Response, Router};
 import std.json;
 import std.json.{Json};
-import std.result.{Result};
-import std.strings;
 import notes.book;
 import notes.book.{Book, Note, Refusal};
 

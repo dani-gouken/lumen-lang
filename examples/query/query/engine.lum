@@ -21,10 +21,7 @@ import std.csv;
 import std.dict;
 import std.dict.{Dict};
 import std.io;
-import std.math;
 import std.path;
-import std.strings;
-import std.result.{Result};
 import query.tree.{Expr, Item, Source, Join, OrderKey, Select};
 import query.value.{Value, show, key, truth, fromBool, order, compare, arithmetic, parse};
 

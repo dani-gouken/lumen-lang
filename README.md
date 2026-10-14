@@ -5,7 +5,6 @@ Lumen is a statically typed language that is small enough to learn in an afterno
 ```rust
 import std.http;
 import std.task;
-import std.result.{Result};
 
 enum Health { Up(Int), Down(String) }
 

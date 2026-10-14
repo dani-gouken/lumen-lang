@@ -1,7 +1,5 @@
 // Step 1: cut the text into tokens.
 
-import std.strings;
-
 pub struct Token {
     kind: String;  // "number", "name", "symbol", "end" or "unknown"
     text: String;

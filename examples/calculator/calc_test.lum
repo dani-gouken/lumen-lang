@@ -4,7 +4,6 @@
 // name ends in _test.lum. It is reported by the words of its name.
 
 import std.test;
-import std.arrays;
 import calc.lexer;
 import calc.parser;
 import calc.tree.{Env, Problem, newEnv};

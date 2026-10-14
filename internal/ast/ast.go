@@ -111,6 +111,10 @@ type ImportDecl struct {
 	Alias string
 	Names []*ImportName // Names imported directly, if any
 	Pub   bool
+
+	// Implicit marks an import the program did not write: the one that
+	// gives every file the name Result (see modules.ResultModule).
+	Implicit bool
 }
 
 // ImportName is one name of an `import module.{...}` list.

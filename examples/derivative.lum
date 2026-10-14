@@ -7,8 +7,6 @@
 // Shows: enums with values, an enum that holds itself, match with
 // patterns inside patterns, constants, methods on an enum.
 
-import std.math;
-
 const VARIABLE = "x";
 
 enum Expr {

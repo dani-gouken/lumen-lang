@@ -6,12 +6,9 @@
 // the statements it is in the same way, as what running a statement
 // gives: go on, or return this value.
 
-import std.arrays;
 import std.dict;
 import std.dict.{Dict};
-import std.math;
 import std.time;
-import std.result.{Result};
 import lox.token.{Kind, Token};
 import lox.tree.{Expr, Stmt, Function, Literal};
 import lox.resolver.{GLOBAL};

@@ -6,9 +6,6 @@
 // Shows: generic functions, functions as arguments, closures, recursion,
 // arrays changed in place, optionals.
 
-import std.arrays;
-import std.strings;
-
 // --- Merge sort: returns a new, sorted array ---
 
 // `before(a, b)` says whether a must come before b.

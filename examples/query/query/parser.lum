@@ -22,9 +22,6 @@
 //   primary    = number | 'text' | NULL | name [ "." name ] | name "(" ... ")"
 //              | CASE { WHEN expr THEN expr } [ELSE expr] END | "(" expr ")"
 
-import std.arrays;
-import std.strings;
-import std.result.{Result};
 import query.lexer.{Kind, Token, tokens};
 import query.tree.{Expr, Item, Source, Join, OrderKey, Select};
 import query.value.{Value};

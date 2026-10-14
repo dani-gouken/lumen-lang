@@ -1,6 +1,5 @@
 // Step 1: the text of a program, cut into tokens.
 
-import std.strings;
 import lox.token.{Kind, Token, Reporter, keyword};
 
 pub fn scan(source: String, reporter: Reporter) -> [Token] {

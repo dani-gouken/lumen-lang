@@ -8,8 +8,6 @@ import std.http.{Request, Response, Method, Router};
 import std.json;
 import std.json.{Json};
 import std.dict;
-import std.strings;
-import std.arrays;
 import notes.api;
 import notes.book;
 

@@ -4,9 +4,9 @@ refused: volume is empty
 refused: volume should be a number, not 'lots'
 refused: volume should be from 1 to 100, not 250
 brightness should be a number, not 'x'
-  at examples/failures.lum:56:27 in function 'number'
-  called from examples/failures.lum:64:12 in function 'percent'
-  called from examples/failures.lum:107:17 in function 'main'
+  at examples/failures.lum:54:27 in function 'number'
+  called from examples/failures.lum:62:12 in function 'percent'
+  called from examples/failures.lum:105:17 in function 'main'
 -- files
 no settings file; using the defaults
 0 lines

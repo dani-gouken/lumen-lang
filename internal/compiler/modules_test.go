@@ -934,3 +934,81 @@ func TestMethodsOnBuiltinTypesAcrossModules(t *testing.T) {
 	`
 	expectModulesError(t, files, "E2027", "main.lum", "method 'squeezed'")
 }
+
+// Result is a name every file has: the enum of std.result, without an
+// import. A file that has a Result of its own keeps its own.
+func TestResultNeedsNoImport(t *testing.T) {
+	expectModulesOutput(t, sources{
+		"main.lum": `
+			import parsing;
+			import shapes;
+
+			fn half(n: Int) -> Result<Int, String> {
+				if n % 2 != 0 { return Result.Err("${n} is odd"); }
+				return Result.Ok(n / 2);
+			}
+			fn quarter(n: Int) -> Result<Int, String> { return Result.Ok(half(half(n)?)?); }
+
+			fn main() {
+				println(half(10), half(7), quarter(12), quarter(6));
+				match parsing.number("41") {
+					case Result.Ok(n): println(n + 1);
+					case Result.Err(why): println(why);
+				}
+				println(parsing.number("x").isErr(), parsing.sum(["1", "2", "3"]), parsing.sum(["1", "no"]));
+				println(shapes.check(3), shapes.check(-1));
+			}
+		`,
+		// A module of the program has the name as well
+		"parsing.lum": `
+			pub fn number(text: String) -> Result<Int, String> {
+				let n = text.parseInt();
+				if n == null { return Result.Err("not a number: " + text); }
+				return Result.Ok(n);
+			}
+			pub fn sum(texts: [String]) -> Result<Int, String> {
+				let total = 0;
+				for text in texts { total += number(text)?; }
+				return Result.Ok(total);
+			}
+		`,
+		// One that declares a Result of its own means its own
+		"shapes.lum": `
+			pub enum Result { Fine, Wrong(Int) }
+			pub fn check(side: Int) -> Result {
+				if side < 0 { return Result.Wrong(side); }
+				return Result.Fine;
+			}
+		`,
+	}, "Ok(5) Err(\"7 is odd\") Ok(3) Err(\"3 is odd\")\n42\ntrue Ok(6) Err(\"not a number: no\")\nFine Wrong(-1)\n")
+
+	// Importing it still works, alone or with other names of the module
+	expectModulesOutput(t, sources{"main.lum": `
+		import std.result;
+		import std.result.{Result, Failure};
+
+		fn risky() -> Int { return [1][3]; }
+		fn main() {
+			match result.attempt(risky) {
+				case Result.Ok(n): println(n);
+				case Result.Err(failure): println(failure.message);
+			}
+		}
+	`}, "index out of bounds: 3 (length 1)\n")
+
+	// A program that never says Result has nothing of std.result in it
+	result, errs := compileModules(sources{"main.lum": "fn main() { println(1); }"})
+	if errs.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", errs.Diagnostics)
+	}
+	for _, proto := range result.Chunk.Prototypes {
+		if strings.HasPrefix(proto.Name, "std.result") {
+			t.Errorf("expected nothing of std.result in a program that does not say Result, found %s", proto.Name)
+		}
+	}
+
+	// What is wrong with a Result is still said
+	expectModulesError(t, sources{
+		"main.lum": "fn f() -> Result<Int, String> { return Result.Ok(\"one\"); }\nfn main() { f(); }",
+	}, "E2003", "main.lum", "cannot return type std.result.Result<string, string>")
+}

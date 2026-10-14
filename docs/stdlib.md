@@ -509,7 +509,7 @@ There is no separate `Option` type with `Some` and `None`: `T?` is that type, an
 
 For failures: returning one with its reason, and surviving one that would stop the program. The whole subject is in [errors.md](errors.md); this is the reference.
 
-**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none.
+**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none. The name `Result` needs no import: every file has it, unless it declares a `Result` of its own. The rest of the module (`attempt`, `Failure`, `Kind`) is imported as usual.
 
 | Method | Gives |
 |--------|-------|
@@ -575,7 +575,6 @@ Input is what the user types, or what is piped in: `lumen run sum.lum < numbers.
 ```rust
 import std.io;
 import std.io.{ErrorKind};
-import std.result.{Result};
 import std.strings;
 
 fn main() -> Int {

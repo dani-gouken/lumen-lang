@@ -17,10 +17,7 @@
 import std.os;
 import std.http;
 import std.http.{Request, Response};
-import std.result.{Result};
 import std.time;
-import std.strings;
-import std.arrays;
 import notes.api;
 import notes.book;
 import notes.checks;

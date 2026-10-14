@@ -9,7 +9,6 @@
 
 import std.regex;
 import std.regex.{Regex, Match};
-import std.result.{Result};
 import std.io;
 import std.os;
 import std.path;
@@ -17,12 +16,9 @@ import std.time;
 import std.time.{Date};
 import std.format;
 import std.format.{Align};
-import std.strings;
-import std.arrays;
 import std.dict;
 import std.dict.{Dict};
 import std.set;
-import std.math;
 
 // One request, as the server noted it.
 struct Hit {

@@ -4,9 +4,6 @@
 // with a `match` on types, or with a cast (`as`), which stops the program
 // if the value is something else.
 
-import std.arrays;
-import std.strings;
-
 trait Shape {
     fn area() -> Int;
 }

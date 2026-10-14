@@ -221,6 +221,7 @@ func (l *loader) parse(name, file, src string) *module {
 			declare(m.types, d.Name, "enum", d.Pub)
 		}
 	}
+	l.importsResult(m, src)
 	return m
 }
 
@@ -268,6 +269,43 @@ const (
 // MethodModules are the modules of the standard library that give the
 // builtin types their methods. Every program has them.
 var MethodModules = []string{"std.arrays", "std.strings", "std.math"}
+
+// ResultModule is the module of the standard library whose Result every
+// file can name without importing it: fn load() -> Result<Config, String>.
+// A file that says Result and neither declares one nor imports it is read
+// as if it began with `import std.result.{Result};`.
+const (
+	ResultModule = "std.result"
+	ResultName   = "Result"
+)
+
+var saysResult = regexp.MustCompile(`\bResult\b`)
+
+// importsResult gives a file the import of Result it did not write, when
+// it names Result and has none of its own.
+func (l *loader) importsResult(m *module, src string) {
+	first, _, _ := strings.Cut(ResultModule, ".")
+	if l.packages[first] == "" || m.name == ResultModule || m.types[ResultName] != nil || !saysResult.MatchString(src) {
+		return
+	}
+	for _, imp := range m.prog.Imports {
+		for _, name := range imp.Names {
+			if name.Name == ResultName {
+				return
+			}
+		}
+		if imp.Alias == ResultName {
+			return
+		}
+	}
+	at := m.prog.BaseNode
+	m.prog.Imports = append(m.prog.Imports, &ast.ImportDecl{
+		BaseNode: at,
+		Path:     ResultModule,
+		Names:    []*ast.ImportName{{BaseNode: at, Name: ResultName}},
+		Implicit: true,
+	})
+}
 
 // methodDeclared finds the methods a module of the library declares: the
 // functions written inside its impls, which are the indented ones.

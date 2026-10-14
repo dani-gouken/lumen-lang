@@ -5,11 +5,8 @@
 
 import std.ops;
 import std.ops.{Equal, Ordered, Add, Show, Iterable, Indexed};
-import std.arrays;
-import std.strings;
 import std.dict;
 import std.dict.{Dict};
-import std.math;
 
 // --- A score: compared, added, shown ---
 

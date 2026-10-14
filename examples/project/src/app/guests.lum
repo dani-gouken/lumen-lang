@@ -1,4 +1,3 @@
-import std.arrays;
 import textkit.format.pad;
 
 pub fn invited() -> [String] {

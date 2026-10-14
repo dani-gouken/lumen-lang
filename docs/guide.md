@@ -830,7 +830,6 @@ A function whose failure is part of its job returns a `Result`: the value, or th
 
 ```rust
 import std.io;
-import std.result.{Result};
 
 match io.readFile("notes.txt") {
     case Result.Ok(text): { println(text); }
@@ -853,7 +852,7 @@ The function has to return a `Result` with the same kind of failure; one of anot
 A failure that should never happen stops the program; `attempt` is for the few places that must survive it, and gives it back as a value with its message, kind and call stack:
 
 ```rust
-import std.result.{Result, attempt};
+import std.result.{attempt};
 
 match attempt(fn() -> Int { return job(); }) {
     case Result.Ok(n): { println(n); }

@@ -6,11 +6,8 @@
 // Shows: std.strings to take a text apart, std.dict to count, std.arrays to
 // sort and summarize, std.math for the numbers, std.list for a table.
 
-import std.arrays;
 import std.list;
 import std.dict;
-import std.math;
-import std.strings;
 
 struct Count {
     word: String;

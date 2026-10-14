@@ -1,7 +1,5 @@
 // A generic container with methods, optionals and casts.
 
-import std.arrays;
-
 struct Stack<T> {
     items: [T];
 }

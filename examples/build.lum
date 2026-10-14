@@ -9,11 +9,9 @@
 import std.task;
 import std.task.{Task, Channel};
 import std.result;
-import std.result.{Result, Failure};
+import std.result.{Failure};
 import std.dict;
 import std.dict.{Dict};
-import std.arrays;
-import std.strings;
 
 struct Target {
     name: String;

@@ -1,8 +1,6 @@
 // A module of the package. It names its neighbours through the package,
 // like everyone else: import textkit.format.other;
 
-import std.strings;
-
 pub fn left(text: String, width: Int) -> String {
     return fill(" ", width - text.len()) + text;
 }

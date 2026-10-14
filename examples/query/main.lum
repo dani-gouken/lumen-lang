@@ -14,12 +14,9 @@
 // A table is the file <name>.csv of the folder. Its first line names the
 // columns and what they hold: id:int,name:text,price:real.
 
-import std.arrays;
 import std.io;
 import std.os;
 import std.path;
-import std.strings;
-import std.result.{Result};
 import query.parser;
 import query.engine;
 import query.value.{show};

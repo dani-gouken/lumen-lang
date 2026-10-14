@@ -16,11 +16,10 @@
 // A program that cannot be read ends with status 65, one that fails while
 // running with 70, as the interpreters of the book do.
 
-import std.arrays;
 import std.io;
 import std.os;
 import std.path;
-import std.result.{Result, Kind, attempt};
+import std.result.{Kind, attempt};
 import lox.token.{Reporter};
 import lox.scanner;
 import lox.parser;

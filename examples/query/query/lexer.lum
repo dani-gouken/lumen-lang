@@ -1,8 +1,5 @@
 // The text of a query, cut into words, numbers, texts and symbols.
 
-import std.strings;
-import std.result.{Result};
-
 pub enum Kind {
     Word,    // A name, or a word of the language: told apart by the parser
     Number,

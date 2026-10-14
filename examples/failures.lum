@@ -11,12 +11,10 @@
 // Shows: Result, an error type of your own with a trace, panic, attempt,
 // std.io errors with their kind.
 
-import std.arrays;
 import std.io;
 import std.io.{ErrorKind};
 import std.result;
-import std.result.{Result, Kind, Location, attempt};
-import std.strings;
+import std.result.{Kind, Location, attempt};
 
 // --- An error of our own, saying what and where ---
 

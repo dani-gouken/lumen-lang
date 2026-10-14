@@ -23,7 +23,6 @@
 //   primary     = "true" | "false" | "nil" | "this" | NUMBER | STRING
 //               | IDENTIFIER | "(" expression ")" | "super" "." IDENTIFIER
 
-import std.arrays;
 import lox.token.{Kind, Token, Reporter};
 import lox.tree.{Expr, Stmt, Function, Literal};
 
