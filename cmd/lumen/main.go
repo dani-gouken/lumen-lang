@@ -28,6 +28,10 @@ import (
 	"github.com/dani-gouken/lumen/internal/vm"
 )
 
+// version is what lumen version says: set when a release is built
+// (-ldflags "-X main.version=v1.2.3"), "dev" otherwise.
+var version = "dev"
+
 // Limits of the virtual machine, settable from the command line and from
 // the project file; the command line wins.
 var (
@@ -176,6 +180,9 @@ func init() {
 }
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "--version" {
+		os.Args[1] = "version"
+	}
 	if len(os.Args) > 1 && isProgram(os.Args[1]) {
 		// lumen script.lum is lumen run script.lum: what a file that starts
 		// with #!/usr/bin/env lumen is run with
@@ -224,6 +231,9 @@ func main() {
 	case "check":
 		cmdCheck(os.Args[2:])
 
+	case "version":
+		fmt.Printf("lumen %s %s/%s\n", version, runtime.GOOS, runtime.GOARCH)
+
 	case "asm":
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: lumen asm <input.lasm> <output.lc>")
@@ -264,7 +274,7 @@ func main() {
 
 // commands are the first words lumen understands. A file of that name is
 // run with lumen run.
-var commands = []string{"run", "build", "ir", "repl", "lsp", "fmt", "test", "check", "asm", "disasm", "exec", "runasm", "lumdbg"}
+var commands = []string{"run", "build", "ir", "repl", "lsp", "fmt", "test", "check", "version", "asm", "disasm", "exec", "runasm", "lumdbg"}
 
 // isProgram reports whether a first argument names a program to run
 // rather than a command: a .lum or .lc file, or any file that is not
@@ -293,6 +303,7 @@ func printHelp() {
 	fmt.Println("  lumen test [files]         Run the tests: the functions test...() of the files *_test.lum")
 	fmt.Println("  lumen check [--json] [files] Compile without running and say what is wrong; --json for tools")
 	fmt.Println("  lumen fmt [files]          Format .lum files where they are; --check only says which would change")
+	fmt.Println("  lumen version              Say which lumen this is")
 	fmt.Println("  lumen lsp                  Start the language server, for an editor to talk to")
 	fmt.Println("  lumen asm <in> <out>       Assemble .lasm to .lc bytecode")
 	fmt.Println("  lumen disasm <in> <out>    Disassemble .lc to .lasm text")

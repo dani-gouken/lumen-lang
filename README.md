@@ -32,9 +32,11 @@ fn main() -> Int {
 ```
 
 ```bash
-make build
-./lumen run program.lum
+curl -fsSL https://raw.githubusercontent.com/dani-gouken/lumen-lang/main/install.sh | sh
+lumen run program.lum
 ```
+
+The script installs the binary of the latest release in `~/.local/bin`, after checking it against its checksum. From the source: `make build`, then `./lumen`.
 
 ## What you get
 
