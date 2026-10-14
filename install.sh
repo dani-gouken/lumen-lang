@@ -22,7 +22,7 @@ case "$(uname -s)" in
     *) fail "no binary for $(uname -s); build it from the source: git clone https://github.com/$repo && cd lumen-lang && make build" ;;
 esac
 case "$(uname -m)" in
-    x86_64 | amd64) arch=amd64 ;;
+    x86_64 | amd64) arch=x86_64 ;;
     arm64 | aarch64) arch=arm64 ;;
     *) fail "no binary for $(uname -m)" ;;
 esac

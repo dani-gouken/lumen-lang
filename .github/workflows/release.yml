@@ -28,7 +28,10 @@ jobs:
           for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64; do
             os="${target%/*}"
             arch="${target#*/}"
-            name="lumen-${os}-${arch}"
+            # Named as the machine calls itself (uname -m): x86_64, not Go's amd64
+            label="$arch"
+            if [ "$arch" = amd64 ]; then label=x86_64; fi
+            name="lumen-${os}-${label}"
             binary=lumen
             if [ "$os" = windows ]; then binary=lumen.exe; fi
             mkdir "dist/$name"

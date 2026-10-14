@@ -232,7 +232,12 @@ func main() {
 		cmdCheck(os.Args[2:])
 
 	case "version":
-		fmt.Printf("lumen %s %s/%s\n", version, runtime.GOOS, runtime.GOARCH)
+		// The machine as it calls itself (uname -m), as the releases are named
+		arch := runtime.GOARCH
+		if arch == "amd64" {
+			arch = "x86_64"
+		}
+		fmt.Printf("lumen %s %s/%s\n", version, runtime.GOOS, arch)
 
 	case "asm":
 		if len(os.Args) < 4 {
