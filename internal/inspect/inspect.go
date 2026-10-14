@@ -160,6 +160,9 @@ func Check(path, src string) []Diagnostic {
 			return read(file)
 		}
 		module := stdlib.Package + "." + strings.TrimSuffix(strings.TrimPrefix(library, stdlib.Root+"/"), ".lum")
+		// The file is the library: all of it is looked at, though the
+		// program made around it uses none of it
+		opts.WholeLibrary = true
 		compiler.CompileOptions("import "+module+";\nfn main() -> Int { return 0; }\n", libraryProbe, opts, errs)
 	} else {
 		compiler.CompileOptions(src, path, options(path), errs)

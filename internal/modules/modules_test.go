@@ -897,3 +897,59 @@ func TestEnumsAcrossModules(t *testing.T) {
 		t.Errorf("expected the variant not to be found in the module, got %v", errs.Diagnostics)
 	}
 }
+
+// The methods a module of the library gives are found in its text, before
+// the module is read as a program: the functions written inside an impl.
+func TestMethodNamesAreFoundInTheText(t *testing.T) {
+	names := methodNames(`
+// How many items an array holds.
+fn len<T>(items: [T]) -> Int {
+    return __len(items);
+}
+
+pub fn range(from: Int, to: Int) -> [Int] {
+    let out: [Int] = [];
+    return out;
+}
+
+impl<T> [T] {
+    // How many items.
+    pub fn len() -> Int {
+        return len(self);
+    }
+
+    pub fn map<U>(convert: fn(T) -> U) -> [U] {
+        return map(self, convert);
+    }
+
+	fn hidden() { }
+}
+
+impl [Int] {
+    pub fn sum() -> Int { return sum(self); }
+}
+`)
+	for _, want := range []string{"len", "map", "hidden", "sum"} {
+		if !names[want] {
+			t.Errorf("expected the method %s to be found, got %v", want, names)
+		}
+	}
+	if names["range"] || len(names) != 4 {
+		t.Errorf("expected the four methods and no function, got %v", names)
+	}
+
+	uses := func(members ...string) *ast.Program {
+		prog := &ast.Program{Members: make(map[string]bool)}
+		for _, member := range members {
+			prog.Members[member] = true
+		}
+		return prog
+	}
+	if !callsMethod(uses("x", "sum"), names) || callsMethod(uses("x", "range"), names) || callsMethod(uses(), names) || callsMethod(nil, names) {
+		t.Errorf("expected a file to call a method when it writes its name after a dot, and only then")
+	}
+	many := uses("a", "b", "c", "d", "e", "f", "g", "map")
+	if !callsMethod(many, names) {
+		t.Errorf("expected a file that writes many names to be found calling one of them")
+	}
+}

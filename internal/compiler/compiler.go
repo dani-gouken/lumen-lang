@@ -5,6 +5,7 @@ package compiler
 import (
 	"fmt"
 	"os"
+	"runtime/debug"
 
 	"github.com/dani-gouken/lumen/internal/analysis"
 	"github.com/dani-gouken/lumen/internal/ast"
@@ -91,6 +92,12 @@ type Options struct {
 	// Hosted says which functions the host provides besides the runtime's
 	// own, for a program to declare with `extern fn`. Default: none.
 	Hosted func(name string) bool
+
+	// WholeLibrary has the standard library checked and compiled in
+	// full, used or not: for an editor, which reports what is wrong in a
+	// file of the library that is open in it. Otherwise what a program
+	// does not use of the library is left out (see prune.go).
+	WholeLibrary bool
 }
 
 func readSourceFile(path string) (string, error) {
@@ -107,6 +114,12 @@ func CompileWith(src, file string, read modules.ReadFile, errs *errors.Handler) 
 // CompileOptions is Compile for a program whose modules are not simply
 // next to the entry file: see Options.
 func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Result {
+	// A compilation makes a great many small things and keeps most of
+	// them to its end: collecting as often as a program that runs for
+	// long would is a tenth of its time, for memory that is all given
+	// back when it is over.
+	defer debug.SetGCPercent(debug.SetGCPercent(400))
+
 	if opts.Read == nil {
 		opts.Read = readSourceFile
 	}
@@ -132,6 +145,12 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 		return result
 	}
 
+	// The functions of the standard library that nothing can reach are
+	// declarations only from here on: nothing in them is named or checked
+	if !opts.WholeLibrary {
+		prog = emptyLibrary(prog)
+	}
+
 	// 2. Name resolution
 	resolver := resolve.NewResolver(errs)
 	resolver.SetSourceLines(lines)
@@ -151,6 +170,12 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	// The methods of the library that are its functions under another
 	// name are called as those functions from here on
 	forwardLibraryMethods(prog, typeInfo)
+
+	// What nothing reaches of the standard library goes no further: the
+	// stages below are most of the work, and would do it for all of it
+	if !opts.WholeLibrary {
+		prog = pruneLibrary(prog)
+	}
 
 	// 4. Monomorphization. It adds declarations and rewrites call sites, so
 	// names and types are computed again for the new program.

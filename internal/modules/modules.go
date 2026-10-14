@@ -25,7 +25,6 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
 
 	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/errors"
@@ -70,6 +69,13 @@ type Options struct {
 	// not: for an editor, which suggests them after a dot before any is
 	// written.
 	EveryMethod bool
+}
+
+// methodModule is a module that gives the builtin types methods, as far
+// as it is known before it is part of a program.
+type methodModule struct {
+	src   string
+	names map[string]bool
 }
 
 // item is a top-level declaration of a module.
@@ -120,6 +126,9 @@ type loader struct {
 	everyMethod bool // See Options.EveryMethod
 	// The method modules the program's library does not have
 	noMethods map[string]bool
+	// Those it has and that are not part of the program yet: their text,
+	// and the names of the methods they declare
+	methods map[string]*methodModule
 
 	root    *module
 	modules map[string]*module // By dotted path; nil for one that failed to load
@@ -286,7 +295,8 @@ var saysResult = regexp.MustCompile(`\bResult\b`)
 // it names Result and has none of its own.
 func (l *loader) importsResult(m *module, src string) {
 	first, _, _ := strings.Cut(ResultModule, ".")
-	if l.packages[first] == "" || m.name == ResultModule || m.types[ResultName] != nil || !saysResult.MatchString(src) {
+	if l.packages[first] == "" || m.name == ResultModule || m.types[ResultName] != nil ||
+		!strings.Contains(src, ResultName) || !saysResult.MatchString(src) {
 		return
 	}
 	for _, imp := range m.prog.Imports {
@@ -308,40 +318,56 @@ func (l *loader) importsResult(m *module, src string) {
 	})
 }
 
-// methodDeclared finds the methods a module of the library declares: the
-// functions written inside its impls, which are the indented ones.
-var methodDeclared = regexp.MustCompile(`(?m)^[ \t]+(?:pub )?fn (\w+)`)
+// methodNames finds the methods a module of the library declares: the
+// functions written inside its impls, which are the indented ones. The
+// text is gone through line by line: this is done for every program, on a
+// few thousand lines, before anything of the module is known to be needed.
+func methodNames(src string) map[string]bool {
+	found := make(map[string]bool)
+	for len(src) > 0 {
+		line := src
+		if end := strings.IndexByte(src, '\n'); end >= 0 {
+			line, src = src[:end], src[end+1:]
+		} else {
+			src = ""
+		}
+		if len(line) == 0 || (line[0] != ' ' && line[0] != '\t') {
+			continue
+		}
+		line = strings.TrimLeft(line, " \t")
+		line = strings.TrimPrefix(line, "pub ")
+		if !strings.HasPrefix(line, "fn ") {
+			continue
+		}
+		name := line[len("fn "):]
+		if end := strings.IndexAny(name, "(<"); end > 0 {
+			found[name[:end]] = true
+		}
+	}
+	return found
+}
 
-// methodsOf caches the names of the methods of the method modules, by the
-// text of the module.
-var methodsOf sync.Map
-
-// callsMethodOf reports whether a file writes, after a dot, the name of a
-// method the module with that source declares.
-func callsMethodOf(prog *ast.Program, src string) bool {
-	if prog == nil || len(prog.Members) == 0 {
+// callsMethod reports whether a file writes, after a dot, one of some
+// names of methods.
+func callsMethod(prog *ast.Program, methods map[string]bool) bool {
+	if prog == nil {
 		return false
 	}
-	for name := range methodNames(src) {
+	// The shorter of the two is gone through
+	if len(prog.Members) < len(methods) {
+		for name := range prog.Members {
+			if methods[name] {
+				return true
+			}
+		}
+		return false
+	}
+	for name := range methods {
 		if prog.Members[name] {
 			return true
 		}
 	}
 	return false
-}
-
-// methodNames gives the methods a module of the library declares, from
-// its source.
-func methodNames(src string) map[string]bool {
-	names, known := methodsOf.Load(src)
-	if !known {
-		found := make(map[string]bool)
-		for _, match := range methodDeclared.FindAllStringSubmatch(src, -1) {
-			found[match[1]] = true
-		}
-		names, _ = methodsOf.LoadOrStore(src, found)
-	}
-	return names.(map[string]bool)
 }
 
 // LibraryMethods lists, sorted, the methods that a module of MethodModules
@@ -388,18 +414,27 @@ func (l *loader) loadImports(m *module) {
 		if !l.everyMethod && len(m.prog.Members) == 0 {
 			continue
 		}
+		// Read once for the program, however many of its files are asked
 		file := l.path(name)
-		src, err := l.read(file)
-		if err != nil {
-			// A library of the program's own, without this module
-			if l.noMethods == nil {
-				l.noMethods = make(map[string]bool)
+		known, read := l.methods[name]
+		if !read {
+			src, err := l.read(file)
+			if err != nil {
+				// A library of the program's own, without this module
+				if l.noMethods == nil {
+					l.noMethods = make(map[string]bool)
+				}
+				l.noMethods[name] = true
+				continue
 			}
-			l.noMethods[name] = true
-			continue
+			known = &methodModule{src: src, names: methodNames(src)}
+			if l.methods == nil {
+				l.methods = make(map[string]*methodModule)
+			}
+			l.methods[name] = known
 		}
-		if l.everyMethod || callsMethodOf(m.prog, src) {
-			l.modules[name] = l.parse(name, file, src)
+		if l.everyMethod || callsMethod(m.prog, known.names) {
+			l.modules[name] = l.parse(name, file, known.src)
 		}
 	}
 	for _, imp := range m.prog.Imports {
