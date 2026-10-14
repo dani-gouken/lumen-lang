@@ -38,18 +38,18 @@ enum Command {
 
 // The command a line of arguments asks for, or why it is not one.
 fn parse(args: [String]) -> Result<Command, String> {
-    if arrays.len(args) == 0 {
+    if args.len() == 0 {
         return Result.Ok(Command.List(false));
     }
 
-    let rest = arrays.drop(args, 1);
+    let rest = args.drop(1);
     // Options may be anywhere after the command; the rest are words
-    let options = arrays.filter(rest, arg -> strings.startsWith(arg, "--"));
-    let words = arrays.filter(rest, arg -> !strings.startsWith(arg, "--"));
+    let options = rest.filter(arg -> arg.startsWith("--"));
+    let words = rest.filter(arg -> !arg.startsWith("--"));
 
     match args[0] {
         case "add": {
-            if arrays.len(words) == 0 {
+            if words.len() == 0 {
                 return Result.Err("add what? Give the task a title");
             }
 
@@ -57,7 +57,7 @@ fn parse(args: [String]) -> Result<Command, String> {
             let due: Date? = null;
 
             for option in options {
-                let (name, value) = strings.cut(option, "=") ?? (option, "");
+                let (name, value) = option.cut("=") ?? (option, "");
 
                 match name {
                     case "--priority": {
@@ -84,7 +84,7 @@ fn parse(args: [String]) -> Result<Command, String> {
                 }
             }
 
-            return Result.Ok(Command.Add(strings.join(words, " "), priority, due));
+            return Result.Ok(Command.Add(words.join(" "), priority, due));
         }
 
         case "done": {
@@ -96,7 +96,7 @@ fn parse(args: [String]) -> Result<Command, String> {
         }
 
         case "list": {
-            return Result.Ok(Command.List(arrays.contains(options, "--all")));
+            return Result.Ok(Command.List(options.contains("--all")));
         }
 
         case "help": {
@@ -110,13 +110,13 @@ fn parse(args: [String]) -> Result<Command, String> {
 }
 
 fn idOf(words: [String], command: String) -> Result<Int, String> {
-    let word = arrays.first(words);
+    let word = words.first();
 
     if word == null {
         return Result.Err("${command} which? Give the number of the task");
     }
 
-    let id = strings.parseInt(word);
+    let id = word.parseInt();
 
     if id == null {
         return Result.Err("'${word}' is not the number of a task");
@@ -169,12 +169,12 @@ fn run(command: Command, list: Store, today: Date) -> Result<[String], String> {
         }
 
         case Command.Help: {
-            return Result.Ok(strings.lines("""
+            return Result.Ok("""
                 add <title> [--due=YYYY-MM-DD] [--priority=low|normal|high]
                 done <number>
                 remove <number>
                 list [--all]
-                """));
+                """.lines());
         }
     }
 }
@@ -186,9 +186,9 @@ fn saved(list: Store, lines: [String]) -> Result<[String], String> {
 // The open tasks, the most pressing first: late ones, then by priority,
 // then by date.
 fn listing(list: Store, today: Date, all: Bool) -> [String] {
-    let shown = arrays.filter(list.tasks, t -> all || t.isOpen());
+    let shown = list.tasks.filter(t -> all || t.isOpen());
 
-    if arrays.len(shown) == 0 {
+    if shown.len() == 0 {
         return ["nothing to do"];
     }
 
@@ -211,7 +211,7 @@ fn listing(list: Store, today: Date, all: Bool) -> [String] {
         return t.priority.rank() * 10000 + days;
     };
 
-    let rows = shown |> arrays.sortedBy(urgency) |> arrays.map(fn(t: Task) -> [String] {
+    let rows = shown.sortedBy(urgency).map(fn(t: Task) -> [String] {
         let mark = " ";
 
         match t.state {
@@ -229,11 +229,11 @@ fn listing(list: Store, today: Date, all: Bool) -> [String] {
         return [toString(t.id), mark, t.title, t.priority.name(), t.deadline(today)];
     });
 
-    let lines = format.table(["#", "", "task", "priority", "due"], rows) |> strings.lines();
-    let open = arrays.count(list.tasks, t -> t.isOpen());
-    let late = arrays.count(list.tasks, t -> t.isLate(today));
-    push(lines, "");
-    push(lines, "${format.plural(open, "task", "tasks")} to do, ${late} late");
+    let lines = format.table(["#", "", "task", "priority", "due"], rows).lines();
+    let open = list.tasks.count(t -> t.isOpen());
+    let late = list.tasks.count(t -> t.isLate(today));
+    lines.push("");
+    lines.push("${format.plural(open, "task", "tasks")} to do, ${late} late");
     return lines;
 }
 
@@ -295,7 +295,7 @@ fn demo() -> Int {
     let failures = 0;
 
     for args in session {
-        println("$ todo " + strings.join(args, " "));
+        println("$ todo " + args.join(" "));
         failures += handle(args, file, today);
         println("");
     }
@@ -320,7 +320,7 @@ fn demo() -> Int {
 fn main() -> Int {
     let args = os.args();
 
-    if arrays.len(args) == 0 {
+    if args.len() == 0 {
         return demo();
     }
 

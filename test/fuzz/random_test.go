@@ -264,7 +264,7 @@ func (e *expr) source() string {
 		return fmt.Sprintf("((%s %s %s) %% %d)", e.args[0].source(), e.op, e.args[1].source(), modulus)
 	case "index":
 		// Any number is made a position of the array
-		return fmt.Sprintf("%s[at(%s, arrays.len(%s))]", e.name, e.args[0].source(), e.name)
+		return fmt.Sprintf("%s[at(%s, (%s).len())]", e.name, e.args[0].source(), e.name)
 	case "field":
 		return e.name + "." + e.op
 	case "call":
@@ -304,9 +304,9 @@ func writeBlock(out *strings.Builder, stmts []*stmt, indent string) {
 		case "letarray":
 			fmt.Fprintf(out, "let %s: [Int] = [%s, %s];\n", s.name, s.value.source(), s.index.source())
 		case "push":
-			fmt.Fprintf(out, "push(%s, %s);\n", s.name, s.value.source())
+			fmt.Fprintf(out, "%s.push(%s);\n", s.name, s.value.source())
 		case "setindex":
-			fmt.Fprintf(out, "%s[at(%s, arrays.len(%s))] = %s;\n", s.name, s.index.source(), s.name, s.value.source())
+			fmt.Fprintf(out, "%s[at(%s, (%s).len())] = %s;\n", s.name, s.index.source(), s.name, s.value.source())
 		case "letstruct":
 			fmt.Fprintf(out, "let %s = Pair { a: %s, b: %s };\n", s.name, s.value.source(), s.index.source())
 		case "setfield":

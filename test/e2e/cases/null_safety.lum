@@ -12,7 +12,7 @@ fn managerName(user: User) -> String {
 }
 
 fn length(text: String?) -> Int {
-    return strings.len(text);
+    return text.len();
 }
 
 fn main() -> Int {

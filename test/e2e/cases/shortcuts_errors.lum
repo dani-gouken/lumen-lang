@@ -21,7 +21,7 @@ fn otherFailure() -> Result<Int, Int> {
 }
 
 fn noNull(text: String) -> Int {
-    return strings.parseInt(text)?;
+    return text.parseInt()?;
 }
 
 fn plain(n: Int) -> Int? {

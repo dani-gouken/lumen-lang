@@ -21,14 +21,14 @@ struct Machine {
 
 impl Machine {
     fn pop() -> Option<Value> {
-        let size = arrays.len(self.stack);
+        let size = self.stack.len();
 
         if size == 0 {
             return Option.None;
         }
 
         let top = self.stack[size - 1];
-        self.stack = arrays.slice(self.stack, 0, size - 1);
+        self.stack = self.stack.slice(0, size - 1);
         return Option.Some(top);
     }
 
@@ -42,7 +42,7 @@ impl Machine {
     }
 
     fn step(steps: [Step]) -> Result<Bool, String> {
-        if self.at >= arrays.len(steps) {
+        if self.at >= steps.len() {
             return Result.Ok(false);
         }
 
@@ -53,7 +53,7 @@ impl Machine {
         if step is Step.Halt {
             return Result.Ok(false);
         } else if step is Step.Push(value) {
-            push(self.stack, value);
+            self.stack.push(value);
         } else if step is Step.Jump(to) {
             self.at = to;
         } else if step is Step.JumpIfZero(to) {
@@ -62,18 +62,18 @@ impl Machine {
             }
         } else if step is Step.Print {
             if self.pop() is Option.Some(value) {
-                push(self.printed, show(value));
+                self.printed.push(show(value));
             } else {
                 return Result.Err("nothing to print");
             }
         } else if self.two() is Option.Some((left, right)) {
             if step is Step.Add && left is Value.Number(a) && right is Value.Number(b) {
-                push(self.stack, Value.Number(a + b));
+                self.stack.push(Value.Number(a + b));
             } else if step is Step.Join {
-                push(self.stack, Value.Text(show(left) + show(right)));
+                self.stack.push(Value.Text(show(left) + show(right)));
             } else if step is Step.Swap {
-                push(self.stack, right);
-                push(self.stack, left);
+                self.stack.push(right);
+                self.stack.push(left);
             } else {
                 return Result.Err("cannot add ${show(left)} and ${show(right)}");
             }
@@ -110,7 +110,7 @@ fn run(steps: [Step]) -> Machine {
     }
 
     if outcome is Result.Err(reason) {
-        push(machine.printed, "failed: " + reason);
+        machine.printed.push("failed: " + reason);
     }
 
     return machine;
@@ -119,7 +119,7 @@ fn run(steps: [Step]) -> Machine {
 // The numbers a value holds, however deep
 fn numbers(value: Value, into: [Int]) {
     if value is Value.Number(n) {
-        push(into, n);
+        into.push(n);
     } else if value is Value.Pair(first, second) {
         numbers(first, into);
         numbers(second, into);
@@ -161,23 +161,19 @@ fn main() -> Int {
     println(machine.printed, machine.ran);
 
     // Tests as values, and in the functions handed to the library
-    let steps = arrays.concat(countdown, jumping);
-    let pushes = arrays.filter(steps, step -> step is Step.Push(_));
+    let steps = countdown.concat(jumping);
+    let pushes = steps.filter(step -> step is Step.Push(_));
 
-    let texts = arrays.filter(
-        steps,
-        step -> step is Step.Push(Value.Text(text)) && strings.len(text) > 4,
-    );
+    let texts = steps.filter(step -> step is Step.Push(Value.Text(text)) && text.len() > 4);
 
-    let jumpsBack = arrays.filter(
-        steps,
+    let jumpsBack = steps.filter(
         step -> step is Step.Jump(to) && to == 0 || step is Step.JumpIfZero(0),
     );
 
     println(
-        arrays.len(pushes),
-        arrays.len(texts),
-        arrays.len(jumpsBack),
+        pushes.len(),
+        texts.len(),
+        jumpsBack.len(),
         steps[2] is Step.Add,
         !(steps[0] is Step.Halt),
     );
@@ -187,7 +183,7 @@ fn main() -> Int {
 
     for step in steps {
         if step is Step.Push(value) && !(value is Value.Number(_)) {
-            push(later, () -> "pushes ${show(value)}");
+            later.push(() -> "pushes ${show(value)}");
         }
     }
 

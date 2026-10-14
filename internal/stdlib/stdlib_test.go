@@ -146,26 +146,26 @@ func TestEveryModuleCompiles(t *testing.T) {
 
 func TestMath(t *testing.T) {
 	expect(t, "import std.math;", `
-		println(math.abs(-4), math.abs(4), math.abs(0));
-		println(math.min(3, 9), math.min(9, 3), math.max(3, 9), math.max(-1, -2));
-		println(math.clamp(15, 0, 10), math.clamp(-5, 0, 10), math.clamp(5, 0, 10));
-		println(math.sign(-9), math.sign(0), math.sign(9));
-		println(math.pow(2, 10), math.pow(-3, 3), math.pow(7, 0), math.pow(0, 0), math.pow(10, 14));
-		println(math.pow(2, -1), math.pow(1, -5), math.pow(-1, -3), math.pow(-1, -4));
-		println(math.gcd(12, 18), math.gcd(-12, 18), math.gcd(7, 0), math.gcd(0, 0), math.gcd(17, 5));
-		println(math.lcm(4, 6), math.lcm(-4, 6), math.lcm(0, 6), math.lcm(7, 7));
-		println(math.isEven(4), math.isEven(-3), math.isOdd(-3), math.isOdd(0));
+		println((-4).abs(), 4.abs(), 0.abs());
+		println(3.min(9), 9.min(3), 3.max(9), (-1).max(-2));
+		println(15.clamp(0, 10), (-5).clamp(0, 10), 5.clamp(0, 10));
+		println((-9).sign(), 0.sign(), 9.sign());
+		println(2.pow(10), (-3).pow(3), 7.pow(0), 0.pow(0), 10.pow(14));
+		println(2.pow(-1), 1.pow(-5), (-1).pow(-3), (-1).pow(-4));
+		println(12.gcd(18), (-12).gcd(18), 7.gcd(0), 0.gcd(0), 17.gcd(5));
+		println(4.lcm(6), (-4).lcm(6), 0.lcm(6), 7.lcm(7));
+		println(4.isEven(), (-3).isEven(), (-3).isOdd(), 0.isOdd());
 
-		println(math.toFloat(3) / 2.0, math.floor(2.7), math.ceil(2.1), math.round(2.5), math.trunc(-2.7));
-		println(math.sqrt(16.0), math.powf(2.0, 0.5), math.exp(0.0), math.log(math.e));
-		println(math.fabs(-1.5), math.fmin(1.5, 2.5), math.fmax(1.5, 2.5));
-		println(math.round(math.sin(math.pi / 2.0) * 1000.0), math.round(math.cos(math.pi) * 1000.0));
-		println(math.degrees(math.pi), math.round(math.radians(180.0) * 1000.0), math.round(math.atan2(1.0, 1.0) * 4000.0));
+		println(3.toFloat() / 2.0, 2.7.floor(), 2.1.ceil(), 2.5.round(), (-2.7).trunc());
+		println(16.0.sqrt(), 2.0.pow(0.5), 0.0.exp(), math.e.log());
+		println((-1.5).abs(), 1.5.min(2.5), 1.5.max(2.5));
+		println(((math.pi / 2.0).sin() * 1000.0).round(), (math.pi.cos() * 1000.0).round());
+		println(math.pi.degrees(), (180.0.radians() * 1000.0).round(), (1.0.atan2(1.0) * 4000.0).round());
 
 		// The hypotenuse of a 3-4-5 triangle, through Int and back
 		let a = 3;
 		let b = 4;
-		println(math.round(math.sqrt(math.toFloat(a * a + b * b))));
+		println((a * a + b * b).toFloat().sqrt().round());
 	`,
 		"4 4 0",
 		"3 3 9 -1",
@@ -184,50 +184,50 @@ func TestMath(t *testing.T) {
 		"5",
 	)
 
-	expectFailure(t, "import std.math;", `println(math.sqrt(-4.0));`, "std.math.sqrt: the square root of -4 is not a number")
-	expectFailure(t, "import std.math;", `println(math.log(0.0));`, "std.math.log: the logarithm of 0 is not a number")
-	expectFailure(t, "import std.math;", `println(math.floor(1.0e300));`, "std.math.floor: 1e+300 does not fit in an Int")
+	expectFailure(t, "import std.math;", `println((-4.0).sqrt());`, "std.math.sqrt: the square root of -4 is not a number")
+	expectFailure(t, "import std.math;", `println(0.0.log());`, "std.math.log: the logarithm of 0 is not a number")
+	expectFailure(t, "import std.math;", `println(1.0e300.floor());`, "std.math.floor: 1e+300 does not fit in an Int")
 	// Arithmetic in the library overflows like arithmetic anywhere
-	expectFailure(t, "import std.math;", `println(math.pow(10, 30));`, "integer overflow")
+	expectFailure(t, "import std.math;", `println(10.pow(30));`, "integer overflow")
 }
 
 func TestStrings(t *testing.T) {
 	expect(t, "import std.strings;", `
-		println(strings.len("lumen"), strings.len(""), strings.len("héλ"), strings.len(strings.repeat("ab", 50)), strings.len("a b\n"));
-		println(strings.substring("lumen", 1, 3), strings.from("lumen", 2), strings.first("lumen", 2), strings.last("lumen", 2));
-		println("[" + strings.first("ab", 9) + "]", "[" + strings.last("ab", 9) + "]", "[" + strings.first("ab", -1) + "]", "[" + strings.from("ab", 2) + "]");
-		println(strings.split("a,b,,c", ","), strings.chars("héλ"), strings.split("", ","));
-		println(strings.lines("x\ny\n"), strings.lines("x\r\ny"), strings.lines(""), strings.lines("\n\n"));
-		println(strings.words("  a  b\tc\nd "), strings.words(""), strings.words("   "));
-		println(strings.join(["a", "b", "c"], "-"), "[" + strings.join([], "-") + "]", strings.repeat("ab", 3), "[" + strings.repeat("ab", 0) + "]");
-		println("[" + strings.padLeft("7", 3) + "]", "[" + strings.padRight("7", 3) + "]", "[" + strings.padLeft("1234", 3) + "]", "[" + strings.padRight("", 2) + "]");
-		println(strings.reverse("abc"), strings.reverse("héλ"), "[" + strings.reverse("") + "]");
-		println(strings.indexOf("banana", "na"), strings.lastIndexOf("banana", "na"), strings.indexOf("banana", "x"), strings.indexOf("héλlo", "l"));
-		println(strings.contains("banana", "nan"), strings.contains("banana", "nab"), strings.contains("banana", ""));
-		println(strings.startsWith("banana", "ban"), strings.startsWith("ban", "banana"), strings.startsWith("banana", ""), strings.startsWith("banana", "an"));
-		println(strings.endsWith("banana", "na"), strings.endsWith("na", "banana"), strings.endsWith("banana", ""), strings.endsWith("banana", "an"));
-		println(strings.count("banana", "a"), strings.count("banana", "an"), strings.count("aaaa", "aa"), strings.count("banana", "x"), strings.count("banana", ""));
-		println(strings.replace("a-b-c", "-", "+"), strings.upper("école"), strings.lower("ÉCOLE"), "[" + strings.trim(" \t x y \n") + "]");
-		println(strings.capitalize("ada"), strings.capitalize("élan"), "[" + strings.capitalize("") + "]", strings.capitalize("A"));
-		println(strings.isEmpty(""), strings.isEmpty(" "), strings.isBlank(" \t\n"), strings.isBlank(" x "));
-		println(strings.isDigits("123"), strings.isDigits("12a"), strings.isDigits(""), strings.isDigits("-1"));
-		println(strings.parseInt("42"), strings.parseInt(" -7 "), strings.parseInt("4x"), strings.parseInt(""), strings.parseFloat("2.5"), strings.parseFloat("x"));
-		println(strings.code("A"), strings.fromCode(955), strings.fromCode(strings.code("z") - 25));
-		println(strings.hash("ada") == strings.hash("ada"), strings.hash("ada") == strings.hash("adb"), strings.hash("") >= 0);
+		println("lumen".len(), "".len(), "héλ".len(), "ab".repeat(50).len(), "a b\n".len());
+		println("lumen".substring(1, 3), "lumen".from(2), "lumen".first(2), "lumen".last(2));
+		println("[" + "ab".first(9) + "]", "[" + "ab".last(9) + "]", "[" + "ab".first(-1) + "]", "[" + "ab".from(2) + "]");
+		println("a,b,,c".split(","), "héλ".chars(), "".split(","));
+		println("x\ny\n".lines(), "x\r\ny".lines(), "".lines(), "\n\n".lines());
+		println("  a  b\tc\nd ".words(), "".words(), "   ".words());
+		println(["a", "b", "c"].join("-"), "[" + [].join("-") + "]", "ab".repeat(3), "[" + "ab".repeat(0) + "]");
+		println("[" + "7".padLeft(3) + "]", "[" + "7".padRight(3) + "]", "[" + "1234".padLeft(3) + "]", "[" + "".padRight(2) + "]");
+		println("abc".reverse(), "héλ".reverse(), "[" + "".reverse() + "]");
+		println("banana".indexOf("na"), "banana".lastIndexOf("na"), "banana".indexOf("x"), "héλlo".indexOf("l"));
+		println("banana".contains("nan"), "banana".contains("nab"), "banana".contains(""));
+		println("banana".startsWith("ban"), "ban".startsWith("banana"), "banana".startsWith(""), "banana".startsWith("an"));
+		println("banana".endsWith("na"), "na".endsWith("banana"), "banana".endsWith(""), "banana".endsWith("an"));
+		println("banana".count("a"), "banana".count("an"), "aaaa".count("aa"), "banana".count("x"), "banana".count(""));
+		println("a-b-c".replace("-", "+"), "école".upper(), "ÉCOLE".lower(), "[" + " \t x y \n".trim() + "]");
+		println("ada".capitalize(), "élan".capitalize(), "[" + "".capitalize() + "]", "A".capitalize());
+		println("".isEmpty(), " ".isEmpty(), " \t\n".isBlank(), " x ".isBlank());
+		println("123".isDigits(), "12a".isDigits(), "".isDigits(), "-1".isDigits());
+		println("42".parseInt(), " -7 ".parseInt(), "4x".parseInt(), "".parseInt(), "2.5".parseFloat(), "x".parseFloat());
+		println("A".code(), strings.fromCode(955), strings.fromCode("z".code() - 25));
+		println("ada".hash() == "ada".hash(), "ada".hash() == "adb".hash(), "".hash() >= 0);
 
 		// What a parse gives is an optional: it has to be tested before use
 		let total = 0;
 		for text in ["10", "x", "32", ""] {
-			let n = strings.parseInt(text);
+			let n = text.parseInt();
 			if n != null { total += n; }
 		}
-		println(total, strings.parseInt("oops") ?? -1);
+		println(total, "oops".parseInt() ?? -1);
 
 		// The position found by a search, used to cut the text
 		let line = "name=ada lovelace";
-		let at = strings.indexOf(line, "=");
+		let at = line.indexOf("=");
 		if at != null {
-			println(strings.first(line, at), "/", strings.from(line, at + 1));
+			println(line.first(at), "/", line.from(at + 1));
 		}
 	`,
 		"5 0 3 100 4",
@@ -255,72 +255,72 @@ func TestStrings(t *testing.T) {
 		"name / ada lovelace",
 	)
 
-	expectFailure(t, "import std.strings;", `println(strings.substring("abc", 2, 9));`, "std.strings.substring: range 2..9 is outside a text of 3 characters")
-	expectFailure(t, "import std.strings;", `println(strings.from("abc", 4));`, "range 4..3 is outside")
-	expectFailure(t, "import std.strings;", `println(strings.replace("abc", "", "x"));`, "the text to replace is empty")
-	expectFailure(t, "import std.strings;", `println(strings.repeat("ab", -1));`, "cannot repeat a text -1 times")
-	expectFailure(t, "import std.strings;", `println(strings.code(""));`, "an empty text has no first character")
+	expectFailure(t, "import std.strings;", `println("abc".substring(2, 9));`, "std.strings.substring: range 2..9 is outside a text of 3 characters")
+	expectFailure(t, "import std.strings;", `println("abc".from(4));`, "range 4..3 is outside")
+	expectFailure(t, "import std.strings;", `println("abc".replace("", "x"));`, "the text to replace is empty")
+	expectFailure(t, "import std.strings;", `println("ab".repeat(-1));`, "cannot repeat a text -1 times")
+	expectFailure(t, "import std.strings;", `println("".code());`, "an empty text has no first character")
 }
 
 func TestArrays(t *testing.T) {
 	expect(t, "import std.arrays;\nimport std.strings;\nstruct City { name: String; people: Int; }", `
 		let n = arrays.range(1, 8);
-		println(arrays.len(n), arrays.len<Int>([]), arrays.len(["a", "b"]), arrays.len([[1, 2], [3]]), arrays.len(arrays.fill(40, true)));
+		println(n.len(), [].len(), ["a", "b"].len(), [[1, 2], [3]].len(), arrays.fill(40, true).len());
 		println(n, arrays.range(3, 3), arrays.range(5, 2), arrays.range(-2, 1));
 		println(arrays.fill(3, "x"), arrays.fill(0, 1), arrays.fill(2, [1]));
-		println(arrays.slice(n, 2, 4), arrays.slice(n, -3, 2), arrays.slice(n, 5, 99), arrays.slice(n, 4, 2));
-		println(arrays.concat([1], [2, 3]), arrays.concat<Int>([], []), arrays.reversed(n), arrays.reversed<Int>([]));
-		println(arrays.without(n, 0), arrays.without(n, 6), arrays.without([1, 2], 9), arrays.without([1, 2], -1));
-		println(arrays.inserted([1, 3], 1, 2), arrays.inserted([1, 2], 0, 0), arrays.inserted([1, 2], 2, 3), arrays.inserted([1, 2], 9, 3), arrays.inserted<Int>([], 0, 1));
-		println(arrays.first(n), arrays.last(n), arrays.first<Int>([]), arrays.last<Int>([]), arrays.at(n, 2), arrays.at(n, 7), arrays.at(n, -1));
-		println(arrays.isEmpty(n), arrays.isEmpty<String>([]));
+		println(n.slice(2, 4), n.slice(-3, 2), n.slice(5, 99), n.slice(4, 2));
+		println([1].concat([2, 3]), [].concat([]), n.reversed(), [].reversed());
+		println(n.without(0), n.without(6), [1, 2].without(9), [1, 2].without(-1));
+		println([1, 3].inserted(1, 2), [1, 2].inserted(0, 0), [1, 2].inserted(2, 3), [1, 2].inserted(9, 3), [].inserted(0, 1));
+		println(n.first(), n.last(), [].first(), [].last(), n.at(2), n.at(7), n.at(-1));
+		println(n.isEmpty(), [].isEmpty());
 
 		let even = fn(x: Int) -> Bool { return x % 2 == 0; };
 		let big = fn(x: Int) -> Bool { return x > 100; };
-		println(arrays.filter(n, even), arrays.filter(n, big), arrays.count(n, even), arrays.count(n, big));
-		println(arrays.any(n, even), arrays.any(n, big), arrays.all(n, even), arrays.all(n, fn(x: Int) -> Bool { return x > 0; }), arrays.all<Int>([], big));
-		println(arrays.find(n, even), arrays.find(n, big), arrays.findIndex(n, even), arrays.findIndex(n, big));
-		println(arrays.map(n, fn(x: Int) -> String { return "#" + toString(x); }), arrays.map(["a", "bcd"], fn(s: String) -> Int { return strings.len(s); }));
-		println(arrays.fold(n, 0, fn(a: Int, x: Int) -> Int { return a + x; }), arrays.fold(["a", "b"], "", fn(a: String, s: String) -> String { return s + a; }), arrays.fold<Int, Int>([], 7, fn(a: Int, x: Int) -> Int { return a + x; }));
+		println(n.filter(even), n.filter(big), n.count(even), n.count(big));
+		println(n.any(even), n.any(big), n.all(even), n.all(fn(x: Int) -> Bool { return x > 0; }), [].all(big));
+		println(n.find(even), n.find(big), n.findIndex(even), n.findIndex(big));
+		println(n.map(fn(x: Int) -> String { return "#" + toString(x); }), ["a", "bcd"].map(fn(s: String) -> Int { return s.len(); }));
+		println(n.fold(0, fn(a: Int, x: Int) -> Int { return a + x; }), ["a", "b"].fold("", fn(a: String, s: String) -> String { return s + a; }), [].fold<Int>(7, fn(a: Int, x: Int) -> Int { return a + x; }));
 
 		// each calls a function for its effect
 		let seen: [Int] = [];
-		arrays.each(n, fn(x: Int) -> Void { push(seen, x * x); });
+		n.each(fn(x: Int) -> Void { seen.push(x * x); });
 		println(seen);
 
-		println(arrays.sum(n), arrays.sum([]), arrays.smallest([3, 1, 2]), arrays.largest([3, 1, 2]), arrays.smallest([]), arrays.largest([]));
-		println(arrays.sortedNumbers([3, 1, 2, 1, -5]), arrays.sortedTexts(["pear", "Apple", "fig"]), arrays.sortedNumbers([]));
-		println(arrays.contains(n, 3), arrays.contains(n, 30), arrays.contains(["a"], "a"), arrays.contains(["a"], "b"), arrays.contains([true], false), arrays.contains<Int>([], 1));
-		println(arrays.indexOf(n, 3), arrays.indexOf(n, 30), arrays.indexOf(["a", "b", "b"], "b"), arrays.indexOf([1.5, 2.5], 2.5));
+		println(n.sum(), [].sum(), [3, 1, 2].smallest(), [3, 1, 2].largest(), [].smallest(), [].largest());
+		println([3, 1, 2, 1, -5].sortedNumbers(), ["pear", "Apple", "fig"].sortedTexts(), [].sortedNumbers());
+		println(n.contains(3), n.contains(30), ["a"].contains("a"), ["a"].contains("b"), [true].contains(false), [].contains(1));
+		println(n.indexOf(3), n.indexOf(30), ["a", "b", "b"].indexOf("b"), [1.5, 2.5].indexOf(2.5));
 		// An array or a struct is only equal to itself
 		let row = [1, 2];
 		let rows = [[1, 2], row];
-		println(arrays.indexOf(rows, row), arrays.contains(rows, [1, 2]));
+		println(rows.indexOf(row), rows.contains([1, 2]));
 
 		// Sorting structs, by one field then stably by another
 		let cities = [City { name: "Lagos", people: 15 }, City { name: "Oslo", people: 1 }, City { name: "Lima", people: 10 }, City { name: "Bern", people: 1 }];
 		let name = fn(c: City) -> String { return c.name; };
-		let bySize = arrays.sorted(cities, fn(a: City, b: City) -> Bool { return a.people < b.people; });
-		println(arrays.map(bySize, name), arrays.map(arrays.sorted(cities, fn(a: City, b: City) -> Bool { return a.name < b.name; }), name));
+		let bySize = cities.sorted(fn(a: City, b: City) -> Bool { return a.people < b.people; });
+		println(bySize.map(name), cities.sorted(fn(a: City, b: City) -> Bool { return a.name < b.name; }).map(name));
 		// The original is untouched by everything above
-		println(arrays.map(cities, name), n);
+		println(cities.map(name), n);
 
 		// swap and copy: one changes its array, the other protects it
 		let original = [1, 2, 3];
-		let duplicate = arrays.copy(original);
-		arrays.swap(duplicate, 0, 2);
+		let duplicate = original.copy();
+		duplicate.swap(0, 2);
 		println(original, duplicate);
 
 		// A sort of many items, checked against the sum and the order
 		let many: [Int] = [];
 		let i = 0;
-		while i < 2000 { push(many, (i * 7919) % 2003); i++; }
-		let ordered = arrays.sortedNumbers(many);
+		while i < 2000 { many.push((i * 7919) % 2003); i++; }
+		let ordered = many.sortedNumbers();
 		let inOrder = true;
 		for j, v in ordered {
 			if j > 0 && ordered[j - 1] > v { inOrder = false; }
 		}
-		println(arrays.len(ordered), inOrder, arrays.sum(ordered) == arrays.sum(many), ordered[0], ordered[1999]);
+		println(ordered.len(), inOrder, ordered.sum() == many.sum(), ordered[0], ordered[1999]);
 	`,
 		"7 0 2 2 40",
 		"[1, 2, 3, 4, 5, 6, 7] [] [] [-2, -1, 0]",
@@ -348,7 +348,7 @@ func TestArrays(t *testing.T) {
 		"2000 true true 0 2002",
 	)
 
-	expectFailure(t, "import std.arrays;", `arrays.swap([1, 2], 0, 5);`, "index out of bounds: 5 (length 2)")
+	expectFailure(t, "import std.arrays;", `[1, 2].swap(0, 5);`, "index out of bounds: 5 (length 2)")
 }
 
 func TestList(t *testing.T) {
@@ -373,7 +373,7 @@ func TestList(t *testing.T) {
 		let numbers = list.of(source);
 		numbers.add(0);
 		let exported = numbers.toArray();
-		push(exported, 99);
+		exported.push(99);
 		println(source, numbers.toArray(), exported);
 
 		// Calls that return a list can be chained
@@ -456,7 +456,7 @@ func TestMap(t *testing.T) {
 		i = 0;
 		while i < 3000 { if i % 3 == 0 { big.remove("key" + toString(i)); } i++; }
 		while i < 3500 { big.set("key" + toString(i), i * 2); i++; }
-		println(big.size(), big.get("key0"), big.get("key1"), big.get("key2999"), big.get("key3499"), arrays.len(big.keys()), arrays.len(big.values()));
+		println(big.size(), big.get("key0"), big.get("key1"), big.get("key2999"), big.get("key3499"), big.keys().len(), big.values().len());
 		let sum = 0;
 		big.each(fn(key: String, value: Int) -> Void { sum += value; });
 		let expected = 0;
@@ -480,7 +480,7 @@ func TestMap(t *testing.T) {
 		let groups = dict.empty<[String]>();
 		groups.set("fruit", ["fig"]);
 		let fruit = groups.get("fruit");
-		if fruit != null { push(fruit, "pear"); }
+		if fruit != null { fruit.push("pear"); }
 		println(groups.get("fruit"), groups.get("meat"));
 		let nested = dict.empty<Dict<Int>>();
 		nested.set("inner", counts);
@@ -514,12 +514,12 @@ struct User { name: String; manager: String?; }
 fn half(n: Int) -> Int? { if n % 2 != 0 { return null; } return n / 2; }
 fn double(n: Int) -> Int { return n * 2; }`, `
 		// map: a step that always has an answer
-		println(option.map(strings.parseInt("21"), double), option.map(strings.parseInt("x"), double), option.map(half(8), toString));
+		println(option.map("21".parseInt(), double), option.map("x".parseInt(), double), option.map(half(8), toString));
 		// then: a step that may have none; nothing at any point is nothing at the end
-		println(option.then(strings.parseInt("84"), half), option.then(strings.parseInt("7"), half), option.then(strings.parseInt("x"), half));
-		println(option.then(option.then(strings.parseInt("84"), half), half), option.then(option.then(strings.parseInt("6"), half), half));
+		println(option.then("84".parseInt(), half), option.then("7".parseInt(), half), option.then("x".parseInt(), half));
+		println(option.then(option.then("84".parseInt(), half), half), option.then(option.then("6".parseInt(), half), half));
 		// A step changes the type
-		println(option.map(option.then(strings.parseInt("84"), half), fn(n: Int) -> String { return "<" + toString(n) + ">"; }));
+		println(option.map(option.then("84".parseInt(), half), fn(n: Int) -> String { return "<" + toString(n) + ">"; }));
 
 		let big = fn(n: Int) -> Bool { return n > 3; };
 		println(option.filter(half(10), big), option.filter(half(4), big), option.filter(half(3), big));
@@ -535,15 +535,15 @@ fn double(n: Int) -> Int { return n * 2; }`, `
 		println(present, before, absent, calls);
 
 		let seen: [Int] = [];
-		option.each(half(6), fn(n: Int) -> Void { push(seen, n); });
-		option.each(half(7), fn(n: Int) -> Void { push(seen, n); });
+		option.each(half(6), fn(n: Int) -> Void { seen.push(n); });
+		option.each(half(7), fn(n: Int) -> Void { seen.push(n); });
 		println(seen, option.isSome(half(2)), option.isSome(half(1)), option.isNone(half(1)), option.isNone(half(2)));
 
-		println(option.values([half(2), half(3), half(4)]), option.values(arrays.map(["1", "x", "3"], strings.parseInt)), option.values<Int>([]));
+		println(option.values([half(2), half(3), half(4)]), option.values(["1", "x", "3"].map(text -> text.parseInt())), option.values<Int>([]));
 
 		// What comes out is an ordinary optional: ?? and null tests apply
-		let n: Int = option.map(strings.parseInt("5"), double) ?? 0;
-		let m = option.then(strings.parseInt("9"), half);
+		let n: Int = option.map("5".parseInt(), double) ?? 0;
+		let m = option.then("9".parseInt(), half);
 		if m == null { println(n + 1, "no half"); }
 
 		// Looking something up through two maps and a field that may be null
@@ -559,9 +559,9 @@ fn double(n: Int) -> Int { return n * 2; }`, `
 		println(managerOf("ada"), managerOf("grace"), managerOf("bob"), managerOf("nobody"), managerOf("ada") ?? "no manager");
 
 		// With structs and arrays as the values
-		let first = option.map(arrays.first([User { name: "Zed", manager: null }]), fn(u: User) -> String { return u.name; });
-		let none = option.map(arrays.first<User>([]), fn(u: User) -> String { return u.name; });
-		println(first, none, option.mapOr(arrays.last([[1, 2], [3]]), 0, fn(row: [Int]) -> Int { return arrays.len(row); }));
+		let first = option.map([User { name: "Zed", manager: null }].first(), fn(u: User) -> String { return u.name; });
+		let none = option.map([].first(), fn(u: User) -> String { return u.name; });
+		println(first, none, option.mapOr([[1, 2], [3]].last(), 0, fn(row: [Int]) -> Int { return row.len(); }));
 	`,
 		"42 null 4",
 		"42 null null",
@@ -583,8 +583,8 @@ fn double(n: Int) -> Int { return n * 2; }`, `
 	compiler.Compile(`import std.option;
 import std.strings;
 fn main() -> Int {
-    let n: Int = option.map(strings.parseInt("5"), fn(n: Int) -> Int { return n; });
-    let s = option.then(strings.parseInt("5"), fn(n: String) -> Int? { return 1; });
+    let n: Int = option.map("5".parseInt(), fn(n: Int) -> Int { return n; });
+    let s = option.then("5".parseInt(), fn(n: String) -> Int? { return 1; });
     return 0;
 }`, "test.lum", errs)
 	if len(errs.Diagnostics) != 2 || errs.Diagnostics[0].Code != "E2001" || errs.Diagnostics[1].Code != "E2010" {
@@ -615,14 +615,14 @@ func TestRandom(t *testing.T) {
 			if f < 0.0 || f >= 1.0 { ok = false; }
 			i++;
 		}
-		println(ok, arrays.all(seen, fn(s: Bool) -> Bool { return s; }), random.between(4, 4), random.below(1));
+		println(ok, seen.all(fn(s: Bool) -> Bool { return s; }), random.between(4, 4), random.below(1));
 		println(random.chance(1.0), random.chance(0.0));
 
 		// pick and shuffle keep what they are given
-		println(random.pick([5]), random.pick<Int>([]), arrays.contains([1, 2, 3], random.pick([1, 2, 3]) ?? 0));
+		println(random.pick([5]), random.pick<Int>([]), [1, 2, 3].contains(random.pick([1, 2, 3]) ?? 0));
 		let deck = arrays.range(0, 52);
 		random.shuffle(deck);
-		println(arrays.len(deck), arrays.sum(deck), arrays.sortedNumbers(deck)[0], arrays.sortedNumbers(deck)[51], arrays.sortedNumbers(deck)[30]);
+		println(deck.len(), deck.sum(), deck.sortedNumbers()[0], deck.sortedNumbers()[51], deck.sortedNumbers()[30]);
 		let empty: [Int] = [];
 		random.shuffle(empty);
 		println(empty);
@@ -665,7 +665,7 @@ func TestIO(t *testing.T) {
 		// says what kind of failure it was
 		println(io.exists(path), io.readFile(path).isErr());
 		println(io.writeFile(path, "one\n"), io.appendFile(path, "two\n"), io.exists(path));
-		println(io.readFile(path).map(strings.lines), io.readFileLines(path));
+		println(io.readFile(path).map(text -> text.lines()), io.readFileLines(path));
 		println(io.readFile(path).orElse("?") == "one\ntwo\n", io.readFile("DIR/missing.txt").orElse("fallback"));
 
 		// What the error holds
@@ -674,7 +674,7 @@ func TestIO(t *testing.T) {
 			println(missing.kind, missing.operation, missing.path == "DIR/missing.txt", missing.message);
 			println(missing.describe() == "cannot read DIR/missing.txt: no such file or directory");
 			// Where the program asked for the file
-			println(arrays.len(missing.stack), missing.stack[0].function, missing.stack[0].line > 0, strings.contains(missing.trace(), "  at test.lum:"));
+			println(missing.stack.len(), missing.stack[0].function, missing.stack[0].line > 0, missing.trace().contains("  at test.lum:"));
 		}
 		println(kindOf(io.readFile("DIR")), kindOf(io.writeFile("DIR/no/such/folder/file", "x")), kindOf(io.appendFile("DIR", "x")), kindOf(io.writeFile("DIR/notes.txt/inside", "x")));
 
@@ -748,12 +748,12 @@ fn kindOf<T>(r: Result<T, io.Error>) -> String {
 func TestLibraryErrorsPointAtTheCaller(t *testing.T) {
 	_, err := run(t, "import std.strings;", `
 		let text = "abc";
-		println(strings.substring(text, 2, 9));
+		println(text.substring(2, 9));
 	`, "")
 	if err == nil {
 		t.Fatal("expected a runtime error")
 	}
-	for _, want := range []string{"std.strings.substring: range 2..9", "test.lum:5:", "in function 'main'", "strings.substring(text, 2, 9)"} {
+	for _, want := range []string{"std.strings.substring: range 2..9", "test.lum:5:", "in function 'main'", "text.substring(2, 9)"} {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("expected the error to contain %q, got:\n%v", want, err)
 		}
@@ -761,7 +761,7 @@ func TestLibraryErrorsPointAtTheCaller(t *testing.T) {
 
 	// A failure inside a function of the library written in Lumen names
 	// the library's file
-	_, err = run(t, "import std.arrays;", `arrays.swap([1], 0, 3);`, "")
+	_, err = run(t, "import std.arrays;", `[1].swap(0, 3);`, "")
 	if err == nil {
 		t.Fatal("expected a runtime error")
 	}

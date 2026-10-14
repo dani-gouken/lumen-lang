@@ -57,7 +57,7 @@ func TestSafeAccessAndTryAreTyped(t *testing.T) {
 		{"...inside the branch of an if", `fn f(n: Int?) -> Int { if n != null { let g = fn() -> Int { return n + 1; }; return g(); } return 0; }`},
 		{"...through a lambda in a lambda", `fn f(n: Int?) -> Int { if n == null { return 0; } let g = fn() -> fn() -> Int { return fn() -> Int { return n + 1; }; }; return g()(); }`},
 		{"...for a type test", `fn f(v: Any) -> Int { if v is Int { let g = fn() -> Int { return v + 1; }; return g(); } return 0; }`},
-		{"...for the variable of a loop", `fn f(items: [Int?]) -> Int { let fs: [fn() -> Int] = []; for item in items { if item != null { push(fs, fn() -> Int { return item + 1; }); } } return __len(fs); }`},
+		{"...for the variable of a loop", `fn f(items: [Int?]) -> Int { let fs: [fn() -> Int] = []; for item in items { if item != null { __push(fs, fn() -> Int { return item + 1; }); } } return __len(fs); }`},
 		{"a lambda may assign its own variables", `fn f(n: Int?) -> Int { if n == null { return 0; } let g = fn() -> Int { let m = n; m = m + 1; return m; }; return g(); }`},
 
 		{"a tuple and its positions", `fn f() -> Int { let p = (1, "a"); let n: Int = p.0; let s: String = p.1; return n; }`},

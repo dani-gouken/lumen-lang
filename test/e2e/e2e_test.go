@@ -407,7 +407,7 @@ func TestLargeProgram(t *testing.T) {
 	}
 	sb.WriteString("fn main() -> Int {\n    let steps: [Step] = [];\n")
 	for i := 0; i < count; i++ {
-		fmt.Fprintf(&sb, "    let s%d = step%d();\n    push(steps, s%d);\n", i, i, i)
+		fmt.Fprintf(&sb, "    let s%d = step%d();\n    steps.push(s%d);\n", i, i, i)
 	}
 	fmt.Fprintf(&sb, `    let value = 0;
     let last = "";
@@ -415,7 +415,7 @@ func TestLargeProgram(t *testing.T) {
         value = step.apply(value);
         last = step.label();
     }
-    println(arrays.len(steps), value, last, s%d.label());
+    println(steps.len(), value, last, s%d.label());
     return 7;
 }
 `, count-1)
@@ -668,7 +668,7 @@ func TestProjectFile(t *testing.T) {
 		dir := project(t, map[string]string{
 			"lumen.json": `{"entry": "main.lum", "max_depth": 50, "heap_mb": 1}`,
 			"main.lum":   deep + "fn main() -> Int { println(down(30)); println(down(100)); return 0; }\n",
-			"big.lum":    "fn main() -> Int { let xs: [Int] = []; let i = 0; while i < 2000000 { push(xs, i); i++; } return 0; }\n",
+			"big.lum":    "fn main() -> Int { let xs: [Int] = []; let i = 0; while i < 2000000 { xs.push(i); i++; } return 0; }\n",
 		})
 		res := runLumenIn(t, dir, "", "run")
 		if res.exit != 1 || res.stdout != "30\n" || !strings.Contains(res.stderr, "max call depth 50 exceeded") {
@@ -806,14 +806,14 @@ fn main() -> Int {
         println("nobody there");
         return 1;
     }
-    println("Hello, " + strings.capitalize(strings.trim(name)) + "!");
+    println("Hello, " + name.trim().capitalize() + "!");
 
     let numbers: [Int] = [];
     for line in io.readLines() {
-        let n = strings.parseInt(line);
-        if n != null { push(numbers, n); }
+        let n = line.parseInt();
+        if n != null { numbers.push(n); }
     }
-    println(arrays.len(numbers), "numbers, sum", arrays.sum(numbers), "largest", arrays.largest(numbers) ?? 0);
+    println(numbers.len(), "numbers, sum", numbers.sum(), "largest", numbers.largest() ?? 0);
     return 0;
 }
 `,
@@ -865,7 +865,7 @@ fn main() -> Int {
 	notes := filepath.Join(dir, "notes.txt")
 	files := project(t, map[string]string{
 		"save.lum": "import std.io;\nfn main() -> Int {\n    if io.appendFile(\"" + notes + "\", \"a line\\n\").isOk() { return 0; }\n    return 1;\n}\n",
-		"load.lum": "import std.io;\nimport std.strings;\nimport std.arrays;\nfn main() -> Int {\n    println(arrays.len(io.readFileLines(\"" + notes + "\").orElse([])));\n    return 0;\n}\n",
+		"load.lum": "import std.io;\nimport std.strings;\nimport std.arrays;\nfn main() -> Int {\n    println(io.readFileLines(\"" + notes + "\").orElse([]).len());\n    return 0;\n}\n",
 	})
 	for i := 0; i < 3; i++ {
 		if res := runLumenIn(t, files, "", "run", "save.lum"); res.exit != 0 {

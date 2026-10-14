@@ -9,11 +9,11 @@ struct Stack<T> {
 // `impl<T>` introduces the struct's type parameter for the methods.
 impl<T> Stack<T> {
     fn push(item: T) -> Void {
-        push(self.items, item);
+        self.items.push(item);
     }
 
     fn size() -> Int {
-        return arrays.len(self.items);
+        return self.items.len();
     }
 
     // A method can add type parameters of its own: U is chosen at the call.
@@ -29,11 +29,11 @@ impl<T> Stack<T> {
 
     // Returns null when the stack is empty.
     fn peek() -> T? {
-        if arrays.len(self.items) == 0 {
+        if self.items.len() == 0 {
             return null;
         }
 
-        return self.items[arrays.len(self.items) - 1];
+        return self.items[self.items.len() - 1];
     }
 }
 

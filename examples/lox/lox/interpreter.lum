@@ -385,7 +385,7 @@ impl Interpreter {
                 let arguments: [Value] = [];
 
                 for argument in argumentExprs {
-                    push(arguments, self.evaluate(argument)?);
+                    arguments.push(self.evaluate(argument)?);
                 }
 
                 return self.call(callee, paren, arguments);
@@ -460,7 +460,7 @@ impl Interpreter {
 
         match callee {
             case Value.Function(function): {
-                checkArity(arrays.len(function.declaration.params), arguments, paren)?;
+                checkArity(function.declaration.params.len(), arguments, paren)?;
                 return self.invoke(function, arguments);
             }
 
@@ -471,7 +471,7 @@ impl Interpreter {
                 if initializer == null {
                     checkArity(0, arguments, paren)?;
                 } else {
-                    checkArity(arrays.len(initializer.declaration.params), arguments, paren)?;
+                    checkArity(initializer.declaration.params.len(), arguments, paren)?;
                     self.invoke(bind(initializer, instance), arguments)?;
                 }
 
@@ -481,7 +481,7 @@ impl Interpreter {
             case Value.Native(name): {
                 checkArity(0, arguments, paren)?;
                 // The only one there is: the seconds on the clock
-                return Result.Ok(Value.Number(math.toFloat(time.ticks()) / 1000000.0));
+                return Result.Ok(Value.Number(time.ticks().toFloat() / 1000000.0));
             }
 
             default: {
@@ -512,9 +512,9 @@ impl Interpreter {
 }
 
 fn checkArity(expected: Int, arguments: [Value], paren: Token) -> Result<Int, RuntimeError> {
-    if arrays.len(arguments) != expected {
+    if arguments.len() != expected {
         return Result.Err(
-            failed(paren, "Expected ${expected} arguments but got ${arrays.len(arguments)}."),
+            failed(paren, "Expected ${expected} arguments but got ${arguments.len()}."),
         );
     }
 

@@ -10,7 +10,7 @@ fn primesBelow(limit: Int) -> [Int] {
             continue;
         }
 
-        push(primes, n);
+        primes.push(n);
         let multiple = n * n;
 
         while multiple < limit {
@@ -24,7 +24,7 @@ fn primesBelow(limit: Int) -> [Int] {
 
 fn main() -> Int {
     let primes = primesBelow(300000);
-    let count = arrays.len(primes);
+    let count = primes.len();
     let gaps = 0;
     let widest = 0;
 

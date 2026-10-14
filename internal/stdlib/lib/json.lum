@@ -48,12 +48,12 @@ pub fn parse(text: String) -> Result<Json, ParseError> {
     if found == null {
         // Where, as line:column, then what
         let parts = problem();
-        let where = strings.split(parts[0], ":");
+        let where = parts[0].split(":");
 
         return Result.Err(ParseError {
             message: parts[1],
-            line: strings.parseInt(where[0]) ?? 0,
-            column: strings.parseInt(where[1]) ?? 0,
+            line: where[0].parseInt() ?? 0,
+            column: where[1].parseInt() ?? 0,
         });
     }
 
@@ -80,11 +80,11 @@ impl Reader {
 
         match token[0] {
             case "s": {
-                return Json.String(strings.from(token, 1));
+                return Json.String(token.from(1));
             }
 
             case "n": {
-                return Json.Number(strings.parseFloat(strings.from(token, 1)) ?? 0.0);
+                return Json.Number(token.from(1).parseFloat() ?? 0.0);
             }
 
             case "t": {
@@ -99,7 +99,7 @@ impl Reader {
                 let items: [Json] = [];
 
                 while self.tokens[self.at] != "]" {
-                    push(items, self.value());
+                    items.push(self.value());
                 }
 
                 self.at++;
@@ -110,7 +110,7 @@ impl Reader {
                 let fields = dict.empty<Json>();
 
                 while self.tokens[self.at] != "}" {
-                    let key = strings.from(self.next(), 1);
+                    let key = self.next().from(1);
                     let field = self.value();
                     fields.set(key, field);
                 }
@@ -149,7 +149,7 @@ impl Equal for Json {
             }
 
             case (Json.Array(mine), Json.Array(theirs)): {
-                if arrays.len(mine) != arrays.len(theirs) {
+                if mine.len() != theirs.len() {
                     return false;
                 }
 
@@ -205,7 +205,7 @@ impl Json {
     pub fn at(index: Int) -> Json? {
         match self {
             case Json.Array(items): {
-                if index < 0 || index >= arrays.len(items) {
+                if index < 0 || index >= items.len() {
                     return null;
                 }
 
@@ -222,8 +222,8 @@ impl Json {
     pub fn find(path: String) -> Json? {
         let here = self;
 
-        for step in strings.split(path, ".") {
-            let index = strings.parseInt(step);
+        for step in path.split(".") {
+            let index = step.parseInt();
 
             if index != null && here.items() != null {
                 here = here.at(index)?;
@@ -255,9 +255,9 @@ impl Json {
     pub fn int() -> Int? {
         match self {
             case Json.Number(x): {
-                let whole = math.trunc(x);
+                let whole = x.trunc();
 
-                if math.toFloat(whole) != x {
+                if whole.toFloat() != x {
                     return null;
                 }
 
@@ -297,14 +297,14 @@ impl Json {
     pub fn stringify() -> String {
         let out: [String] = [];
         self.write(out, "", "");
-        return strings.join(out, "");
+        return out.join("");
     }
 
     // Over several lines, each level two spaces further in.
     pub fn pretty() -> String {
         let out: [String] = [];
         self.write(out, "  ", "\n");
-        return strings.join(out, "");
+        return out.join("");
     }
 
     // Adds the pieces of the text to `out`. `indent` is what one level
@@ -324,55 +324,55 @@ impl Json {
 
         match self {
             case Json.Null: {
-                push(out, "null");
+                out.push("null");
             }
 
             case Json.Bool(b): {
-                push(out, toString(b));
+                out.push(toString(b));
             }
 
             case Json.Number(x): {
-                push(out, numeral(x));
+                out.push(numeral(x));
             }
 
             case Json.String(text): {
-                push(out, quote(text));
+                out.push(quote(text));
             }
 
             case Json.Array(items): {
-                if arrays.len(items) == 0 {
-                    push(out, "[]");
+                if items.len() == 0 {
+                    out.push("[]");
                     return;
                 }
 
-                push(out, "[");
+                out.push("[");
 
                 for i, item in items {
                     if i > 0 {
-                        push(out, ",");
+                        out.push(",");
                     }
 
-                    push(out, margin + indent);
+                    out.push(margin + indent);
                     item.writeAt(out, indent, line, margin + indent);
                 }
 
-                push(out, margin + "]");
+                out.push(margin + "]");
             }
 
             case Json.Object(fields): {
                 if fields.isEmpty() {
-                    push(out, "{}");
+                    out.push("{}");
                     return;
                 }
 
-                push(out, "{");
+                out.push("{");
 
                 for i, key in fields.keys() {
                     if i > 0 {
-                        push(out, ",");
+                        out.push(",");
                     }
 
-                    push(out, margin + indent + quote(key) + colon);
+                    out.push(margin + indent + quote(key) + colon);
                     let field = fields.get(key);
 
                     if field != null {
@@ -380,7 +380,7 @@ impl Json {
                     }
                 }
 
-                push(out, margin + "}");
+                out.push(margin + "}");
             }
         }
     }
@@ -390,7 +390,7 @@ impl Json {
 
 // A whole number as a JSON number.
 pub fn int(n: Int) -> Json {
-    return Json.Number(math.toFloat(n));
+    return Json.Number(n.toFloat());
 }
 
 // An array of texts.
@@ -398,7 +398,7 @@ pub fn texts(items: [String]) -> Json {
     let out: [Json] = [];
 
     for item in items {
-        push(out, Json.String(item));
+        out.push(Json.String(item));
     }
 
     return Json.Array(out);
@@ -409,7 +409,7 @@ pub fn ints(items: [Int]) -> Json {
     let out: [Json] = [];
 
     for item in items {
-        push(out, int(item));
+        out.push(int(item));
     }
 
     return Json.Array(out);
@@ -420,7 +420,7 @@ pub fn array<T>(items: [T], convert: fn(T) -> Json) -> Json {
     let out: [Json] = [];
 
     for item in items {
-        push(out, convert(item));
+        out.push(convert(item));
     }
 
     return Json.Array(out);
@@ -468,7 +468,7 @@ impl Object {
     }
 }
 
-// The same accessors as functions, to hand to arrays.map and the like.
+// The same accessors as functions, to hand to items -> items.map() and the like.
 // For one value, `document.get("name")?.text()` says it shorter.
 pub fn textOf(value: Json) -> String? {
     return value.text();

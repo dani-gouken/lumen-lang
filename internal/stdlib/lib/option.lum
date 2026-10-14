@@ -4,12 +4,12 @@
 // or null. These functions carry "or nothing" through a series of steps:
 // each step runs only if the one before gave a value.
 //
-//     let port = option.then(io.env("PORT"), strings.parseInt);     // Int?
+//     let port = option.then(io.env("PORT"), text -> text.parseInt());     // Int?
 //     let label = option.mapOr(port, "default", toString);          // String
 
 // The value turned into another, or null if there was none.
 //
-//     option.map(strings.parseInt("21"), n -> n * 2)    // 42
+//     option.map("21".parseInt(), n -> n * 2)    // 42
 pub fn map<T, U>(value: T?, convert: fn(T) -> U) -> U? {
     if value == null {
         return null;
@@ -21,7 +21,7 @@ pub fn map<T, U>(value: T?, convert: fn(T) -> U) -> U? {
 // The same, for a step that may itself have no answer: null if there was
 // no value, or if the step gives none.
 //
-//     option.then(io.readLine(), strings.parseInt)    // Int?
+//     option.then(io.readLine(), text -> text.parseInt())    // Int?
 pub fn then<T, U>(value: T?, step: fn(T) -> U?) -> U? {
     if value == null {
         return null;
@@ -92,7 +92,7 @@ pub fn values<T>(items: [T?]) -> [T] {
 
     for item in items {
         if item != null {
-            push(out, item);
+            out.push(item);
         }
     }
 

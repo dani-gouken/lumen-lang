@@ -63,21 +63,21 @@ impl Flaw {
 
 // "acme = Acme Tools, Leeds" as the code and who it stands for.
 fn supplier(line: String) -> (String, Supplier)? {
-    let (code, rest) = strings.cut(line, "=")?;
-    let (name, city) = strings.cut(rest, ",") ?? (rest, "");
+    let (code, rest) = line.cut("=")?;
+    let (name, city) = rest.cut(",") ?? (rest, "");
     let where: String? = null;
 
-    if !strings.isBlank(city) {
-        where = strings.trim(city);
+    if !city.isBlank() {
+        where = city.trim();
     }
 
-    return (strings.trim(code), Supplier { name: strings.trim(name), city: where });
+    return (code.trim(), Supplier { name: name.trim(), city: where });
 }
 
 fn known() -> Dict<Supplier> {
     let all = dict.empty<Supplier>();
 
-    for line in strings.lines(suppliers) {
+    for line in suppliers.lines() {
         let entry = supplier(line);
 
         if entry != null {
@@ -90,7 +90,7 @@ fn known() -> Dict<Supplier> {
 
 // A column of a row, which has to be there and not be empty.
 fn column(cells: [String], at: Int, name: String) -> Result<String, Flaw> {
-    let text = strings.trim(arrays.at(cells, at) ?? "");
+    let text = (cells.at(at) ?? "").trim();
 
     if text == "" {
         return Result.Err(Flaw.Missing(name));
@@ -101,7 +101,7 @@ fn column(cells: [String], at: Int, name: String) -> Result<String, Flaw> {
 
 fn whole(cells: [String], at: Int, name: String) -> Result<Int, Flaw> {
     let text = column(cells, at, name)?;
-    let n = strings.parseInt(text);
+    let n = text.parseInt();
 
     if n == null {
         return Result.Err(Flaw.NotANumber(name, text));
@@ -111,11 +111,11 @@ fn whole(cells: [String], at: Int, name: String) -> Result<Int, Flaw> {
 }
 
 fn item(line: String, suppliers: Dict<Supplier>) -> Result<Item, Flaw> {
-    let cells = strings.split(line, ",");
+    let cells = line.split(",");
     let name = column(cells, 0, "name")?;
     let quantity = whole(cells, 1, "quantity")?;
     let priceText = column(cells, 2, "price")?;
-    let price = strings.parseFloat(priceText);
+    let price = priceText.parseFloat();
 
     if price == null {
         return Result.Err(Flaw.NotANumber("price", priceText));
@@ -123,7 +123,7 @@ fn item(line: String, suppliers: Dict<Supplier>) -> Result<Item, Flaw> {
 
     // The supplier may be left out; one that is named has to be known
     let from: Supplier? = null;
-    let code = strings.trim(arrays.at(cells, 3) ?? "");
+    let code = (cells.at(3) ?? "").trim();
 
     if code != "" {
         from = suppliers.get(code);
@@ -142,18 +142,18 @@ fn load() -> ([Item], [(Int, Flaw)]) {
     let items: [Item] = [];
     let flawed: [(Int, Flaw)] = [];
 
-    for i, line in strings.lines(stock) {
-        if strings.startsWith(line, "#") || strings.isBlank(line) {
+    for i, line in stock.lines() {
+        if line.startsWith("#") || line.isBlank() {
             continue;
         }
 
         match item(line, suppliers) {
             case Result.Ok(read): {
-                push(items, read);
+                items.push(read);
             }
 
             case Result.Err(flaw): {
-                push(flawed, (i + 1, flaw));
+                flawed.push((i + 1, flaw));
             }
         }
     }
@@ -164,14 +164,14 @@ fn load() -> ([Item], [(Int, Flaw)]) {
 // The cheapest and the dearest, if there is anything at all.
 fn range(items: [Item]) -> (Item, Item)? {
     let cents = fn(item: Item) -> Int {
-        return math.round(item.price * 100.0);
+        return (item.price * 100.0).round();
     };
 
-    return (arrays.minBy(items, cents)?, arrays.maxBy(items, cents)?);
+    return (items.minBy(cents)?, items.maxBy(cents)?);
 }
 
 fn worth(item: Item) -> Float {
-    return math.toFloat(item.quantity) * item.price;
+    return item.quantity.toFloat() * item.price;
 }
 
 fn level(item: Item) -> String {
@@ -193,7 +193,7 @@ fn level(item: Item) -> String {
 fn main() -> Int {
     let (items, flawed) = load();
 
-    let rows = arrays.map(items, fn(item: Item) -> [String] {
+    let rows = items.map(fn(item: Item) -> [String] {
         return [
             item.name,
             toString(item.quantity),
@@ -220,14 +220,13 @@ fn main() -> Int {
     let wanted: String? = "acme";
 
     if wanted != null {
-        let theirs = arrays.filter(items, fn(item: Item) -> Bool {
-            return strings.len(item.supplier?.name ?? "") == strings.len("Acme Tools")
-                && strings.len(wanted) == 4;
+        let theirs = items.filter(fn(item: Item) -> Bool {
+            return (item.supplier?.name ?? "").len() == "Acme Tools".len() && wanted.len() == 4;
         });
 
         println(
             "from acme:",
-            arrays.map(theirs, fn(item: Item) -> String {
+            theirs.map(fn(item: Item) -> String {
                 return item.name;
             }),
         );
@@ -239,10 +238,10 @@ fn main() -> Int {
         println("line ${line}: ${flaw.describe()}");
     }
 
-    let (low, fine) = arrays.partition(items, fn(item: Item) -> Bool {
+    let (low, fine) = items.partition(fn(item: Item) -> Bool {
         return item.quantity < 10;
     });
 
-    println("${arrays.len(low)} low, ${arrays.len(fine)} fine, ${arrays.len(flawed)} unread");
-    return arrays.len(flawed);
+    println("${low.len()} low, ${fine.len()} fine, ${flawed.len()} unread");
+    return flawed.len();
 }

@@ -16,11 +16,11 @@ fn zeros(rows: Int, cols: Int) -> Matrix {
         let c = 0;
 
         while c < cols {
-            push(row, 0);
+            row.push(0);
             c++;
         }
 
-        push(cells, row);
+        cells.push(row);
         r++;
     }
 
@@ -108,10 +108,10 @@ fn map2<T, U>(grid: [[T]], f: fn(T) -> U) -> [[U]] {
         let mapped: [U] = [];
 
         for cell in row {
-            push(mapped, f(cell));
+            mapped.push(f(cell));
         }
 
-        push(out, mapped);
+        out.push(mapped);
     }
 
     return out;
@@ -122,7 +122,7 @@ fn flatten<T>(grid: [[T]]) -> [T] {
 
     for row in grid {
         for cell in row {
-            push(out, cell);
+            out.push(cell);
         }
     }
 

@@ -148,6 +148,10 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 		return result
 	}
 
+	// The methods of the library that are its functions under another
+	// name are called as those functions from here on
+	forwardLibraryMethods(prog, typeInfo)
+
 	// 4. Monomorphization. It adds declarations and rewrites call sites, so
 	// names and types are computed again for the new program.
 	mono := monomorph.NewMonomorphizer(prog, typeInfo, table, errs)

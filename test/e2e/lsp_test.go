@@ -196,7 +196,7 @@ fn main() -> Int {
     let tally = Tally { total: 0.0, seen: 0 };
     tally.add(Shape.Circle(1.0));
     tally.add(shapes.square(2.0));
-    println(tally.seen, math.round(tally.total), count);
+    println(tally.seen, tally.total.round(), count);
     return 0;
 }
 `
@@ -278,8 +278,8 @@ func TestLanguageServer(t *testing.T) {
 		// What comes from the module next to it, and from the library
 		{20, 22, "```lumen\nfn shapes.square(side: Float) -> Shape\n```\n\nA rectangle with equal sides.", [2]int{14, 27}},
 		{12, 30, "```lumen\nfn shapes.Shape.area() -> Float\n```\n\nThe surface it covers.", [2]int{28, 32}},
-		{21, 28, "```lumen\nfn math.round(x: Float) -> Int\n```\n\nThe nearest whole number; halves go away from zero: round(2.5) is 3.", [2]int{24, 34}},
-		{21, 51, "```lumen\nconst count: Int\n```\n\nHow many there are.", [2]int{49, 54}},
+		{21, 37, "```lumen\nfn Float.round() -> Int\n```\n\nThe nearest whole number; halves go away from zero: round(2.5) is 3.", [2]int{36, 41}},
+		{21, 46, "```lumen\nconst count: Int\n```\n\nHow many there are.", [2]int{45, 50}},
 		// The names of types where they are written, and names where they are declared
 		{11, 20, "```lumen\nenum shapes.Shape {\n    Circle(Float),\n    Rect(Float, Float),\n}\n```", [2]int{18, 23}},
 		{7, 24, "```lumen\nFloat\n```\n\nA number with decimals.", [2]int{22, 27}},
@@ -320,7 +320,7 @@ func TestLanguageServer(t *testing.T) {
 		{12, 30, "shapes.lum:6:11"}, // a method of its enum
 		{11, 20, "shapes.lum:2:9"},  // a type, where it is written
 		{18, 20, "main.lum:7:7"},    // a struct, where a value of it is made
-		{21, 28, "math.lum:16:14"},  // the library: its file is written out to be opened
+		{21, 37, "math.lum:285:11"}, // the library: its file is written out to be opened
 		{17, 14, "nowhere"},         // a type of the language
 		{21, 4, "nowhere"},          // a builtin
 	} {
@@ -394,11 +394,11 @@ func TestLanguageServer(t *testing.T) {
 	}
 
 	// --- A mistake, with what would fix it ---
-	change(6, typing("    println(tally.seen, math.round(tally.totl), count);"))
-	if got, want := e.diagnostics(mainURI), "21:40-41 E2014 Tally has no field 'totl'"; len(got) != 1 || !strings.HasPrefix(got[0], want) || !strings.HasSuffix(got[0], "[1]") {
+	change(6, typing("    println(tally.seen, tally.totl.round(), count);"))
+	if got, want := e.diagnostics(mainURI), "21:29-30 E2014 Tally has no field 'totl'"; len(got) != 1 || !strings.HasPrefix(got[0], want) || !strings.HasSuffix(got[0], "[1]") {
 		t.Errorf("unexpected diagnostics:\n got %v\nwant %s...", got, want)
 	}
-	change(7, typing("    println(tally.seen, math.round(tally.total), count);\n    return 1;"))
+	change(7, typing("    println(tally.seen, tally.total.round(), count);\n    return 1;"))
 	if got := e.diagnostics(mainURI); len(got) != 1 || !strings.Contains(got[0], "E2023") || !strings.HasSuffix(got[0], "[2]") {
 		t.Errorf("expected a warning for the unreachable return, got %v", got)
 	}

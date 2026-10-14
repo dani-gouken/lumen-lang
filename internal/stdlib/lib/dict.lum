@@ -83,21 +83,21 @@ impl<V> Dict<V> {
             return;
         }
 
-        push(self.keys, key);
-        push(self.values, value);
+        self.keys.push(key);
+        self.values.push(value);
         self.count++;
 
         let dead = self.dead;
 
         if dead != null {
-            push(dead, false);
+            dead.push(false);
         }
 
         let index = self.index;
 
         if index != null {
-            indexPut(index, key, arrays.len(self.keys) - 1);
-        } else if arrays.len(self.keys) > SMALL {
+            indexPut(index, key, self.keys.len() - 1);
+        } else if self.keys.len() > SMALL {
             self.index = indexed(self.keys);
         }
     }
@@ -167,7 +167,7 @@ impl<V> Dict<V> {
         dead[at] = true;
         self.removed++;
 
-        if self.removed * 2 > arrays.len(self.keys) {
+        if self.removed * 2 > self.keys.len() {
             self.compact(dead);
         }
 
@@ -181,7 +181,7 @@ impl<V> Dict<V> {
 
         for at, key in self.keys {
             if dead == null || !dead[at] {
-                push(out, key);
+                out.push(key);
             }
         }
 
@@ -195,7 +195,7 @@ impl<V> Dict<V> {
 
         for at, value in self.values {
             if dead == null || !dead[at] {
-                push(out, value);
+                out.push(value);
             }
         }
 
@@ -211,7 +211,7 @@ impl<V> Dict<V> {
 
         for at, key in self.keys {
             if dead == null || !dead[at] {
-                push(out, (key, self.values[at]));
+                out.push((key, self.values[at]));
             }
         }
 
@@ -223,7 +223,7 @@ impl<V> Dict<V> {
         let keys = self.keys();
 
         // Insertion sort: std.arrays builds on this module, not the reverse
-        for i in 1..arrays.len(keys) {
+        for i in 1..keys.len() {
             let key = keys[i];
             let j = i - 1;
 
@@ -259,8 +259,8 @@ impl<V> Dict<V> {
 
         let fresh: [Bool] = [];
 
-        for i in 0..arrays.len(self.keys) {
-            push(fresh, false);
+        for i in 0..self.keys.len() {
+            fresh.push(false);
         }
 
         self.dead = fresh;
@@ -274,8 +274,8 @@ impl<V> Dict<V> {
 
         for at, key in self.keys {
             if !dead[at] {
-                push(keys, key);
-                push(values, self.values[at]);
+                keys.push(key);
+                values.push(self.values[at]);
             }
         }
 
@@ -285,7 +285,7 @@ impl<V> Dict<V> {
         self.removed = 0;
         self.index = null;
 
-        if arrays.len(keys) > SMALL {
+        if keys.len() > SMALL {
             self.index = indexed(keys);
         }
     }
@@ -297,7 +297,7 @@ fn without<T>(items: [T], at: Int) -> [T] {
 
     for i, item in items {
         if i != at {
-            push(out, item);
+            out.push(item);
         }
     }
 

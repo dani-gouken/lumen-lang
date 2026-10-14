@@ -32,7 +32,7 @@ pub fn environment() -> Dict<String> {
     let all = dict.empty<String>();
 
     for line in variables() {
-        let (name, value) = strings.cut(line, "=") ?? (line, "");
+        let (name, value) = line.cut("=") ?? (line, "");
         all.set(name, value);
     }
 
@@ -53,7 +53,7 @@ impl Output {
 
     // What it wrote, as lines.
     pub fn lines() -> [String] {
-        return strings.lines(self.out);
+        return self.out.lines();
     }
 }
 
@@ -89,7 +89,7 @@ pub fn runWithInput(program: String, arguments: [String], input: String) -> Resu
 
 // The status, what was written, what was written as errors.
 fn outputOf(parts: [String]) -> Output {
-    return Output { status: strings.parseInt(parts[0]) ?? -1, out: parts[1], err: parts[2] };
+    return Output { status: parts[0].parseInt() ?? -1, out: parts[1], err: parts[2] };
 }
 
 extern fn variables() -> [String];

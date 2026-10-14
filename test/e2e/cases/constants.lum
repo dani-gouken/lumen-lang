@@ -40,7 +40,7 @@ fn row(y: Int) -> String {
 
 fn main() -> Int {
     println(TITLE, COLUMNS, ROWS, CELLS, WIDE, BELOW_ZERO);
-    println(strings.repeat(RULE, COLUMNS));
+    println(RULE.repeat(COLUMNS));
     let y = 0;
 
     while y < ROWS {
@@ -48,8 +48,8 @@ fn main() -> Int {
         y++;
     }
 
-    println(strings.repeat(RULE, COLUMNS));
-    println(math.round(DIAGONAL * 1000.0), math.round(TAU * 1000.0), math.round(math.e * 1000.0));
+    println(RULE.repeat(COLUMNS));
+    println((DIAGONAL * 1000.0).round(), (TAU * 1000.0).round(), (math.e * 1000.0).round());
 
     // A local of the same name takes over from where it is declared
     let before = COLUMNS;

@@ -39,6 +39,9 @@ type Parser struct {
 	// The ranges read so far that no loop and no case took: values
 	keptRanges int
 
+	// The names written after a dot
+	members map[string]bool
+
 	// In the pattern of a case a | separates patterns, and is not the
 	// operator on bits it is everywhere else.
 	noBitOr bool
@@ -210,6 +213,7 @@ func (p *Parser) parseProgram() *ast.Program {
 	}
 	classifyPatterns(prog)
 	prog.KeepsRanges = p.keptRanges > 0
+	prog.Members = p.members
 	return prog
 }
 
@@ -1632,6 +1636,10 @@ func (p *Parser) parsePostfixOp(expr ast.Expr) (ast.Expr, bool) {
 			qualified.EndPos = nameTok.EndPos
 			return p.parseStructInit(qualified, typeArgs), true
 		}
+		if p.members == nil {
+			p.members = make(map[string]bool)
+		}
+		p.members[name] = true
 		return &ast.MemberExpr{BaseNode: base(tok), Expr: expr, Name: name, TypeArgs: typeArgs}, true
 	}
 	return expr, false

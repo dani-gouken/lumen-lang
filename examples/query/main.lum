@@ -28,9 +28,7 @@ import query.value.{show};
 fn rows(text: String, folder: String) -> Result<[String], String> {
     let answer = engine.answer(parser.parse(text)?, folder)?;
 
-    return Result.Ok(
-        answer.rows |> arrays.map(row -> row |> arrays.map(show) |> strings.join("|")),
-    );
+    return Result.Ok(answer.rows.map(row -> row.map(show).join("|")));
 }
 
 // A few queries that show what there is.
@@ -48,7 +46,7 @@ fn tour() -> [String] {
 fn main() -> Int {
     let arguments = os.args();
 
-    if arrays.len(arguments) == 0 {
+    if arguments.len() == 0 {
         let folder = path.join([path.dir(os.program()), "data"]);
 
         for text in tour() {
@@ -72,14 +70,14 @@ fn main() -> Int {
         return 0;
     }
 
-    if arrays.len(arguments) != 2 {
+    if arguments.len() != 2 {
         io.printError("Usage: lumen run examples/query <folder> <file.sql | \"SELECT ...\">\n");
         return 2;
     }
 
     let text = arguments[1];
 
-    if strings.endsWith(text, ".sql") {
+    if text.endsWith(".sql") {
         match io.readFile(text) {
             case Result.Ok(content): {
                 text = content;

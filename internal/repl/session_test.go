@@ -200,24 +200,24 @@ enum Token { Num(Int), Word(String), End }
 
 struct Stack<T> { items: [T]; }
 impl<T> Stack<T> {
-    fn push(item: T) -> Void { push(self.items, item); }
+    fn push(item: T) -> Void { self.items.push(item); }
     fn top() -> T? {
-        if arrays.len(self.items) == 0 { return null; }
-        return self.items[arrays.len(self.items) - 1];
+        if self.items.len() == 0 { return null; }
+        return self.items[self.items.len() - 1];
     }
 }
 
 fn parse(word: String) -> Result<Token, String> {
     if word == "" { return Result.Err("nothing to read"); }
-    let n = strings.parseInt(word);
+    let n = word.parseInt();
     if n != null { return Result.Ok(Token.Num(n)); }
     return Result.Ok(Token.Word(word));
 }`)
 
 	// A variable of each kind of type, used in a later input
 	k.say("let shapes: [Shape] = [Circle { r: 1.0 }, Rect { w: 2.0, h: 3.0 }]")
-	k.expect("arrays.map(shapes, s -> s.name())", `["circle", "shape"]`)
-	k.expect("arrays.fold(shapes, 0.0, (sum, s) -> sum + s.area())", "9")
+	k.expect("shapes.map(s -> s.name())", `["circle", "shape"]`)
+	k.expect("shapes.fold(0.0, (sum, s) -> sum + s.area())", "9")
 
 	k.say("let stack = Stack<Int> { items: [] }")
 	k.say("stack.push(4); stack.push(9);")
@@ -226,7 +226,7 @@ fn parse(word: String) -> Result<Token, String> {
 	k.expect("if top != null { println(top + 1); }", "10")
 	k.expect("top ?? 0", "9")
 
-	k.say(`let tokens = arrays.map(["12", "ab", ""], parse)`)
+	k.say(`let tokens = ["12", "ab", ""].map(parse)`)
 	k.expect(`match tokens[0] { case Result.Ok(Token.Num(n)): { println("number", n); } default: { println("other"); } }`, "number 12")
 	k.expect("tokens[2]", `Err("nothing to read")`)
 
@@ -377,7 +377,7 @@ func TestTasksAndChannelsAcrossInputs(t *testing.T) {
 	k.say("let numbers = task.channel<Int>(8)")
 	k.say("let seen: [Int] = []")
 	k.say("task.run(fn() { for i in 0..5 { numbers.send(i * i); } numbers.close(); });")
-	k.say("numbers.each(fn(n: Int) { push(seen, n); });")
+	k.say("numbers.each(fn(n: Int) { seen.push(n); });")
 	k.expect("seen", "[0, 1, 4, 9, 16]")
 }
 
@@ -392,10 +392,10 @@ func TestVariablesSurviveGarbageCollection(t *testing.T) {
 	}
 	run("import std.strings;")
 	run(`let kept = ["first"]`)
-	run("let bump = fn() -> Int { push(kept, \"more\"); return 0; };")
+	run("let bump = fn() -> Int { kept.push(\"more\"); return 0; };")
 	// Far more than the heap holds, all of it garbage but the variables
 	for i := 0; i < 20; i++ {
-		run(`for i in 0..2000 { let waste = strings.repeat("x", 500); } bump();`)
+		run(`for i in 0..2000 { let waste = "x".repeat(500); } bump();`)
 	}
 	out.Reset()
 	run(`kept[0] + toString(bump())`)
@@ -421,7 +421,7 @@ fn main() -> Int {
     return 0;
 }
 
-fn biggest(a: Int, b: Int) -> Int { return math.max(a, b); }
+fn biggest(a: Int, b: Int) -> Int { return a.max(b); }
 `
 	if err := os.WriteFile(file, []byte(source), 0644); err != nil {
 		t.Fatal(err)
@@ -538,8 +538,8 @@ func TestComplete(t *testing.T) {
 	}
 	check("poi", 3, "point", "pointer")
 	check("let z = pri", 3, "print", "println")
-	check("strings.up", 2, "upper")
-	check("1 + m.sq", 2, "sqrt")
+	check("strings.fr", 2, "fromCode")
+	check("1 + m.p", 1, "pi")
 	check("point.", 0, "x", "y", "sum")
 	check("pointer.s", 1, "sum")
 	check("Colour.", 0, "Red", "Green")

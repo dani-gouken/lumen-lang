@@ -46,11 +46,11 @@ fn invalid(key: String, reason: Reason) -> ConfigError {
 // --- Functions that can fail return a Result ---
 
 fn number(key: String, text: String) -> Result<Int, ConfigError> {
-    if strings.isBlank(text) {
+    if text.isBlank() {
         return Result.Err(invalid(key, Reason.Empty));
     }
 
-    let n = strings.parseInt(text);
+    let n = text.parseInt();
 
     if n == null {
         return Result.Err(invalid(key, Reason.NotANumber(text)));
@@ -73,7 +73,7 @@ fn percent(key: String, text: String) -> Result<Int, ConfigError> {
 // --- Jobs that may stop the program ---
 
 fn average(numbers: [Int]) -> Int {
-    return arrays.sum(numbers) / arrays.len(numbers);
+    return numbers.sum() / numbers.len();
 }
 
 fn third(numbers: [Int]) -> Int {
@@ -114,7 +114,7 @@ fn main() -> Int {
 
     match io.readFile("no-such-file.conf") {
         case Result.Ok(text): {
-            println(strings.len(text), "characters");
+            println(text.len(), "characters");
         }
 
         case Result.Err(problem): {
@@ -131,7 +131,7 @@ fn main() -> Int {
     }
 
     // Or in one line, when the reason does not matter
-    println(arrays.len(io.readFileLines("no-such-file.conf").orElse([])), "lines");
+    println(io.readFileLines("no-such-file.conf").orElse([]).len(), "lines");
 
     println("-- jobs");
 
@@ -177,6 +177,6 @@ fn main() -> Int {
         }
     }
 
-    println("${completed} of ${arrays.len(jobs)} jobs completed");
+    println("${completed} of ${jobs.len()} jobs completed");
     return 0;
 }

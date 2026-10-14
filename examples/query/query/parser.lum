@@ -112,10 +112,10 @@ impl Parser {
         let everything = self.took("*");
 
         if !everything {
-            push(items, self.item()?);
+            items.push(self.item()?);
 
             while self.took(",") {
-                push(items, self.item()?);
+                items.push(self.item()?);
             }
         }
 
@@ -134,7 +134,7 @@ impl Parser {
             if self.took("JOIN") {
                 let joined = self.source()?;
                 self.need("ON")?;
-                push(joins, Join { source: joined, on: self.expression()?, left: left });
+                joins.push(Join { source: joined, on: self.expression()?, left: left });
             } else {
                 if left {
                     return Result.Err("expected JOIN after LEFT");
@@ -154,10 +154,10 @@ impl Parser {
 
         if self.took("GROUP") {
             self.need("BY")?;
-            push(groups, self.expression()?);
+            groups.push(self.expression()?);
 
             while self.took(",") {
-                push(groups, self.expression()?);
+                groups.push(self.expression()?);
             }
         }
 
@@ -171,10 +171,10 @@ impl Parser {
 
         if self.took("ORDER") {
             self.need("BY")?;
-            push(order, self.orderKey()?);
+            order.push(self.orderKey()?);
 
             while self.took(",") {
-                push(order, self.orderKey()?);
+                order.push(self.orderKey()?);
             }
         }
 
@@ -254,7 +254,7 @@ impl Parser {
 
     fn count() -> Result<Int, String> {
         let token = self.peek();
-        let n = strings.parseInt(token.text);
+        let n = token.text.parseInt();
 
         if token.kind != Kind.Number || n == null {
             return Result.Err("expected a whole number, found '${token.text}'");
@@ -316,7 +316,7 @@ impl Parser {
             let options: [Expr] = [self.expression()?];
 
             while self.took(",") {
-                push(options, self.expression()?);
+                options.push(self.expression()?);
             }
 
             self.need(")")?;
@@ -400,11 +400,11 @@ impl Parser {
         if token.kind == Kind.Number {
             self.at++;
 
-            if strings.contains(token.text, ".") {
-                return Result.Ok(Expr.Literal(Value.Real(strings.parseFloat(token.text) ?? 0.0)));
+            if token.text.contains(".") {
+                return Result.Ok(Expr.Literal(Value.Real(token.text.parseFloat() ?? 0.0)));
             }
 
-            let n = strings.parseInt(token.text);
+            let n = token.text.parseInt();
 
             if n == null {
                 return Result.Err("${token.text} is too large a number");
@@ -435,7 +435,7 @@ impl Parser {
         let name = self.name("a value")?;
 
         if self.took("(") {
-            return self.call(strings.upper(name));
+            return self.call(name.upper());
         }
 
         if self.took(".") {
@@ -454,10 +454,10 @@ impl Parser {
         let arguments: [Expr] = [];
 
         if !self.took(")") {
-            push(arguments, self.expression()?);
+            arguments.push(self.expression()?);
 
             while self.took(",") {
-                push(arguments, self.expression()?);
+                arguments.push(self.expression()?);
             }
 
             self.need(")")?;
@@ -472,10 +472,10 @@ impl Parser {
         while self.took("WHEN") {
             let condition = self.expression()?;
             self.need("THEN")?;
-            push(branches, (condition, self.expression()?));
+            branches.push((condition, self.expression()?));
         }
 
-        if arrays.isEmpty(branches) {
+        if branches.isEmpty() {
             return Result.Err("expected WHEN after CASE");
         }
 

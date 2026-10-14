@@ -30,9 +30,9 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 				let totals = dict.empty<Int>();
 				for sale in sales { totals.update(sale.region, 0, n -> n + sale.amount); }
 				for region in totals.sortedKeys() {
-					println(strings.padRight(region, 8), totals.getOr(region, 0));
+					println(region.padRight(8), totals.getOr(region, 0));
 				}
-				println(arrays.sumOf(sales, sale -> sale.amount));
+				println(sales.sumOf(sale -> sale.amount));
 				return 0;
 			}`,
 		// Fails three calls down: in a closure, called by the library,
@@ -44,13 +44,13 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 
 			fn latest(reading: Reading) -> Int {
 				defer println("checked", reading.sensor);
-				return reading.values[arrays.len(reading.values)];
+				return reading.values[reading.values.len()];
 			}
 
 			fn main() -> Int {
 				let readings = [Reading { sensor: "a", values: [1, 2] }];
 				let pick = fn(reading: Reading) -> Int { return latest(reading) * 2; };
-				println(arrays.map(readings, pick));
+				println(readings.map(pick));
 				return 0;
 			}`,
 	})
@@ -110,7 +110,7 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 		for _, want := range []string{
 			"R0002", "index out of bounds: 2 (length 2)",
 			"failing.lum:8:26 in function 'latest'",
-			"return reading.values[arrays.len(reading.values)];",
+			"return reading.values[reading.values.len()];",
 			"called from", "in function 'lambda_0'",
 			"<std>/arrays.lum", "in function 'main'",
 		} {

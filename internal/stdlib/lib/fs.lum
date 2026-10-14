@@ -68,7 +68,7 @@ pub fn list(folder: String) -> Result<[Entry], Error> {
         let entry = describe(path.inside(folder, name));
 
         if entry != null {
-            push(entries, entry);
+            entries.push(entry);
         }
     }
 
@@ -92,7 +92,7 @@ pub fn find(folder: String, pattern: String) -> Result<[String], Error> {
         return path.matches(pattern, path.base(file));
     };
 
-    return Result.Ok(arrays.filter(walk(folder)?, fits));
+    return Result.Ok((walk(folder)?).filter(fits));
 }
 
 // Creates a folder, and those above it that are missing. One that is
@@ -142,7 +142,7 @@ fn done(worked: Bool, operation: String, target: String) -> Result<String, Error
 
     // One call further from the program than io.failure expects
     let error = io.failure(operation, target);
-    error.stack = arrays.slice(error.stack, 1, arrays.len(error.stack));
+    error.stack = error.stack.slice(1, error.stack.len());
     return Result.Err(error);
 }
 

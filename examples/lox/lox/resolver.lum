@@ -46,15 +46,15 @@ struct Resolver {
 
 impl Resolver {
     fn begin() {
-        push(self.scopes, dict.empty<Bool>());
+        self.scopes.push(dict.empty<Bool>());
     }
 
     fn end() {
-        arrays.pop(self.scopes);
+        self.scopes.pop();
     }
 
     fn declare(name: Token) {
-        let scope = arrays.last(self.scopes);
+        let scope = self.scopes.last();
 
         if scope == null {
             return;
@@ -68,12 +68,12 @@ impl Resolver {
     }
 
     fn define(name: Token) {
-        arrays.last(self.scopes)?.set(name.lexeme, true);
+        self.scopes.last()?.set(name.lexeme, true);
     }
 
     // Notes how far out the variable of a numbered expression is
     fn local(number: Int, name: Token) {
-        let depth = arrays.len(self.scopes);
+        let depth = self.scopes.len();
 
         for out in 0..depth {
             if self.scopes[depth - 1 - out].has(name.lexeme) {
@@ -177,11 +177,11 @@ impl Resolver {
 
             // The methods of a subclass see `super` one scope out
             self.begin();
-            arrays.last(self.scopes)?.set("super", true);
+            self.scopes.last()?.set("super", true);
         }
 
         self.begin();
-        arrays.last(self.scopes)?.set("this", true);
+        self.scopes.last()?.set("this", true);
 
         for method in methods {
             let kind = Inside.Method;
@@ -286,7 +286,7 @@ impl Resolver {
             }
 
             case Expr.Variable(name, number): {
-                let scope = arrays.last(self.scopes);
+                let scope = self.scopes.last();
 
                 if scope != null && scope.get(name.lexeme) == false {
                     self.reporter.atToken(

@@ -78,7 +78,7 @@ impl Expr {
             case Expr.Neg(inner): -inner.at(x);
             case Expr.Add(left, right): left.at(x) + right.at(x);
             case Expr.Mul(left, right): left.at(x) * right.at(x);
-            case Expr.Pow(base, power): math.pow(base.at(x), power);
+            case Expr.Pow(base, power): base.at(x).pow(power);
         };
     }
 }

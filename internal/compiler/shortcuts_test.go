@@ -13,7 +13,7 @@ import std.result.{Result};
 struct Address { city: String; zip: String?; }
 struct User { name: String; address: Address?; friend: User?; }
 impl User {
-	fn shout() -> String { return strings.upper(self.name); }
+	fn shout() -> String { return self.name.upper(); }
 	fn rename(to: String) { self.name = to; }
 	fn best() -> User? { return self.friend; }
 }
@@ -61,9 +61,9 @@ func TestSafeAccess(t *testing.T) {
 		let crowd: [User?] = [ada, null, bob];
 		let cities: [String] = [];
 		for person in crowd {
-			if person?.address != null { push(cities, person?.address?.city ?? "?"); }
+			if person?.address != null { cities.push(person?.address?.city ?? "?"); }
 		}
-		println(cities, arrays.map(crowd, fn(person: User?) -> String { return person?.shout() ?? "-"; }), "hello ${nobody?.name ?? "you"}");
+		println(cities, crowd.map(fn(person: User?) -> String { return person?.shout() ?? "-"; }), "hello ${nobody?.name ?? "you"}");
 
 		// A variable the access assigns keeps the value it was tested with
 		let current: User? = ada;
@@ -88,7 +88,7 @@ func TestTryOnOptionals(t *testing.T) {
 		struct Config { port: String?; host: String?; }
 
 		fn port(config: Config) -> Int? {
-			return strings.parseInt(config.port?)?;
+			return (config.port?).parseInt()?;
 		}
 
 		fn address(config: Config) -> String? {
@@ -101,27 +101,27 @@ func TestTryOnOptionals(t *testing.T) {
 		fn total(texts: [String], seen: [String]) -> Int? {
 			let sum = 0;
 			for text in texts {
-				push(seen, text);
-				sum += strings.parseInt(text)?;
+				seen.push(text);
+				sum += text.parseInt()?;
 			}
 			return sum;
 		}
 
 		// In a function that returns nothing, it just ends there
 		fn note(log: [String], text: String?) {
-			push(log, "got " + text?);
+			log.push("got " + text?);
 		}
 
 		fn firstLong(words: [String]) -> String? {
 			let pick = fn(word: String) -> String? {
-				if strings.len(word) < 4 { return null; }
+				if word.len() < 4 { return null; }
 				return word;
 			};
 			for word in words {
 				let found = pick(word);
-				if found != null { return strings.upper(found); }
+				if found != null { return found.upper(); }
 			}
-			return arrays.first(words)? + "?";
+			return words.first()? + "?";
 		}
 	`, `
 		println(port(Config { port: "80", host: null }), port(Config { port: "x", host: null }), port(Config { port: null, host: null }));
@@ -138,8 +138,8 @@ func TestTryOnOptionals(t *testing.T) {
 		println(firstLong(["a", "word", "b"]), firstLong(["a", "b"]), firstLong([]));
 
 		// In a lambda it leaves the lambda, not the function around it
-		let half = fn(text: String) -> Int? { return strings.parseInt(text)? / 2; };
-		println(half("10"), half("ten"), arrays.map(["4", "x"], half));
+		let half = fn(text: String) -> Int? { return text.parseInt()? / 2; };
+		println(half("10"), half("ten"), ["4", "x"].map(half));
 	`, `80 null null
 local:80 null null
 6 null 0 ["1", "2", "3", "4", "x"]
@@ -157,7 +157,7 @@ func TestTryOnResults(t *testing.T) {
 
 		fn number(text: String) -> Result<Int, Problem> {
 			if text == "" { return Result.Err(Problem.Empty); }
-			let n = strings.parseInt(text);
+			let n = text.parseInt();
 			if n == null { return Result.Err(Problem.NotANumber(text)); }
 			return Result.Ok(n);
 		}
@@ -185,7 +185,7 @@ func TestTryOnResults(t *testing.T) {
 		}
 
 		fn all(texts: [String], done: [Int]) -> Result<[Int], Problem> {
-			for text in texts { push(done, number(text)?); }
+			for text in texts { done.push(number(text)?); }
 			return Result.Ok(done);
 		}
 
@@ -198,7 +198,7 @@ func TestTryOnResults(t *testing.T) {
 		}
 
 		fn first<T>(items: [T], why: Problem) -> Result<T, Problem> {
-			let item = arrays.first(items);
+			let item = items.first();
 			if item == null { return Result.Err(why); }
 			return Result.Ok(item);
 		}
@@ -225,7 +225,7 @@ func TestTryOnResults(t *testing.T) {
 
 		// In a lambda, against the lambda's own result
 		let twice = fn(text: String) -> Result<Int, Problem> { return Result.Ok(number(text)? * 2); };
-		println(twice("4"), twice("four"), arrays.map(["1", ""], twice));
+		println(twice("4"), twice("four"), ["1", ""].map(twice));
 	`, `Ok(3) Err(Empty) Err(NotANumber("x")) Err(TooBig(500)) Err(TooBig(500)) Err(NotANumber("x"))
 Ok("#7") Err(NotANumber("seven")) Ok(42) Err("bad: NotANumber(\"x\")") Err("bad: Empty")
 Ok([1, 2, 3]) true [1, 2, 3]
@@ -243,14 +243,14 @@ func TestTryLeavesClosuresWorking(t *testing.T) {
 		fn counters(texts: [String], made: [fn() -> Int]) -> Int? {
 			let count = 0;
 			for text in texts {
-				let step = strings.parseInt(text)?;
-				push(made, fn() -> Int { count += step; return count; });
+				let step = text.parseInt()?;
+				made.push(fn() -> Int { count += step; return count; });
 			}
 			return count;
 		}
 	`, `
 		let made: [fn() -> Int] = [];
-		println(counters(["1", "10", "x", "100"], made), arrays.len(made));
+		println(counters(["1", "10", "x", "100"], made), made.len());
 		println(made[0](), made[1](), made[0](), made[1]());
 	`, "null 2\n1 11 12 22\n")
 }
@@ -260,22 +260,22 @@ func TestNarrowingReachesLambdas(t *testing.T) {
 		struct Note { title: String; tags: [String]; }
 
 		fn tagged(notes: [Note], tag: String?) -> [String] {
-			if tag == null { return arrays.map(notes, fn(note: Note) -> String { return note.title; }); }
-			let kept = arrays.filter(notes, fn(note: Note) -> Bool { return arrays.contains(note.tags, tag); });
-			return arrays.map(kept, fn(note: Note) -> String { return "${note.title} (${strings.upper(tag)})"; });
+			if tag == null { return notes.map(fn(note: Note) -> String { return note.title; }); }
+			let kept = notes.filter(fn(note: Note) -> Bool { return note.tags.contains(tag); });
+			return kept.map(fn(note: Note) -> String { return "${note.title} (${tag.upper()})"; });
 		}
 
 		fn later(text: String?) -> fn() -> Int {
 			if text == null { return fn() -> Int { return -1; }; }
-			return fn() -> Int { return strings.len(text); };
+			return fn() -> Int { return text.len(); };
 		}
 
 		fn shouts(words: [String?]) -> [String] {
 			let jobs: [fn() -> String] = [];
 			for word in words {
-				if word != null { push(jobs, fn() -> String { return strings.upper(word); }); }
+				if word != null { jobs.push(fn() -> String { return word.upper(); }); }
 			}
-			return arrays.map(jobs, fn(job: fn() -> String) -> String { return job(); });
+			return jobs.map(fn(job: fn() -> String) -> String { return job(); });
 		}
 
 		fn plus(value: Any) -> Int {
@@ -303,7 +303,7 @@ func TestTuples(t *testing.T) {
 		}
 
 		fn minMax(numbers: [Int]) -> (Int, Int)? {
-			let low = arrays.first(numbers)?;
+			let low = numbers.first()?;
 			let high = low;
 			for n in numbers {
 				if n < low { low = n; }
@@ -344,8 +344,8 @@ func TestTuples(t *testing.T) {
 		}
 
 		fn parse(text: String) -> Result<(String, Int), String> {
-			let (name, value) = strings.cut(text, "=") ?? (text, "");
-			let n = strings.parseInt(value);
+			let (name, value) = text.cut("=") ?? (text, "");
+			let n = value.parseInt();
 			if n == null { return Result.Err("no number for ${name}"); }
 			return Result.Ok((name, n));
 		}
@@ -369,10 +369,10 @@ func TestTuples(t *testing.T) {
 		println("");
 		for i, (word, _) in pairs { print("${i}:${word} "); }
 		println("");
-		let byLength = arrays.sortedBy(pairs, fn(entry: (String, Int)) -> Int { return strings.len(entry.0); });
-		println(byLength, arrays.map(byLength, fn(entry: (String, Int)) -> Int { return entry.1; }));
+		let byLength = pairs.sortedBy(fn(entry: (String, Int)) -> Int { return entry.0.len(); });
+		println(byLength, byLength.map(fn(entry: (String, Int)) -> Int { return entry.1; }));
 		let (words, numbers) = arrays.unzip(pairs);
-		println(words, numbers, arrays.sum(numbers));
+		println(words, numbers, numbers.sum());
 
 		// Matched, the compiler checking nothing is left out
 		println(describe((0, true)), describe((4, true)), describe((5, false)), quadrant((false, true)), quadrant((true, false)));
@@ -425,13 +425,13 @@ func TestTextOverSeveralLines(t *testing.T) {
 		let name = "ada";
 		let n = 2;
 		let letter = """
-			Dear ${strings.capitalize(name)},
+			Dear ${name.capitalize()},
 
 			  you have ${n} ${"message" + "s"}.
 			""";
 		println("[" + usage + "]");
 		println("[" + letter + "]");
-		println(strings.len(strings.lines(usage)[1]), arrays.len(strings.lines(letter)), """{"a": "b"}""", """a\tb""" == "a\tb");
+		println(usage.lines()[1].len(), letter.lines().len(), """{"a": "b"}""", """a\tb""" == "a\tb");
 	`, `[usage: tool <command>
   add "title"
   list]
@@ -457,9 +457,9 @@ func TestShortcutErrors(t *testing.T) {
 			"'?' would pass on a failure of type String, and this function returns failures of type Int", "mapErr"},
 		{"try on a Result in a function that returns an optional", "fn f() -> Int? { return number(\"1\")?; }", "E2034",
 			"this function returns Int?, not a Result", ""},
-		{"try on an optional in a function that returns a Result", "fn f() -> Result<Int, String> { return Result.Ok(strings.parseInt(\"1\")?); }", "E2034",
+		{"try on an optional in a function that returns a Result", "fn f() -> Result<Int, String> { return Result.Ok(\"1\".parseInt()?); }", "E2034",
 			"returns null to the caller, and this function returns std.result.Result<Int, String>", "Give a fallback with '??'"},
-		{"try on an optional in a function that returns a value", "fn f() -> Int { return strings.parseInt(\"1\")?; }", "E2034",
+		{"try on an optional in a function that returns a value", "fn f() -> Int { return \"1\".parseInt()?; }", "E2034",
 			"returns null to the caller, and this function returns Int", "Make the function return Int?"},
 		{"try on a plain value", "fn f() -> Int? { return 5?; }", "E2034", "'?' is for a Result or a value that may be null, and this is a Int", "Remove the '?'"},
 		{"try in main", "fn main() -> Int { let n = number(\"1\")?; return n; }", "E2034", "this function returns Int, not a Result", ""},
@@ -564,7 +564,7 @@ func TestShortcutsAcrossModules(t *testing.T) {
 			// The point furthest from the origin, and the nearest
 			pub fn spread(points: [(Int, Int)]) -> ((Int, Int), (Int, Int))? {
 				let distance = fn(point: (Int, Int)) -> Int { return point.0 * point.0 + point.1 * point.1; };
-				return (arrays.maxBy(points, distance)?, arrays.minBy(points, distance)?);
+				return (points.maxBy(distance)?, points.minBy(distance)?);
 			}`,
 	}, `(4, "x") null Ok((4, "s")) Err("no first")
 (3, 4) (0, 0) null

@@ -74,7 +74,7 @@ func TestArithmeticAndComparison(t *testing.T) {
 func TestStrings(t *testing.T) {
 	expectOutput(t, "", `
 		let s = "foo" + "bar";
-		println(s, strings.len(s), s[0], s[5]);
+		println(s, s.len(), s[0], s[5]);
 		println(s == "foobar", s != "foobar", "a" < "b", "b" <= "a");
 		println("tab\there", "quote\"d", toString(42) + toString(true) + toString(null));
 		for c in "héy" { print(c, ""); }
@@ -180,10 +180,10 @@ func TestArrays(t *testing.T) {
 	expectOutput(t, "", `
 		let xs = [10, 20, 30];
 		xs[1] = 25;
-		push(xs, 40);
-		println(xs, arrays.len(xs), xs[3]);
+		xs.push(40);
+		println(xs, xs.len(), xs[3]);
 		let empty: [String] = [];
-		println(empty, arrays.len(empty));
+		println(empty, empty.len());
 		let alias = xs;
 		alias[0] = 0;
 		println(xs[0]);
@@ -324,7 +324,7 @@ func TestNullChecksNarrowOptionals(t *testing.T) {
 		}
 
 		fn label(name: String?) -> String {
-			if name != null && strings.len(name) > 0 { return "<" + name + ">"; }
+			if name != null && name.len() > 0 { return "<" + name + ">"; }
 			return "<none>";
 		}
 
@@ -357,14 +357,14 @@ func TestGenericStructMethods(t *testing.T) {
 		struct Stack<T> { items: [T]; }
 
 		impl<T> Stack<T> {
-			fn push(item: T) -> Void { push(self.items, item); }
+			fn push(item: T) -> Void { self.items.push(item); }
 			fn peek() -> T? {
-				if arrays.len(self.items) == 0 { return null; }
-				return self.items[arrays.len(self.items) - 1];
+				if self.items.len() == 0 { return null; }
+				return self.items[self.items.len() - 1];
 			}
 			fn reversed() -> Stack<T> {
 				let out = Stack<T> { items: [] };
-				let i = arrays.len(self.items);
+				let i = self.items.len();
 				while i > 0 {
 					i = i - 1;
 					out.push(self.items[i]);
@@ -374,7 +374,7 @@ func TestGenericStructMethods(t *testing.T) {
 		}
 
 		impl<T> Sized for Stack<T> {
-			fn size() -> Int { return arrays.len(self.items); }
+			fn size() -> Int { return self.items.len(); }
 		}
 
 		fn sizeOf(s: Sized) -> Int { return s.size(); }
@@ -400,7 +400,7 @@ func TestGenericMethods(t *testing.T) {
 		struct Stack<T> { items: [T]; }
 
 		impl<T> Stack<T> {
-			fn push(item: T) -> Void { push(self.items, item); }
+			fn push(item: T) -> Void { self.items.push(item); }
 
 			// A method may add type parameters of its own to the struct's
 			fn map<U>(f: fn(T) -> U) -> Stack<U> {
@@ -422,7 +422,7 @@ func TestGenericMethods(t *testing.T) {
 			fn convert<T>(value: T) -> [T] {
 				let out: [T] = [];
 				let i = 0;
-				while i < self.times { push(out, value); i = i + 1; }
+				while i < self.times { out.push(value); i = i + 1; }
 				return out;
 			}
 		}
@@ -433,7 +433,7 @@ func TestGenericMethods(t *testing.T) {
 		let numbers = Stack<Int> { items: [1, 2, 3] };
 
 		let labels = numbers.map<String>(fn(n: Int) -> String { return "#" + toString(n); });
-		println(labels.items, labels.map<Int>(fn(s: String) -> Int { return strings.len(s); }).items);
+		println(labels.items, labels.map<Int>(fn(s: String) -> Int { return s.len(); }).items);
 
 		println(numbers.fold<Int>(0, fn(acc: Int, n: Int) -> Int { return acc + n; }));
 		println(numbers.fold<String>(">", fn(acc: String, n: Int) -> String { return acc + toString(n); }));
@@ -516,8 +516,8 @@ func TestTypeTestsAndMatchOnTypes(t *testing.T) {
 		fn describe(v: Any) -> String {
 			match v {
 				case Int: { return "int " + toString(v + 1); }
-				case String: { return "string of " + toString(strings.len(v)); }
-				case [Int]: { return toString(arrays.len(v)) + " ints"; }
+				case String: { return "string of " + toString(v.len()); }
+				case [Int]: { return toString(v.len()) + " ints"; }
 				case Box<String>: { return "box of " + v.value; }
 				case Square: { return "square " + toString(v.diagonalSquared()); }
 				case Shape: { return "shape " + toString(v.area()); }
@@ -546,7 +546,7 @@ func TestTypeTestsAndMatchOnTypes(t *testing.T) {
 
 		let v: Any = "text";
 		println(v is String, v is Int, v is String?, v is [String], !(v is Int));
-		if v is String && strings.len(v) == 4 { println("four letters"); }
+		if v is String && v.len() == 4 { println("four letters"); }
 	`, "int 2\nstring of 3\n2 ints\nbox of text\nsomething else\nsquare 8\nshape 3\nfunction giving 10\n"+
 		"something else something else something else\n4 0\ntrue false true false true\nfour letters\n")
 }
@@ -609,7 +609,7 @@ func TestTypeArgumentsAreInferred(t *testing.T) {
 		impl<T> Stack<T> {
 			fn map<U>(f: fn(T) -> U) -> Stack<U> {
 				let out = Stack<U> { items: [] };
-				for item in self.items { push(out.items, f(item)); }
+				for item in self.items { out.items.push(f(item)); }
 				return out;
 			}
 		}
@@ -617,19 +617,19 @@ func TestTypeArgumentsAreInferred(t *testing.T) {
 		fn first<T>(xs: [T]) -> T { return xs[0]; }
 		fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] {
 			let out: [U] = [];
-			for x in xs { push(out, f(x)); }
+			for x in xs { out.push(f(x)); }
 			return out;
 		}
 		fn collect<T>(items: ...T) -> [T] { return items; }
 		fn orElse<T>(value: T?, fallback: T) -> T { return value ?? fallback; }
 		fn top<T>(s: Stack<T>) -> T { return first(s.items); }
 		fn none<T>() -> [T] { return []; }
-		fn count(flags: [Bool]) -> Int { return arrays.len(flags); }
+		fn count(flags: [Bool]) -> Int { return flags.len(); }
 		fn emptyInts() -> [Int] { return none(); }
 	`
 	expectOutput(t, decls, `
-		println(first([7, 8]) + 1, strings.len(first(["a", "b"])), arrays.len(first([[1, 2]])));
-		println(map([1, 2, 3], toString), map(["a", "bb"], fn(s: String) -> Int { return strings.len(s); }));
+		println(first([7, 8]) + 1, first(["a", "b"]).len(), first([[1, 2]]).len());
+		println(map([1, 2, 3], toString), map(["a", "bb"], fn(s: String) -> Int { return s.len(); }));
 		println(collect(1, 2, 3), collect("x"));
 
 		let missing: Int? = null;
@@ -640,11 +640,11 @@ func TestTypeArgumentsAreInferred(t *testing.T) {
 
 		// No argument says what T is: it comes from the type expected
 		let names: [String] = none();
-		push(names, "ada");
+		names.push("ada");
 		println(names, count(none()), emptyInts());
 
 		// Written out where nothing at all determines it, and allowed anywhere
-		println(arrays.len(none<String>()), first<Int>([4]));
+		println((none<String>()).len(), first<Int>([4]));
 	`, "8 1 2\n[\"1\", \"2\", \"3\"] [1, 2]\n[1, 2, 3] [\"x\"]\n5 set\n[\"#1\", \"#2\"] 1\n[\"ada\"] 0 []\n0 4\n")
 }
 
@@ -746,7 +746,7 @@ func TestForLoopIndex(t *testing.T) {
 
 		fn ranked(names: [String]) -> [Entry] {
 			let out: [Entry] = [];
-			for i, name in names { push(out, Entry { rank: i + 1, name: name }); }
+			for i, name in names { out.push(Entry { rank: i + 1, name: name }); }
 			return out;
 		}
 
@@ -778,7 +778,7 @@ func TestForLoopIndex(t *testing.T) {
 		let letters = ["a", "b", "c"];
 		for i, first in letters {
 			for j, second in letters {
-				if i < j { push(pairs, first + second); }
+				if i < j { pairs.push(first + second); }
 			}
 		}
 		println(pairs);
@@ -793,7 +793,7 @@ func TestForLoopIndex(t *testing.T) {
 
 		// Each closure created in the loop keeps its own iteration's variables
 		let readers: [fn() -> Int] = [];
-		for i, v in [7, 8, 9] { push(readers, fn() -> Int { return i * 10 + v; }); }
+		for i, v in [7, 8, 9] { readers.push(fn() -> Int { return i * 10 + v; }); }
 		println(readers[0](), readers[2]());
 
 		// An empty collection runs no iteration
@@ -820,7 +820,7 @@ func TestCasts(t *testing.T) {
 		println(twice(boxed), twice(4));
 
 		let text: Any = "hello";
-		println(strings.len(text as String), (text as String?) ?? "none");
+		println((text as String).len(), (text as String?) ?? "none");
 
 		let shape: Shape = Square { side: 5 };
 		println(side(shape), back(shape).area(), back(Circle { r: 1 }).area());
@@ -829,7 +829,7 @@ func TestCasts(t *testing.T) {
 		println((maybe as Int) + 1);
 
 		let list: Any = [1, 2, 3];
-		println(arrays.len((list as [Int])));
+		println((list as [Int]).len());
 	`, "42 8\n5 hello\n5 25 3\n8\n3\n")
 }
 
@@ -878,7 +878,7 @@ func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
 			let buttons: [Button] = [];
 			for i, label in labels {
 				let id = toString(i) + ":" + label;
-				push(buttons, Button { label: label, onClick: fn() -> String { return "clicked " + id; } });
+				buttons.push(Button { label: label, onClick: fn() -> String { return "clicked " + id; } });
 			}
 			return buttons;
 		}
@@ -892,7 +892,7 @@ func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
 				let own = 0;
 				let name = i;
 				i++;
-				push(counters, fn() -> String {
+				counters.push(fn() -> String {
 					own++;
 					total++;
 					return toString(name) + "=" + toString(own) + "/" + toString(total);
@@ -904,11 +904,11 @@ func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
 	expectOutput(t, decls, `
 		// for over an array, with and without index
 		let readers: [fn() -> Int] = [];
-		for v in [1, 2, 3] { push(readers, fn() -> Int { return v; }); }
+		for v in [1, 2, 3] { readers.push(fn() -> Int { return v; }); }
 		println(readers[0](), readers[1](), readers[2]());
 
 		let indexed: [fn() -> Int] = [];
-		for i, v in [10, 20, 30] { push(indexed, fn() -> Int { return i * 100 + v; }); }
+		for i, v in [10, 20, 30] { indexed.push(fn() -> Int { return i * 100 + v; }); }
 		println(indexed[0](), indexed[1](), indexed[2]());
 
 		// while, with continue skipping some iterations
@@ -918,23 +918,23 @@ func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
 			let square = n * n;
 			n++;
 			if square == 4 { continue; }
-			push(squares, fn() -> Int { return square; });
+			squares.push(fn() -> Int { return square; });
 		}
-		println(squares[0](), squares[1](), squares[2](), squares[3](), arrays.len(squares));
+		println(squares[0](), squares[1](), squares[2](), squares[3](), squares.len());
 
 		// break leaves the closures made so far intact
 		let early: [fn() -> String] = [];
 		for word in ["a", "b", "c"] {
-			push(early, fn() -> String { return word + "!"; });
+			early.push(fn() -> String { return word + "!"; });
 			if word == "b" { break; }
 		}
-		println(early[0](), early[1](), arrays.len(early));
+		println(early[0](), early[1](), early.len());
 
 		// A variable changed after the closure was made, in the same iteration, is shared
 		let late: [fn() -> Int] = [];
 		for v in [1, 2] {
 			let doubled = v;
-			push(late, fn() -> Int { return doubled; });
+			late.push(fn() -> Int { return doubled; });
 			doubled *= 2;
 		}
 		println(late[0](), late[1]());
@@ -953,7 +953,7 @@ func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
 				let make = fn() -> fn() -> String {
 					return fn() -> String { return row + col + toString(r * 2 + c); };
 				};
-				push(cells, make());
+				cells.push(make());
 			}
 		}
 		for cell in cells { print(cell(), ""); }
@@ -961,7 +961,7 @@ func TestClosuresInLoopsKeepTheirIteration(t *testing.T) {
 
 		// Strings
 		let letters: [fn() -> String] = [];
-		for ch in "hey" { push(letters, fn() -> String { return ch + ch; }); }
+		for ch in "hey" { letters.push(fn() -> String { return ch + ch; }); }
 		println(letters[0](), letters[1](), letters[2]());
 	`, "1 2 3\n10 120 230\n0 1 9 16 4\na! b! 2\n2 4\n0=1/1 0=2/2 2=1/3 1=1/4 0=3/5\n"+
 		"ok -> clicked 0:ok\ncancel -> clicked 1:cancel\nax0 ay1 bx2 by3 \nhh ee yy\n")
@@ -1013,18 +1013,18 @@ func TestLargeArraysStayFast(t *testing.T) {
 			let points: [Point] = [];
 			let i = 0;
 			while i < 200000 {
-				push(numbers, i);
+				numbers.push(i);
 				if i % 100 == 0 {
-					push(labels, "item " + toString(i));
-					push(points, Point { x: i, y: 0 - i });
+					labels.push("item " + toString(i));
+					points.push(Point { x: i, y: 0 - i });
 				}
 				i++;
 			}
 
 			let sum = 0;
 			for n in numbers { sum += n % 7; }
-			let last = points[arrays.len(points) - 1];
-			println(arrays.len(numbers), arrays.len(labels), labels[1999], last.x + last.y, sum);
+			let last = points[points.len() - 1];
+			println(numbers.len(), labels.len(), labels[1999], last.x + last.y, sum);
 			return 0;
 		}
 	`
@@ -1053,7 +1053,7 @@ func TestLargeArraysStayFast(t *testing.T) {
 }
 
 func TestOutOfMemoryIsReported(t *testing.T) {
-	src := "fn main() -> Int {\n  let xs: [Int] = [];\n  while true { push(xs, 1); }\n}\n"
+	src := "fn main() -> Int {\n  let xs: [Int] = [];\n  while true { xs.push(1); }\n}\n"
 	errs := errors.NewHandler()
 	result := Compile(src, "test.lum", errs)
 	if errs.HasErrors() {
@@ -1086,7 +1086,7 @@ func TestGenericsAndVariadics(t *testing.T) {
 		fn sum(label: String, nums: ...Int) -> Int {
 			let total = 0;
 			for n in nums { total = total + n; }
-			println(label, total, arrays.len(nums));
+			println(label, total, nums.len());
 			return total;
 		}
 	`
@@ -1156,7 +1156,7 @@ func TestRuntimeErrorsPointAtSource(t *testing.T) {
 		{"division by zero", "let zero = 0;\nreturn 1 / zero;", "division by zero", 4},
 		{"empty array", "let xs: [Int] = [];\nreturn xs[0];", "index out of bounds: 0 (length 0)", 4},
 		{"write past the end", "let xs = [1, 2];\nxs[2] = 3;\nreturn 0;", "index out of bounds: 2 (length 2)", 4},
-		{"write past the end after growing", "let xs = [1, 2, 3];\npush(xs, 4);\nxs[5] = 9;\nreturn 0;", "index out of bounds: 5 (length 4)", 5},
+		{"write past the end after growing", "let xs = [1, 2, 3];\nxs.push(4);\nxs[5] = 9;\nreturn 0;", "index out of bounds: 5 (length 4)", 5},
 		{"write at a negative index", "let xs = [1];\nlet i = 0 - 1;\nxs[i] = 2;\nreturn 0;", "index out of bounds: -1 (length 1)", 5},
 		{"compound write past the end", "let xs = [1];\nxs[1] += 1;\nreturn 0;", "index out of bounds: 1 (length 1)", 4},
 		{"sum overflows", "let big = 140737488355327;\nreturn big + 1;", "integer overflow", 4},
@@ -1259,9 +1259,9 @@ func TestCompileErrors(t *testing.T) {
 		{"fallback of another type", "fn main() -> Int { let n: Int? = null; return n ?? \"none\"; }", "E2001", "fallback of type string does not match int"},
 		{"value of type Any", "fn show(v: Any) -> Int { return v + 1; }\nfn main() -> Int { return show(1); }", "E2006", "operator + not defined for types any and int"},
 		{"Any into a plain type", "fn show(v: Any) -> Int { return v; }\nfn main() -> Int { return show(1); }", "E2003", "cannot return type any"},
-		{"push of another type", "fn main() -> Int { let xs = [1]; push(xs, \"two\"); return 0; }", "E2010", "cannot push type string onto [int]"},
+		{"push of another type", "fn main() -> Int { let xs = [1]; xs.push(\"two\"); return 0; }", "E2010", "cannot use type string as argument of type int"},
 		{"comparing unrelated types", "fn main() -> Int { if 1 == \"one\" { return 1; } return 0; }", "E2006", "operator == not defined for types int and string"},
-		{"untyped empty array", "fn main() -> Int { let xs = []; push(xs, 1); return 0; }", "E2020", "cannot infer the element type"},
+		{"untyped empty array", "fn main() -> Int { let xs = []; xs.push(1); return 0; }", "E2020", "cannot infer the element type"},
 		{"assign to a constant", "fn main() -> Int { const c = 1; c = 2; return c; }", "E2022", "cannot assign to constant 'c'"},
 		{"missing return", "fn f(n: Int) -> Int { if n > 0 { return 1; } }\nfn main() -> Int { return f(1); }", "E2004", "can reach its end without returning"},
 		{"impossible cast", "fn main() -> Int { let s = 1 as String; return 0; }", "E2021", "cannot cast int to string"},
@@ -1387,16 +1387,16 @@ func largeProgram(count int) (string, string) {
 
 	sb.WriteString("fn main() -> Int {\n    let shapes: [Shape] = [];\n")
 	for i := 0; i < count; i++ {
-		fmt.Fprintf(&sb, "    push(shapes, make%d());\n", i)
+		fmt.Fprintf(&sb, "    shapes.push(make%d());\n", i)
 	}
 	sb.WriteString(`    let area = 0;
     let letters = 0;
     for i, shape in shapes {
         area += shape.area();
-        letters += strings.len(shape.name());
+        letters += shape.name().len();
         if i == ` + fmt.Sprint(count-1) + ` { println(shape.name(), shape.area()); }
     }
-    println(arrays.len(shapes), area, letters, wide(3));
+    println(shapes.len(), area, letters, wide(3));
     return 0;
 }
 `)
@@ -1497,38 +1497,38 @@ func TestRecursiveGenericFunctions(t *testing.T) {
 	// each other: the instances are the same ones again, not new ones
 	decls := `
 		fn count<T>(items: [T], from: Int) -> Int {
-			if from >= arrays.len(items) { return 0; }
+			if from >= items.len() { return 0; }
 			return 1 + count<T>(items, from + 1);
 		}
 
 		fn reversed<T>(items: [T]) -> [T] {
 			let out: [T] = [];
-			collect<T>(items, arrays.len(items) - 1, out);
+			collect<T>(items, items.len() - 1, out);
 			return out;
 		}
 		fn collect<T>(items: [T], at: Int, out: [T]) {
 			if at < 0 { return; }
-			push(out, items[at]);
+			out.push(items[at]);
 			collect<T>(items, at - 1, out);
 		}
 
 		// Two functions that need each other
 		fn evens<T>(items: [T], at: Int) -> [T] {
-			if at >= arrays.len(items) { return []; }
+			if at >= items.len() { return []; }
 			let rest = odds<T>(items, at + 1);
 			let out: [T] = [items[at]];
-			for item in rest { push(out, item); }
+			for item in rest { out.push(item); }
 			return out;
 		}
 		fn odds<T>(items: [T], at: Int) -> [T] {
-			if at >= arrays.len(items) { return []; }
+			if at >= items.len() { return []; }
 			return evens<T>(items, at + 1);
 		}
 
 		// An instance that needs another one with a bigger type, once
 		fn pair<T>(value: T) -> [T] { return [value, value]; }
 		fn nested<T>(value: T) -> [[T]] { return pair<[T]>(pair<T>(value)); }
-		fn deeper<T>(value: T) -> Int { return arrays.len(nested<[T]>([value])); }
+		fn deeper<T>(value: T) -> Int { return (nested<[T]>([value])).len(); }
 	`
 	expectOutput(t, decls, `
 		println(count([1, 2, 3], 0), count(["a", "b"], 0), count<Bool>([], 0));
@@ -1612,24 +1612,24 @@ func TestStringInterpolation(t *testing.T) {
 
 		// Variables, expressions, calls, fields and methods
 		println("n is ${n}");
-		println("${name} has ${strings.len(name)} letters; twice ${double(strings.len(name))}");
+		println("${name} has ${name.len()} letters; twice ${double(name.len())}");
 		println("sum ${n + 4 * 2}, test ${n > 2 && name == "ada"}, half ${1.5}, nothing ${null}");
 		println("point ${p}, x ${p.x}, sum ${p.sum()}, named ${p.name()}");
 		println("made here: ${Point { x: 1, y: 1 }.sum()}, shapes ${Shape.Circle(2.0)} ${Shape.Empty}");
-		println("items ${[1, 2, 3]}, count ${arrays.len([1, 2])}, second ${[10, 20][1]}");
+		println("items ${[1, 2, 3]}, count ${[1, 2].len()}, second ${[10, 20][1]}");
 
 		// Any position, any number, and none
 		println("${n}", "${n}${n}", "${n}-${n}", "[${""}]", "plain");
-		println("a" + "${n}" + "b", strings.len("${n}${name}"), "${n}" == "3", strings.upper("${name}!"));
+		println("a" + "${n}" + "b", "${n}${name}".len(), "${n}" == "3", "${name}!".upper());
 
 		// Strings and interpolation inside an interpolation
 		println("outer ${"inner ${n + 1} done"} end");
-		println("say ${"\"hi\""} twice: ${strings.repeat("ab", n)}");
+		println("say ${"\"hi\""} twice: ${"ab".repeat(n)}");
 
 		// Lambdas, in and out
-		println("squares ${arrays.map([1, 2, 3], fn(v: Int) -> Int { return v * v; })}");
+		println("squares ${[1, 2, 3].map(fn(v: Int) -> Int { return v * v; })}");
 		let label = fn(v: Int) -> String { return "<${v}/${n}>"; };
-		println(arrays.map([1, 2], label));
+		println([1, 2].map(label));
 
 		// What is not interpolation
 		println("price: $5, set {a, b}, escaped \${n}, at the end $");

@@ -148,8 +148,8 @@ func (c *Checker) shortFnResult(e *ast.FnExpr, params []Type) Type {
 		}
 	}
 
-	reported := c.errs
-	c.errs = errors.NewHandler()
+	reported, said := c.errs, c.said
+	c.errs, c.said = errors.NewHandler(), nil
 	fn := &ast.FnDecl{
 		BaseNode:   e.BaseNode,
 		Params:     e.Params,
@@ -161,7 +161,7 @@ func (c *Checker) shortFnResult(e *ast.FnExpr, params []Type) Type {
 	}
 	c.enteringFnExpr = true
 	c.checkFnDecl(fn)
-	c.errs = reported
+	c.errs, c.said = reported, said
 
 	// What its returns give: the first type that says something, made
 	// optional when one of them is null

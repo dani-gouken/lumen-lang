@@ -10,11 +10,11 @@ pub fn newList<T>() -> List<T> {
 
 impl<T> List<T> {
     pub fn add(value: T) {
-        push(self.items, value);
+        self.items.push(value);
     }
 
     pub fn size() -> Int {
-        return arrays.len(self.items);
+        return self.items.len();
     }
 
     pub fn map<U>(f: fn(T) -> U) -> List<U> {

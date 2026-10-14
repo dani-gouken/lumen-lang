@@ -310,7 +310,7 @@ fn recurse<T>(x: T) -> T {
 A generic function that calls itself with the *same* type arguments is ordinary recursion and compiles:
 ```rust
 fn count<T>(items: [T], from: Int) -> Int {
-    if from >= arrays.len(items) { return 0; }
+    if from >= items.len() { return 0; }
     return 1 + count<T>(items, from + 1);
 }
 ```

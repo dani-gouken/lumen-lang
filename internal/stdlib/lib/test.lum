@@ -65,7 +65,7 @@ impl Suite {
     // Adds a test. Returns the suite, to add the next one in the same
     // breath.
     pub fn test(name: String, body: fn() -> Void) -> Suite {
-        push(self.cases, Case { name: name, body: body });
+        self.cases.push(Case { name: name, body: body });
         return self;
     }
 
@@ -82,7 +82,7 @@ impl Suite {
                 outcome = Outcome.Failed(failure);
             }
 
-            push(results, TestResult {
+            results.push(TestResult {
                 name: entry.name,
                 outcome: outcome,
                 microseconds: watch.microseconds(),
@@ -102,11 +102,11 @@ impl Suite {
 
 impl Report {
     pub fn passed() -> Int {
-        return arrays.count(self.results, r -> r.passed());
+        return self.results.count(r -> r.passed());
     }
 
     pub fn failed() -> Int {
-        return arrays.len(self.results) - self.passed();
+        return self.results.len() - self.passed();
     }
 
     pub fn ok() -> Bool {
@@ -130,16 +130,16 @@ impl Report {
         for r in self.results {
             match r.outcome {
                 case Outcome.Passed: {
-                    push(out, "  ok    ${r.name}");
+                    out.push("  ok    ${r.name}");
                 }
 
                 case Outcome.Failed(failure): {
-                    push(out, "  FAIL  ${r.name}");
-                    push(out, "        ${failure.message}");
+                    out.push("  FAIL  ${r.name}");
+                    out.push("        ${failure.message}");
                     let place = whereItFailed(failure);
 
                     if place != null {
-                        push(out, "        at ${place.file}:${place.line}");
+                        out.push("        at ${place.file}:${place.line}");
                     }
                 }
             }
@@ -151,12 +151,12 @@ impl Report {
             count = "${count}, ${self.failed()} failed";
         }
 
-        push(out, count);
+        out.push(count);
         return out;
     }
 
     pub fn print() {
-        println(strings.join(self.lines(), "\n"));
+        println(self.lines().join("\n"));
     }
 }
 
@@ -164,10 +164,10 @@ impl Report {
 // went wrong, not the line of this file that noticed.
 fn whereItFailed(failure: Failure) -> Location? {
     let outside = fn(place: Location) -> Bool {
-        return !strings.startsWith(place.function, "std.");
+        return !place.function.startsWith("std.");
     };
 
-    return arrays.find(failure.stack, outside);
+    return failure.stack.find(outside);
 }
 
 // --- Checks ---
@@ -203,8 +203,8 @@ pub fn notEqual<T>(got: T, unwanted: T) {
 
 // Stops the test unless both arrays hold equal items in the same order.
 pub fn same<T>(got: [T], want: [T]) {
-    if arrays.len(got) != arrays.len(want) {
-        panic("expected ${arrays.len(want)} items, got ${arrays.len(got)}: ${got}");
+    if got.len() != want.len() {
+        panic("expected ${want.len()} items, got ${got.len()}: ${got}");
     }
 
     for i, item in want {
@@ -256,7 +256,7 @@ pub fn absent<T>(value: T?, what: String) {
 }
 
 pub fn contains(text: String, part: String) {
-    if !strings.contains(text, part) {
+    if !text.contains(part) {
         panic("expected '${part}' in '${text}'");
     }
 }

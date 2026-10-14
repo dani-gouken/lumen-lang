@@ -28,7 +28,7 @@ pub fn show(value: Value) -> String {
 fn showReal(x: Float) -> String {
     let text = toString(x);
 
-    if strings.contains(text, ".") || strings.contains(text, "e") || strings.contains(text, "n") {
+    if text.contains(".") || text.contains("e") || text.contains("n") {
         return text;
     }
 
@@ -48,9 +48,9 @@ pub fn key(value: Value) -> String {
 
 fn realKey(x: Float) -> String {
     if x > -1000000000000.0 && x < 1000000000000.0 {
-        let whole = math.trunc(x);
+        let whole = x.trunc();
 
-        if math.toFloat(whole) == x {
+        if whole.toFloat() == x {
             return "i" + toString(whole);
         }
     }
@@ -138,11 +138,11 @@ pub fn order(a: Value, b: Value) -> Int {
         }
 
         case (Value.Int(x), Value.Real(y)): {
-            return compareReals(math.toFloat(x), y);
+            return compareReals(x.toFloat(), y);
         }
 
         case (Value.Real(x), Value.Int(y)): {
-            return compareReals(x, math.toFloat(y));
+            return compareReals(x, y.toFloat());
         }
 
         case (Value.Real(x), Value.Real(y)): {
@@ -176,7 +176,7 @@ pub fn compare(a: Value, b: Value) -> Int? {
 // A value as a number, for arithmetic: a text counts as zero.
 fn real(value: Value) -> Float {
     return match value {
-        case Value.Int(n): math.toFloat(n);
+        case Value.Int(n): n.toFloat();
         case Value.Real(x): x;
         default: 0.0;
     };
@@ -239,13 +239,13 @@ pub fn arithmetic(operator: String, a: Value, b: Value) -> Value {
 
         default: {
             // The remainder is of the whole parts
-            let divisor = math.trunc(y);
+            let divisor = y.trunc();
 
             if divisor == 0 {
                 return Value.Null;
             }
 
-            return Value.Real(math.toFloat(math.trunc(x) % divisor));
+            return Value.Real((x.trunc() % divisor).toFloat());
         }
     };
 }
@@ -253,7 +253,7 @@ pub fn arithmetic(operator: String, a: Value, b: Value) -> Value {
 // A value of a column as it is written in a file.
 pub fn parse(text: String, kind: String) -> Value {
     if kind == "int" {
-        let n = strings.parseInt(text);
+        let n = text.parseInt();
 
         if n != null {
             return Value.Int(n);
@@ -263,7 +263,7 @@ pub fn parse(text: String, kind: String) -> Value {
     }
 
     if kind == "real" {
-        let x = strings.parseFloat(text);
+        let x = text.parseFloat();
 
         if x != null {
             return Value.Real(x);

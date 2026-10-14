@@ -81,6 +81,11 @@ type Program struct {
 	// KeepsRanges says that a range is used as a value somewhere in the
 	// file: it then needs the Range of std.ops, imported or not.
 	KeepsRanges bool
+
+	// Members are the names written after a dot in the file: value.name.
+	// A method of the library among them brings its module along (see
+	// modules.MethodModules).
+	Members map[string]bool
 }
 
 func (p *Program) String() string {

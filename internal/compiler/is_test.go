@@ -107,14 +107,14 @@ func TestPatternTestsEvaluateOnceAndInOrder(t *testing.T) {
 		impl Queue {
 			fn take() -> Option<Int> {
 				self.asked += 1;
-				if self.at >= arrays.len(self.items) { return Option.None; }
+				if self.at >= self.items.len() { return Option.None; }
 				self.at += 1;
 				return Option.Some(self.items[self.at - 1]);
 			}
 		}
 
 		fn calls(log: [String], name: String, value: Shape) -> Shape {
-			push(log, name);
+			log.push(name);
 			return value;
 		}
 	`, `
@@ -147,7 +147,7 @@ func TestPatternTestsEvaluateOnceAndInOrder(t *testing.T) {
 
 		let limited = Queue { items: [10, 20, 30], at: 0, asked: 0 };
 		let seen: [Int] = [];
-		while arrays.len(seen) < 2 && limited.take() is Option.Some(n) && n > 0 { push(seen, n); }
+		while seen.len() < 2 && limited.take() is Option.Some(n) && n > 0 { seen.push(n); }
 		println(seen, limited.asked);
 
 		// What a name was is kept, whatever the rest of the condition does
@@ -238,25 +238,25 @@ func TestPatternTestsInAProgram(t *testing.T) {
 			let total = 0;
 			let receipts: [fn() -> String] = [];
 			let at = 0;
-			while at < arrays.len(lines) && !(lines[at] is Line.Note("stop")) {
+			while at < lines.len() && !(lines[at] is Line.Note("stop")) {
 				let line = lines[at];
 				at += 1;
 				if line is Line.Sale(item, quantity) && name(item) is Option.Some(label) {
 					if stock.take(label, quantity) is Result.Err(reason) {
-						push(stock.log, reason);
+						stock.log.push(reason);
 						continue;
 					}
 					let cost = price(item) * quantity;
 					total += cost;
-					push(receipts, () -> "${quantity} x ${label}: ${cost}");
+					receipts.push(() -> "${quantity} x ${label}: ${cost}");
 				} else if line is Line.Sale(Item.Gift, quantity) {
-					push(receipts, () -> "${quantity} gifts");
+					receipts.push(() -> "${quantity} gifts");
 				} else if line is Line.Refund(item) {
 					total -= price(item);
 					let what = name(item).orElse("a gift");
-					push(receipts, () -> "refund of ${what}");
+					receipts.push(() -> "refund of ${what}");
 				} else if line is Line.Note(text) {
-					push(stock.log, "note: " + text);
+					stock.log.push("note: " + text);
 				}
 			}
 			return (total, receipts);
@@ -294,7 +294,7 @@ func TestPatternTestsInAProgram(t *testing.T) {
 		let costly = first(lines, line -> line is Line.Sale(item, _) && price(item) > 5000);
 		if costly is Option.Some(Line.Sale(item, quantity)) { println(name(item).orElse("?"), quantity); }
 		let none = first(lines, line -> line is Line.Refund(Item.Tool(_, _, _)));
-		println(none is Option.None, name(Item.Gift).map(text -> strings.len(text)).orElse(-1), name(saw).map(text -> strings.len(text)).orElse(-1));
+		println(none is Option.None, name(Item.Gift).map(text -> text.len()).orElse(-1), name(saw).map(text -> text.len()).orElse(-1));
 	`, `48900
 2 x Dune: 1800
 1 x saw: 3000
@@ -367,16 +367,16 @@ func TestPatternTestsAcrossModules(t *testing.T) {
 
 			pub fn scan(text: String) -> [Token] {
 				let tokens: [Token] = [];
-				for word in strings.words(text) {
-					let n = strings.parseInt(word);
-					if n != null { push(tokens, Token.Number(n)); } else { push(tokens, Token.Word(word)); }
+				for word in text.words() {
+					let n = word.parseInt();
+					if n != null { tokens.push(Token.Number(n)); } else { tokens.push(Token.Word(word)); }
 				}
-				push(tokens, Token.End);
+				tokens.push(Token.End);
 				return tokens;
 			}
 
 			pub fn next(tokens: [Token], at: Int) -> Outcome {
-				if at >= arrays.len(tokens) || tokens[at] is Token.End { return Outcome.Done; }
+				if at >= tokens.len() || tokens[at] is Token.End { return Outcome.Done; }
 				return Outcome.Found(tokens[at], at + 1);
 			}
 		`,

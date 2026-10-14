@@ -17,7 +17,7 @@ fn fibSequence(count: Int) -> [Int] {
     let b = 1;
 
     for i in 0..count {
-        push(seq, a);
+        seq.push(a);
         let next = a + b;
         a = b;
         b = next;
@@ -30,7 +30,7 @@ fn main() -> Int {
     println("fib(20) =", fib(20));
 
     let seq = fibSequence(10);
-    println("first", arrays.len(seq), "numbers:", seq);
+    println("first", seq.len(), "numbers:", seq);
 
     let total = 0;
 

@@ -32,7 +32,7 @@ impl Item {
                 self.stock -= n;
             }
         }
-        push(self.history, move);
+        self.history.push(move);
         return Result.Ok(self.stock);
     }
 }
@@ -43,7 +43,7 @@ bolts.apply(Movement.Out(15))
 bolts.apply(Movement.Out(100))
 let shelf = [bolts, Item { name: "nuts", stock: 7 }]
 let low = fn(limit: Int) -> [String] {
-    return arrays.map(arrays.filter(shelf, item -> item.stock < limit), item -> item.name);
+    return shelf.filter(item -> item.stock < limit).map(item -> item.name);
 };
 low(10)
 shelf[1].apply(Movement.In(50)); low(10)
@@ -51,7 +51,7 @@ bolts.stock = 3
 low(10)
 :type low
 :vars
-strings.join(arrays.map(bolts.history, m -> toString(m)), " then ")
+bolts.history.map(m -> toString(m)).join(" then ")
 `
 	res := runLumenWithInput(t, session, "repl")
 	want := `Ok(40)
@@ -127,7 +127,7 @@ func TestReplLimits(t *testing.T) {
 		t.Fatalf("stdout: %q", res.stdout)
 	}
 
-	res = runLumenWithInput(t, "let all: [[Int]] = []\nimport std.arrays;\nwhile true { push(all, arrays.fill(100000, 1)); }\narrays.len(all) > 0\n", "repl", "--heap-mb=8")
+	res = runLumenWithInput(t, "let all: [[Int]] = []\nimport std.arrays;\nwhile true { all.push(arrays.fill(100000, 1)); }\nall.len() > 0\n", "repl", "--heap-mb=8")
 	if !strings.Contains(res.stderr, "R0006") {
 		t.Fatalf("stderr:\n%s", res.stderr)
 	}

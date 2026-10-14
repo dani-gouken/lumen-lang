@@ -9,19 +9,19 @@ fn text(sentences: Int) -> String {
     let parts: [String] = [];
 
     for i in 0..sentences {
-        let subject = nouns[(i * 7) % arrays.len(nouns)];
-        let verb = verbs[(i * 5) % arrays.len(verbs)];
-        let object = nouns[(i * 11 + 3) % arrays.len(nouns)];
-        push(parts, "The " + subject + " " + verb + " the " + object + ".");
+        let subject = nouns[(i * 7) % nouns.len()];
+        let verb = verbs[(i * 5) % verbs.len()];
+        let object = nouns[(i * 11 + 3) % nouns.len()];
+        parts.push("The " + subject + " " + verb + " the " + object + ".");
     }
 
-    return strings.join(parts, " ");
+    return parts.join(" ");
 }
 
 fn letters(word: String) -> String {
     let out = "";
 
-    for i in 0..strings.len(word) {
+    for i in 0..word.len() {
         let c = word[i];
 
         if c != "." && c != "," {
@@ -29,7 +29,7 @@ fn letters(word: String) -> String {
         }
     }
 
-    return strings.lower(out);
+    return out.lower();
 }
 
 fn main() -> Int {
@@ -37,11 +37,11 @@ fn main() -> Int {
     let counts = dict.empty<Int>();
     let longest = "";
 
-    for raw in strings.split(source, " ") {
+    for raw in source.split(" ") {
         let word = letters(raw);
         counts.update(word, 0, n -> n + 1);
 
-        if strings.len(word) > strings.len(longest) {
+        if word.len() > longest.len() {
             longest = word;
         }
     }
@@ -52,7 +52,7 @@ fn main() -> Int {
         line = line + key + "=" + toString(counts.getOr(key, 0)) + " ";
     }
 
-    println(strings.len(source), counts.size(), longest);
-    println(strings.trim(line));
+    println(source.len(), counts.size(), longest);
+    println(line.trim());
     return 0;
 }

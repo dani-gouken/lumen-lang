@@ -84,7 +84,7 @@ count++;                    // count += 1; a statement, not an expression
 }
 ```
 
-A whole number is taken for a `Float` wherever one is expected, and the two work together as `Float`s: `1 + 2.5` is `3.5`, `let half: Float = 1;` holds `1.0`, `math.sqrt(16)` is fine. Between two whole numbers nothing changes: `7 / 2` is `3`. The other way is never implicit: a `Float` becomes an `Int` through `math.floor`, `math.round` and their like, which say how the fraction is lost.
+A whole number is taken for a `Float` wherever one is expected, and the two work together as `Float`s: `1 + 2.5` is `3.5`, `let half: Float = 1;` holds `1.0`, `16.sqrt()` is fine. Between two whole numbers nothing changes: `7 / 2` is `3`. The other way is never implicit: a `Float` becomes an `Int` through `floor`, `round` and their like, which say how the fraction is lost.
 
 An `Int` holds 48 bits, from -140737488355328 to 140737488355327. Arithmetic that leaves this range stops the program with `integer overflow`; it never wraps around.
 
@@ -92,7 +92,7 @@ An `Int` holds 48 bits, from -140737488355328 to 140737488355327. Arithmetic tha
 
 ```rust
 let s = "foo" + "bar";      // concatenation
-strings.len(s)              // 6, with: import std.strings;
+s.len()              // 6
 s[0]                        // "f" (a one-character string)
 s == "foobar"               // compared by content
 "a" < "b"                   // ordered
@@ -105,7 +105,7 @@ A string can hold expressions, written `${...}`. Each is worked out and put in t
 let name = "Ada";
 let items = [3, 4];
 println("Hello, ${name}!");                                  // Hello, Ada!
-println("${arrays.len(items)} items, total ${items[0] + items[1]}");  // 2 items, total 7
+println("${items.len()} items, total ${items[0] + items[1]}");  // 2 items, total 7
 println("point: ${Point { x: 1, y: 2 }}");                   // point: {x: 1, y: 2}
 ```
 
@@ -233,7 +233,7 @@ fn add(a: Int, b: Int) -> Int {
 }
 
 fn log(prefix: String, values: ...Int) -> Void {     // variadic
-    println(prefix, arrays.len(values), values);
+    println(prefix, values.len(), values);
 }
 
 fn first<T>(items: [T]) -> T {                       // generic
@@ -266,21 +266,23 @@ let red = color >> 16 & 0xFF;
 
 ### Methods on arrays, texts and numbers
 
-The library gives the builtin types the methods one expects, and calls follow one another:
+The builtin types have the methods one expects, and calls follow one another:
 
 ```rust
-import std.arrays;
-import std.strings;
-import std.math;
-
 let revenue = orders.filter(o -> o.paid).map(o -> o.total).sum();
 let slug = title.trim().lower().split(" ").filter(w -> w.len() > 2).join("-");
 let side = area.sqrt().round();
+
+let shouted = "the quick brown fox"
+    .split(" ")
+    .filter(word -> word.len() > 3)
+    .map(word -> word.upper())
+    .join("-");                       // "QUICK-BROWN"
 ```
 
-Every function of `std.arrays`, `std.strings` and `std.math` that works on an array, a text or a number is also a method of it, with the same name: `arrays.take(xs, 3)` is `xs.take(3)`, `strings.upper(s)` is `s.upper()`, `math.abs(n)` is `n.abs()`. The methods come with the module: without `import std.arrays;` an array has none, and the error says which import is missing.
+Nothing is imported for them: they are part of any program that calls one. They are all listed in [stdlib.md](stdlib.md): arrays under [`std.arrays`](stdlib.md#stdarrays), texts under [`std.strings`](stdlib.md#stdstrings), numbers under [`std.math`](stdlib.md#stdmath).
 
-A program gives them methods of its own with `impl`, as it does for a struct:
+A program gives the builtin types methods of its own with `impl`, as it does for a struct:
 
 ```rust
 impl String {
@@ -309,32 +311,29 @@ A method of the arrays of one type comes before one of the same name for every a
 
 One thing to know about a number written out: `-7.abs()` is `-(7.abs())`, as `-x.abs()` would be.
 
-### Chains of calls
+### Chains of functions
 
-Methods chain by themselves. For functions that are not methods (yours, or those of another module), `value |> f(a, b)` is `f(value, a, b)`: what is on the left of `|>` becomes the first argument of the call on its right. Calls that would nest, and read inside out, read in the order they happen:
+Methods follow one another by themselves. For the functions of a program, which are not methods, `value |> f(a, b)` is `f(value, a, b)`: what is on the left of `|>` becomes the first argument of the call on its right, and calls that would nest read in the order they happen:
 
 ```rust
-import std.arrays;
-import std.strings;
+fn paidOnly(orders: [Order]) -> [Order] { return orders.filter(o -> o.paid); }
+fn totals(orders: [Order]) -> [Int] { return orders.map(o -> o.total); }
+fn withTax(amount: Int, percent: Int) -> Int { return amount + amount * percent / 100; }
 
-let shouted = "the quick brown fox"
-    |> strings.split(" ")
-    |> arrays.filter(word -> strings.len(word) > 3)
-    |> arrays.map(strings.upper)
-    |> strings.join("-");            // "QUICK-BROWN"
+let due = orders |> paidOnly |> totals() |> report.sum() |> withTax(20);
 
 // the same, nested
-strings.join(arrays.map(arrays.filter(strings.split("the quick brown fox", " "), word -> strings.len(word) > 3), strings.upper), "-")
+withTax(report.sum(totals(paidOnly(orders))), 20)
 ```
 
-A function of one argument needs no parentheses: `numbers |> arrays.sum`. A `?` after the call is asked of what the call returns: `text |> strings.trim() |> parse()?`.
+A function of one argument needs no parentheses: `orders |> paidOnly`. A `?` after the call is asked of what the call returns: `line.trim() |> parse()?`.
 
 It binds looser than arithmetic and `??`, and tighter than comparisons, so these read as they look:
 
 ```rust
-a + b |> math.abs                 // math.abs(a + b)
-if items |> arrays.len == 3 { }   // arrays.len(items) == 3
-name ?? "" |> strings.trim()      // strings.trim(name ?? "")
+a + b |> clamp(0, 100)            // clamp(a + b, 0, 100)
+if orders |> count == 3 { }       // count(orders) == 3
+name ?? "" |> tidy                // tidy(name ?? "")
 ```
 
 It is only another way to write the call: the types are checked, and mistakes are reported, as for the call it stands for.
@@ -344,11 +343,11 @@ It is only another way to write the call: the types are checked, and mistakes ar
 ```rust
 let xs = [10, 20, 30];
 xs[0] = 11;                 // replace an element
-push(xs, 40);               // grow
-xs.len()                    // 4, with: import std.arrays;
+xs.push(40);               // grow
+xs.len()                    // 4
 ```
 
-What is done to an array is a method of it, or the function of `std.arrays` of the same name: `xs.len()` and `arrays.len(xs)` are the same thing. See [Methods on arrays, texts and numbers](#methods-on-arrays-texts-and-numbers).
+What is done to an array is a method of it: see [Methods on arrays, texts and numbers](#methods-on-arrays-texts-and-numbers), and [`std.arrays`](stdlib.md#stdarrays) for all of them.
 
 All elements have the same type. Reading or writing an index that does not exist is a runtime error; `xs[i] = v` replaces an element and never grows the array, `push` does. `xs.pop()`, `xs.removeAt(i)`, `xs.insertAt(i, v)` and `xs.clear()` take items out of the array itself, or put one in the middle: see [`std.arrays`](stdlib.md#stdarrays).
 
@@ -498,7 +497,7 @@ const START = Light.Red;
 const PALETTE = [RED, Color { r: 0, g: 0, b: 0 }];
 ```
 
-Such a constant is made once, the first time the program uses it, and is that one value everywhere: reading it costs what reading a variable costs, however large it is. So nothing may change it. `RED.r = 0;` is refused when the program is compiled, and a write through another name (`let mine = RED; mine.r = 0;`, or `push` in a function it was given to) stops the program where it happens. To change something, make a copy and change that: `arrays.copy(PRIMES)`, or a new struct with the fields of the constant.
+Such a constant is made once, the first time the program uses it, and is that one value everywhere: reading it costs what reading a variable costs, however large it is. So nothing may change it. `RED.r = 0;` is refused when the program is compiled, and a write through another name (`let mine = RED; mine.r = 0;`, or `push` in a function it was given to) stops the program where it happens. To change something, make a copy and change that: `PRIMES.copy()`, or a new struct with the fields of the constant.
 
 What a function works out is not a constant: write the function, and call it.
 
@@ -508,10 +507,10 @@ What a function works out is not a constant: write the function, and call it.
 struct Stack<T> { items: [T]; }
 
 impl<T> Stack<T> {                       // T is the struct's parameter
-    fn push(item: T) -> Void { push(self.items, item); }
+    fn push(item: T) -> Void { self.items.push(item); }
     fn peek() -> T? {
-        if arrays.len(self.items) == 0 { return null; }
-        return self.items[arrays.len(self.items) - 1];
+        if self.items.len() == 0 { return null; }
+        return self.items[self.items.len() - 1];
     }
     fn map<U>(f: fn(T) -> U) -> Stack<U> {   // U is the method's own parameter
         let out = Stack<U> { items: [] };
@@ -531,7 +530,7 @@ let texts = numbers.map(toString);       // Stack<String>; U is inferred
 ```rust
 fn length(name: String?) -> Int {
     if name == null { return 0; }        // from here on, name is a String
-    return strings.len(name);
+    return name.len();
 }
 
 let boxed: Any = 41;
@@ -548,7 +547,7 @@ fn side(shape: Shape) -> Int {
 fn describe(value: Any) -> String {
     match value {                        // a match on types reads best
         case Int: { return "number " + toString(value + 1); }
-        case String: { return "text of " + toString(strings.len(value)); }
+        case String: { return "text of " + toString(value.len()); }
         case Shape: { return "shape of area " + toString(value.area()); }
         default: { return "something else"; }
     }
@@ -568,7 +567,7 @@ user?.rename("Ada");                  // called only if there is a user
 
 fn port(config: Config) -> Int? {
     let text = config.port?;          // the value, or return null from port right here
-    return strings.parseInt(text)?;
+    return text.parseInt()?;
 }
 ```
 
@@ -581,7 +580,7 @@ What a test established about a variable also holds inside a function written af
 ```rust
 fn tagged(notes: [Note], tag: String?) -> [Note] {
     if tag == null { return notes; }
-    return arrays.filter(notes, note -> arrays.contains(note.tags, tag));   // tag: String
+    return notes.filter(note -> note.tags.contains(tag));   // tag: String
 }
 ```
 
@@ -627,22 +626,22 @@ Two to six values. Beyond three, or when the values travel far from where they a
 A function can be written where it is used. Its long form says every type; its short form says none, and takes them from what it is handed to:
 
 ```rust
-let names = arrays.map(people, p -> p.name);                  // p is a Person, the result a String
-let adults = arrays.filter(people, p -> p.age >= 18);
-let total = arrays.fold(people, 0, (sum, p) -> sum + p.age);  // several parameters go in parentheses
+let names = people.map(p -> p.name);                  // p is a Person, the result a String
+let adults = people.filter(p -> p.age >= 18);
+let total = people.fold(0, (sum, p) -> sum + p.age);  // several parameters go in parentheses
 twice(() -> count++);                                         // none at all
 
 let double: fn(Int) -> Int = n -> n * 2;                      // a variable or a field of a function type
-arrays.each(lines, line -> {                                  // several statements go in a block
-    let clean = strings.trim(line);
-    if clean != "" { push(kept, clean); }
+lines.each(line -> {                                  // several statements go in a block
+    let clean = line.trim();
+    if clean != "" { kept.push(clean); }
 });
 ```
 
 *   The arrow is the one of `fn(n: Int) -> Int`: what is on its left gives what is on its right.
 *   After it comes one expression, which is what the function gives; or one assignment, or a block.
 *   It works wherever a function type is expected: an argument, a variable or a field declared with one, a `return`. Where nothing says what the parameters are (`let f = x -> x + 1;`), it is an error (`E2037`) and the long form is the one to write: `fn(x: Int) -> Int { return x + 1; }`.
-*   For a generic function, the other arguments say what the parameters are, and the body says what the result is: in `arrays.map(people, p -> p.name)`, `T` is `Person` from the array and `U` is `String` from `p.name`.
+*   For a generic function, the other arguments say what the parameters are, and the body says what the result is: in `people.map(p -> p.name)`, `T` is `Person` from the array and `U` is `String` from `p.name`.
 
 ```rust
 fn makeCounter() -> fn() -> Int {
@@ -665,7 +664,7 @@ In a loop, each iteration has its own variables, so closures made in different i
 ```rust
 let readers: [fn() -> Int] = [];
 for v in [1, 2, 3] {
-    push(readers, fn() -> Int { return v; });
+    readers.push(fn() -> Int { return v; });
 }
 readers[0]();     // 1, not 3
 ```
@@ -739,7 +738,6 @@ Available everywhere, without an import:
 | `print(values...)` | Write the values separated by spaces |
 | `println(values...)` | Same, followed by a newline |
 | `toString(value)` | The text `print` would write, as a `String` |
-| `push(array, value)` | Append to an array |
 | `panic(values...)` | Stop the program with the values as its message |
 
 ### The standard library
@@ -756,13 +754,13 @@ fn main() -> Int {
     let line = io.ask("Numbers, separated by spaces: ") ?? "";
 
     let numbers: [Int] = [];
-    for word in strings.words(line) {
-        let n = strings.parseInt(word);       // Int?: null when the word is not a number
-        if n != null { push(numbers, n); }
+    for word in line.words() {
+        let n = word.parseInt();       // Int?: null when the word is not a number
+        if n != null { numbers.push(n); }
     }
 
-    println("sum", arrays.sum(numbers), "largest", arrays.largest(numbers) ?? 0);
-    println("root of the sum", math.sqrt(arrays.sum(numbers)));
+    println("sum", numbers.sum(), "largest", numbers.largest() ?? 0);
+    println("root of the sum", numbers.sum().sqrt());
     return 0;
 }
 ```
@@ -780,7 +778,7 @@ fn main() -> Int {
 | `std.time` | `now`, `sleep`, `stopwatch` |
 | `std.random` | `below`, `between`, `pick`, `shuffle`, `seed` |
 
-A function that may have no answer returns an optional, so the checker makes sure the program handles "none": `strings.indexOf` returns `Int?`, `list.first()` returns `T?`. All functions are described in [stdlib.md](stdlib.md).
+A function that may have no answer returns an optional, so the checker makes sure the program handles "none": `indexOf` returns `Int?`, `list.first()` returns `T?`. All functions are described in [stdlib.md](stdlib.md).
 
 ## Reading Errors
 
@@ -820,7 +818,7 @@ A program that fails while it runs is reported the same way, with the calls that
  3 |     return items[index];
      |                 ^
      |
-     = Suggestion: Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing
+     = Suggestion: Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing
   called from main.lum:8:17 in function 'main'
 ```
 

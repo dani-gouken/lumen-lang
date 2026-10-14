@@ -52,8 +52,8 @@ fn readingOf(line: String) -> String {
 }
 
 fn testTokensAreNumbersNamesAndSigns() {
-    let texts = lexer.tokenize("area = width*(12 - 2)") |> arrays.map(token -> token.text);
-    test.same(arrays.take(texts, 9), ["area", "=", "width", "*", "(", "12", "-", "2", ")"]);
+    let texts = lexer.tokenize("area = width*(12 - 2)").map(token -> token.text);
+    test.same(texts.take(9), ["area", "=", "width", "*", "(", "12", "-", "2", ")"]);
 }
 
 fn testMultiplicationBindsTighterThanAddition() {

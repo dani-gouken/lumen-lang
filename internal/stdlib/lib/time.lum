@@ -83,7 +83,7 @@ const monthNames = "January February March April May June July August September 
 
 // The name of a month from its number, 1 for January.
 pub fn monthName(month: Int) -> String {
-    let names = strings.split(monthNames, " ");
+    let names = monthNames.split(" ");
 
     if month < 1 || month > 12 {
         panic("there is no month ${month}");
@@ -268,20 +268,19 @@ impl Date {
         let out: [String] = [];
         let i = 0;
 
-        while i < strings.len(pattern) {
+        while i < pattern.len() {
             // The longest run of the same letter
             let letter = pattern[i];
             let run = 1;
 
-            while i + run < strings.len(pattern) && pattern[i + run] == letter {
+            while i + run < pattern.len() && pattern[i + run] == letter {
                 run++;
             }
 
             if letter == "[" {
-                let close = strings.indexOf(strings.from(pattern, i), "]")
-                    ?? strings.len(pattern) - i;
+                let close = pattern.from(i).indexOf("]") ?? pattern.len() - i;
 
-                push(out, strings.substring(pattern, i + 1, i + close));
+                out.push(pattern.substring(i + 1, i + close));
                 i += close + 1;
                 continue;
             }
@@ -291,69 +290,69 @@ impl Date {
             match letter {
                 case "Y": {
                     if run >= 4 {
-                        push(out, pad(self.year, 4));
+                        out.push(pad(self.year, 4));
                         used = 4;
                     } else if run >= 2 {
-                        push(out, pad(self.year % 100, 2));
+                        out.push(pad(self.year % 100, 2));
                         used = 2;
                     } else {
-                        push(out, letter);
+                        out.push(letter);
                     }
                 }
 
                 case "M": {
                     if run >= 4 {
-                        push(out, monthName(self.month));
+                        out.push(monthName(self.month));
                         used = 4;
                     } else if run == 3 {
-                        push(out, strings.first(monthName(self.month), 3));
+                        out.push(monthName(self.month).first(3));
                     } else {
-                        push(out, pad(self.month, run));
+                        out.push(pad(self.month, run));
                     }
                 }
 
                 case "d": {
                     if run >= 4 {
-                        push(out, self.weekday.name());
+                        out.push(self.weekday.name());
                         used = 4;
                     } else if run == 3 {
-                        push(out, strings.first(self.weekday.name(), 3));
+                        out.push(self.weekday.name().first(3));
                     } else {
-                        push(out, strings.repeat(letter, run));
+                        out.push(letter.repeat(run));
                     }
                 }
 
                 case "D": {
-                    used = math.min(run, 2);
-                    push(out, pad(self.day, used));
+                    used = run.min(2);
+                    out.push(pad(self.day, used));
                 }
 
                 case "H": {
-                    used = math.min(run, 2);
-                    push(out, pad(self.hour, used));
+                    used = run.min(2);
+                    out.push(pad(self.hour, used));
                 }
 
                 case "h": {
-                    used = math.min(run, 2);
-                    push(out, pad(hour12, used));
+                    used = run.min(2);
+                    out.push(pad(hour12, used));
                 }
 
                 case "m": {
-                    used = math.min(run, 2);
-                    push(out, pad(self.minute, used));
+                    used = run.min(2);
+                    out.push(pad(self.minute, used));
                 }
 
                 case "s": {
-                    used = math.min(run, 2);
-                    push(out, pad(self.second, used));
+                    used = run.min(2);
+                    out.push(pad(self.second, used));
                 }
 
                 case "S": {
                     if run >= 3 {
-                        push(out, pad(self.millisecond, 3));
+                        out.push(pad(self.millisecond, 3));
                         used = 3;
                     } else {
-                        push(out, strings.repeat(letter, run));
+                        out.push(letter.repeat(run));
                     }
                 }
 
@@ -361,26 +360,26 @@ impl Date {
                     used = 1;
 
                     if self.hour < 12 {
-                        push(out, "AM");
+                        out.push("AM");
                     } else {
-                        push(out, "PM");
+                        out.push("PM");
                     }
                 }
 
                 case "Z": {
                     used = 1;
-                    push(out, self.zone());
+                    out.push(self.zone());
                 }
 
                 default: {
-                    push(out, strings.repeat(letter, run));
+                    out.push(letter.repeat(run));
                 }
             }
 
             i += used;
         }
 
-        return strings.join(out, "");
+        return out.join("");
     }
 
     // The time zone as an offset: "Z" for UTC, "+02:00", "-05:30".
@@ -395,7 +394,7 @@ impl Date {
             sign = "-";
         }
 
-        let minutes = math.abs(self.offset);
+        let minutes = self.offset.abs();
         return sign + pad(minutes / 60, 2) + ":" + pad(minutes % 60, 2);
     }
 
@@ -443,7 +442,7 @@ impl Date {
 
 fn pad(n: Int, width: Int) -> String {
     let digits = toString(n);
-    return strings.repeat("0", math.max(0, width - strings.len(digits))) + digits;
+    return "0".repeat(0.max(width - digits.len())) + digits;
 }
 
 extern fn fields(moment: Int, isLocal: Bool) -> [Int];

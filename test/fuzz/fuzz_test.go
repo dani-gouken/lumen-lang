@@ -190,14 +190,14 @@ func TestSandboxHoldsAProgramIn(t *testing.T) {
 		{"a loop without end", `fn main() -> Int { let n = 0; while n >= 0 { n = (n + 1) % 10; } return n; }`, vm.KindBudget, ""},
 		{"calls without end", `fn f(n: Int) -> Int { return f(n + 1) + 1; } fn main() -> Int { return f(0); }`, vm.KindDepth, ""},
 		{"a loop of calls", `fn f(n: Int) -> Int { return n; } fn main() -> Int { let n = 0; while n >= 0 { n = f(n); } return n; }`, vm.KindBudget, ""},
-		{"memory without end", `fn main() -> Int { let xs: [String] = []; let n = 0; while n >= 0 { push(xs, "item " + toString(n)); n += 1; } return n; }`, "", ""},
+		{"memory without end", `fn main() -> Int { let xs: [String] = []; let n = 0; while n >= 0 { xs.push("item " + toString(n)); n += 1; } return n; }`, "", ""},
 		{"output without end", `fn main() -> Int { for i in 0..100000 { println("line", i); } return 0; }`, "", "line 0\nline 1\n"},
 		{"removing a file", `import std.io; fn main() -> Int { println("before"); io.remove("` + marker + `"); println("after"); return 0; }`, vm.KindLibrary, "before\n"},
 		{"reading a file", `import std.io; fn main() -> Int { println(io.readFile("` + marker + `")); return 0; }`, vm.KindLibrary, ""},
 		{"running a program", `import std.os; fn main() -> Int { os.run("rm", ["` + marker + `"]); return 0; }`, vm.KindLibrary, ""},
 		{"sleeping", `import std.time; fn main() -> Int { time.sleep(600000); return 0; }`, vm.KindLibrary, ""},
 		{"leaving", `import std.os; fn main() -> Int { os.exit(3); return 0; }`, vm.KindLibrary, ""},
-		{"computing", `import std.strings; import std.math; fn main() -> Int { println(strings.upper("ok"), math.max(2, 3)); return 0; }`, "", "OK 3\n"},
+		{"computing", `import std.strings; import std.math; fn main() -> Int { println("ok".upper(), 2.max(3)); return 0; }`, "", "OK 3\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

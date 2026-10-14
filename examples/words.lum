@@ -21,15 +21,15 @@ struct Count {
 fn wordsOf(text: String) -> [String] {
     let out: [String] = [];
 
-    for raw in text |> strings.lower() |> strings.words() {
+    for raw in text.lower().words() {
         let word = raw;
 
         for mark in [",", ".", ";", ":", "!", "?", "\""] {
-            word = strings.replace(word, mark, "");
+            word = word.replace(mark, "");
         }
 
-        if !strings.isEmpty(word) {
-            push(out, word);
+        if !word.isEmpty() {
+            out.push(word);
         }
     }
 
@@ -51,37 +51,33 @@ fn main() -> Int {
     // As a list of structs, most frequent first; ties in alphabetical order
     let table = list.empty<Count>();
 
-    for word in counts.keys() |> arrays.sortedTexts() {
+    for word in counts.keys().sortedTexts() {
         table.add(Count { word: word, times: counts.get(word) ?? 0 });
     }
 
     table.sort((a, b) -> a.times > b.times);
 
-    println(arrays.len(words), "words,", counts.size(), "different");
+    println(words.len(), "words,", counts.size(), "different");
     println();
 
     for row in table.slice(0, 6).toArray() {
-        println(
-            strings.padRight(row.word, 8),
-            strings.padLeft(toString(row.times), 3),
-            strings.repeat("#", row.times),
-        );
+        println(row.word.padRight(8), toString(row.times).padLeft(3), "#".repeat(row.times));
     }
 
     // Numbers about the words
-    let lengths = arrays.map(words, w -> strings.len(w));
-    let average = math.toFloat(arrays.sum(lengths)) / math.toFloat(arrays.len(lengths));
+    let lengths = words.map(w -> w.len());
+    let average = lengths.sum().toFloat() / lengths.len().toFloat();
     println();
-    println("average length:", math.toFloat(math.round(average * 100.0)) / 100.0);
-    let byLength = counts.keys() |> arrays.sorted((a, b) -> strings.len(a) > strings.len(b));
+    println("average length:", (average * 100.0).round().toFloat() / 100.0);
+    let byLength = counts.keys().sorted((a, b) -> a.len() > b.len());
     println("longest:", byLength[0]);
 
     let once = table.filter(row -> row.times == 1);
-    println("used once:", once.map<String>(row -> row.word).toArray() |> strings.join(", "));
+    println("used once:", once.map<String>(row -> row.word).toArray().join(", "));
 
     // Taking a sentence apart and putting it back differently
-    let first = strings.first(text, strings.indexOf(text, ",") ?? strings.len(text));
-    println(first |> strings.words() |> arrays.reversed() |> strings.join(" "));
-    println(first |> strings.words() |> arrays.map(strings.capitalize) |> strings.join(" "));
+    let first = text.first(text.indexOf(",") ?? text.len());
+    println(first.words().reversed().join(" "));
+    println(first.words().map(text -> text.capitalize()).join(" "));
     return 0;
 }

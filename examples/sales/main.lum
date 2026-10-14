@@ -38,7 +38,7 @@ struct Order {
 
 impl Order {
     fn total() -> Float {
-        return math.toFloat(self.quantity) * self.unitPrice;
+        return self.quantity.toFloat() * self.unitPrice;
     }
 }
 
@@ -62,7 +62,7 @@ impl Flaw {
 // A whole number from a column of a row.
 fn whole(row: Dict<String>, column: String) -> Result<Int, Flaw> {
     let text = row.getOr(column, "");
-    let n = strings.parseInt(text);
+    let n = text.parseInt();
 
     if n == null {
         return Result.Err(Flaw.NotANumber(column, text));
@@ -83,7 +83,7 @@ fn order(row: Dict<String>) -> Result<Order, Flaw> {
     }
 
     let priceText = row.getOr("unit_price", "");
-    let price = strings.parseFloat(priceText);
+    let price = priceText.parseFloat();
 
     if price == null {
         return Result.Err(Flaw.NotANumber("unit_price", priceText));
@@ -96,7 +96,7 @@ fn order(row: Dict<String>) -> Result<Order, Flaw> {
         return Result.Err(Flaw.NotADate(dateText));
     }
 
-    let customer = strings.trim(row.getOr("customer", ""));
+    let customer = row.getOr("customer", "").trim();
 
     if customer == "" {
         return Result.Err(Flaw.Nothing("customer"));
@@ -123,24 +123,24 @@ struct Line {
 
 // The orders summed up by a name worked out from each, best first.
 fn summed(orders: [Order], name: fn(Order) -> String) -> [Line] {
-    let groups = arrays.groupBy(orders, name);
+    let groups = orders.groupBy(name);
 
-    let lines = arrays.map(groups.keys(), fn(key: String) -> Line {
+    let lines = groups.keys().map(fn(key: String) -> Line {
         let group = groups.get(key) ?? [];
 
         return Line {
             name: key,
-            orders: arrays.len(group),
-            units: arrays.sumOf(group, o -> o.quantity),
-            revenue: arrays.fold(group, 0.0, (sum, o) -> sum + o.total()),
+            orders: group.len(),
+            units: group.sumOf(o -> o.quantity),
+            revenue: group.fold(0.0, (sum, o) -> sum + o.total()),
         };
     });
 
-    return arrays.sorted(lines, (a, b) -> a.revenue > b.revenue);
+    return lines.sorted((a, b) -> a.revenue > b.revenue);
 }
 
 fn revenueOf(lines: [Line]) -> Float {
-    return arrays.fold(lines, 0.0, (sum, line) -> sum + line.revenue);
+    return lines.fold(0.0, (sum, line) -> sum + line.revenue);
 }
 
 // `total` is what the shares are of: all the revenue, also when only
@@ -148,7 +148,7 @@ fn revenueOf(lines: [Line]) -> Float {
 fn section(title: String, first: String, lines: [Line], total: Float) {
     let aligns = [Align.Left, Align.Right, Align.Right, Align.Right, Align.Right];
 
-    let rows = arrays.map(lines, fn(line: Line) -> [String] {
+    let rows = lines.map(fn(line: Line) -> [String] {
         return [
             line.name,
             toString(line.orders),
@@ -169,7 +169,7 @@ fn asJson(lines: [Line]) -> Json {
             .text("name", line.name)
             .int("orders", line.orders)
             .int("units", line.units)
-            .number("revenue", math.toFloat(math.round(line.revenue * 100.0)) / 100.0)
+            .number("revenue", (line.revenue * 100.0).round().toFloat() / 100.0)
             .done();
     });
 }
@@ -181,45 +181,45 @@ fn report(table: Table, source: String, output: String?) -> Int {
     for i, row in table.records() {
         match order(row) {
             case Result.Ok(read): {
-                push(orders, read);
+                orders.push(read);
             }
 
             // Row 1 of the file is the header
             case Result.Err(flaw): {
-                push(flawed, "row ${i + 2} (order ${row.getOr("order", "?")}): ${flaw.describe()}");
+                flawed.push("row ${i + 2} (order ${row.getOr("order", "?")}): ${flaw.describe()}");
             }
         }
     }
 
-    if arrays.len(orders) == 0 {
+    if orders.len() == 0 {
         println("no order could be read from ${source}");
         return 1;
     }
 
-    let byDate = arrays.sortedBy(orders, o -> o.date.timestamp());
+    let byDate = orders.sortedBy(o -> o.date.timestamp());
     let first = byDate[0].date;
-    let last = byDate[arrays.len(byDate) - 1].date;
+    let last = byDate[byDate.len() - 1].date;
     let categories = summed(orders, o -> o.category);
     let customers = summed(orders, o -> o.customer);
     let products = summed(orders, o -> o.product);
     let total = revenueOf(categories);
 
     println("Sales, ${first.format("D MMMM")} to ${last.format("D MMMM YYYY")}");
-    println("${format.plural(arrays.len(orders), "order", "orders")} over ${format.plural(first.daysUntil(last) + 1, "day", "days")}, ${format.money(total)} in all, ${format.money(total / math.toFloat(arrays.len(orders)))} an order");
+    println("${format.plural(orders.len(), "order", "orders")} over ${format.plural(first.daysUntil(last) + 1, "day", "days")}, ${format.money(total)} in all, ${format.money(total / orders.len().toFloat())} an order");
 
     section("By category", "category", categories, total);
     section("By customer", "customer", customers, total);
-    section("Best sellers", "product", arrays.take(products, 3), total);
+    section("Best sellers", "product", products.take(3), total);
 
     // Weeks start on Monday; an order belongs to the week of its date
     println("");
     println("By week");
 
-    let weeks = arrays.groupBy(byDate, fn(o: Order) -> String {
+    let weeks = byDate.groupBy(fn(o: Order) -> String {
         return o.date.plusDays(-weekdayIndex(o.date)).format("DD MMM");
     });
 
-    let best = arrays.fold(weeks.values(), 0.0, (most, week) -> math.fmax(most, weekRevenue(week)));
+    let best = weeks.values().fold(0.0, (most, week) -> most.max(weekRevenue(week)));
 
     for (start, week) in weeks.entries() {
         let revenue = weekRevenue(week);
@@ -227,13 +227,13 @@ fn report(table: Table, source: String, output: String?) -> Int {
         println(
             "week of ${start}",
             format.pad(format.money(revenue), 9, Align.Right),
-            " " + format.bar(math.round(revenue), math.round(best), 24),
+            " " + format.bar(revenue.round(), best.round(), 24),
         );
     }
 
-    if arrays.len(flawed) > 0 {
+    if flawed.len() > 0 {
         println("");
-        println("${format.plural(arrays.len(flawed), "row", "rows")} left out of ${table.size()}");
+        println("${format.plural(flawed.len(), "row", "rows")} left out of ${table.size()}");
 
         for line in flawed {
             println("  " + line);
@@ -244,8 +244,8 @@ fn report(table: Table, source: String, output: String?) -> Int {
         let summary = json.object()
             .text("from", first.iso())
             .text("to", last.iso())
-            .int("orders", arrays.len(orders))
-            .int("left_out", arrays.len(flawed))
+            .int("orders", orders.len())
+            .int("left_out", flawed.len())
             .set("categories", asJson(categories))
             .set("customers", asJson(customers))
             .done()
@@ -255,7 +255,7 @@ fn report(table: Table, source: String, output: String?) -> Int {
         match io.writeFile(output, summary) {
             case Result.Ok(_): {
                 println("");
-                println("summary written to ${path.base(output)}, sha256 ${strings.first(hash.sha256(summary), 12)}");
+                println("summary written to ${path.base(output)}, sha256 ${hash.sha256(summary).first(12)}");
             }
 
             case Result.Err(error): {
@@ -275,13 +275,13 @@ fn weekdayIndex(date: Date) -> Int {
 }
 
 fn weekRevenue(week: [Order]) -> Float {
-    return arrays.fold(week, 0.0, (sum, o) -> sum + o.total());
+    return week.fold(0.0, (sum, o) -> sum + o.total());
 }
 
 fn main() -> Int {
     let args = os.args();
-    let source = arrays.at(args, 0) ?? path.inside(path.dir(os.program()), "orders.csv");
-    let output = arrays.at(args, 1);
+    let source = args.at(0) ?? path.inside(path.dir(os.program()), "orders.csv");
+    let output = args.at(1);
 
     match load(source) {
         case Result.Ok(orders): {

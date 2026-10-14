@@ -125,7 +125,7 @@ fn collect<T>(node: Node<T>?, out: [T]) {
     }
 
     collect<T>(node.left, out);
-    push(out, node.value);
+    out.push(node.value);
     collect<T>(node.right, out);
 }
 

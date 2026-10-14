@@ -176,7 +176,7 @@ func TestALimitedHeapIsEnough(t *testing.T) {
 			fn average(readings: [Reading]) -> Int {
 				let sum = 0;
 				for reading in readings { sum += reading.value; }
-				return sum / arrays.len(readings);
+				return sum / readings.len();
 			}
 
 			fn main() -> Int {
@@ -184,10 +184,10 @@ func TestALimitedHeapIsEnough(t *testing.T) {
 				for batch in 0..3000 {
 					let readings: [Reading] = [];
 					for i in 0..100 {
-						push(readings, Reading { sensor: "sensor-" + toString(i), value: (batch * 31 + i * 17) % 1000 });
+						readings.push(Reading { sensor: "sensor-" + toString(i), value: (batch * 31 + i * 17) % 1000 });
 					}
 					let scale = batch % 3 + 1;
-					let scaled = arrays.map(readings, r -> Reading { sensor: strings.upper(r.sensor), value: r.value * scale });
+					let scaled = readings.map(r -> Reading { sensor: r.sensor.upper(), value: r.value * scale });
 					let mean = average(scaled);
 					if mean > best { best = mean; }
 				}

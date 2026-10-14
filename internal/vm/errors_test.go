@@ -95,10 +95,10 @@ func TestRuntimeErrorKinds(t *testing.T) {
 	}{
 		{"index out of bounds", func(*Chunk) []Instr {
 			return []Instr{NewInstr(OpNEWARRAY, 1, 2, 0), NewInstr(OpLOADI, 2, 3, 0), NewInstr(OpGETINDEX, 3, 1, 2)}
-		}, KindBounds, "R0002", "index out of bounds: 3 (length 0)", "arrays.len"},
+		}, KindBounds, "R0002", "index out of bounds: 3 (length 0)", "items.len()"},
 		{"write out of bounds", func(*Chunk) []Instr {
 			return []Instr{NewInstr(OpNEWARRAY, 1, 2, 0), NewInstr(OpLOADI, 2, 0, 0), NewInstr(OpSETELEM, 1, 2, 2)}
-		}, KindBounds, "R0002", "index out of bounds: 0 (length 0)", "arrays.at"},
+		}, KindBounds, "R0002", "index out of bounds: 0 (length 0)", "items.at(index)"},
 		{"division by zero", func(*Chunk) []Instr {
 			return []Instr{NewInstr(OpLOADI, 1, 4, 0), NewInstr(OpLOADI, 2, 0, 0), NewInstr(OpDIV, 3, 1, 2)}
 		}, KindArithmetic, "R0004", "division by zero", "Test the divisor"},
@@ -192,7 +192,7 @@ func TestRuntimeErrorIsShownLikeACompileError(t *testing.T) {
  12 |     return items[index];
       |            ^^^^^ 
       |
-      = Suggestion: Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing
+      = Suggestion: Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing
   called from middle.lum:2:5 in function 'middle'
   called from main.lum:3:5 in function 'main'
 `

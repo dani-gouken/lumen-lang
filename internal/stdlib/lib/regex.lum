@@ -30,7 +30,7 @@ impl Match {
     // What a group named with (?P<name>...) took, or null if the pattern
     // has no group of that name.
     pub fn named(name: String) -> String? {
-        let at = arrays.indexOf(self.names, name);
+        let at = self.names.indexOf(name);
 
         if at == null || name == "" {
             return null;
@@ -41,7 +41,7 @@ impl Match {
 
     // What the group at a position took, counting from 0, or null.
     pub fn group(index: Int) -> String? {
-        return arrays.at(self.groups, index);
+        return self.groups.at(index);
     }
 }
 
@@ -67,7 +67,7 @@ pub fn compile(pattern: String) -> Result<Regex, PatternError> {
     }
 
     let names = groupNames(pattern);
-    return Result.Ok(Regex { pattern: pattern, names: arrays.slice(names, 1, arrays.len(names)) });
+    return Result.Ok(Regex { pattern: pattern, names: names.slice(1, names.len()) });
 }
 
 // The same, for a pattern written in the program: one that is wrong is a
@@ -92,7 +92,7 @@ impl Regex {
 
     // The first place it fits, or null.
     pub fn find(text: String) -> Match? {
-        return arrays.first(self.found(text, 1));
+        return self.found(text, 1).first();
     }
 
     // What the groups of the first match took, or null if there is none.
@@ -109,7 +109,7 @@ impl Regex {
 
     // The text of every match.
     pub fn all(text: String) -> [String] {
-        return arrays.map(self.findAll(text), m -> m.text);
+        return self.findAll(text).map(m -> m.text);
     }
 
     // The text with every match replaced. In the replacement, $1 is what
@@ -128,13 +128,13 @@ impl Regex {
         let from = 0;
 
         for found in self.findAll(text) {
-            push(out, strings.substring(text, from, found.start));
-            push(out, convert(found));
+            out.push(text.substring(from, found.start));
+            out.push(convert(found));
             from = found.end;
         }
 
-        push(out, strings.from(text, from));
-        return strings.join(out, "");
+        out.push(text.from(from));
+        return out.join("");
     }
 
     // The pieces of the text between the matches.
@@ -147,11 +147,11 @@ impl Regex {
 
         // Per match: where it starts, where it stops, its text, its groups
         for row in search(self.pattern, text, limit) {
-            push(out, Match {
+            out.push(Match {
                 text: row[2],
-                start: strings.parseInt(row[0]) ?? 0,
-                end: strings.parseInt(row[1]) ?? 0,
-                groups: arrays.slice(row, 3, arrays.len(row)),
+                start: row[0].parseInt() ?? 0,
+                end: row[1].parseInt() ?? 0,
+                groups: row.slice(3, row.len()),
                 names: self.names,
             });
         }

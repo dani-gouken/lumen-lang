@@ -51,6 +51,9 @@ const (
 )
 
 type Checker struct {
+	// What has been reported, so that nothing is reported twice
+	said map[string]bool
+
 	prog        *ast.Program
 	table       *resolve.Table
 	errs        *errors.Handler
@@ -1294,7 +1297,7 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 		c.inferFunctionTypeArgs(e, expected)
 		c.checkCallBounds(e)
 		result = c.callValue(e, c.checkExpr(e.Func))
-		if c.isBuiltinCall(e, "push") {
+		if c.isBuiltinCall(e, resolve.PushFunction) {
 			c.checkPush(e)
 		}
 	}
@@ -1497,8 +1500,11 @@ func (c *Checker) checkLengthMember(e *ast.MemberExpr, function, module string) 
 	if function == "strings.len" {
 		what = "a text"
 	}
-	c.errorfWithSuggestion(e.Token(), ErrNoMembers,
-		fmt.Sprintf("Write %s(%s), with: import %s;", function, asWritten(e.Expr), module),
+	suggestion := fmt.Sprintf("Call .len() on it, with: import %s;", module)
+	if written := asWritten(e.Expr); written != "..." {
+		suggestion = fmt.Sprintf("Write %s.len(), with: import %s;", written, module)
+	}
+	c.errorfWithSuggestion(e.Token(), ErrNoMembers, suggestion,
 		"%s has no members: '.length' is not part of the language", what)
 }
 
@@ -1792,11 +1798,37 @@ func (c *Checker) bindTypeParams(names []string) func() {
 }
 
 func (c *Checker) errorf(tok token.Token, code string, format string, args ...interface{}) {
-	c.errs.ReportErrorFromToken(code, fmt.Sprintf(format, describeAll(args)...), tok, c.sourceLines)
+	message := fmt.Sprintf(format, describeAll(args)...)
+	if c.alreadySaid(tok, code, message) {
+		return
+	}
+	c.errs.ReportErrorFromToken(code, message, tok, c.sourceLines)
 }
 
 func (c *Checker) errorfWithSuggestion(tok token.Token, code string, suggestion string, format string, args ...interface{}) {
-	c.errs.ReportErrorWithSuggestion(code, fmt.Sprintf(format, describeAll(args)...), suggestion, tok, c.sourceLines)
+	message := fmt.Sprintf(format, describeAll(args)...)
+	if c.alreadySaid(tok, code, message) {
+		return
+	}
+	c.errs.ReportErrorWithSuggestion(code, message, suggestion, tok, c.sourceLines)
+}
+
+// alreadySaid reports whether the very same thing was said of the very
+// same place. An expression can be looked at twice (a function written
+// with `->`, once to find what it gives and once as the argument it is):
+// what is wrong with it is said once.
+func (c *Checker) alreadySaid(tok token.Token, code, message string) bool {
+	// What is said while something is only being tried is kept apart
+	// (see typesOf): it is not said to the program
+	key := fmt.Sprintf("%s:%d:%d:%s:%s", tok.Pos.File, tok.Pos.Line, tok.Pos.Col, code, message)
+	if c.said == nil {
+		c.said = make(map[string]bool)
+	}
+	if c.said[key] {
+		return true
+	}
+	c.said[key] = true
+	return false
 }
 
 // describeAll replaces types among message arguments by their source form.

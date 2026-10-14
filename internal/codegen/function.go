@@ -301,7 +301,8 @@ type usage struct {
 // which is also what closures need, since they capture slots by reference.
 func (f *funcGen) allocateRegisters() {
 	uses := make(map[int]*usage)
-	var order []int // First appearance, for a deterministic layout
+	capturesFirst := false // Whether a function made here captures the first argument
+	var order []int        // First appearance, for a deterministic layout
 	get := func(id int) *usage {
 		u, ok := uses[id]
 		if !ok {
@@ -340,6 +341,15 @@ func (f *funcGen) allocateRegisters() {
 					f.maxArgs = len(instr.Operands) - 1
 				}
 			}
+			if instr.Op == ir.OpMakeClosure && len(f.fn.Params) > 0 {
+				// A function made here that captures the first argument
+				// reads it where it is, for as long as this call lasts
+				for _, operand := range instr.Operands {
+					if reg, ok := operand.(*ir.Register); ok && reg.ID == f.fn.Params[0].ID {
+						capturesFirst = true
+					}
+				}
+			}
 		}
 	}
 
@@ -353,9 +363,11 @@ func (f *funcGen) allocateRegisters() {
 		isParam[param.ID] = true
 		if i > 0 {
 			f.phys[param.ID] = i
-		} else if !f.hasCalls {
+		} else if !f.hasCalls && !capturesFirst {
 			// Nothing overwrites r0 in a function that calls nothing: the
-			// first argument stays where it arrived
+			// first argument stays where it arrived. Nothing but what it
+			// returns, which is put there while a function it made may
+			// still be reading the argument: one that is captured moves.
 			f.phys[param.ID] = returnReg
 		} else if _, used := uses[param.ID]; used {
 			f.phys[param.ID] = next

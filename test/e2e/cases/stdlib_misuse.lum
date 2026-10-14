@@ -5,8 +5,8 @@ import std.strings;
 import std.dict;
 
 fn main() -> Int {
-    let root = math.sqrt("16");
-    let at: Int = strings.indexOf("banana", "na");
+    let root = "16".sqrt();
+    let at: Int = "banana".indexOf("na");
     let ages = dict.empty<Int>();
     ages.set("ada", "thirty-six");
     let next = ages.get("ada") + 1;

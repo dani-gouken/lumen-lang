@@ -16,7 +16,7 @@ fn map(xs: [Int], f: fn(Int) -> Int) -> [Int] {
     let out: [Int] = [];
 
     for x in xs {
-        push(out, f(x));
+        out.push(f(x));
     }
 
     return out;

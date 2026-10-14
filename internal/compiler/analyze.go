@@ -36,7 +36,9 @@ func Analyze(src, file string, opts Options, errs *errors.Handler) *Analysis {
 	analysis := &Analysis{}
 	lines := parser.SourceLines(src)
 
-	prog := modules.Load(src, file, modules.Options{Read: opts.Read, Root: opts.Root, Packages: opts.Packages}, errs)
+	// An analysis is for an editor: it has the methods of the builtin
+	// types at hand before the program calls any
+	prog := modules.Load(src, file, modules.Options{Read: opts.Read, Root: opts.Root, Packages: opts.Packages, EveryMethod: true}, errs)
 	analysis.Program = prog
 	if errs.HasErrors() || prog == nil {
 		return analysis

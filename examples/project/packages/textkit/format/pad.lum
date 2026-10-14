@@ -4,7 +4,7 @@
 import std.strings;
 
 pub fn left(text: String, width: Int) -> String {
-    return fill(" ", width - strings.len(text)) + text;
+    return fill(" ", width - text.len()) + text;
 }
 
 pub fn fill(text: String, times: Int) -> String {

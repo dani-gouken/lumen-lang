@@ -251,7 +251,7 @@ exits with code 1 if any of them is an error.
  3 |     return items[index];
      |                 ^
      |
-     = Suggestion: Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing
+     = Suggestion: Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing
   called from src/main.lum:8:17 in function 'main'
 ```
 

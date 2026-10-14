@@ -31,7 +31,7 @@ func TestResolveBuiltinsAreInScope(t *testing.T) {
 	msgs := resolveSource(t, `
 		fn main() -> Int {
 			let xs: [Int] = [];
-			push(xs, 1);
+			__push(xs, 1);
 			print("a");
 			println(toString(xs));
 			return 0;
@@ -41,7 +41,7 @@ func TestResolveBuiltinsAreInScope(t *testing.T) {
 		t.Errorf("expected builtins to resolve, got %v", msgs)
 	}
 
-	for _, name := range []string{"print", "println", "toString", "push"} {
+	for _, name := range []string{"print", "println", "toString", "__push"} {
 		if !IsBuiltin(name) {
 			t.Errorf("expected %s to be a builtin", name)
 		}

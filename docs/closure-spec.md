@@ -167,7 +167,7 @@ So when an iteration ends, the closures created in it are **detached** from the 
 
 ```rust
 for v in [1, 2, 3] {
-    push(readers, fn() -> Int { return v; });
+    readers.push(fn() -> Int { return v; });
 }
 ```
 ```

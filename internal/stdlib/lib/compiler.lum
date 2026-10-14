@@ -81,8 +81,8 @@ pub fn check(path: String, source: String) -> [Problem] {
     let out: [Problem] = [];
     let i = 0;
 
-    while i + 7 < arrays.len(parts) {
-        push(out, Problem {
+    while i + 7 < parts.len() {
+        out.push(Problem {
             severity: severityOf(parts[i]),
             code: parts[i + 1],
             message: parts[i + 2],
@@ -159,8 +159,8 @@ pub fn symbols(path: String, source: String) -> [Symbol] {
     let out: [Symbol] = [];
     let i = 0;
 
-    while i + 5 < arrays.len(parts) {
-        push(out, Symbol {
+    while i + 5 < parts.len() {
+        out.push(Symbol {
             kind: kindOf(parts[i]),
             name: parts[i + 1],
             detail: parts[i + 2],
@@ -191,7 +191,7 @@ pub fn describe(path: String, source: String, line: Int, column: Int) -> Descrip
     // signature, doc, file, line, column, start column, end column
     let parts = describeAt(path, source, line, column);
 
-    if arrays.len(parts) < 7 {
+    if parts.len() < 7 {
         return null;
     }
 
@@ -228,8 +228,8 @@ pub fn complete(path: String, source: String, line: Int, column: Int) -> [Sugges
     let out: [Suggestion] = [];
     let i = 0;
 
-    while i + 2 < arrays.len(parts) {
-        push(out, Suggestion { label: parts[i], kind: kindOf(parts[i + 1]), detail: parts[i + 2] });
+    while i + 2 < parts.len() {
+        out.push(Suggestion { label: parts[i], kind: kindOf(parts[i + 1]), detail: parts[i + 2] });
         i += 3;
     }
 
@@ -247,7 +247,7 @@ pub fn close(path: String) {
 }
 
 fn number(text: String) -> Int {
-    return strings.parseInt(text) ?? 0;
+    return text.parseInt() ?? 0;
 }
 
 // Provided by the runtime, which holds the compiler.

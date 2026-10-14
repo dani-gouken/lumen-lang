@@ -7,7 +7,7 @@ import std.dict;
 import std.dict.{Dict};
 
 // How many items an array holds.
-pub fn len<T>(items: [T]) -> Int {
+fn len<T>(items: [T]) -> Int {
     return __len(items);
 }
 
@@ -18,7 +18,7 @@ pub fn range(from: Int, to: Int) -> [Int] {
     let out: [Int] = [];
 
     for n in from..to {
-        push(out, n);
+        out.push(n);
     }
 
     return out;
@@ -29,17 +29,17 @@ pub fn fill<T>(count: Int, value: T) -> [T] {
     let out: [T] = [];
 
     for i in 0..count {
-        push(out, value);
+        out.push(value);
     }
 
     return out;
 }
 
-pub fn copy<T>(items: [T]) -> [T] {
+fn copy<T>(items: [T]) -> [T] {
     let out: [T] = [];
 
     for item in items {
-        push(out, item);
+        out.push(item);
     }
 
     return out;
@@ -47,7 +47,7 @@ pub fn copy<T>(items: [T]) -> [T] {
 
 // The items from position `from` up to, not including, `to`. Positions
 // outside the array are brought back to its ends.
-pub fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
+fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
     let out: [T] = [];
     let i = from;
 
@@ -56,7 +56,7 @@ pub fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
     }
 
     while i < to && i < len(items) {
-        push(out, items[i]);
+        out.push(items[i]);
         i++;
     }
 
@@ -64,26 +64,26 @@ pub fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
 }
 
 // The items of `first` followed by those of `second`.
-pub fn concat<T>(first: [T], second: [T]) -> [T] {
+fn concat<T>(first: [T], second: [T]) -> [T] {
     let out: [T] = [];
 
     for item in first {
-        push(out, item);
+        out.push(item);
     }
 
     for item in second {
-        push(out, item);
+        out.push(item);
     }
 
     return out;
 }
 
-pub fn reversed<T>(items: [T]) -> [T] {
+fn reversed<T>(items: [T]) -> [T] {
     let out: [T] = [];
     let i = len(items) - 1;
 
     while i >= 0 {
-        push(out, items[i]);
+        out.push(items[i]);
         i--;
     }
 
@@ -91,12 +91,12 @@ pub fn reversed<T>(items: [T]) -> [T] {
 }
 
 // The array without the item at `index`. An index outside it changes nothing.
-pub fn without<T>(items: [T], index: Int) -> [T] {
+fn without<T>(items: [T], index: Int) -> [T] {
     let out: [T] = [];
 
     for i, item in items {
         if i != index {
-            push(out, item);
+            out.push(item);
         }
     }
 
@@ -104,19 +104,19 @@ pub fn without<T>(items: [T], index: Int) -> [T] {
 }
 
 // The array with `value` put at `index`, the items from there on moved up.
-pub fn inserted<T>(items: [T], index: Int, value: T) -> [T] {
+fn inserted<T>(items: [T], index: Int, value: T) -> [T] {
     let out: [T] = [];
 
     for i, item in items {
         if i == index {
-            push(out, value);
+            out.push(value);
         }
 
-        push(out, item);
+        out.push(item);
     }
 
     if index >= len(items) {
-        push(out, value);
+        out.push(value);
     }
 
     return out;
@@ -125,7 +125,7 @@ pub fn inserted<T>(items: [T], index: Int, value: T) -> [T] {
 // --- One item ---
 
 // The first item, or null for an empty array.
-pub fn first<T>(items: [T]) -> T? {
+fn first<T>(items: [T]) -> T? {
     if len(items) == 0 {
         return null;
     }
@@ -134,7 +134,7 @@ pub fn first<T>(items: [T]) -> T? {
 }
 
 // The last item, or null for an empty array.
-pub fn last<T>(items: [T]) -> T? {
+fn last<T>(items: [T]) -> T? {
     if len(items) == 0 {
         return null;
     }
@@ -143,7 +143,7 @@ pub fn last<T>(items: [T]) -> T? {
 }
 
 // The item at `index`, or null if there is none there.
-pub fn at<T>(items: [T], index: Int) -> T? {
+fn at<T>(items: [T], index: Int) -> T? {
     if index < 0 || index >= len(items) {
         return null;
     }
@@ -152,7 +152,7 @@ pub fn at<T>(items: [T], index: Int) -> T? {
 }
 
 // The first item the function accepts, or null.
-pub fn find<T>(items: [T], wanted: fn(T) -> Bool) -> T? {
+fn find<T>(items: [T], wanted: fn(T) -> Bool) -> T? {
     for item in items {
         if wanted(item) {
             return item;
@@ -163,7 +163,7 @@ pub fn find<T>(items: [T], wanted: fn(T) -> Bool) -> T? {
 }
 
 // The position of the first item the function accepts, or null.
-pub fn findIndex<T>(items: [T], wanted: fn(T) -> Bool) -> Int? {
+fn findIndex<T>(items: [T], wanted: fn(T) -> Bool) -> Int? {
     for i, item in items {
         if wanted(item) {
             return i;
@@ -176,7 +176,7 @@ pub fn findIndex<T>(items: [T], wanted: fn(T) -> Bool) -> Int? {
 // The position of the first item equal to `wanted`, or null. Numbers,
 // texts and booleans are equal when they have the same value; an array or
 // a struct is only equal to itself.
-pub fn indexOf<T>(items: [T], wanted: T) -> Int? {
+fn indexOf<T>(items: [T], wanted: T) -> Int? {
     for i, item in items {
         if item == wanted {
             return i;
@@ -188,12 +188,12 @@ pub fn indexOf<T>(items: [T], wanted: T) -> Int? {
 
 // --- Asking ---
 
-pub fn isEmpty<T>(items: [T]) -> Bool {
+fn isEmpty<T>(items: [T]) -> Bool {
     return len(items) == 0;
 }
 
 // Whether an item is equal to `wanted`; see indexOf.
-pub fn contains<T>(items: [T], wanted: T) -> Bool {
+fn contains<T>(items: [T], wanted: T) -> Bool {
     for item in items {
         if item == wanted {
             return true;
@@ -204,7 +204,7 @@ pub fn contains<T>(items: [T], wanted: T) -> Bool {
 }
 
 // Whether the function accepts at least one item.
-pub fn any<T>(items: [T], wanted: fn(T) -> Bool) -> Bool {
+fn any<T>(items: [T], wanted: fn(T) -> Bool) -> Bool {
     for item in items {
         if wanted(item) {
             return true;
@@ -215,7 +215,7 @@ pub fn any<T>(items: [T], wanted: fn(T) -> Bool) -> Bool {
 }
 
 // Whether the function accepts every item. True for an empty array.
-pub fn all<T>(items: [T], wanted: fn(T) -> Bool) -> Bool {
+fn all<T>(items: [T], wanted: fn(T) -> Bool) -> Bool {
     for item in items {
         if !wanted(item) {
             return false;
@@ -226,7 +226,7 @@ pub fn all<T>(items: [T], wanted: fn(T) -> Bool) -> Bool {
 }
 
 // How many items the function accepts.
-pub fn count<T>(items: [T], wanted: fn(T) -> Bool) -> Int {
+fn count<T>(items: [T], wanted: fn(T) -> Bool) -> Int {
     let n = 0;
 
     for item in items {
@@ -241,23 +241,23 @@ pub fn count<T>(items: [T], wanted: fn(T) -> Bool) -> Int {
 // --- Every item ---
 
 // What the function makes of each item, in the same order.
-pub fn map<T, U>(items: [T], convert: fn(T) -> U) -> [U] {
+fn map<T, U>(items: [T], convert: fn(T) -> U) -> [U] {
     let out: [U] = [];
 
     for item in items {
-        push(out, convert(item));
+        out.push(convert(item));
     }
 
     return out;
 }
 
 // The items the function accepts.
-pub fn filter<T>(items: [T], wanted: fn(T) -> Bool) -> [T] {
+fn filter<T>(items: [T], wanted: fn(T) -> Bool) -> [T] {
     let out: [T] = [];
 
     for item in items {
         if wanted(item) {
-            push(out, item);
+            out.push(item);
         }
     }
 
@@ -266,7 +266,7 @@ pub fn filter<T>(items: [T], wanted: fn(T) -> Bool) -> [T] {
 
 // One value from all the items: starts with `start`, and for each item
 // replaces it by combine(value so far, item).
-pub fn fold<T, A>(items: [T], start: A, combine: fn(A, T) -> A) -> A {
+fn fold<T, A>(items: [T], start: A, combine: fn(A, T) -> A) -> A {
     let result = start;
 
     for item in items {
@@ -277,7 +277,7 @@ pub fn fold<T, A>(items: [T], start: A, combine: fn(A, T) -> A) -> A {
 }
 
 // Calls the function with each item.
-pub fn each<T>(items: [T], action: fn(T) -> Void) {
+fn each<T>(items: [T], action: fn(T) -> Void) {
     for item in items {
         action(item);
     }
@@ -288,7 +288,7 @@ pub fn each<T>(items: [T], action: fn(T) -> Void) {
 // The items in order, given a function that says whether its first
 // argument must come before its second. Items that are equal in that
 // order stay in the order they were in.
-pub fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
+fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
     if len(items) < 2 {
         return copy<T>(items);
     }
@@ -303,21 +303,21 @@ pub fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
 
     while l < len(left) && r < len(right) {
         if before(right[r], left[l]) {
-            push(out, right[r]);
+            out.push(right[r]);
             r++;
         } else {
-            push(out, left[l]);
+            out.push(left[l]);
             l++;
         }
     }
 
     while l < len(left) {
-        push(out, left[l]);
+        out.push(left[l]);
         l++;
     }
 
     while r < len(right) {
-        push(out, right[r]);
+        out.push(right[r]);
         r++;
     }
 
@@ -326,18 +326,18 @@ pub fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
 
 // The items in the order of a number worked out from each, smallest
 // first: sortedBy(people, p -> p.age).
-pub fn sortedBy<T>(items: [T], rank: fn(T) -> Int) -> [T] {
+fn sortedBy<T>(items: [T], rank: fn(T) -> Int) -> [T] {
     return sorted<T>(items, (a, b) -> rank(a) < rank(b));
 }
 
 // The items in the alphabetical order of a text worked out from each.
-pub fn sortedByText<T>(items: [T], name: fn(T) -> String) -> [T] {
+fn sortedByText<T>(items: [T], name: fn(T) -> String) -> [T] {
     return sorted<T>(items, (a, b) -> name(a) < name(b));
 }
 
 // The item a function ranks highest, or null for an empty array. Of
 // several ranked the same, the first.
-pub fn maxBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
+fn maxBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
     let best: T? = null;
     let bestRank = 0;
 
@@ -354,12 +354,12 @@ pub fn maxBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
 }
 
 // The item a function ranks lowest, or null for an empty array.
-pub fn minBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
+fn minBy<T>(items: [T], rank: fn(T) -> Int) -> T? {
     return maxBy<T>(items, item -> -rank(item));
 }
 
 // Changes the array itself: the items at the two positions change places.
-pub fn swap<T>(items: [T], a: Int, b: Int) {
+fn swap<T>(items: [T], a: Int, b: Int) {
     let held = items[a];
     items[a] = items[b];
     items[b] = held;
@@ -377,7 +377,7 @@ pub fn swap<T>(items: [T], a: Int, b: Int) {
 //
 // In an array of optionals an item can itself be null, and then null says
 // nothing about whether there was one: ask isEmpty first.
-pub fn pop<T>(items: [T]) -> T? {
+fn pop<T>(items: [T]) -> T? {
     let count = len(items);
 
     if count == 0 {
@@ -391,7 +391,7 @@ pub fn pop<T>(items: [T]) -> T? {
 
 // Takes the item at `index` out and returns it, the items after it moving
 // down one place. Null, and nothing changed, if there is none there.
-pub fn removeAt<T>(items: [T], index: Int) -> T? {
+fn removeAt<T>(items: [T], index: Int) -> T? {
     if index < 0 || index >= len(items) {
         return null;
     }
@@ -404,19 +404,19 @@ pub fn removeAt<T>(items: [T], index: Int) -> T? {
 // Puts `value` at `index`, the items from there on moving up one place.
 // An index at or past the end puts it at the end; a negative one changes
 // nothing. That is what `inserted` does with the same indexes.
-pub fn insertAt<T>(items: [T], index: Int, value: T) {
+fn insertAt<T>(items: [T], index: Int, value: T) {
     putAt(items, index, value);
 }
 
 // Takes every item out.
-pub fn clear<T>(items: [T]) {
+fn clear<T>(items: [T]) {
     cutAll(items);
 }
 
 // --- Pieces and groups ---
 
 // The first `count` items, or all of them if there are fewer.
-pub fn take<T>(items: [T], count: Int) -> [T] {
+fn take<T>(items: [T], count: Int) -> [T] {
     if count <= 0 {
         return [];
     }
@@ -429,7 +429,7 @@ pub fn take<T>(items: [T], count: Int) -> [T] {
 }
 
 // All but the first `count` items.
-pub fn drop<T>(items: [T], count: Int) -> [T] {
+fn drop<T>(items: [T], count: Int) -> [T] {
     if count <= 0 {
         return copy<T>(items);
     }
@@ -443,7 +443,7 @@ pub fn drop<T>(items: [T], count: Int) -> [T] {
 
 // The items in pieces of `size`, the last one shorter if it does not
 // divide: chunks([1, 2, 3, 4, 5], 2) is [[1, 2], [3, 4], [5]].
-pub fn chunks<T>(items: [T], size: Int) -> [[T]] {
+fn chunks<T>(items: [T], size: Int) -> [[T]] {
     if size <= 0 {
         panic("the size of a chunk must be at least 1, got ${size}");
     }
@@ -458,7 +458,7 @@ pub fn chunks<T>(items: [T], size: Int) -> [[T]] {
             to = len(items);
         }
 
-        push(out, slice<T>(items, from, to));
+        out.push(slice<T>(items, from, to));
         from = to;
     }
 
@@ -471,7 +471,7 @@ pub fn flatten<T>(arrays: [[T]]) -> [T] {
 
     for items in arrays {
         for item in items {
-            push(out, item);
+            out.push(item);
         }
     }
 
@@ -479,12 +479,12 @@ pub fn flatten<T>(arrays: [[T]]) -> [T] {
 }
 
 // Each item turned into several, all in one array.
-pub fn flatMap<T, U>(items: [T], convert: fn(T) -> [U]) -> [U] {
+fn flatMap<T, U>(items: [T], convert: fn(T) -> [U]) -> [U] {
     let out: [U] = [];
 
     for item in items {
         for made in convert(item) {
-            push(out, made);
+            out.push(made);
         }
     }
 
@@ -494,8 +494,8 @@ pub fn flatMap<T, U>(items: [T], convert: fn(T) -> [U]) -> [U] {
 // The items sorted into groups by a text worked out from each. The
 // groups come in the order their first item did.
 //
-//     arrays.groupBy(words, word -> strings.first(word, 1))
-pub fn groupBy<T>(items: [T], name: fn(T) -> String) -> Dict<[T]> {
+//     words.groupBy(word -> word.first(1))
+fn groupBy<T>(items: [T], name: fn(T) -> String) -> Dict<[T]> {
     let groups = dict.empty<[T]>();
 
     for item in items {
@@ -505,7 +505,7 @@ pub fn groupBy<T>(items: [T], name: fn(T) -> String) -> Dict<[T]> {
         if group == null {
             groups.set(key, [item]);
         } else {
-            push(group, item);
+            group.push(item);
         }
     }
 
@@ -513,7 +513,7 @@ pub fn groupBy<T>(items: [T], name: fn(T) -> String) -> Dict<[T]> {
 }
 
 // How many items give each text.
-pub fn countBy<T>(items: [T], name: fn(T) -> String) -> Dict<Int> {
+fn countBy<T>(items: [T], name: fn(T) -> String) -> Dict<Int> {
     let counts = dict.empty<Int>();
 
     for item in items {
@@ -526,7 +526,7 @@ pub fn countBy<T>(items: [T], name: fn(T) -> String) -> Dict<Int> {
 
 // The items without repeats, two items being the same when they give
 // the same text. The first of each is kept.
-pub fn uniqueBy<T>(items: [T], name: fn(T) -> String) -> [T] {
+fn uniqueBy<T>(items: [T], name: fn(T) -> String) -> [T] {
     let seen = dict.empty<Bool>();
     let out: [T] = [];
 
@@ -535,7 +535,7 @@ pub fn uniqueBy<T>(items: [T], name: fn(T) -> String) -> [T] {
 
         if !seen.has(key) {
             seen.set(key, true);
-            push(out, item);
+            out.push(item);
         }
     }
 
@@ -543,22 +543,22 @@ pub fn uniqueBy<T>(items: [T], name: fn(T) -> String) -> [T] {
 }
 
 // The texts without repeats.
-pub fn unique(texts: [String]) -> [String] {
+fn unique(texts: [String]) -> [String] {
     return uniqueBy<String>(texts, text -> text);
 }
 
 // The items a function accepts, and the ones it does not.
 //
-//     let (even, odd) = arrays.partition(numbers, math.isEven);
-pub fn partition<T>(items: [T], wanted: fn(T) -> Bool) -> ([T], [T]) {
+//     let (even, odd) = numbers.partition(n -> n.isEven());
+fn partition<T>(items: [T], wanted: fn(T) -> Bool) -> ([T], [T]) {
     let yes: [T] = [];
     let no: [T] = [];
 
     for item in items {
         if wanted(item) {
-            push(yes, item);
+            yes.push(item);
         } else {
-            push(no, item);
+            no.push(item);
         }
     }
 
@@ -576,7 +576,7 @@ pub fn zip<A, B>(first: [A], second: [B]) -> [(A, B)] {
             break;
         }
 
-        push(out, (item, second[i]));
+        out.push((item, second[i]));
     }
 
     return out;
@@ -588,15 +588,15 @@ pub fn unzip<A, B>(pairs: [(A, B)]) -> ([A], [B]) {
     let second: [B] = [];
 
     for (a, b) in pairs {
-        push(first, a);
-        push(second, b);
+        first.push(a);
+        second.push(b);
     }
 
     return (first, second);
 }
 
 // The sum of a number worked out from each item.
-pub fn sumOf<T>(items: [T], amount: fn(T) -> Int) -> Int {
+fn sumOf<T>(items: [T], amount: fn(T) -> Int) -> Int {
     let total = 0;
 
     for item in items {
@@ -608,7 +608,7 @@ pub fn sumOf<T>(items: [T], amount: fn(T) -> Int) -> Int {
 
 // --- Numbers and texts ---
 
-pub fn sum(numbers: [Int]) -> Int {
+fn sum(numbers: [Int]) -> Int {
     let total = 0;
 
     for n in numbers {
@@ -619,7 +619,7 @@ pub fn sum(numbers: [Int]) -> Int {
 }
 
 // The smallest number, or null for an empty array.
-pub fn smallest(numbers: [Int]) -> Int? {
+fn smallest(numbers: [Int]) -> Int? {
     if len(numbers) == 0 {
         return null;
     }
@@ -636,7 +636,7 @@ pub fn smallest(numbers: [Int]) -> Int? {
 }
 
 // The largest number, or null for an empty array.
-pub fn largest(numbers: [Int]) -> Int? {
+fn largest(numbers: [Int]) -> Int? {
     if len(numbers) == 0 {
         return null;
     }
@@ -653,12 +653,12 @@ pub fn largest(numbers: [Int]) -> Int? {
 }
 
 // The numbers from smallest to largest.
-pub fn sortedNumbers(numbers: [Int]) -> [Int] {
+fn sortedNumbers(numbers: [Int]) -> [Int] {
     return sorted<Int>(numbers, (a, b) -> a < b);
 }
 
 // The texts in alphabetical order.
-pub fn sortedTexts(texts: [String]) -> [String] {
+fn sortedTexts(texts: [String]) -> [String] {
     return sorted<String>(texts, (a, b) -> a < b);
 }
 
@@ -674,13 +674,13 @@ extern fn cutAll(items: Any);
 // --- The same, as methods ---
 //
 // Everything above that works on an array is also a method of arrays:
-// arrays.filter(items, wanted) is items.filter(wanted), and calls follow
+// items.filter(wanted) is items.filter(wanted), and calls follow
 // one another: orders.filter(o -> o.paid).map(o -> o.total).sum().
 
 impl<T> [T] {
     // Adds an item at the end.
     pub fn push(value: T) {
-        push(self, value);
+        __push(self, value);
     }
 
     // The items of this array and of another, in pairs, as many as the
@@ -885,7 +885,7 @@ impl<T> [T] {
     // The items sorted into groups by a text worked out from each. The
     // groups come in the order their first item did.
     //
-    //     arrays.groupBy(words, word -> strings.first(word, 1))
+    //     words.groupBy(word -> word.first(1))
     pub fn groupBy(name: fn(T) -> String) -> Dict<[T]> {
         return groupBy(self, name);
     }
@@ -903,7 +903,7 @@ impl<T> [T] {
 
     // The items a function accepts, and the ones it does not.
     //
-    //     let (even, odd) = arrays.partition(numbers, math.isEven);
+    //     let (even, odd) = numbers.partition(n -> n.isEven());
     pub fn partition(wanted: fn(T) -> Bool) -> ([T], [T]) {
         return partition(self, wanted);
     }

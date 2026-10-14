@@ -17,7 +17,7 @@ impl Item {
     }
 
     fn line() -> String {
-        return "${strings.padRight(self.name, 8)} ${self.count} x ${self.price} = ${strings.padLeft("${self.total()}", 5)}";
+        return "${self.name.padRight(8)} ${self.count} x ${self.price} = ${"${self.total()}".padLeft(5)}";
     }
 }
 
@@ -44,20 +44,18 @@ fn main() -> Int {
     ];
 
     println(HEADER);
-    println(strings.repeat("-", strings.len(HEADER)));
+    println("-".repeat(HEADER.len()));
 
     for i, item in items {
         println("${i + 1}. ${item.line()}");
     }
 
-    let total = arrays.sum(
-        arrays.map(items, fn(item: Item) -> Int {
-            return item.total();
-        }),
-    );
+    let total = items.map(fn(item: Item) -> Int {
+        return item.total();
+    }).sum();
 
-    println("total: ${total} ${CURRENCY} for ${arrays.len(items)} kinds of thing");
-    println("average: ${total / arrays.len(items)}, most expensive: ${arrays.largest(arrays.map(items, fn(item: Item) -> Int { return item.price; })) ?? 0}");
+    println("total: ${total} ${CURRENCY} for ${items.len()} kinds of thing");
+    println("average: ${total / items.len()}, most expensive: ${items.map(fn(item: Item) -> Int { return item.price; }).largest() ?? 0}");
 
     for status in [Status.Paid, Status.Due(total - 20)] {
         println("status: ${status} -> ${describe(status)}");
@@ -65,6 +63,6 @@ fn main() -> Int {
 
     // What is not an expression: a dollar alone, braces alone, and an escaped \${
     println("cost: $${total}, a set {a, b}, written as \${total}");
-    println("nested: ${"[${strings.upper("${items[0].name}")}]"}, values: ${items[0]}");
+    println("nested: ${"[${"${items[0].name}".upper()}]"}, values: ${items[0]}");
     return 0;
 }

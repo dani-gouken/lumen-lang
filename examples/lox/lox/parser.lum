@@ -41,7 +41,7 @@ pub fn parse(tokens: [Token], reporter: Reporter) -> Program {
         let statement = parser.declaration();
 
         if statement != null {
-            push(statements, statement);
+            statements.push(statement);
         }
     }
 
@@ -189,7 +189,7 @@ impl Parser {
         let methods: [Function] = [];
 
         while !self.check(Kind.RightBrace) && !self.atEnd() {
-            push(methods, self.function("method")?);
+            methods.push(self.function("method")?);
         }
 
         self.expect(Kind.RightBrace, "Expect '}' after class body.")?;
@@ -206,14 +206,14 @@ impl Parser {
             let more = true;
 
             while more {
-                if arrays.len(params) >= MAX_ARGUMENTS {
+                if params.len() >= MAX_ARGUMENTS {
                     self.reporter.atToken(
                         self.peek(),
                         "Can't have more than ${MAX_ARGUMENTS} parameters.",
                     );
                 }
 
-                push(params, self.expect(Kind.Identifier, "Expect parameter name.")?);
+                params.push(self.expect(Kind.Identifier, "Expect parameter name.")?);
                 more = self.took(Kind.Comma);
             }
         }
@@ -364,7 +364,7 @@ impl Parser {
             let statement = self.declaration();
 
             if statement != null {
-                push(statements, statement);
+                statements.push(statement);
             }
         }
 
@@ -502,14 +502,14 @@ impl Parser {
             let more = true;
 
             while more {
-                if arrays.len(arguments) >= MAX_ARGUMENTS {
+                if arguments.len() >= MAX_ARGUMENTS {
                     self.reporter.atToken(
                         self.peek(),
                         "Can't have more than ${MAX_ARGUMENTS} arguments.",
                     );
                 }
 
-                push(arguments, self.expression()?);
+                arguments.push(self.expression()?);
                 more = self.took(Kind.Comma);
             }
         }

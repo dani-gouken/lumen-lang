@@ -76,9 +76,9 @@ func TestFolders(t *testing.T) {
 		println(about.name, about.size, about.kind == Kind.File, about.modified > 0);
 
 		// Every file, however deep
-		let relative = fn(file: String) -> String { return strings.from(file, strings.len(root) + 1); };
-		println(arrays.map(fs.walk(root).expect("a walk"), relative));
-		println(arrays.map(fs.find(root, "*.txt").expect("a search"), relative), arrays.len(fs.find(root, "*.go").expect("a search")));
+		let relative = fn(file: String) -> String { return file.from(root.len() + 1); };
+		println(fs.walk(root).expect("a walk").map(relative));
+		println(fs.find(root, "*.txt").expect("a search").map(relative), fs.find(root, "*.go").expect("a search").len());
 
 		let copied = fs.copy(path.inside(deep, "a.txt"), path.inside(root, "c.txt")).expect("a copy");
 		println(path.base(copied), io.readFile(copied).orElse("?"));
@@ -90,7 +90,7 @@ func TestFolders(t *testing.T) {
 			case Result.Ok(_): { println("?"); }
 			case Result.Err(error): {
 				println(error.kind, error.operation, path.base(error.path), error.message);
-				println(error.kind == ErrorKind.NotFound, arrays.len(error.stack), error.stack[0].function);
+				println(error.kind == ErrorKind.NotFound, error.stack.len(), error.stack[0].function);
 			}
 		}
 		let problems = [
@@ -103,12 +103,12 @@ func TestFolders(t *testing.T) {
 			fs.makeDir(path.inside(moved, "inside")).reason(),
 		];
 		for problem in problems {
-			if problem != null { println(problem.operation, problem.kind, path.base(problem.path), arrays.len(problem.stack), problem.stack[0].function); }
+			if problem != null { println(problem.operation, problem.kind, path.base(problem.path), problem.stack.len(), problem.stack[0].function); }
 		}
 
 		println(fs.removeAll(path.inside(root, "x")).isOk(), fs.isDir(deep), fs.removeAll(path.inside(root, "x")).isOk());
 		let temp = fs.makeTempDir("lumen-test-").expect("a folder");
-		println(fs.isDir(temp), strings.startsWith(path.base(temp), "lumen-test-"), fs.removeAll(temp).isOk(), fs.isDir(temp));
+		println(fs.isDir(temp), path.base(temp).startsWith("lumen-test-"), fs.removeAll(temp).isOk(), fs.isDir(temp));
 		println(fs.isDir(fs.currentDir()), fs.isDir(fs.tempDir()));
 	`,
 		"true false true",
@@ -155,7 +155,7 @@ func TestOs(t *testing.T) {
 		// A program that cannot be started is the error; one that fails is not
 		match os.run("no-such-program-of-lumen", ["x"]) {
 			case Result.Ok(_): { println("?"); }
-			case Result.Err(error): { println(error.describe(), error.kind == ErrorKind.NotFound, arrays.len(error.stack)); }
+			case Result.Err(error): { println(error.describe(), error.kind == ErrorKind.NotFound, error.stack.len()); }
 		}
 		println(os.runWithInput("no-such-program-of-lumen", [], "x").isErr());
 	`,
@@ -209,7 +209,7 @@ func TestJson(t *testing.T) {
 		println(doc.find("x.y.1"), doc.find("x.y.2"), doc.find("x.y.9"), doc.find("tags.0"), doc.find("name.first"), doc.find("x.nope.y"));
 		println(doc.get("name"), doc.at(0), (doc.find("tags") ?? Json.Null).at(1));
 		let tags = option.then(doc.get("tags"), json.itemsOf) ?? [];
-		println(arrays.len(tags), arrays.map(tags, fn(tag: Json) -> String { return tag.text() ?? "?"; }));
+		println(tags.len(), tags.map(fn(tag: Json) -> String { return tag.text() ?? "?"; }));
 		let fields = doc.fields();
 		if fields != null { println(fields.keys(), doc.isNull(), (doc.find("x.y.2") ?? Json.Bool(false)).isNull()); }
 
@@ -225,8 +225,8 @@ func TestJson(t *testing.T) {
 				case Json.Null: { return "nothing"; }
 				case Json.Bool(b): { return "a boolean"; }
 				case Json.Number(x): { return "a number"; }
-				case Json.String(s): { return "a text of ${arrays.len(json.texts([s]).items() ?? [])}"; }
-				case Json.Array(items): { return "${arrays.len(items)} items"; }
+				case Json.String(s): { return "a text of ${(json.texts([s]).items() ?? []).len()}"; }
+				case Json.Array(items): { return "${items.len()} items"; }
 				case Json.Object(fields): { return "${fields.size()} fields"; }
 			}
 		};
@@ -340,24 +340,24 @@ func TestRegex(t *testing.T) {
 			println(found.named("year"), found.named("month"), found.named(""), found.group(2), found.group(3), found.group(-1));
 		}
 		println(date.find("no date here"), date.matches("on 2026-10-13"), date.matches("2026-1-1"));
-		println(date.all("2026-10-13 and 2027-01-02"), arrays.len(date.findAll("")), date.names);
+		println(date.all("2026-10-13 and 2027-01-02"), date.findAll("").len(), date.names);
 		println(date.replace("on 2026-10-13", "$3/$2/\${year}"), date.replace("nothing", "x"));
 
 		let numbers = regex.must("\\d+");
-		println(numbers.replaceWith("3 apples, 12 pears", fn(m: Match) -> String { return toString((strings.parseInt(m.text) ?? 0) * 2); }));
+		println(numbers.replaceWith("3 apples, 12 pears", fn(m: Match) -> String { return toString((m.text.parseInt() ?? 0) * 2); }));
 		println(numbers.replaceWith("none", fn(m: Match) -> String { return "?"; }), numbers.replaceWith("7", fn(m: Match) -> String { return "<${m.start}-${m.end}>"; }));
 		println(regex.must("\\s*,\\s*").split("a , b,c"), regex.must(",").split(""), regex.must("x").split("abc"));
 		println(regex.escape("1+1?"), regex.must(regex.escape("1+1?")).matches("is 1+1?"), regex.must("^1+1?$").matches("1+1?"));
 
 		// A group that took no part, and a pattern without groups
 		let either = regex.must("(a)|(b)").find("b");
-		if either != null { println(either.groups, arrays.len(numbers.findAll("42")[0].groups)); }
+		if either != null { println(either.groups, numbers.findAll("42")[0].groups.len()); }
 		// Case insensitive, across accents (\\w and \\b only know the letters of English)
 		println(regex.must("(?i)é[a-zé]+").all("Été, étude et Ecole"));
 
 		match regex.compile("(a") {
 			case Result.Ok(_): { println("?"); }
-			case Result.Err(error): { println(error.pattern, "/", error.message, "/", strings.startsWith(error.describe(), "'(a' is not a regular expression")); }
+			case Result.Err(error): { println(error.pattern, "/", error.message, "/", error.describe().startsWith("'(a' is not a regular expression")); }
 		}
 		println(regex.compile("[a-z]+").isOk(), regex.compile("a{2,1}").isErr(), regex.compile("(?<=a)b").isErr());
 	`,
@@ -390,10 +390,10 @@ func TestCsv(t *testing.T) {
 		println(people.header, people.size(), people.column("name"), people.column("nope"));
 		println(people.cell(1, "age"), people.cell(1, "city") == "New\nYork", people.cell(2, "city") == "", people.cell(9, "age"), people.cell(0, "nope"), people.cell(-1, "age"));
 		let records = people.records();
-		println(arrays.len(records), records[0].get("age"), records[1].keys());
+		println(records.len(), records[0].get("age"), records[1].keys());
 
 		// The rows a function accepts, and the table back as text
-		let older = people.where(fn(row: Dict<String>) -> Bool { return (strings.parseInt(row.get("age") ?? "") ?? 0) > 40; });
+		let older = people.where(fn(row: Dict<String>) -> Bool { return ((row.get("age") ?? "").parseInt() ?? 0) > 40; });
 		println(older.size(), older.column("name"));
 		print(older.write());
 		println(csv.table(people.write()).expect("what was written").rows == people.rows, csv.table(people.write()).expect("x").write() == people.write());
@@ -406,7 +406,7 @@ func TestCsv(t *testing.T) {
 		for error in wrong { if error != null { println(error.line, error.column, error.describe()); } }
 		match csv.parse("a,b\nc,\"d\n") {
 			case Result.Ok(rows): { println("?", rows); }
-			case Result.Err(error): { println(error.line, strings.contains(error.describe(), "line 2, column")); }
+			case Result.Err(error): { println(error.line, error.describe().contains("line 2, column")); }
 		}
 	`,
 		`["name", "age", "city"] 3 ["ada", "grace, h", "alan"] null`,
@@ -446,7 +446,7 @@ func TestEncodingAndHash(t *testing.T) {
 		println(hash.sha256("abc"));
 		println(hash.sha1("abc"), hash.md5("abc"), hash.crc32("abc"));
 		println(hash.hmacSha256("Jefe", "what do ya want for nothing?"));
-		println(hash.matches("abc", hash.sha256("abc")), hash.matches("abd", hash.sha256("abc")), strings.len(hash.sha256("")), hash.sha256("a") == hash.sha256("a"));
+		println(hash.matches("abc", hash.sha256("abc")), hash.matches("abd", hash.sha256("abc")), hash.sha256("").len(), hash.sha256("a") == hash.sha256("a"));
 	`,
 		"aMOpbGxv héllo null true",
 		"Pz8-Pg ??>> 6869 hi null",
@@ -541,7 +541,7 @@ func TestDates(t *testing.T) {
 
 		println(time.date(2026, 1, 32).iso(), time.date(2026, 13, 1).iso(), time.date(2026, 3, 0).iso());
 		println(time.daysIn(2024, 2), time.daysIn(2026, 2), time.daysIn(2026, 12), time.isLeapYear(2000), time.isLeapYear(1900), time.isLeapYear(2024), time.monthName(1), time.monthName(12));
-		println(arrays.map([0, 1, 2, 3, 4, 5, 6], fn(n: Int) -> String { return time.date(2026, 10, 11).plusDays(n).weekday.name(); }));
+		println([0, 1, 2, 3, 4, 5, 6].map(fn(n: Int) -> String { return time.date(2026, 10, 11).plusDays(n).weekday.name(); }));
 		println(Weekday.Saturday.isWeekend(), Weekday.Sunday.isWeekend(), Weekday.Monday.isWeekend(), time.utc(0).isoTime(), time.utc(-1).format("YYYY-MM-DD HH:mm:ss.SSS"));
 
 		// Reading
@@ -606,14 +606,14 @@ func TestSet(t *testing.T) {
 			println(numbers.items(), numbers.has(4), numbers.has(5), numbers.filter(fn(n: Int) -> Bool { return n > 0; }).items());
 			let points = set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; });
 			println(points.add(Point { x: 1, y: 2 }), points.add(Point { x: 1, y: 2 }), points.add(Point { x: 2, y: 1 }), points.has(Point { x: 2, y: 1 }), points.size());
-			println(arrays.map(points.items(), fn(p: Point) -> Int { return p.x * 10 + p.y; }));
+			println(points.items().map(fn(p: Point) -> Int { return p.x * 10 + p.y; }));
 
 			// The primes below 50, by crossing out
 			let crossed = set.numbers();
 			let primes: [Int] = [];
 			for n in arrays.range(2, 50) {
 				if crossed.has(n) { continue; }
-				push(primes, n);
+				primes.push(n);
 				let multiple = n * n;
 				while multiple < 50 { crossed.add(multiple); multiple += n; }
 			}
@@ -661,42 +661,42 @@ func TestMoreArraysAndDict(t *testing.T) {
 			let people = [Person { name: "grace", age: 45 }, Person { name: "ada", age: 36 }, Person { name: "alan", age: 41 }, Person { name: "bob", age: 36 }];
 			let age = fn(p: Person) -> Int { return p.age; };
 			let name = fn(p: Person) -> String { return p.name; };
-			println(arrays.map(arrays.sortedBy(people, age), name), arrays.map(arrays.sortedByText(people, name), name));
-			println(option.map(arrays.maxBy(people, age), name), option.map(arrays.minBy(people, age), name), arrays.maxBy([], age), arrays.sumOf(people, age), arrays.sumOf([], age));
-			println(arrays.take([1, 2, 3], 2), arrays.take([1], 5), arrays.take([1], 0), arrays.drop([1, 2, 3], 2), arrays.drop([1], 5), arrays.drop([1, 2], -1));
-			println(arrays.chunks([1, 2, 3, 4, 5], 2), arrays.chunks([1, 2], 5), arrays.len(arrays.chunks(arrays.take([1], 0), 3)), arrays.flatten([[1], [], [2, 3]]), arrays.flatMap(["a b", "", "c"], strings.words));
+			println(people.sortedBy(age).map(name), people.sortedByText(name).map(name));
+			println(option.map(people.maxBy(age), name), option.map(people.minBy(age), name), [].maxBy(age), people.sumOf(age), [].sumOf(age));
+			println([1, 2, 3].take(2), [1].take(5), [1].take(0), [1, 2, 3].drop(2), [1].drop(5), [1, 2].drop(-1));
+			println([1, 2, 3, 4, 5].chunks(2), [1, 2].chunks(5), [1].take(0).chunks(3).len(), arrays.flatten([[1], [], [2, 3]]), ["a b", "", "c"].flatMap(text -> text.words()));
 
-			let groups = arrays.groupBy(people, fn(p: Person) -> String { return strings.first(p.name, 1); });
-			println(groups.keys(), arrays.map(groups.get("a") ?? [], name), arrays.len(groups.get("z") ?? []));
-			let counts = arrays.countBy(strings.words("to be or not to be"), fn(word: String) -> String { return word; });
+			let groups = people.groupBy(fn(p: Person) -> String { return p.name.first(1); });
+			println(groups.keys(), (groups.get("a") ?? []).map(name), (groups.get("z") ?? []).len());
+			let counts = "to be or not to be".words().countBy(fn(word: String) -> String { return word; });
 			println(counts.keys(), counts.values(), counts.sortedKeys());
-			println(arrays.unique(["b", "a", "b", "a", "c"]), arrays.map(arrays.uniqueBy(people, fn(p: Person) -> String { return toString(p.age); }), name));
-			println(arrays.partition([1, 2, 3, 4, 5], fn(n: Int) -> Bool { return n % 2 == 0; }), arrays.partition(arrays.take([1], 0), fn(n: Int) -> Bool { return true; }));
+			println(["b", "a", "b", "a", "c"].unique(), people.uniqueBy(fn(p: Person) -> String { return toString(p.age); }).map(name));
+			println([1, 2, 3, 4, 5].partition(fn(n: Int) -> Bool { return n % 2 == 0; }), [1].take(0).partition(fn(n: Int) -> Bool { return true; }));
 
 			// Side by side, and apart again
-			let names = arrays.map(people, name);
-			let (even, odd) = arrays.partition([1, 2, 3, 4, 5], fn(n: Int) -> Bool { return n % 2 == 0; });
+			let names = people.map(name);
+			let (even, odd) = [1, 2, 3, 4, 5].partition(fn(n: Int) -> Bool { return n % 2 == 0; });
 			let (letters, digits) = arrays.unzip([("a", 1), ("b", 2)]);
-			println(arrays.take(arrays.zip(arrays.sortedTexts(names), [36, 36]), 2), arrays.zip(names, arrays.take([1], 0)), (letters, digits), arrays.unzip(arrays.zip(arrays.take(names, 0), [1])));
+			println(arrays.zip(names.sortedTexts(), [36, 36]).take(2), arrays.zip(names, [1].take(0)), (letters, digits), arrays.unzip(arrays.zip(names.take(0), [1])));
 
 			// The originals are left alone
-			println(arrays.map(people, name));
+			println(people.map(name));
 
 			let tally = dict.empty<Int>();
 			for word in ["x", "y", "x"] { tally.update(word, 0, fn(n: Int) -> Int { return n + 1; }); }
 			tally.set("a", 0);
 			println(tally.getOr("x", 0), tally.getOr("zz", -1), tally.sortedKeys(), tally.keys(), dict.empty<Int>().sortedKeys());
 			let shown: [String] = [];
-			for (word, count) in tally.entries() { push(shown, "${word}=${count}"); }
-			println(tally.entries(), arrays.len(tally.entries()), strings.join(shown, " "));
-			println(strings.cut("port=8080", "="), strings.cut("a=b=c", "="), strings.cut("none", "="), strings.cut("=x", "="), strings.cut("x=", "="),
+			for (word, count) in tally.entries() { shown.push("${word}=${count}"); }
+			println(tally.entries(), tally.entries().len(), shown.join(" "));
+			println("port=8080".cut("="), "a=b=c".cut("="), "none".cut("="), "=x".cut("="), "x=".cut("="),
 				regex.must("(\\d+)-(\\d+)").capture("on 2026-10"), regex.must("x").capture("abc"));
 
 			random.seed(7);
 			let first = random.uuid();
 			let second = random.uuid();
 			random.seed(7);
-			println(first == random.uuid(), first == second, strings.len(first), strings.count(first, "-"), strings.substring(first, 14, 15));
+			println(first == random.uuid(), first == second, first.len(), first.count("-"), first.substring(14, 15));
 			return 0;
 		}`
 	errs := errors.NewHandler()
@@ -728,7 +728,7 @@ true false 36 4 4
 	if out.String() != want {
 		t.Errorf("unexpected output:\n%s\nwant:\n%s", out.String(), want)
 	}
-	expectFailure(t, "import std.arrays;", `arrays.chunks([1], 0);`, "the size of a chunk must be at least 1, got 0")
+	expectFailure(t, "import std.arrays;", `[1].chunks(0);`, "the size of a chunk must be at least 1, got 0")
 }
 
 // serve runs a Lumen program that serves requests and, next to it, a
@@ -805,7 +805,7 @@ func TestHttpServer(t *testing.T) {
 				return http.text("hello, ${request.params.get("name") ?? "you"} (${request.query.get("q") ?? "-"}) ${request.header("x-token") ?? "?"}");
 			})
 			.get("/users/:id/posts/:post", fn(request: Request) -> Response {
-				return http.text(strings.join(request.params.keys(), ",") + " " + strings.join(request.params.values(), ","));
+				return http.text(request.params.keys().join(",") + " " + request.params.values().join(","));
 			})
 			.post("/echo", fn(request: Request) -> Response {
 				let n = option.then(option.then(request.json().value(), fn(document: Json) -> Json? { return document.find("n"); }), json.intOf) ?? -1;
@@ -957,8 +957,8 @@ func TestTestModule(t *testing.T) {
 			.test("fails", fn() { let f = test.fails(Kind.Bounds, fn() { let items = [1]; println(items[4]); }); test.contains(f.message, "out of bounds"); })
 			.test("fails not", fn() { test.fails(Kind.Bounds, fn() { panic("x"); }); })
 			.test("fails nothing", fn() { test.fails(Kind.Panic, fn() { }); })
-			.test("present", fn() { test.equal(test.present(strings.parseInt("4"), "a number"), 4); test.absent(strings.parseInt("x"), "number"); })
-			.test("absent", fn() { test.present(strings.parseInt("x"), "a number"); })
+			.test("present", fn() { test.equal(test.present("4".parseInt(), "a number"), 4); test.absent("x".parseInt(), "number"); })
+			.test("absent", fn() { test.present("x".parseInt(), "a number"); })
 			.test("near", fn() { test.near(1.0, 2.0, 0.5); })
 			.test("own", fn() { test.fail("my own reason"); })
 			.test("truth", fn() { test.isTrue(2 < 1, "two below one"); });
@@ -1039,11 +1039,11 @@ func TestLibraryUnderMemoryPressure(t *testing.T) {
 			let rows: [String] = [];
 			let fields: [String] = [];
 			for i in arrays.range(0, 300) {
-				push(rows, "row${i},\"value, ${i}\",${i * 7}");
-				push(fields, "\"key${i}\": [${i}, \"text ${i}\", {\"n\": ${i}}]");
+				rows.push("row${i},\"value, ${i}\",${i * 7}");
+				fields.push("\"key${i}\": [${i}, \"text ${i}\", {\"n\": ${i}}]");
 			}
-			let table = strings.join(rows, "\n");
-			let document = "{" + strings.join(fields, ", ") + "}";
+			let table = rows.join("\n");
+			let document = "{" + fields.join(", ") + "}";
 			let numbers = regex.must("(\\d+),\"value, (\\d+)\",(\\d+)");
 
 			let total = 0;
@@ -1056,7 +1056,7 @@ func TestLibraryUnderMemoryPressure(t *testing.T) {
 					if parsed[i][1] != "value, ${i}" || found[i].groups[2] != toString(i * 7) { panic("row ${i} of round ${round} is wrong"); }
 					if option.then(tree.find("key${i}.2.n"), json.intOf) != i || option.then(tree.find("key${i}.1"), json.textOf) != "text ${i}" { panic("key ${i} of round ${round} is wrong"); }
 				}
-				total += arrays.len(parsed) + arrays.len(found) + (tree.fields() ?? dict.empty<Json>()).size() + arrays.len(bytes) / arrays.len(bytes);
+				total += parsed.len() + found.len() + (tree.fields() ?? dict.empty<Json>()).size() + bytes.len() / bytes.len();
 			}
 			println(total);
 			return 0;
@@ -1096,8 +1096,8 @@ func TestProgramArguments(t *testing.T) {
 		import std.arrays;
 		fn main() -> Int {
 			let args = os.args();
-			let numbers = arrays.map(io.readFileLines(path.inside(args[0], args[1])).expect("the file"), fn(line: String) -> Int { return strings.parseInt(line) ?? 0; });
-			println(arrays.len(args), arrays.sum(numbers));
+			let numbers = io.readFileLines(path.inside(args[0], args[1])).expect("the file").map(fn(line: String) -> Int { return line.parseInt() ?? 0; });
+			println(args.len(), numbers.sum());
 			return 0;
 		}`
 	errs := errors.NewHandler()
@@ -1147,14 +1147,14 @@ func TestOps(t *testing.T) {
 			// For anything that implements them
 			let hand = [Card { rank: 9, suit: "h" }, Card { rank: 2, suit: "s" }, Card { rank: 9, suit: "c" }, Card { rank: 14, suit: "d" }];
 			println(ops.join(ops.sorted(hand), " "), ops.largest(hand), ops.smallest(hand), ops.max(hand[0], hand[2]), ops.min(hand[0], hand[2]));
-			println(ops.sorted([3, 1, 2]), ops.sorted(["pear", "fig", "apple"]), ops.sorted([2.5, 0.5]), ops.sorted(arrays.take([1], 0)), ops.sorted([7]));
-			println(ops.largest([3, 9, 4]), ops.smallest(["b", "a"]), ops.largest(arrays.take([1], 0)), ops.max(1, 1), ops.min("b", "a"), ops.max(1.5, 2.5));
+			println(ops.sorted([3, 1, 2]), ops.sorted(["pear", "fig", "apple"]), ops.sorted([2.5, 0.5]), ops.sorted([1].take(0)), ops.sorted([7]));
+			println(ops.largest([3, 9, 4]), ops.smallest(["b", "a"]), ops.largest([1].take(0)), ops.max(1, 1), ops.min("b", "a"), ops.max(1.5, 2.5));
 			println(ops.contains(hand, Card { rank: 2, suit: "s" }), ops.contains(hand, Card { rank: 2, suit: "h" }), ops.indexOf(hand, Card { rank: 9, suit: "c" }), ops.indexOf([1, 2], 3), ops.contains(["a"], "a"));
-			println(ops.same(hand, hand), ops.same([1, 2], [1, 2]), ops.same([1, 2], [2, 1]), ops.same([1], [1, 2]), ops.same(arrays.take([1], 0), arrays.take([1], 0)));
-			println(ops.join(hand, ", "), ops.join([1, 2], "+"), ops.join(arrays.take([1], 0), ","), ops.join([true], ","));
+			println(ops.same(hand, hand), ops.same([1, 2], [1, 2]), ops.same([1, 2], [2, 1]), ops.same([1], [1, 2]), ops.same([1].take(0), [1].take(0)));
+			println(ops.join(hand, ", "), ops.join([1, 2], "+"), ops.join([1].take(0), ","), ops.join([true], ","));
 
 			// Sorting keeps what is equal in the order it was in
-			let ties = arrays.map(ops.sorted([Card { rank: 5, suit: "x" }, Card { rank: 1, suit: "x" }, Card { rank: 5, suit: "x" }]), fn(c: Card) -> Int { return c.rank; });
+			let ties = ops.sorted([Card { rank: 5, suit: "x" }, Card { rank: 1, suit: "x" }, Card { rank: 5, suit: "x" }]).map(fn(c: Card) -> Int { return c.rank; });
 			println(ties, hand[0] < hand[3], hand[0] == Card { rank: 9, suit: "h" }, hand[0] >= hand[2]);
 
 			// What the library itself implements
@@ -1164,9 +1164,9 @@ func TestOps(t *testing.T) {
 			ages["x"] = 1;
 			let seen = set.of(["p", "q"]);
 			let walked: [String] = [];
-			for name in names { push(walked, name); }
-			for key in ages { push(walked, key); }
-			for item in seen { push(walked, item); }
+			for name in names { walked.push(name); }
+			for key in ages { walked.push(key); }
+			for item in seen { walked.push(item); }
 			println(walked, names[1], ages["x"], ages["y"], seen == set.of(["q", "p"]), json.ints([1]) == json.ints([1]), json.ints([1]) != json.texts(["1"]));
 
 			// A check that two values are equal uses what the type says

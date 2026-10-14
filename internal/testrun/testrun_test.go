@@ -214,7 +214,7 @@ impl Worth for Coin {
 struct Basket<T: Worth> { items: [T]; }
 
 impl<T: Worth> Basket<T> {
-    fn total() -> Int { return arrays.fold(self.items, 0, (sum, item) -> sum + item.worth()); }
+    fn total() -> Int { return self.items.fold(0, (sum, item) -> sum + item.worth()); }
 }
 
 fn basket() -> Basket<Coin> {
@@ -244,7 +244,7 @@ fn testItSaysSo() {
 }
 
 fn testTheLastOneStillRuns() {
-    test.same(arrays.map(basket().items, coin -> coin.worth()), [1, 20, 1]);
+    test.same(basket().items.map(coin -> coin.worth()), [1, 20, 1]);
 }
 `
 	tests, hasMain := testrun.Tests(src)

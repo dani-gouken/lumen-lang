@@ -242,7 +242,7 @@ func (vm *VM) registerBuiltins() {
 	})
 
 	// push function: appends a value to an array
-	vm.RegisterTypedExtern("push", "fn(any,any)->void", func(vm *VM, args []Value) (Value, error) {
+	vm.RegisterTypedExtern("__push", "fn(any,any)->void", func(vm *VM, args []Value) (Value, error) {
 		if len(args) != 2 {
 			return NewNull(), fmt.Errorf("push expects 2 arguments, got %d", len(args))
 		}

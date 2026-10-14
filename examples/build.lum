@@ -115,7 +115,7 @@ impl Build {
             let needs = self.targets.get(need);
 
             if needs != null {
-                push(needed, self.task(needs));
+                needed.push(self.task(needs));
             }
         }
 
@@ -225,7 +225,7 @@ fn report(title: String, targets: [Target], wanted: [String], workers: Int) {
         }
 
         case Result.Ok(outcomes): {
-            let built = arrays.count(outcomes.values(), outcome -> outcome.isBuilt());
+            let built = outcomes.values().count(outcome -> outcome.isBuilt());
             println("  ${built} of ${outcomes.size()} built");
         }
     }
@@ -246,8 +246,7 @@ fn main() -> Int {
     report("build", app, ["app"], 1);
 
     // One target that fails: what needs it is skipped, the rest is built
-    let flawed = arrays.map(
-        app,
+    let flawed = app.map(
         target -> Target {
             name: target.name,
             needs: target.needs,

@@ -1,7 +1,7 @@
-[ERROR] E2010: cannot use type string as argument of type float
-stdlib_misuse.lum:8:26
+[ERROR] E2015: a text has no method 'sqrt'
+stdlib_misuse.lum:8:20
 [ERROR] E2001: cannot assign type int? to int
-stdlib_misuse.lum:9:26
+stdlib_misuse.lum:9:27
 [ERROR] E2010: cannot use type string as argument of type int
 stdlib_misuse.lum:11:21
 [ERROR] E2017: operator + cannot be applied to int?: the value may be null

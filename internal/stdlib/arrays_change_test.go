@@ -11,34 +11,34 @@ import (
 func TestArraysPop(t *testing.T) {
 	expect(t, "import std.arrays;", `
 		let xs = [1, 2, 3];
-		println(arrays.pop(xs), xs, arrays.len(xs));
-		println(arrays.pop(xs), arrays.pop(xs), xs, arrays.isEmpty(xs));
+		println(xs.pop(), xs, xs.len());
+		println(xs.pop(), xs.pop(), xs, xs.isEmpty());
 
 		// An empty array gives null, as often as it is asked, and is still
 		// an array to push onto
-		println(arrays.pop(xs), arrays.pop(xs), xs);
-		push(xs, 7);
+		println(xs.pop(), xs.pop(), xs);
+		xs.push(7);
 		println(xs);
-		println(arrays.pop(xs), arrays.pop(xs));
+		println(xs.pop(), xs.pop());
 
 		// An array that never held anything
 		let none: [String] = [];
-		println(arrays.pop(none), arrays.pop<Int>([]), arrays.len(none));
+		println(none.pop(), [].pop(), none.len());
 
 		// What comes out has the type of the items: a number to add to
 		let total = 0;
 		let numbers = arrays.range(1, 101);
-		while !arrays.isEmpty(numbers) { total += arrays.pop(numbers) ?? 0; }
+		while !numbers.isEmpty() { total += numbers.pop() ?? 0; }
 		println(total, numbers);
 
 		// push and pop in turns: the array is a stack
 		let stack: [String] = [];
 		for word in ["a", "b", "c", "d"] {
-			push(stack, word);
-			if word == "b" { println(arrays.pop(stack)); }
+			stack.push(word);
+			if word == "b" { println(stack.pop()); }
 		}
 		println(stack);
-		println(arrays.last(stack), arrays.pop(stack), arrays.last(stack), stack);
+		println(stack.last(), stack.pop(), stack.last(), stack);
 	`,
 		"3 [1, 2] 2",
 		"2 1 [] true",
@@ -56,29 +56,29 @@ func TestArraysPop(t *testing.T) {
 func TestArraysRemoveAt(t *testing.T) {
 	expect(t, "import std.arrays;", `
 		let xs = ["a", "b", "c", "d", "e"];
-		println(arrays.removeAt(xs, 0), xs);
-		println(arrays.removeAt(xs, 1), xs);
-		println(arrays.removeAt(xs, 2), xs);
+		println(xs.removeAt(0), xs);
+		println(xs.removeAt(1), xs);
+		println(xs.removeAt(2), xs);
 
 		// Where there is no item: null, and nothing changes
-		println(arrays.removeAt(xs, 2), arrays.removeAt(xs, -1), arrays.removeAt(xs, 99), arrays.removeAt(xs, -99), xs);
+		println(xs.removeAt(2), xs.removeAt(-1), xs.removeAt(99), xs.removeAt(-99), xs);
 
-		println(arrays.removeAt(xs, 0), arrays.removeAt(xs, 0), arrays.removeAt(xs, 0), xs);
+		println(xs.removeAt(0), xs.removeAt(0), xs.removeAt(0), xs);
 		let none: [Int] = [];
-		println(arrays.removeAt(none, 0), none);
+		println(none.removeAt(0), none);
 
 		// The items after the one removed move down, in the same order
 		let numbers = arrays.range(0, 10);
-		arrays.removeAt(numbers, 3);
-		arrays.removeAt(numbers, 3);
-		println(numbers, numbers[3], arrays.len(numbers), arrays.indexOf(numbers, 9));
+		numbers.removeAt(3);
+		numbers.removeAt(3);
+		println(numbers, numbers[3], numbers.len(), numbers.indexOf(9));
 
 		// From the front, an array is a queue
 		let queue = ["first", "second"];
-		push(queue, "third");
-		println(arrays.removeAt(queue, 0), arrays.removeAt(queue, 0));
-		push(queue, "fourth");
-		println(arrays.removeAt(queue, 0), arrays.removeAt(queue, 0), arrays.removeAt(queue, 0));
+		queue.push("third");
+		println(queue.removeAt(0), queue.removeAt(0));
+		queue.push("fourth");
+		println(queue.removeAt(0), queue.removeAt(0), queue.removeAt(0));
 	`,
 		`a ["b", "c", "d", "e"]`,
 		`c ["b", "d", "e"]`,
@@ -95,49 +95,49 @@ func TestArraysRemoveAt(t *testing.T) {
 func TestArraysInsertAt(t *testing.T) {
 	expect(t, "import std.arrays;", `
 		let xs = [1, 2, 3];
-		arrays.insertAt(xs, 0, 0);
+		xs.insertAt(0, 0);
 		println(xs);
-		arrays.insertAt(xs, 2, 15);
+		xs.insertAt(2, 15);
 		println(xs);
-		arrays.insertAt(xs, arrays.len(xs), 4);
+		xs.insertAt(xs.len(), 4);
 		println(xs);
 
 		// Past the end is the end; a negative index changes nothing. Both
-		// are what arrays.inserted does with them
-		arrays.insertAt(xs, 99, 5);
-		arrays.insertAt(xs, -1, -1);
-		arrays.insertAt(xs, -99, -1);
-		println(xs, arrays.len(xs));
-		println(arrays.inserted([1, 2], 99, 3), arrays.inserted([1, 2], -1, 3));
+		// are what items -> items.inserted() does with them
+		xs.insertAt(99, 5);
+		xs.insertAt(-1, -1);
+		xs.insertAt(-99, -1);
+		println(xs, xs.len());
+		println([1, 2].inserted(99, 3), [1, 2].inserted(-1, 3));
 
 		let none: [String] = [];
-		arrays.insertAt(none, -1, "lost");
+		none.insertAt(-1, "lost");
 		println(none);
-		arrays.insertAt(none, 0, "b");
-		arrays.insertAt(none, 0, "a");
-		arrays.insertAt(none, 5, "c");
+		none.insertAt(0, "b");
+		none.insertAt(0, "a");
+		none.insertAt(5, "c");
 		println(none);
 
 		// For every index, the same as inserted, which makes a new array
 		let same = true;
 		for index in -2..7 {
 			let changed = [10, 20, 30, 40];
-			arrays.insertAt(changed, index, 99);
-			let made = arrays.inserted([10, 20, 30, 40], index, 99);
+			changed.insertAt(index, 99);
+			let made = [10, 20, 30, 40].inserted(index, 99);
 			if toString(changed) != toString(made) { same = false; }
 		}
 		println(same);
 
 		// Many, always in front: the array grows and keeps its order
 		let grown: [Int] = [];
-		for n in 0..1000 { arrays.insertAt(grown, 0, n); }
-		println(arrays.len(grown), grown[0], grown[500], grown[999]);
+		for n in 0..1000 { grown.insertAt(0, n); }
+		println(grown.len(), grown[0], grown[500], grown[999]);
 
 		// Kept in order as they come
 		let sorted: [Int] = [];
 		for n in [5, 1, 4, 1, 9, 2, 6] {
-			let at = arrays.findIndex(sorted, held -> held > n) ?? arrays.len(sorted);
-			arrays.insertAt(sorted, at, n);
+			let at = sorted.findIndex(held -> held > n) ?? sorted.len();
+			sorted.insertAt(at, n);
 		}
 		println(sorted);
 	`,
@@ -157,24 +157,24 @@ func TestArraysInsertAt(t *testing.T) {
 func TestArraysClear(t *testing.T) {
 	expect(t, "import std.arrays;", `
 		let xs = [1, 2, 3];
-		arrays.clear(xs);
-		println(xs, arrays.len(xs), arrays.isEmpty(xs), arrays.first(xs), arrays.pop(xs));
-		arrays.clear(xs);
-		push(xs, 4);
-		arrays.insertAt(xs, 0, 3);
+		xs.clear();
+		println(xs, xs.len(), xs.isEmpty(), xs.first(), xs.pop());
+		xs.clear();
+		xs.push(4);
+		xs.insertAt(0, 3);
 		println(xs);
 
 		let none: [String] = [];
-		arrays.clear(none);
+		none.clear();
 		println(none);
 
 		// A buffer filled and emptied again and again is one array
 		let buffer: [Int] = [];
 		let sums: [Int] = [];
 		for round in 1..=5 {
-			for n in 0..round * 10 { push(buffer, n); }
-			push(sums, arrays.sum(buffer));
-			arrays.clear(buffer);
+			for n in 0..round * 10 { buffer.push(n); }
+			sums.push(buffer.sum());
+			buffer.clear();
 		}
 		println(sums, buffer);
 	`,
@@ -187,34 +187,34 @@ func TestArraysClear(t *testing.T) {
 
 // The array itself changes: everything that holds it sees it.
 func TestArraysChangedInPlaceAreShared(t *testing.T) {
-	expect(t, "import std.arrays;\nstruct Team { name: String; members: [String]; }\nfn dismiss(from: [String]) -> String? { return arrays.pop(from); }", `
+	expect(t, "import std.arrays;\nstruct Team { name: String; members: [String]; }\nfn dismiss(from: [String]) -> String? { return from.pop(); }", `
 		let xs = [1, 2, 3, 4];
 		let same = xs;
-		arrays.pop(xs);
-		arrays.removeAt(same, 0);
+		xs.pop();
+		same.removeAt(0);
 		println(xs, same, xs == same);
-		arrays.insertAt(same, 1, 9);
+		same.insertAt(1, 9);
 		println(xs);
-		arrays.clear(xs);
+		xs.clear();
 		println(same);
 
 		// A copy is another array
 		let original = ["a", "b"];
-		let duplicate = arrays.copy(original);
-		arrays.pop(duplicate);
+		let duplicate = original.copy();
+		duplicate.pop();
 		println(original, duplicate);
 
 		// In a field, and through a function that is given it
 		let team = Team { name: "core", members: ["ada", "linus", "grace"] };
 		let members = team.members;
-		println(dismiss(team.members), members, arrays.len(team.members));
-		arrays.insertAt(members, 0, "alan");
+		println(dismiss(team.members), members, team.members.len());
+		members.insertAt(0, "alan");
 		println(team.members);
 
 		// Captured by a closure
 		let log: [String] = [];
-		let note = fn(text: String) { push(log, text); };
-		let forget = fn() -> String? { return arrays.pop(log); };
+		let note = fn(text: String) { log.push(text); };
+		let forget = fn() -> String? { return log.pop(); };
 		note("one");
 		note("two");
 		println(log);
@@ -222,12 +222,12 @@ func TestArraysChangedInPlaceAreShared(t *testing.T) {
 
 		// An array of arrays: taking one out leaves it whole
 		let rows = [[1, 2], [3, 4], [5, 6]];
-		let middle = arrays.removeAt(rows, 1);
+		let middle = rows.removeAt(1);
 		if middle != null {
-			push(middle, 0);
+			middle.push(0);
 			println(middle, rows);
-			arrays.insertAt(rows, 0, middle);
-			arrays.clear(middle);
+			rows.insertAt(0, middle);
+			middle.clear();
 			println(rows);
 		}
 	`,
@@ -261,87 +261,87 @@ impl Named for Dog { fn name() -> String { return "dog"; } }
 
 // Generic code over them: T is whatever the caller's array holds
 fn rotate<T>(items: [T]) {
-	let front = arrays.removeAt(items, 0);
-	if front != null { push(items, front); }
+	let front = items.removeAt(0);
+	if front != null { items.push(front); }
 }
 fn drain<T>(items: [T]) -> [T] {
 	let out: [T] = [];
-	while !arrays.isEmpty(items) {
-		let item = arrays.pop(items);
-		if item != null { push(out, item); }
+	while !items.isEmpty() {
+		let item = items.pop();
+		if item != null { out.push(item); }
 	}
 	return out;
 }
 struct Stack<T> { items: [T]; }
 impl<T> Stack<T> {
-	fn push(item: T) { push(self.items, item); }
-	fn pop() -> T? { return arrays.pop<T>(self.items); }
-	fn under(item: T) { arrays.insertAt<T>(self.items, arrays.len(self.items) - 1, item); }
-	fn reset() { arrays.clear<T>(self.items); }
+	fn push(item: T) { self.items.push(item); }
+	fn pop() -> T? { return self.items.pop(); }
+	fn under(item: T) { self.items.insertAt(self.items.len() - 1, item); }
+	fn reset() { self.items.clear(); }
 }`, `
 		let floats = [1.5, 2.5, 3.5];
-		let half = arrays.pop(floats) ?? 0.0;
-		println(half / 2.0, arrays.removeAt(floats, 0), floats);
+		let half = floats.pop() ?? 0.0;
+		println(half / 2.0, floats.removeAt(0), floats);
 
 		let flags = [true, false];
-		arrays.insertAt(flags, 1, true);
-		println(arrays.pop(flags), flags);
+		flags.insertAt(1, true);
+		println(flags.pop(), flags);
 
 		let texts = ["x", "y"];
-		let text = arrays.pop(texts) ?? "";
+		let text = texts.pop() ?? "";
 		println(text + text, texts);
 
 		let points = [Point { x: 1, y: 2 }, Point { x: 3, y: 4 }];
-		let point = arrays.pop(points);
-		if point != null { println(point.x + point.y, arrays.len(points)); }
-		arrays.insertAt(points, 0, Point { x: 5, y: 6 });
-		println(arrays.map(points, p -> p.x));
+		let point = points.pop();
+		if point != null { println(point.x + point.y, points.len()); }
+		points.insertAt(0, Point { x: 5, y: 6 });
+		println(points.map(p -> p.x));
 
 		let shapes = [Shape.Circle(1.0), Shape.Rect(2.0, 3.0), Shape.Empty];
-		match arrays.removeAt(shapes, 1) {
+		match shapes.removeAt(1) {
 			case Shape.Rect(w, h): { println("rect", w * h); }
 			default: { println("something else"); }
 		}
 		println(shapes);
-		println(arrays.pop(shapes) == Shape.Empty, shapes);
+		println(shapes.pop() == Shape.Empty, shapes);
 
 		let pairs = [(1, "one"), (2, "two")];
-		let pair = arrays.pop(pairs);
+		let pair = pairs.pop();
 		if pair != null {
 			let (number, word) = pair;
 			println(number, word, pairs);
 		}
 
 		let functions: [fn(Int) -> Int] = [];
-		arrays.insertAt(functions, 0, n -> n + 1);
-		arrays.insertAt(functions, 0, n -> n * 10);
-		let last = arrays.pop(functions);
-		let first = arrays.removeAt(functions, 0);
-		if last != null && first != null { println(last(1), first(1), arrays.len(functions)); }
+		functions.insertAt(0, n -> n + 1);
+		functions.insertAt(0, n -> n * 10);
+		let last = functions.pop();
+		let first = functions.removeAt(0);
+		if last != null && first != null { println(last(1), first(1), functions.len()); }
 
 		let tables = [dict.empty<Int>(), dict.empty<Int>()];
 		tables[1].set("k", 5);
-		println(arrays.pop(tables)?.get("k"), arrays.len(tables));
+		println(tables.pop()?.get("k"), tables.len());
 
 		let boxes = [Box<String> { value: "in" }];
-		println(arrays.pop(boxes)?.value, arrays.pop(boxes)?.value);
+		println(boxes.pop()?.value, boxes.pop()?.value);
 
 		let results: [Result<Int, String>] = [Result.Ok(1), Result.Err("no")];
-		println(arrays.removeAt(results, 0), arrays.pop(results), results);
+		println(results.removeAt(0), results.pop(), results);
 
 		let animals: [Named] = [Cat {}, Dog {}];
-		arrays.insertAt(animals, 1, Cat {});
-		println(arrays.pop(animals)?.name(), arrays.map(animals, a -> a.name()));
+		animals.insertAt(1, Cat {});
+		println(animals.pop()?.name(), animals.map(a -> a.name()));
 
 		let anything: [Any] = [1, "two", 3.0];
-		println(arrays.pop(anything), arrays.removeAt(anything, 0), anything);
+		println(anything.pop(), anything.removeAt(0), anything);
 
 		let letters = ["a", "b", "c"];
 		rotate(letters);
 		rotate<String>(letters);
 		println(letters);
 		println(drain(letters), letters);
-		println(drain([Point { x: 7, y: 0 }])[0].x, arrays.len(drain<Int>([])));
+		println(drain([Point { x: 7, y: 0 }])[0].x, (drain<Int>([])).len());
 
 		let stack = Stack<Int> { items: [] };
 		stack.push(1);
@@ -384,24 +384,24 @@ impl<T> Stack<T> {
 func TestArraysPopOfOptionals(t *testing.T) {
 	expect(t, "import std.arrays;", `
 		let readings: [Int?] = [3, null, 5, null];
-		println(arrays.len(readings), arrays.pop(readings), arrays.len(readings));
-		println(arrays.pop(readings), arrays.len(readings));
+		println(readings.len(), readings.pop(), readings.len());
+		println(readings.pop(), readings.len());
 
 		// Until it is empty, counting what is missing
 		let missing = 0;
 		let total = 0;
-		while !arrays.isEmpty(readings) {
-			let reading = arrays.pop(readings);
+		while !readings.isEmpty() {
+			let reading = readings.pop();
 			if reading == null { missing++; } else { total += reading; }
 		}
-		println(missing, total, readings, arrays.pop(readings));
+		println(missing, total, readings, readings.pop());
 
 		let names: [String?] = [null, "ada", null];
-		println(arrays.removeAt(names, 0), arrays.len(names), arrays.removeAt(names, 5), arrays.len(names));
-		arrays.insertAt(names, 1, null);
+		println(names.removeAt(0), names.len(), names.removeAt(5), names.len());
+		names.insertAt(1, null);
 		println(names);
-		println(arrays.removeAt(names, 0), names);
-		arrays.clear(names);
+		println(names.removeAt(0), names);
+		names.clear();
 		println(names);
 	`,
 		"4 null 3",
@@ -423,9 +423,9 @@ func TestArraysRemovingWhileLooping(t *testing.T) {
 		let numbers = arrays.range(1, 11);
 		let i = 0;
 		let removed: [Int] = [];
-		while i < arrays.len(numbers) {
+		while i < numbers.len() {
 			if numbers[i] % 3 == 0 || numbers[i] % 2 == 0 {
-				push(removed, arrays.removeAt(numbers, i) ?? 0);
+				removed.push(numbers.removeAt(i) ?? 0);
 			} else {
 				i++;
 			}
@@ -439,34 +439,34 @@ func TestArraysRemovingWhileLooping(t *testing.T) {
 			Task { name: "review", done: false },
 			Task { name: "ship", done: true },
 		];
-		let at = arrays.len(tasks) - 1;
+		let at = tasks.len() - 1;
 		while at >= 0 {
-			if tasks[at].done { arrays.removeAt(tasks, at); }
+			if tasks[at].done { tasks.removeAt(at); }
 			at--;
 		}
-		println(arrays.map(tasks, task -> task.name));
+		println(tasks.map(task -> task.name));
 
 		// Two neighbours that are the same, kept once
 		let letters = ["a", "a", "b", "b", "b", "c", "a", "a"];
 		let k = 1;
-		while k < arrays.len(letters) {
-			if letters[k] == letters[k - 1] { arrays.removeAt(letters, k); } else { k++; }
+		while k < letters.len() {
+			if letters[k] == letters[k - 1] { letters.removeAt(k); } else { k++; }
 		}
 		println(letters);
 
 		// Inserting while going through: step over what was put in
 		let spaced = [1, 2, 3];
 		let j = 1;
-		while j < arrays.len(spaced) {
-			arrays.insertAt(spaced, j, 0);
+		while j < spaced.len() {
+			spaced.insertAt(j, 0);
 			j += 2;
 		}
 		println(spaced);
 
 		// A loop over a copy can change the array itself
 		let scores = [4, 9, 2, 7];
-		for score in arrays.copy(scores) {
-			if score < 5 { arrays.removeAt(scores, arrays.indexOf(scores, score) ?? -1); }
+		for score in scores.copy() {
+			if score < 5 { scores.removeAt(scores.indexOf(score) ?? -1); }
 		}
 		println(scores);
 
@@ -474,7 +474,7 @@ func TestArraysRemovingWhileLooping(t *testing.T) {
 		let pending = ["a", "b", "c"];
 		let order = "";
 		while true {
-			let next = arrays.pop(pending);
+			let next = pending.pop();
 			if next == null { break; }
 			order += next;
 		}
@@ -492,7 +492,7 @@ func TestArraysRemovingWhileLooping(t *testing.T) {
 	// shorter under it is read past its end, and the program is stopped
 	expectFailure(t, "import std.arrays;", `
 		let xs = [1, 2, 3, 4];
-		for x in xs { arrays.pop(xs); }
+		for x in xs { xs.pop(); }
 	`, "index out of bounds: 2 (length 2)")
 }
 
@@ -530,7 +530,7 @@ struct Interpreter {
 
 impl Interpreter {
 	fn pop() -> Result<Int, String> {
-		let value = arrays.pop(self.stack);
+		let value = self.stack.pop();
 		if value == null { return Result.Err("nothing on the stack"); }
 		return Result.Ok(value);
 	}
@@ -538,18 +538,18 @@ impl Interpreter {
 	fn binary(apply: fn(Int, Int) -> Int) -> Result<Int, String> {
 		let right = self.pop()?;
 		let left = self.pop()?;
-		push(self.stack, apply(left, right));
+		self.stack.push(apply(left, right));
 		return Result.Ok(0);
 	}
 
 	fn run(entry: String) -> Result<Int, String> {
-		push(self.calls, Frame { function: entry, at: 0 });
-		while !arrays.isEmpty(self.calls) {
-			let frame = self.calls[arrays.len(self.calls) - 1];
+		self.calls.push(Frame { function: entry, at: 0 });
+		while !self.calls.isEmpty() {
+			let frame = self.calls[self.calls.len() - 1];
 			let code = self.functions.get(frame.function);
 			if code == null { return Result.Err("no function " + frame.function); }
-			if frame.at >= arrays.len(code) {
-				arrays.pop(self.calls);
+			if frame.at >= code.len() {
+				self.calls.pop();
 				continue;
 			}
 			let instr = code[frame.at];
@@ -557,21 +557,21 @@ impl Interpreter {
 			self.steps++;
 			if self.steps > 10000 { return Result.Err("too many steps"); }
 			match instr {
-				case Instr.Push(n): { push(self.stack, n); }
+				case Instr.Push(n): { self.stack.push(n); }
 				case Instr.Add: { self.binary((a, b) -> a + b)?; }
 				case Instr.Sub: { self.binary((a, b) -> a - b)?; }
 				case Instr.Mul: { self.binary((a, b) -> a * b)?; }
 				case Instr.Dup: {
 					let top = self.pop()?;
-					push(self.stack, top);
-					push(self.stack, top);
+					self.stack.push(top);
+					self.stack.push(top);
 				}
 				case Instr.Pop: { self.pop()?; }
 				case Instr.Call(name): {
-					push(self.calls, Frame { function: name, at: 0 });
-					if arrays.len(self.calls) > self.deepest { self.deepest = arrays.len(self.calls); }
+					self.calls.push(Frame { function: name, at: 0 });
+					if self.calls.len() > self.deepest { self.deepest = self.calls.len(); }
 				}
-				case Instr.Ret: { arrays.pop(self.calls); }
+				case Instr.Ret: { self.calls.pop(); }
 				case Instr.JumpIfZero(target): {
 					if self.pop()? == 0 { frame.at = target; }
 				}
@@ -589,13 +589,13 @@ fn reach(roads: Dict<[String]>, from: String) -> [String] {
 	let queue = [from];
 	seen.set(from, true);
 	while true {
-		let place = arrays.removeAt(queue, 0);
+		let place = queue.removeAt(0);
 		if place == null { break; }
-		push(order, place);
+		order.push(place);
 		for next in roads.get(place) ?? [] {
 			if !seen.has(next) {
 				seen.set(next, true);
-				push(queue, next);
+				queue.push(next);
 			}
 		}
 	}
@@ -612,17 +612,17 @@ struct Counter {
 impl Counter {
 	fn add(amount: Int) {
 		self.value += amount;
-		push(self.undo, fn() { self.value -= amount; });
+		self.undo.push(fn() { self.value -= amount; });
 	}
 	fn double() {
 		let before = self.value;
 		self.value *= 2;
-		push(self.undo, fn() { self.value = before; });
+		self.undo.push(fn() { self.value = before; });
 	}
 	fn back(times: Int) -> Int {
 		let undone = 0;
 		for n in 0..times {
-			let step = arrays.pop(self.undo);
+			let step = self.undo.pop();
 			if step == null { break; }
 			step();
 			undone++;
@@ -652,8 +652,8 @@ impl Counter {
 		for entry in ["main", "broken", "lost", "forever"] {
 			let machine = Interpreter { functions: functions };
 			match machine.run(entry) {
-				case Result.Ok(value): { println(entry, value, machine.stack, arrays.len(machine.calls), machine.deepest); }
-				case Result.Err(message): { println(entry, "failed:", message, machine.stack, arrays.len(machine.calls)); }
+				case Result.Ok(value): { println(entry, value, machine.stack, machine.calls.len(), machine.deepest); }
+				case Result.Err(message): { println(entry, "failed:", message, machine.stack, machine.calls.len()); }
 			}
 		}
 
@@ -672,10 +672,10 @@ impl Counter {
 		counter.double();
 		counter.add(-3);
 		counter.double();
-		println(counter.value, arrays.len(counter.undo));
+		println(counter.value, counter.undo.len());
 		println(counter.back(1), counter.value, counter.back(2), counter.value);
 		counter.add(1);
-		println(counter.value, counter.back(9), counter.value, counter.back(1), arrays.len(counter.undo));
+		println(counter.value, counter.back(9), counter.value, counter.back(1), counter.undo.len());
 	`,
 		"main 730 [] 0 8",
 		"broken failed: nothing on the stack [] 1",
@@ -768,19 +768,19 @@ func TestArraysPoppedItemsAreCollected(t *testing.T) {
 			let served = 0;
 			for round in 0..300 {
 				for n in 0..100 {
-					push(stack, Entry { label: "entry ${round}.${n}", payload: [round, n, round + n] });
-					arrays.insertAt(queue, 0, strings.repeat("x", 20) + toString(n));
+					stack.push(Entry { label: "entry ${round}.${n}", payload: [round, n, round + n] });
+					queue.insertAt(0, "x".repeat(20) + toString(n));
 				}
-				while !arrays.isEmpty(stack) {
-					let entry = arrays.pop(stack);
-					if entry != null { popped += arrays.len(entry.payload); }
+				while !stack.isEmpty() {
+					let entry = stack.pop();
+					if entry != null { popped += entry.payload.len(); }
 				}
-				while arrays.len(queue) > 10 {
-					if arrays.removeAt(queue, 0) != null { served++; }
+				while queue.len() > 10 {
+					if queue.removeAt(0) != null { served++; }
 				}
-				arrays.clear(queue);
+				queue.clear();
 			}
-			println(popped, served, arrays.len(stack), arrays.len(queue));
+			println(popped, served, stack.len(), queue.len());
 			return 0;
 		}
 	`, nil)

@@ -218,8 +218,8 @@ var shop = sources{
 		pub fn newList<T>() -> List<T> { return List<T> { items: [] }; }
 
 		impl<T> List<T> {
-			pub fn add(value: T) { push(self.items, value); }
-			pub fn size() -> Int { return arrays.len(self.items); }
+			pub fn add(value: T) { self.items.push(value); }
+			pub fn size() -> Int { return self.items.len(); }
 			pub fn first(wanted: fn(T) -> Bool) -> T? {
 				for item in self.items {
 					if wanted(item) { return item; }
@@ -596,42 +596,44 @@ func TestExternFunctions(t *testing.T) {
 		lib["main.lum"] = "import std.math;\nimport std.strings;\nfn main() -> Int {\n" + body + "\nreturn 0;\n}\n"
 		expectModulesError(t, lib, code, "main.lum", msg)
 	}
-	check(`let r = math.sqrt("4");`, "E2010", "cannot use type string as argument of type float")
-	check(`let r = math.sqrt(4.0, 2.0);`, "E2009", "expected 1 arguments, got 2")
-	check(`let r: Int = math.sqrt(4.0);`, "E2001", "float")
-	check(`let n: Int = strings.indexOf("abc", "b");`, "E2001", "int?")
-	check(`let n = strings.indexOf("abc", "b") + 1;`, "E2017", "the value may be null")
-	check(`let s: String = strings.split("a b", " ");`, "E2001", "[string]")
-	check(`let r = math.floor("2");`, "E2010", "cannot use type string as argument of type float")
+	check(`let r = strings.fromCode("4");`, "E2010", "cannot use type string as argument of type int")
+	check(`let r = strings.fromCode(4, 2);`, "E2009", "expected 1 arguments, got 2")
+	check(`let r: Int = strings.fromCode(65);`, "E2001", "string")
+	check(`let n: Int = "abc".indexOf("b");`, "E2001", "int?")
+	check(`let n = "abc".indexOf("b") + 1;`, "E2017", "the value may be null")
+	check(`let s: String = "a b".split(" ");`, "E2001", "[string]")
+	check(`let r = "2".floor();`, "E2015", "a text has no method 'floor'")
+	check(`let r = 4.0.sqrt(2.0);`, "E2009", "expected 0 arguments, got 1")
 	check(`let r = math.nothing(2);`, "E8002", "module 'std.math' has no 'nothing'")
+	// What a method of the library is made of is the library's own
+	check(`let r = strings.trim(" a ");`, "E8003", "function 'trim' of module 'std.strings' is private")
+	check(`let r = math.sqrt(4.0);`, "E8003", "function 'sqrt' of module 'std.math' is private")
 
 	// An extern function is a value like any function
 	expectModulesOutput(t, sources{"main.lum": `
-		import std.math;
-		import std.strings.{upper, lower};
+		import std.strings;
+		import std.strings.{fromCode};
 
-		fn apply(f: fn(Float) -> Float, x: Float) -> Float { return f(x); }
-		fn each(words: [String], f: fn(String) -> String) -> [String] {
+		fn each(codes: [Int], f: fn(Int) -> String) -> [String] {
 			let out: [String] = [];
-			for w in words { push(out, f(w)); }
+			for code in codes { out.push(f(code)); }
 			return out;
 		}
 		fn main() -> Int {
-			let root = math.sqrt;
-			println(apply(root, 49.0), apply(math.exp, 0.0), root(4.0));
-			println(each(["Ada", "Bob"], upper), each(["Ada", "Bob"], lower));
-			let table = [math.floor, math.ceil, math.round];
-			for f in table { print(f(2.5), ""); }
+			let make = strings.fromCode;
+			println(make(65), each([72, 105], fromCode), each([33], make));
+			let table = [strings.fromCode, fromCode, make];
+			for f in table { print(f(66), ""); }
 			println();
 			return 0;
 		}
-	`}, "7 1 2\n[\"ADA\", \"BOB\"] [\"ada\", \"bob\"]\n2 3 3 \n")
+	`}, "A [\"H\", \"i\"] [\"!\"]\nB B B \n")
 }
 
 func TestStandardLibraryIsAPackage(t *testing.T) {
 	// A folder named std in the program is not where std.* is looked for
 	expectModulesOutput(t, sources{
-		"main.lum":     "import std.math;\nfn main() -> Int { println(math.abs(-3)); return 0; }",
+		"main.lum":     "import std.math;\nfn main() -> Int { println((-3).abs()); return 0; }",
 		"std/math.lum": "pub fn abs(n: Int) -> Int { return 999; }",
 	}, "3\n")
 
@@ -662,7 +664,7 @@ func TestStandardLibraryIsAPackage(t *testing.T) {
 	// a misuse found inside the library's generic code after instantiation
 	// still points at the caller's line
 	expectModulesError(t, sources{
-		"main.lum": "import std.arrays;\nfn main() -> Int {\n    let n: String = arrays.sum([1, 2]);\n    return 0;\n}\n",
+		"main.lum": "import std.arrays;\nfn main() -> Int {\n    let n: String = [1, 2].sum();\n    return 0;\n}\n",
 	}, "E2001", "main.lum", "int")
 }
 
@@ -727,19 +729,19 @@ func TestLengthIsAFunctionOfTheLibrary(t *testing.T) {
 
 	rejected := []struct{ name, body, msg, suggestion string }{
 		{"array", `let xs = [1, 2]; println(xs.length);`,
-			"an array has no members: '.length' is not part of the language", "Write arrays.len(xs), with: import std.arrays;"},
+			"an array has no members: '.length' is not part of the language", "Write xs.len(), with: import std.arrays;"},
 		{"text", `let name = "ada"; println(name.length);`,
-			"a text has no members: '.length' is not part of the language", "Write strings.len(name), with: import std.strings;"},
+			"a text has no members: '.length' is not part of the language", "Write name.len(), with: import std.strings;"},
 		{"array in a field", `let r = Rope { length: 1, items: [1] }; println(r.items.length);`,
-			"an array has no members", "Write arrays.len(r.items)"},
-		{"result of a call", `println(strings.words("a b").length);`,
-			"an array has no members", "Write arrays.len(...), with: import std.arrays;"},
+			"an array has no members", "Write r.items.len()"},
+		{"result of a call", `println("a b".words().length);`,
+			"an array has no members", "Call .len() on it, with: import std.arrays;"},
 		{"literal", `println("abc".length);`,
-			"a text has no members", `Write strings.len("abc")`},
+			"a text has no members", `Write "abc".len()`},
 		{"in a condition", `let xs = [1]; let i = 0; while i < xs.length { i++; }`,
-			"an array has no members", "Write arrays.len(xs)"},
+			"an array has no members", "Write xs.len()"},
 		{"in a lambda", `let f = fn(s: String) -> Int { return s.length; };`,
-			"a text has no members", "Write strings.len(s)"},
+			"a text has no members", "Write s.len()"},
 	}
 	for _, tt := range rejected {
 		t.Run(tt.name, func(t *testing.T) {
@@ -764,31 +766,31 @@ func TestLengthIsAFunctionOfTheLibrary(t *testing.T) {
 	expectModulesOutput(t, entry(`
 		let r = Rope { length: 7, items: [1, 2, 3] };
 		r.length = r.length + 1;
-		println(r.length, arrays.len(r.items));
+		println(r.length, r.items.len());
 	`), "8 3\n")
 
 	// The functions, on every kind of value they take, and as values
 	expectModulesOutput(t, entry(`
 		let rows = [[1, 2, 3], [], [4]];
-		println(arrays.len(rows), arrays.len(rows[0]), arrays.len<Int>([]), arrays.len(["a"]), arrays.len([1.5, 2.5]));
-		println(strings.len("lumen"), strings.len(""), strings.len("héλ"), strings.len("a" + "b"));
-		println(arrays.map(rows, fn(row: [Int]) -> Int { return arrays.len(row); }), arrays.map(["a", "bcd"], strings.len));
-		let count = strings.len;
-		println(count("four"), arrays.len(strings.chars("abc")));
+		println(rows.len(), rows[0].len(), [].len(), ["a"].len(), [1.5, 2.5].len());
+		println("lumen".len(), "".len(), "héλ".len(), ("a" + "b").len());
+		println(rows.map(fn(row: [Int]) -> Int { return row.len(); }), ["a", "bcd"].map(text -> text.len()));
+		let count = fn(text: String) -> Int { return text.len(); };
+		println(count("four"), "abc".chars().len());
 
 		// In the places a length is most used
 		let total = 0;
 		let i = 0;
-		while i < arrays.len(rows) {
+		while i < rows.len() {
 			let j = 0;
-			while j < arrays.len(rows[i]) { total += rows[i][j]; j++; }
+			while j < rows[i].len() { total += rows[i][j]; j++; }
 			i++;
 		}
-		println(total, rows[arrays.len(rows) - 1]);
+		println(total, rows[rows.len() - 1]);
 	`), "3 3 0 1 2\n5 0 3 2\n[3, 0, 1] [1, 3]\n4 3\n10 [4]\n")
 
 	// A local called arrays or strings hides the module, as any local does
-	expectModulesError(t, entry(`let arrays = 5; println(arrays.len([1]));`), "E2015", "main.lum", "")
+	expectModulesError(t, entry(`let arrays = 5; println(arrays.range(0, 3));`), "E2015", "main.lum", "a number has no method 'range'")
 }
 
 func TestLengthCompilesToOneInstruction(t *testing.T) {
@@ -800,8 +802,8 @@ func TestLengthCompilesToOneInstruction(t *testing.T) {
 		fn main() -> Int {
 			let xs = [1, 2, 3];
 			let i = 0;
-			while i < arrays.len(xs) { i++; }
-			return i + strings.len("ab") + arrays.len(["x"]);
+			while i < xs.len() { i++; }
+			return i + "ab".len() + ["x"].len();
 		}
 	`})
 	if errs.HasErrors() {

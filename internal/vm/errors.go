@@ -89,7 +89,7 @@ func (e *RuntimeError) Code() string {
 func (e *RuntimeError) Suggestion() string {
 	switch e.Kind {
 	case KindBounds:
-		return "Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing"
+		return "Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing"
 	case KindCast:
 		return "Ask what the value is before casting it: 'if value is Type { ... }', or a match on its type"
 	case KindArithmetic:

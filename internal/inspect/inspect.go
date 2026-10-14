@@ -1180,7 +1180,7 @@ func Complete(path, src string, line, column int) []Completion {
 			add(name, "function", imp.Path)
 		}
 	}
-	for _, builtin := range []string{"print", "println", "toString", "push", "panic"} {
+	for _, builtin := range []string{"print", "println", "toString", "panic"} {
 		add(builtin, "function", "builtin")
 	}
 	for _, keyword := range keywords {

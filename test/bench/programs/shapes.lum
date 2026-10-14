@@ -81,7 +81,7 @@ fn main() -> Int {
     let shapes: [Shape] = [];
 
     for i in 0..3000 {
-        push(shapes, make(i));
+        shapes.push(make(i));
     }
 
     let area = 0;
@@ -99,6 +99,6 @@ fn main() -> Int {
         }
     }
 
-    println(arrays.len(shapes), area, perimeter, squares);
+    println(shapes.len(), area, perimeter, squares);
     return 0;
 }

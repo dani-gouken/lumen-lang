@@ -182,7 +182,7 @@ func TestGenericEnums(t *testing.T) {
 
 		fn fromArray<T>(items: [T]) -> List<T> {
 			let list: List<T> = List.Nil;
-			let i = arrays.len(items) - 1;
+			let i = items.len() - 1;
 			while i >= 0 { list = List.Cons(items[i], list); i--; }
 			return list;
 		}
@@ -220,7 +220,7 @@ func TestGenericEnums(t *testing.T) {
 			let r = divide(pair[0], pair[1]);
 			match r {
 				case Result.Ok(v): { println("ok", v, r.ok()); }
-				case Result.Err(message): { println("err", message, r.ok(), r.mapErr(fn(m: String) -> Int { return strings.len(m); })); }
+				case Result.Err(message): { println("err", message, r.ok(), r.mapErr(fn(m: String) -> Int { return m.len(); })); }
 			}
 		}
 
@@ -297,7 +297,7 @@ func TestEnumsWithTraitsStructsAndClosures(t *testing.T) {
 		impl Order {
 			// The status an order may move to from the one it is in
 			fn advance(to: Status) -> Bool {
-				let current = self.history[arrays.len(self.history) - 1];
+				let current = self.history[self.history.len() - 1];
 				match current {
 					case Status.Delivered: { return false; }
 					case Status.Cancelled(_): { return false; }
@@ -313,14 +313,14 @@ func TestEnumsWithTraitsStructsAndClosures(t *testing.T) {
 					}
 					default: { }
 				}
-				push(self.history, to);
+				self.history.push(to);
 				return true;
 			}
 		}
 
 		fn all(items: [Describe]) -> [String] {
 			let out: [String] = [];
-			for item in items { push(out, item.describe()); }
+			for item in items { out.push(item.describe()); }
 			return out;
 		}
 	`, `
@@ -346,9 +346,9 @@ func TestEnumsWithTraitsStructsAndClosures(t *testing.T) {
 		let later: [fn() -> String] = [];
 		for payment in [Payment.Cash(5), Payment.Card("bob", 9), Payment.Free] {
 			match payment {
-				case Payment.Cash(n): { push(later, fn() -> String { return "c" + toString(n); }); }
-				case Payment.Card(who, n): { push(later, fn() -> String { return who + toString(n * 2); }); }
-				case Payment.Free: { push(later, fn() -> String { return "-"; }); }
+				case Payment.Cash(n): { later.push(fn() -> String { return "c" + toString(n); }); }
+				case Payment.Card(who, n): { later.push(fn() -> String { return who + toString(n * 2); }); }
+				case Payment.Free: { later.push(fn() -> String { return "-"; }); }
 			}
 		}
 		for f in later { print(f(), ""); }
@@ -398,13 +398,13 @@ func TestMatchOnEnumsInControlFlow(t *testing.T) {
 		let steps = [Step.Go(1), Step.Skip, Step.Go(5), Step.Stop, Step.Go(100)];
 		let position = 0;
 		let i = 0;
-		while i < arrays.len(steps) {
+		while i < steps.len() {
 			let step = steps[i];
 			i++;
 			match step {
 				case Step.Go(by): { position += by; }
 				case Step.Skip: { }
-				case Step.Stop: { i = arrays.len(steps); }
+				case Step.Stop: { i = steps.len(); }
 			}
 		}
 		println(position, i);
@@ -464,14 +464,14 @@ func TestConstants(t *testing.T) {
 		fn newGrid() -> Grid {
 			let cells: [Int] = [];
 			let i = 0;
-			while i < AREA { push(cells, i % WIDTH); i++; }
+			while i < AREA { cells.push(i % WIDTH); i++; }
 			return Grid { cells: cells };
 		}
 		impl Grid {
 			fn row(y: Int) -> [Int] {
 				let out: [Int] = [];
 				let x = 0;
-				while x < WIDTH { push(out, self.cells[y * WIDTH + x]); x++; }
+				while x < WIDTH { out.push(self.cells[y * WIDTH + x]); x++; }
 				return out;
 			}
 		}
@@ -479,7 +479,7 @@ func TestConstants(t *testing.T) {
 	`, `
 		println(WIDTH, HEIGHT, AREA, HALF, TITLE, WIDE, NEGATIVE, LAST);
 		let grid = newGrid();
-		println(arrays.len(grid.cells), grid.row(0), grid.row(HEIGHT - 1), scaled("x"), scaled(1.5));
+		println(grid.cells.len(), grid.row(0), grid.row(HEIGHT - 1), scaled("x"), scaled(1.5));
 
 		// In closures, conditions, patterns' bodies and array literals
 		let add = fn(n: Int) -> Int { return n + WIDTH; };
@@ -599,11 +599,11 @@ func TestEnumsAndConstantsAcrossModules(t *testing.T) {
 				let reports: [Report] = [];
 				for e in events {
 					match ledger.apply(a, e) {
-						case Outcome.Done(balance): { push(reports, Report.Line(a.name, e)); }
+						case Outcome.Done(balance): { reports.push(Report.Line(a.name, e)); }
 						case Outcome.Refused(why): { println("refused:", why, e); }
 					}
 				}
-				push(reports, Report.Total(a.balance));
+				reports.push(Report.Total(a.balance));
 				for r in reports { println(render(r)); }
 				println(a.log, a.isOpen(), ledger.count(a, Event.Withdraw(30)), ledger.count(a, Event.Withdraw(31)));
 				return 0;
@@ -647,7 +647,7 @@ func TestEnumsAndConstantsAcrossModules(t *testing.T) {
 					}
 					case Event.Closed: { }
 				}
-				push(a.log, e);
+				a.log.push(e);
 				return Outcome.Done(a.balance);
 			}
 

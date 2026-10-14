@@ -606,7 +606,7 @@ Get the length of an array or a string.
 - String: the number of characters (Unicode code points)
 - Object: the value of its field named `length`, or null if it has none. The
   compiler does not rely on this: it emits `ARRLEN` only for calls of
-  `arrays.len` and `strings.len`, and reads a struct's field named `length`
+  `len` and `len`, and reads a struct's field named `length`
   as it reads any field
 
 **Example:**

@@ -31,7 +31,7 @@ pub fn readLines() -> [String] {
     let line = readLine();
 
     while line != null {
-        push(out, line);
+        out.push(line);
         line = readLine();
     }
 
@@ -98,7 +98,7 @@ pub fn readFile(path: String) -> Result<String, Error> {
 // characters were written, or why it could not be done.
 pub fn writeFile(path: String, text: String) -> Result<Int, Error> {
     if writeText(path, text) {
-        return Result.Ok(strings.len(text));
+        return Result.Ok(text.len());
     }
 
     return Result.Err(failure("write", path));
@@ -108,7 +108,7 @@ pub fn writeFile(path: String, text: String) -> Result<Int, Error> {
 // characters were added, or why it could not be done.
 pub fn appendFile(path: String, text: String) -> Result<Int, Error> {
     if appendText(path, text) {
-        return Result.Ok(strings.len(text));
+        return Result.Ok(text.len());
     }
 
     return Result.Err(failure("append", path));
@@ -116,7 +116,7 @@ pub fn appendFile(path: String, text: String) -> Result<Int, Error> {
 
 // The lines of a file, or why it cannot be read.
 pub fn readFileLines(path: String) -> Result<[String], Error> {
-    return readFile(path).map(strings.lines);
+    return readFile(path).map(text -> text.lines());
 }
 
 // The error for the operation on a file that just failed. For the modules

@@ -32,6 +32,12 @@ const TypeTestIntrinsic = "__is"
 type method struct {
 	name   string // Name used at call sites: p.name(...)
 	irName string // Name of the compiled function: Struct.name
+	module string // The module the method is written in
+
+	// forwards names the function a method of the library only hands its
+	// receiver and its arguments to: text.trim() is strings.trim(text).
+	// A call of the method is compiled as a call of that function.
+	forwards string
 
 	// A method reachable through a trait is also stored on each value of
 	// the struct, so it can be found when only the trait is known.
@@ -141,6 +147,8 @@ func (g *IRGenerator) collectDecls() {
 				g.structMethods[d.StructName] = append(g.structMethods[d.StructName], method{
 					name:      m.Name,
 					irName:    methodIRName(d.StructName, m.Name),
+					module:    m.Module,
+					forwards:  ast.ForwardedTo(m),
 					fromTrait: d.TraitName != "",
 				})
 			}
@@ -174,6 +182,47 @@ func (g *IRGenerator) hasMethod(structName, name string) bool {
 	for _, m := range g.structMethods[structName] {
 		if m.name == name {
 			return true
+		}
+	}
+	return false
+}
+
+// onlyArraysWith returns the one impl for the arrays of a type that has a
+// method of that name, or "" when none or several do.
+func (g *IRGenerator) onlyArraysWith(name string) string {
+	found := ""
+	for owner := range g.structMethods {
+		if item, arrays := ast.IsArrayImpl(owner); !arrays || item == "" || !g.hasMethod(owner, name) {
+			continue
+		}
+		if found != "" {
+			return ""
+		}
+		found = owner
+	}
+	return found
+}
+
+// forwarded returns the function a method of a type forwards to, or "".
+func (g *IRGenerator) forwarded(structName, name string) string {
+	for _, m := range g.structMethods[structName] {
+		if m.name == name {
+			return m.forwards
+		}
+	}
+	return ""
+}
+
+// isLengthMethod reports whether a method is the library's `len` of
+// arrays or of texts: items.len() and text.len(), which are one
+// instruction and not a call.
+func (g *IRGenerator) isLengthMethod(structName, name string) bool {
+	if name != "len" {
+		return false
+	}
+	for _, m := range g.structMethods[structName] {
+		if m.name == name {
+			return (structName == ast.ArrayImpl && m.module == "std.arrays") || (structName == "String" && m.module == "std.strings")
 		}
 	}
 	return false
@@ -237,6 +286,13 @@ func (g *IRGenerator) resolveMethod(receiver ast.Expr, name string) (dispatch, s
 		if g.hasMethod(ast.ArrayImpl, name) {
 			return dispatchStatic, ast.ArrayImpl
 		}
+		// What the array holds is not known here any more (a type
+		// parameter of a generic struct, in one of its methods). The
+		// checker knew, and accepted the call: when only the arrays of
+		// one type have a method of that name, it is that one.
+		if owner := g.onlyArraysWith(name); owner != "" {
+			return dispatchStatic, owner
+		}
 	}
 
 	// The receiver's type is not known (its elements came from an untyped
@@ -277,6 +333,13 @@ func (g *IRGenerator) builtinOwners(name string) []string {
 	for _, builtin := range []string{"Int", "Float", "String", "Bool", ast.ArrayImpl} {
 		if g.hasMethod(builtin, name) {
 			owners = append(owners, builtin)
+		}
+	}
+	// A method only the arrays of one type have, asked of a value that
+	// is only known to be an array when the program runs
+	if !g.hasMethod(ast.ArrayImpl, name) {
+		if owner := g.onlyArraysWith(name); owner != "" {
+			owners = append(owners, owner)
 		}
 	}
 	return owners

@@ -47,7 +47,7 @@ pub extern fn matches(pattern: String, name: String) -> Bool;
 // The last part without its extension: "notes/todo.txt" gives "todo".
 pub fn stem(path: String) -> String {
     let name = base(path);
-    return strings.first(name, strings.len(name) - strings.len(extension(name)));
+    return name.first(name.len() - extension(name).len());
 }
 
 // The same path with another extension: withExtension("a/b.md", ".html").
@@ -55,7 +55,7 @@ pub fn withExtension(path: String, extension: String) -> String {
     let folder = dir(path);
     let name = stem(path) + extension;
 
-    if folder == "." && !strings.startsWith(path, ".") {
+    if folder == "." && !path.startsWith(".") {
         return name;
     }
 
@@ -68,5 +68,5 @@ pub fn parts(path: String) -> [String] {
         return part != "";
     };
 
-    return clean(path) |> strings.split(separator()) |> arrays.filter(wanted);
+    return clean(path).split(separator()).filter(wanted);
 }

@@ -37,7 +37,7 @@ func TestReflect(t *testing.T) {
 				case Kind.Int: { return json.int(value as Int); }
 				case Kind.Float: { return Json.Number(value as Float); }
 				case Kind.String: { return Json.String(value as String); }
-				case Kind.Array: { return Json.Array(arrays.map(reflect.items(value), toJson)); }
+				case Kind.Array: { return Json.Array(reflect.items(value).map(toJson)); }
 				case Kind.Struct: {
 					let out = json.object();
 					for name in reflect.fields(value) { out.set(name, toJson(reflect.get(value, name))); }
@@ -46,7 +46,7 @@ func TestReflect(t *testing.T) {
 				case Kind.Variant: {
 					return json.object()
 						.text("variant", reflect.variant(value) ?? "")
-						.set("values", Json.Array(arrays.map(reflect.values(value), toJson)))
+						.set("values", Json.Array(reflect.values(value).map(toJson)))
 						.done();
 				}
 				default: { return Json.String(toString(value)); }
@@ -82,7 +82,7 @@ func TestReflect(t *testing.T) {
 			println(reflect.kind(1), reflect.kind(1.5), reflect.kind("x"), reflect.kind([1]), reflect.kind(null), reflect.kind(true), reflect.kind((1, "a")), reflect.kind(main));
 			println(reflect.typeName(3), reflect.typeName(2.5), reflect.typeName("x"), reflect.typeName([1]), reflect.typeName(null), reflect.typeName(list.of([1])));
 			println(reflect.values((1, "a", true)), reflect.variant(3), reflect.variant(user), reflect.values(user), reflect.fields(Empty { }));
-			println(reflect.items([1, 2]), arrays.len(reflect.items(["a"])));
+			println(reflect.items([1, 2]), reflect.items(["a"]).len());
 
 			println(toJson(user).stringify());
 			println(toJson([Shape.Rect(1.5, 2.5), Shape.Dot]).stringify());
@@ -155,7 +155,7 @@ enum Size { Small, Large(Int) }
 // The price with tax.
 fn taxed(price: Price, rate: Int) -> Int {
     let extra = price.cents * rate / 100;
-    return math.abs(price.cents + extra);
+    return (price.cents + extra).abs();
 }
 
 fn main() -> Int {
@@ -176,7 +176,7 @@ fn main() -> Int {
 		let source = io.readFile(path).expect("the file");
 
 		// A program that is fine
-		println(arrays.len(compiler.check(path, source)));
+		println(compiler.check(path, source).len());
 
 		// What it declares
 		for symbol in compiler.symbols(path, source) {
@@ -188,36 +188,36 @@ fn main() -> Int {
 		// What a name is, and where it comes from
 		let taxed = compiler.describe(path, source, 19, 12);
 		println(taxed?.signature, "|", taxed?.doc, "|", taxed?.declared?.line, taxed?.declared?.column, taxed?.startColumn, taxed?.endColumn);
-		println(strings.endsWith(taxed?.declared?.file ?? "", "shop.lum"), taxed?.declared?.describe() == "${path}:13:4");
+		println((taxed?.declared?.file ?? "").endsWith("shop.lum"), taxed?.declared?.describe() == "${path}:13:4");
 		let field = compiler.describe(path, source, 14, 23);
 		println(field?.signature, "|", field?.doc);
-		let library = compiler.describe(path, source, 15, 14);
+		let library = compiler.describe(path, source, 15, 35);
 		// What the library declares is given a file that can be opened
 		let file = library?.declared?.file ?? "";
-		println(library?.signature, strings.endsWith(file, "/lumen/std/math.lum"), io.readFile(file).map(text -> strings.contains(text, "pub fn abs(")));
+		println(library?.signature, file.endsWith("/lumen/std/math.lum"), io.readFile(file).map(text -> text.contains("pub fn abs(")));
 		println(compiler.describe(path, source, 19, 5), compiler.describe(path, source, 900, 1));
 
 		// What could be written: the line being typed need not make sense
-		let typing = strings.replace(source, "    return math.abs(price.cents + extra);", "    return price.");
-		println(arrays.map(compiler.complete(path, typing, 15, 18), s -> "${s.label}:${s.kind}"));
+		let typing = source.replace("    return (price.cents + extra).abs();", "    return price.");
+		println(compiler.complete(path, typing, 15, 18).map(s -> "${s.label}:${s.kind}"));
 		let plain = compiler.complete(path, source, 15, 5);
-		println(arrays.map(arrays.filter(plain, s -> s.detail == "Int" || s.detail == "Price"), s -> "${s.label}: ${s.detail}"));
+		println(plain.filter(s -> s.detail == "Int" || s.detail == "Price").map(s -> "${s.label}: ${s.detail}"));
 
 		// What is wrong with it
-		let broken = strings.replace(source, "price.cents + extra", "price.cent + extras");
+		let broken = source.replace("price.cents + extra", "price.cent + extras");
 		for problem in compiler.check(path, broken) {
-			println(strings.replace(problem.describe(), path, "shop.lum"), "|", problem.endColumn, problem.isError(), "|", problem.suggestion);
+			println(problem.describe().replace(path, "shop.lum"), "|", problem.endColumn, problem.isError(), "|", problem.suggestion);
 		}
-		let unused = strings.replace(source, "    return taxed(", "    return 0;\n    taxed(");
+		let unused = source.replace("    return taxed(", "    return 0;\n    taxed(");
 		for problem in compiler.check(path, unused) { println(problem.severity, problem.code, problem.at.line, problem.isError()); }
-		println(arrays.map(compiler.check(path, "fn main( {"), p -> "${p.severity.name()} ${p.at.line}"), arrays.len(compiler.symbols(path, "fn main( {")));
+		println(compiler.check(path, "fn main( {").map(p -> "${p.severity.name()} ${p.at.line}"), compiler.symbols(path, "fn main( {").len());
 
 		// A file being edited is the one imported
 		compiler.open(`+quote(filepath.Join(dir, "math2.lum"))+`, "pub fn triple(n: Int) -> Int { return n * 3; }");
 		let user = "import math2;\nfn main() -> Int { return math2.triple(2); }\n";
-		println(arrays.len(compiler.check(path, user)), arrays.map(compiler.complete(path, "import math2;\nfn main() -> Int {\n    return math2.\n}", 3, 18), s -> s.label));
+		println(compiler.check(path, user).len(), compiler.complete(path, "import math2;\nfn main() -> Int {\n    return math2.\n}", 3, 18).map(s -> s.label));
 		compiler.close(`+quote(filepath.Join(dir, "math2.lum"))+`);
-		println(arrays.map(compiler.check(path, user), p -> p.code));
+		println(compiler.check(path, user).map(p -> p.code));
 	`, "")
 	if err != nil {
 		t.Fatalf("runtime error: %v", err)
@@ -234,11 +234,11 @@ Function main | fn main() -> Int | 18 4
 fn taxed(price: Price, rate: Int) -> Int | The price with tax. | 13 4 12 17
 true true
 (field) Price.cents: Int | What something costs.
-fn math.abs(n: Int) -> Int true Ok(true)
+fn Int.abs() -> Int true Ok(true)
 null null
 ["cents:Field", "double:Method"]
 ["extra: Int", "price: Price", "rate: Int"]
-shop.lum:15:34: error E1001: undefined identifier 'extras' | 40 true | Did you mean 'extra'?
+shop.lum:15:26: error E1001: undefined identifier 'extras' | 32 true | Did you mean 'extra'?
 Warning E2023 20 false
 ["error 1"] 0
 0 ["triple"]
@@ -253,10 +253,10 @@ func TestReadingBytes(t *testing.T) {
 	// What a protocol sends: a line saying how long, then that many
 	// bytes, which is not that many characters
 	out, err := run(t, "import std.io;\nimport std.strings;", `
-		println(strings.byteLength("héllo"), strings.len("héllo"), strings.byteLength(""), strings.byteLength("日本"));
-		let size = strings.parseInt(io.readLine() ?? "") ?? 0;
+		println("héllo".byteLength(), "héllo".len(), "".byteLength(), "日本".byteLength());
+		let size = (io.readLine() ?? "").parseInt() ?? 0;
 		let body = io.readBytes(size) ?? "nothing";
-		println(body, strings.len(body), io.readLine(), io.readBytes(0), io.readBytes(3), io.readBytes(50), io.readBytes(1));
+		println(body, body.len(), io.readLine(), io.readBytes(0), io.readBytes(3), io.readBytes(50), io.readBytes(1));
 	`, "7\nhé\nlo!rest of the line\nabcdef")
 	if err != nil {
 		t.Fatalf("runtime error: %v", err)

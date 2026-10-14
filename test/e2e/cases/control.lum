@@ -28,7 +28,7 @@ struct Dock {
 
 impl Dock {
     fn note(text: String) {
-        push(self.log, text);
+        self.log.push(text);
     }
 
     // The dock is given back whichever way the loading ends
@@ -171,11 +171,11 @@ fn main() -> Int {
                 continue;
             }
 
-            let count = arrays.len(arrays.filter(parcels, p -> p.status == Status.Loaded(n)));
-            push(leaving, "van ${n} (${count})");
+            let count = parcels.filter(p -> p.status == Status.Loaded(n)).len();
+            leaving.push("van ${n} (${count})");
         }
 
-        println("day ${day}:", strings.join(leaving, ", "));
+        println("day ${day}:", leaving.join(", "));
     }
 
     return 0;

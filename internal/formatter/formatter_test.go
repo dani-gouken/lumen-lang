@@ -35,7 +35,7 @@ import std.strings;
 import std.result.{Result};
 
 fn main() -> Int {
-    let source = io.readBytes(strings.parseInt(os.args()[0]) ?? 0) ?? "";
+    let source = io.readBytes(os.args()[0].parseInt() ?? 0) ?? "";
     match formatter.format(source) {
         case Result.Ok(tidy): { print("ok\n" + tidy); }
         case Result.Err(problem): { print("problem\n" + problem.describe()); }

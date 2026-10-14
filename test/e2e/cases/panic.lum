@@ -10,7 +10,7 @@ struct Queue {
 
 impl Queue {
     fn take() -> Int {
-        if arrays.len(self.items) == 0 {
+        if self.items.len() == 0 {
             panic("the queue is empty after", self.taken, "items");
         }
 
@@ -25,7 +25,7 @@ fn drain(q: Queue, times: Int) -> Int {
 
     while i < times {
         total += q.take();
-        q.items = arrays.slice(q.items, 1, arrays.len(q.items));
+        q.items = q.items.slice(1, q.items.len());
         i++;
     }
 

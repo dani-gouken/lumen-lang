@@ -59,8 +59,8 @@ pub fn methodOf(name: String) -> Method? {
         Method.Options,
     ];
 
-    let wanted = strings.upper(name);
-    return arrays.find(all, method -> method.name() == wanted);
+    let wanted = name.upper();
+    return all.find(method -> method.name() == wanted);
 }
 
 // Why there was no answer.
@@ -100,7 +100,7 @@ impl Response {
 
     // The value of a header, whatever the case of its name, or null.
     pub fn header(name: String) -> String? {
-        return self.headers.get(strings.lower(name));
+        return self.headers.get(name.lower());
     }
 
     // The body read as JSON.
@@ -110,7 +110,7 @@ impl Response {
 
     // The same answer with one more header. Returns it, to chain.
     pub fn with(name: String, value: String) -> Response {
-        self.headers.set(strings.lower(name), value);
+        self.headers.set(name.lower(), value);
         return self;
     }
 }
@@ -149,7 +149,7 @@ impl Call {
     pub fn query(name: String, value: String) -> Call {
         let joint = "?";
 
-        if strings.contains(self.url, "?") {
+        if self.url.contains("?") {
             joint = "&";
         }
 
@@ -188,7 +188,7 @@ impl Call {
 
         // The status, the body, then the headers
         return Result.Ok(Response {
-            status: strings.parseInt(parts[0]) ?? 0,
+            status: parts[0].parseInt() ?? 0,
             headers: paired(parts, 2),
             body: parts[1],
         });
@@ -224,7 +224,7 @@ pub struct Request {
 
 impl Request {
     pub fn header(name: String) -> String? {
-        return self.headers.get(strings.lower(name));
+        return self.headers.get(name.lower());
     }
 
     // The body read as JSON.
@@ -294,7 +294,7 @@ impl Server {
         // Its number, the method, the path, the query, the body, the
         // sender, then the headers
         let parts = accept(self.id, milliseconds)?;
-        self.last = strings.parseInt(parts[0]) ?? 0;
+        self.last = parts[0].parseInt() ?? 0;
 
         return Request {
             method: methodOf(parts[1]) ?? Method.Get,
@@ -412,7 +412,7 @@ impl Router {
     // whatever is there and gives it that name in request.params; a last
     // part that is * takes all that is left, under the name "rest".
     pub fn on(method: Method, path: String, handler: fn(Request) -> Response) -> Router {
-        push(self.routes, Route { method: method, parts: partsOf(path), handler: handler });
+        self.routes.push(Route { method: method, parts: partsOf(path), handler: handler });
         return self;
     }
 
@@ -478,30 +478,24 @@ fn fit(route: [String], path: [String]) -> Dict<String>? {
     let params = dict.empty<String>();
 
     for i, part in route {
-        if part == "*" && i == arrays.len(route) - 1 {
-            params.set(
-                "rest",
-                strings.join(
-                    arrays.slice(path, math.min(i, arrays.len(path)), arrays.len(path)),
-                    "/",
-                ),
-            );
+        if part == "*" && i == route.len() - 1 {
+            params.set("rest", path.slice(i.min(path.len()), path.len()).join("/"));
 
             return params;
         }
 
-        if i >= arrays.len(path) {
+        if i >= path.len() {
             return null;
         }
 
-        if strings.startsWith(part, ":") {
-            params.set(strings.from(part, 1), path[i]);
+        if part.startsWith(":") {
+            params.set(part.from(1), path[i]);
         } else if part != path[i] {
             return null;
         }
     }
 
-    if arrays.len(path) != arrays.len(route) {
+    if path.len() != route.len() {
         return null;
     }
 
@@ -513,19 +507,19 @@ fn partsOf(path: String) -> [String] {
         return part != "";
     };
 
-    return path |> strings.split("/") |> arrays.filter(named);
+    return path.split("/").filter(named);
 }
 
 // "a=1&b=x+y" as a dictionary, the values decoded.
 pub fn queryOf(query: String) -> Dict<String> {
     let out = dict.empty<String>();
 
-    for pair in strings.split(query, "&") {
+    for pair in query.split("&") {
         if pair == "" {
             continue;
         }
 
-        let (name, value) = strings.cut(pair, "=") ?? (pair, "");
+        let (name, value) = pair.cut("=") ?? (pair, "");
         out.set(encoding.fromUrl(name) ?? name, encoding.fromUrl(value) ?? value);
     }
 
@@ -537,8 +531,8 @@ fn pairs(headers: Dict<String>) -> [String] {
     let out: [String] = [];
 
     headers.each(fn(name: String, value: String) {
-        push(out, name);
-        push(out, value);
+        out.push(name);
+        out.push(value);
     });
 
     return out;
@@ -549,7 +543,7 @@ fn paired(parts: [String], from: Int) -> Dict<String> {
     let out = dict.empty<String>();
     let i = from;
 
-    while i + 1 < arrays.len(parts) {
+    while i + 1 < parts.len() {
         out.set(parts[i], parts[i + 1]);
         i += 2;
     }

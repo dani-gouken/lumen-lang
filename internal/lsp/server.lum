@@ -46,13 +46,13 @@ fn readMessage() -> Json? {
             break;
         }
 
-        let header = strings.cut(line, ":");
+        let header = line.cut(":");
 
         if header != null {
             let (name, value) = header;
 
-            if strings.lower(strings.trim(name)) == "content-length" {
-                length = strings.parseInt(strings.trim(value)) ?? 0;
+            if name.trim().lower() == "content-length" {
+                length = value.trim().parseInt() ?? 0;
             }
         }
     }
@@ -63,7 +63,7 @@ fn readMessage() -> Json? {
 
 fn send(message: Json) {
     let body = message.stringify();
-    print("Content-Length: ${strings.byteLength(body)}\r\n\r\n${body}");
+    print("Content-Length: ${body.byteLength()}\r\n\r\n${body}");
 }
 
 fn reply(id: Json, value: Json) {
@@ -88,16 +88,16 @@ fn notify(method: String, params: Json) {
 fn pathOf(uri: String) -> String {
     let path = uri;
 
-    if strings.startsWith(path, "file://") {
-        path = strings.from(path, 7);
+    if path.startsWith("file://") {
+        path = path.from(7);
     }
 
     return encoding.fromUrl(path) ?? path;
 }
 
 fn uriOf(path: String) -> String {
-    let parts = arrays.map(strings.split(path, "/"), part -> encoding.toUrl(part));
-    return "file://" + strings.join(parts, "/");
+    let parts = path.split("/").map(part -> encoding.toUrl(part));
+    return "file://" + parts.join("/");
 }
 
 fn position(line: Int, column: Int) -> Json {
@@ -276,11 +276,11 @@ impl Server {
         // The whole text is sent with every change
         let changes = params.get("contentChanges")?.items() ?? [];
 
-        if arrays.len(changes) == 0 {
+        if changes.len() == 0 {
             return;
         }
 
-        document.text = changes[arrays.len(changes) - 1].get("text")?.text() ?? document.text;
+        document.text = changes[changes.len() - 1].get("text")?.text() ?? document.text;
         document.version++;
         compiler.open(document.path, document.text);
 
@@ -329,11 +329,11 @@ impl Server {
         for problem in compiler.check(document.path, document.text) {
             let file = problem.at.file;
 
-            if strings.startsWith(file, "<") {
+            if file.startsWith("<") {
                 file = document.path;
             }
 
-            byFile.update(file, [], known -> arrays.concat(known, [problem]));
+            byFile.update(file, [], known -> known.concat([problem]));
         }
 
         for file in self.flagged.getOr(document.path, []) {
@@ -352,10 +352,7 @@ impl Server {
             self.publish(file, uri, byFile.getOr(file, []));
         }
 
-        self.flagged.set(
-            document.path,
-            arrays.filter(byFile.keys(), file -> file != document.path),
-        );
+        self.flagged.set(document.path, byFile.keys().filter(file -> file != document.path));
     }
 
     fn publish(file: String, uri: String, problems: [Problem]) {
@@ -416,7 +413,7 @@ impl Server {
         let declared = self.nameAt(params)?.declared;
 
         // What is declared inside the library has no file to open
-        if declared == null || strings.startsWith(declared.file, "<") {
+        if declared == null || declared.file.startsWith("<") {
             return Json.Null;
         }
 
@@ -437,15 +434,14 @@ impl Server {
         let entries: [Entry] = [];
 
         for symbol in compiler.symbols(document.path, document.text) {
-            let holder = arrays.find(
-                entries,
+            let holder = entries.find(
                 entry -> symbol.container != "" && entry.symbol.name == symbol.container,
             );
 
             if holder != null {
-                push(holder.parts, symbol);
+                holder.parts.push(symbol);
             } else {
-                push(entries, Entry { symbol: symbol, parts: [] });
+                entries.push(Entry { symbol: symbol, parts: [] });
             }
         }
 
@@ -490,7 +486,7 @@ impl Server {
         }
 
         // From the start to past the last line, wherever that is
-        let lines = strings.count(document.text, "\n") + 1;
+        let lines = document.text.count("\n") + 1;
 
         let whole = json.object()
             .set("start", position(1, 1))
@@ -649,7 +645,7 @@ fn entryJson(entry: Entry) -> Json {
 }
 
 fn symbolJson(symbol: Symbol) -> json.Object {
-    let name = range(symbol.line, symbol.column, symbol.column + strings.len(symbol.name));
+    let name = range(symbol.line, symbol.column, symbol.column + symbol.name.len());
 
     return json.object()
         .text("name", symbol.name)

@@ -1,0 +1,128 @@
+package compiler
+
+import (
+	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/types"
+)
+
+// The methods the library gives arrays, texts and numbers are its
+// functions under another name:
+//
+//	impl<T> [T] { pub fn contains(wanted: T) -> Bool { return contains(self, wanted); } }
+//
+// A call of one is written back as the call of the function it stands for,
+// here, before generic functions are compiled for the types they are used
+// with: items.contains(point) becomes contains<Point>(items, point). The
+// function is then compiled for Point, where `==` is the one Point says it
+// has. Left as a method, it would be the method of every array, compiled
+// once, which knows nothing of what the array holds.
+//
+// It also leaves one call where there were two, and nothing of the library
+// between a program and what fails in it.
+
+// forwardLibraryMethods rewrites the calls of the methods of the library
+// that only forward, in place.
+func forwardLibraryMethods(prog *ast.Program, info *types.Info) {
+	// The function each such method forwards to, by what the impl is for
+	// and the name of the method
+	type forwarder struct {
+		target  string
+		generic bool // An impl for every array: its type parameter is the function's first
+	}
+	forwarders := make(map[string]map[string]forwarder)
+	for _, decl := range prog.Decls {
+		impl, ok := decl.(*ast.ImplDecl)
+		if !ok || impl.TraitName != "" || !types.IsBuiltinTypeName(impl.StructName) {
+			continue
+		}
+		for _, method := range impl.Methods {
+			target := ast.ForwardedTo(method)
+			if target == "" || target == resolve.PushFunction {
+				// push is an instruction of its own, where it is
+				continue
+			}
+			if forwarders[impl.StructName] == nil {
+				forwarders[impl.StructName] = make(map[string]forwarder)
+			}
+			forwarders[impl.StructName][method.Name] = forwarder{target: target, generic: impl.StructName == ast.ArrayImpl}
+		}
+	}
+	if len(forwarders) == 0 {
+		return
+	}
+
+	rewrite := func(expr ast.Expr) {
+		call, ok := expr.(*ast.CallExpr)
+		if !ok {
+			return
+		}
+		member, ok := call.Func.(*ast.MemberExpr)
+		if !ok {
+			return
+		}
+		receiver := info.Types[member.Expr]
+		if receiver == nil {
+			return
+		}
+
+		// The impl the checker found the method in: for an array, that of
+		// its items before that of every array
+		var keys []string
+		var items types.Type
+		if array, isArray := receiver.(*types.ArrayType); isArray {
+			items = array.ElementType
+			if item := types.ImplKey(items); item != "" && item != ast.ArrayImpl {
+				keys = append(keys, ast.ArrayImplOf(item))
+			}
+			keys = append(keys, ast.ArrayImpl)
+		} else if key := types.ImplKey(receiver); key != "" {
+			if _, isStruct := receiver.(*types.StructType); isStruct {
+				return
+			}
+			keys = append(keys, key)
+		}
+		var found forwarder
+		for _, key := range keys {
+			if f, has := forwarders[key][member.Name]; has {
+				found = f
+				break
+			}
+		}
+		if found.target == "" {
+			return
+		}
+
+		callee := &ast.Ident{BaseNode: member.BaseNode, Name: found.target}
+		if found.generic {
+			// What the array holds, written out for the function
+			item := types.TypeToAST(items, member.BaseNode)
+			if item == nil {
+				return // Not known ([]): the method of every array will do
+			}
+			callee.TypeArgs = append([]*ast.Type{item}, member.TypeArgs...)
+		}
+		call.Func = callee
+		call.Args = append([]ast.Expr{member.Expr}, call.Args...)
+	}
+
+	walk := func(body *ast.BlockStmt) {
+		if body != nil {
+			ast.Walk(body, rewrite, func(ast.Stmt) {})
+		}
+	}
+	for _, decl := range prog.Decls {
+		switch d := decl.(type) {
+		case *ast.FnDecl:
+			walk(d.Body)
+		case *ast.ImplDecl:
+			for _, method := range d.Methods {
+				walk(method.Body)
+			}
+		case *ast.TraitDecl:
+			for _, method := range d.Methods {
+				walk(method.Body)
+			}
+		}
+	}
+}

@@ -90,19 +90,19 @@ fn main() -> Int {
     let arguments = os.args();
     let lox = interpreter(line -> println(line));
 
-    if arrays.len(arguments) > 1 {
+    if arguments.len() > 1 {
         io.printError("Usage: lumen run examples/lox [script | -]\n");
         return USAGE;
     }
 
-    if arrays.len(arguments) == 1 && arguments[0] == "-" {
+    if arguments.len() == 1 && arguments[0] == "-" {
         prompt(lox);
         return 0;
     }
 
     let script = path.join([path.dir(os.program()), "demo.lox"]);
 
-    if arrays.len(arguments) == 1 {
+    if arguments.len() == 1 {
         script = arguments[0];
     }
 

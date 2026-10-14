@@ -169,7 +169,7 @@ fn isLongSymbol(text: String) -> Bool {
 }
 
 fn scan(source: String, report: Report) -> [Token] {
-    let lexer = Lexer { source: source, length: strings.len(source), report: report };
+    let lexer = Lexer { source: source, length: source.len(), report: report };
     lexer.scan();
     return lexer.tokens;
 }
@@ -245,17 +245,17 @@ impl Lexer {
             let line = self.line;
             let column = start - self.lineStart + 1;
             let indent = self.indentHere();
-            let first = arrays.isEmpty(self.tokens);
+            let first = self.tokens.isEmpty();
             let c = self.char(start);
             let next = self.char(start + 1);
 
             if c == "/" && (next == "/" || next == "*") {
                 self.pass(self.endOfComment(start));
-                let text = strings.trimEnd(strings.substring(self.source, start, self.at));
+                let text = self.source.substring(start, self.at).trimEnd();
                 let followed = self.codeFollows();
-                let last = arrays.last(self.tokens);
+                let last = self.tokens.last();
 
-                if last != null && newlines == 0 && arrays.isEmpty(pending) && !followed {
+                if last != null && newlines == 0 && pending.isEmpty() && !followed {
                     // At the end of the line of a token: it is about that line
                     if last.after == "" {
                         last.after = text;
@@ -263,7 +263,7 @@ impl Lexer {
                         last.after = "${last.after} ${text}";
                     }
                 } else {
-                    push(pending, Comment {
+                    pending.push(Comment {
                         text: text,
                         blank: newlines >= 2,
                         inline: followed,
@@ -298,15 +298,15 @@ impl Lexer {
                 end = start + 3;
             } else if isLongSymbol(c + next) {
                 end = start + 2;
-            } else if !strings.contains(symbols, c) {
+            } else if !symbols.contains(c) {
                 self.fail(start, "unexpected character '${c}'");
             }
 
             self.pass(end);
 
-            push(self.tokens, Token {
+            self.tokens.push(Token {
                 kind: kind,
-                text: strings.substring(self.source, start, end),
+                text: self.source.substring(start, end),
                 line: line,
                 column: column,
                 start: start,
@@ -361,7 +361,7 @@ impl Lexer {
 
     fn endOfNumber(start: Int) -> Int {
         let at = start;
-        let base = strings.lower(self.char(start + 1));
+        let base = self.char(start + 1).lower();
 
         if self.char(start) == "0" && (base == "x" || base == "b") {
             // 0xFF, 0b1010
@@ -386,7 +386,7 @@ impl Lexer {
             }
         }
 
-        if strings.lower(self.char(at)) == "e" {
+        if self.char(at).lower() == "e" {
             let sign = self.char(at + 1);
             let signed = sign == "+" || sign == "-";
 
@@ -470,18 +470,18 @@ impl Lexer {
 // count, since a list written one item to a line gets a comma after its
 // last, and a list back on one line loses it.
 fn unchanged(before: [Token], comments: String, after: [Token], report: Report) {
-    let was = arrays.filter(before, counts);
-    let now = arrays.filter(after, counts);
+    let was = before.filter(counts);
+    let now = after.filter(counts);
 
     for i, token in was {
-        if i >= arrays.len(now) || squeezed(now[i].text) != squeezed(token.text) {
+        if i >= now.len() || squeezed(now[i].text) != squeezed(token.text) {
             report.fail(token.line, token.column, mistake);
         }
     }
 
-    let last = before[arrays.len(before) - 1];
+    let last = before[before.len() - 1];
 
-    if arrays.len(now) != arrays.len(was) || comments != commentsOf(after) {
+    if now.len() != was.len() || comments != commentsOf(after) {
         report.fail(last.line, last.column, mistake);
     }
 }
@@ -495,11 +495,11 @@ fn counts(token: Token) -> Bool {
 // A text without what a text over several lines has in front of its
 // lines, which moves with it.
 fn squeezed(text: String) -> String {
-    if !strings.contains(text, "\n") {
+    if !text.contains("\n") {
         return text;
     }
 
-    return strings.lines(text) |> arrays.map(line -> strings.trimStart(line)) |> strings.join("\n");
+    return text.lines().map(line -> line.trimStart()).join("\n");
 }
 
 fn commentsOf(tokens: [Token]) -> String {
@@ -507,15 +507,15 @@ fn commentsOf(tokens: [Token]) -> String {
 
     for token in tokens {
         for comment in token.before {
-            push(all, squeezed(comment.text));
+            all.push(squeezed(comment.text));
         }
 
         if token.after != "" {
-            push(all, squeezed(token.after));
+            all.push(squeezed(token.after));
         }
     }
 
-    return strings.replace(strings.join(all, ""), " ", "");
+    return all.join("").replace(" ", "");
 }
 
 // --- Lines under each other ---
@@ -528,7 +528,7 @@ struct Lead {
 }
 
 fn commentDoc(comment: Comment) -> Doc {
-    if strings.contains(comment.text, "\n") {
+    if comment.text.contains("\n") {
         return Doc.Verbatim(comment.text, comment.indent);
     }
 
@@ -560,12 +560,12 @@ impl Rows {
             if first {
                 open = self.separate(apart || comment.blank);
             } else if inline {
-                push(self.docs, space());
+                self.docs.push(space());
             } else {
                 self.line(comment.blank);
             }
 
-            push(self.docs, commentDoc(comment));
+            self.docs.push(commentDoc(comment));
             first = false;
             inline = comment.inline;
         }
@@ -573,19 +573,19 @@ impl Rows {
         if first {
             open = self.separate(apart || lead.blank);
         } else if inline {
-            push(self.docs, space());
+            self.docs.push(space());
         } else {
             self.line(lead.blank);
         }
 
-        push(self.docs, Doc.Item(doc, open));
+        self.docs.push(Doc.Item(doc, open));
     }
 
     // The comments left before the closing brace.
     fn close(lead: Lead) {
         for comment in lead.comments {
             self.separate(comment.blank);
-            push(self.docs, commentDoc(comment));
+            self.docs.push(commentDoc(comment));
         }
     }
 
@@ -603,15 +603,15 @@ impl Rows {
             return false;
         }
 
-        push(self.docs, Doc.Gap);
+        self.docs.push(Doc.Gap);
         return true;
     }
 
     fn line(blank: Bool) {
-        push(self.docs, Doc.Hard);
+        self.docs.push(Doc.Hard);
 
         if blank {
-            push(self.docs, Doc.Hard);
+            self.docs.push(Doc.Hard);
         }
     }
 
@@ -684,8 +684,8 @@ impl Parser {
     fn ahead(count: Int) -> Token {
         let at = self.at + count;
 
-        if at >= arrays.len(self.tokens) {
-            return self.tokens[arrays.len(self.tokens) - 1];
+        if at >= self.tokens.len() {
+            return self.tokens[self.tokens.len() - 1];
         }
 
         return self.tokens[at];
@@ -693,7 +693,7 @@ impl Parser {
 
     // The text of the token at a position, "" where there is none.
     fn textAt(at: Int) -> String {
-        if at < 0 || at >= arrays.len(self.tokens) {
+        if at < 0 || at >= self.tokens.len() {
             return "";
         }
 
@@ -743,11 +743,11 @@ impl Parser {
 
         let body = Doc.Text(text);
 
-        if strings.contains(text, "\n") {
+        if text.contains("\n") {
             body = Doc.Verbatim(text, token.indent);
         }
 
-        if arrays.isEmpty(token.before) && token.after == "" {
+        if token.before.isEmpty() && token.after == "" {
             return body;
         }
 
@@ -755,30 +755,30 @@ impl Parser {
 
         // Before what closes or separates, a comment stands off from what
         // it follows: value /* why */, and not value/* why */ ,
-        let closes = strings.contains(",;)]}", token.text);
+        let closes = ",;)]}".contains(token.text);
 
         for comment in token.before {
             // What started a line starts one still: a comment that ends
             // the line before it may be waiting, and comes first
             if comment.fresh {
-                push(parts, Doc.Fresh);
+                parts.push(Doc.Fresh);
             } else if closes {
-                push(parts, space());
+                parts.push(space());
             }
 
-            push(parts, commentDoc(comment));
+            parts.push(commentDoc(comment));
 
             if !comment.inline {
-                push(parts, Doc.Hard);
+                parts.push(Doc.Hard);
             } else if !closes {
-                push(parts, space());
+                parts.push(space());
             }
         }
 
-        push(parts, body);
+        parts.push(body);
 
         if token.after != "" {
-            push(parts, Doc.Trailing(token.after));
+            parts.push(Doc.Trailing(token.after));
         }
 
         return layout.concat(parts);
@@ -817,11 +817,11 @@ impl Parser {
             let doc = item();
 
             if !self.is(",") {
-                push(items, doc);
+                items.push(doc);
                 break;
             }
 
-            push(items, layout.concat([doc, self.drop()]));
+            items.push(layout.concat([doc, self.drop()]));
         }
 
         return items;
@@ -870,53 +870,53 @@ impl Parser {
         let parts: [Doc] = [];
 
         if self.is("pub") {
-            push(parts, self.take());
-            push(parts, space());
+            parts.push(self.take());
+            parts.push(space());
         }
 
         match self.peek().text {
             case "import": {
-                push(parts, self.importDeclaration());
+                parts.push(self.importDeclaration());
             }
 
             case "const": {
-                push(parts, self.variable());
+                parts.push(self.variable());
             }
 
             case "extern": {
-                push(parts, self.take());
-                push(parts, space());
+                parts.push(self.take());
+                parts.push(space());
 
                 if self.is("struct") {
-                    push(parts, self.structDeclaration());
+                    parts.push(self.structDeclaration());
                 } else {
                     if self.peek().kind == Kind.Text {
-                        push(parts, self.take());
-                        push(parts, space());
+                        parts.push(self.take());
+                        parts.push(space());
                     }
 
-                    push(parts, self.function());
+                    parts.push(self.function());
                 }
             }
 
             case "fn": {
-                push(parts, self.function());
+                parts.push(self.function());
             }
 
             case "struct": {
-                push(parts, self.structDeclaration());
+                parts.push(self.structDeclaration());
             }
 
             case "enum": {
-                push(parts, self.enumDeclaration());
+                parts.push(self.enumDeclaration());
             }
 
             case "trait": {
-                push(parts, self.members(false));
+                parts.push(self.members(false));
             }
 
             case "impl": {
-                push(parts, self.members(true));
+                parts.push(self.members(true));
             }
 
             default: {
@@ -932,26 +932,26 @@ impl Parser {
         let parts = [self.take(), space(), self.name("a module path")];
 
         while self.is(".") {
-            push(parts, self.take());
+            parts.push(self.take());
 
             if self.is("{") {
                 let open = self.take();
                 let names = self.series("}", () -> self.name("a name to import"));
-                push(parts, list(open, names, self.expect("}")));
+                parts.push(list(open, names, self.expect("}")));
                 break;
             }
 
-            push(parts, self.name("a module name"));
+            parts.push(self.name("a module name"));
         }
 
         if self.is("as") {
-            push(parts, space());
-            push(parts, self.take());
-            push(parts, space());
-            push(parts, self.name("a name for the module"));
+            parts.push(space());
+            parts.push(self.take());
+            parts.push(space());
+            parts.push(self.name("a name for the module"));
         }
 
-        push(parts, self.expect(";"));
+        parts.push(self.expect(";"));
         return layout.concat(parts);
     }
 
@@ -961,23 +961,23 @@ impl Parser {
         let parts = [self.expect("fn"), space(), self.name("a function name")];
 
         if self.is("<") {
-            push(parts, self.typeParameters());
+            parts.push(self.typeParameters());
         }
 
-        push(parts, self.parameters());
+        parts.push(self.parameters());
 
         if self.is("->") {
-            push(parts, space());
-            push(parts, self.take());
-            push(parts, space());
-            push(parts, self.type());
+            parts.push(space());
+            parts.push(self.take());
+            parts.push(space());
+            parts.push(self.type());
         }
 
         if self.is(";") {
-            push(parts, self.take());
+            parts.push(self.take());
         } else {
-            push(parts, space());
-            push(parts, self.block());
+            parts.push(space());
+            parts.push(self.block());
         }
 
         return layout.concat(parts);
@@ -991,15 +991,15 @@ impl Parser {
             let parts = [self.name("a type parameter")];
 
             if self.is(":") {
-                push(parts, self.take());
-                push(parts, space());
-                push(parts, self.primaryType());
+                parts.push(self.take());
+                parts.push(space());
+                parts.push(self.primaryType());
 
                 while self.is("+") {
-                    push(parts, space());
-                    push(parts, self.take());
-                    push(parts, space());
-                    push(parts, self.primaryType());
+                    parts.push(space());
+                    parts.push(self.take());
+                    parts.push(space());
+                    parts.push(self.primaryType());
                 }
             }
 
@@ -1030,10 +1030,10 @@ impl Parser {
         let parts = [self.expect("struct"), space(), self.name("a struct name")];
 
         if self.is("<") {
-            push(parts, self.typeParameters());
+            parts.push(self.typeParameters());
         }
 
-        push(parts, space());
+        parts.push(space());
         let open = self.expect("{");
         let rows = Rows {};
 
@@ -1042,23 +1042,23 @@ impl Parser {
             let field = [self.name("a field name"), self.expect(":"), space(), self.type()];
 
             if self.is("=") {
-                push(field, space());
-                push(field, self.take());
-                push(field, space());
-                push(field, self.nested());
+                field.push(space());
+                field.push(self.take());
+                field.push(space());
+                field.push(self.nested());
             }
 
             if self.is(";") || self.is(",") {
-                push(field, self.takeAs(";"));
+                field.push(self.takeAs(";"));
             } else {
-                push(field, layout.text(";"));
+                field.push(layout.text(";"));
             }
 
             rows.add(lead, layout.concat(field), false);
         }
 
         rows.close(self.lead());
-        push(parts, rows.inside(open, self.take()));
+        parts.push(rows.inside(open, self.take()));
         return layout.concat(parts);
     }
 
@@ -1066,10 +1066,10 @@ impl Parser {
         let parts = [self.expect("enum"), space(), self.name("an enum name")];
 
         if self.is("<") {
-            push(parts, self.typeParameters());
+            parts.push(self.typeParameters());
         }
 
-        push(parts, space());
+        parts.push(space());
 
         // One variant to a line where the writer started so; on one line
         // otherwise, as long as they fit
@@ -1081,7 +1081,7 @@ impl Parser {
                 self.drop();
             }
 
-            push(parts, spaced(open, variants, self.expect("}"), false));
+            parts.push(spaced(open, variants, self.expect("}"), false));
             return layout.concat(parts);
         }
 
@@ -1102,7 +1102,7 @@ impl Parser {
         }
 
         rows.close(self.lead());
-        push(parts, rows.inside(open, self.take()));
+        parts.push(rows.inside(open, self.take()));
         return layout.concat(parts);
     }
 
@@ -1124,20 +1124,20 @@ impl Parser {
         let parts = [self.take()];
 
         if isImpl && self.is("<") {
-            push(parts, self.typeParameters());
+            parts.push(self.typeParameters());
         }
 
-        push(parts, space());
-        push(parts, self.primaryType());
+        parts.push(space());
+        parts.push(self.primaryType());
 
         if self.is("for") {
-            push(parts, space());
-            push(parts, self.take());
-            push(parts, space());
-            push(parts, self.primaryType());
+            parts.push(space());
+            parts.push(self.take());
+            parts.push(space());
+            parts.push(self.primaryType());
         }
 
-        push(parts, space());
+        parts.push(space());
         let open = self.expect("{");
         let rows = Rows {};
 
@@ -1146,11 +1146,11 @@ impl Parser {
             let method: [Doc] = [];
 
             if self.is("pub") {
-                push(method, self.take());
-                push(method, space());
+                method.push(self.take());
+                method.push(space());
             }
 
-            push(method, self.function());
+            method.push(self.function());
             let doc = layout.concat(method);
 
             // Methods stand apart; the ones a trait only names follow
@@ -1159,7 +1159,7 @@ impl Parser {
         }
 
         rows.close(self.lead());
-        push(parts, rows.inside(open, self.take()));
+        parts.push(rows.inside(open, self.take()));
         return layout.concat(parts);
     }
 
@@ -1176,10 +1176,10 @@ impl Parser {
         let parts = [first];
 
         while self.is("|") {
-            push(parts, space());
-            push(parts, self.take());
-            push(parts, space());
-            push(parts, self.postfixType());
+            parts.push(space());
+            parts.push(self.take());
+            parts.push(space());
+            parts.push(self.postfixType());
         }
 
         return layout.concat(parts);
@@ -1190,7 +1190,7 @@ impl Parser {
         let parts = [self.primaryType()];
 
         while self.is("?") {
-            push(parts, self.take());
+            parts.push(self.take());
         }
 
         return layout.concat(parts);
@@ -1217,13 +1217,13 @@ impl Parser {
             let parts = [self.take()];
             let open = self.expect("(");
             let takes = self.series(")", () -> self.type());
-            push(parts, list(open, takes, self.expect(")")));
+            parts.push(list(open, takes, self.expect(")")));
 
             if self.is("->") {
-                push(parts, space());
-                push(parts, self.take());
-                push(parts, space());
-                push(parts, self.type());
+                parts.push(space());
+                parts.push(self.take());
+                parts.push(space());
+                parts.push(self.type());
             }
 
             return layout.concat(parts);
@@ -1237,12 +1237,12 @@ impl Parser {
 
         // A type of another module: module.Name
         if self.is(".") && self.ahead(1).kind == Kind.Name {
-            push(parts, self.take());
-            push(parts, self.take());
+            parts.push(self.take());
+            parts.push(self.take());
         }
 
         if self.is("<") {
-            push(parts, self.typeArguments());
+            parts.push(self.typeArguments());
         }
 
         return layout.concat(parts);
@@ -1280,7 +1280,7 @@ impl Parser {
     }
 
     fn afterPrimaryType(at: Int) -> Int {
-        if at >= arrays.len(self.tokens) {
+        if at >= self.tokens.len() {
             return -1;
         }
 
@@ -1397,16 +1397,16 @@ impl Parser {
                 let parts = [self.take(), space(), self.loopVariable()];
 
                 if self.is(",") {
-                    push(parts, self.take());
-                    push(parts, space());
-                    push(parts, self.loopVariable());
+                    parts.push(self.take());
+                    parts.push(space());
+                    parts.push(self.loopVariable());
                 }
 
-                push(parts, space());
-                push(parts, self.expect("in"));
-                push(parts, space());
-                push(parts, self.header());
-                push(parts, self.block());
+                parts.push(space());
+                parts.push(self.expect("in"));
+                parts.push(space());
+                parts.push(self.header());
+                parts.push(self.block());
                 return layout.concat(parts);
             }
 
@@ -1463,22 +1463,22 @@ impl Parser {
         if self.is("(") {
             let open = self.take();
             let names = self.series(")", () -> self.name("a name for a value of the tuple"));
-            push(parts, list(open, names, self.expect(")")));
+            parts.push(list(open, names, self.expect(")")));
         } else {
-            push(parts, self.name("a name"));
+            parts.push(self.name("a name"));
         }
 
         if self.is(":") {
-            push(parts, self.take());
-            push(parts, space());
-            push(parts, self.type());
+            parts.push(self.take());
+            parts.push(space());
+            parts.push(self.type());
         }
 
-        push(parts, space());
-        push(parts, self.expect("="));
-        push(parts, space());
-        push(parts, self.expression());
-        push(parts, self.expect(";"));
+        parts.push(space());
+        parts.push(self.expect("="));
+        parts.push(space());
+        parts.push(self.expression());
+        parts.push(self.expect(";"));
         return layout.concat(parts);
     }
 
@@ -1497,14 +1497,14 @@ impl Parser {
         let parts = [self.expect("if"), space(), self.header(), self.block()];
 
         if self.is("else") {
-            push(parts, space());
-            push(parts, self.take());
-            push(parts, space());
+            parts.push(space());
+            parts.push(self.take());
+            parts.push(space());
 
             if self.is("if") {
-                push(parts, self.ifStatement());
+                parts.push(self.ifStatement());
             } else {
-                push(parts, self.block());
+                parts.push(self.block());
             }
         }
 
@@ -1527,45 +1527,45 @@ impl Parser {
             let entry: [Doc] = [];
 
             if self.is("default") && self.ahead(1).text == ":" {
-                push(entry, self.take());
+                entry.push(self.take());
             } else {
-                push(entry, self.expect("case"));
-                push(entry, space());
+                entry.push(self.expect("case"));
+                entry.push(space());
                 let first = self.pattern();
                 let bars: [Doc] = [];
                 let others: [Doc] = [];
 
                 while self.is("|") {
-                    push(bars, self.take());
-                    push(others, self.pattern());
+                    bars.push(self.take());
+                    others.push(self.pattern());
                 }
 
-                push(entry, chained(first, bars, others));
+                entry.push(chained(first, bars, others));
 
                 if self.is("if") {
-                    push(entry, space());
-                    push(entry, self.take());
-                    push(entry, space());
-                    push(entry, self.guard());
+                    entry.push(space());
+                    entry.push(self.take());
+                    entry.push(space());
+                    entry.push(self.guard());
                 }
             }
 
-            push(entry, self.expect(":"));
-            push(entry, space());
+            entry.push(self.expect(":"));
+            entry.push(space());
 
             if self.is("{") {
-                push(entry, self.block());
+                entry.push(self.block());
 
                 if asValue && self.is(",") {
-                    push(entry, self.drop());
+                    entry.push(self.drop());
                 }
             } else {
-                push(entry, self.expression());
+                entry.push(self.expression());
 
                 if self.is(";") || (asValue && self.is(",")) {
-                    push(entry, self.takeAs(";"));
+                    entry.push(self.takeAs(";"));
                 } else if asValue && self.is("}") {
-                    push(entry, layout.text(";"));
+                    entry.push(layout.text(";"));
                 } else {
                     self.fail("expected ';' after the value of a case");
                 }
@@ -1577,7 +1577,7 @@ impl Parser {
         rows.close(self.lead());
         self.plain = plain;
         self.patterns = patterns;
-        push(parts, rows.inside(open, self.take()));
+        parts.push(rows.inside(open, self.take()));
         return layout.concat(parts);
     }
 
@@ -1774,20 +1774,20 @@ impl Parser {
                 operator = layout.concat([operator, self.drop()]);
             }
 
-            push(operators, operator);
+            operators.push(operator);
 
             // What follows |> is the call the value goes into, and no
             // more: in value |> f(a) + 1 the 1 is added to what f gives
             if written == "|>" {
-                push(operands, self.unary());
+                operands.push(self.unary());
             } else {
-                push(operands, self.binary(level + 1));
+                operands.push(self.binary(level + 1));
             }
 
             self.shape = Shape.Plain;
         }
 
-        self.chained = !arrays.isEmpty(operators);
+        self.chained = !operators.isEmpty();
         return chained(first, operators, operands);
     }
 
@@ -1854,9 +1854,7 @@ impl Parser {
                 piece = self.take();
 
                 // value? .name is not value?.name
-                if strings.startsWith(self.peek().text, ".")
-                    || strings.startsWith(self.peek().text, "?")
-                {
+                if self.peek().text.startsWith(".") || self.peek().text.startsWith("?") {
                     piece = layout.concat([piece, space()]);
                 }
             } else if token.text == "." || token.text == "?." {
@@ -1864,16 +1862,16 @@ impl Parser {
 
                 if self.peek().kind == Kind.Number {
                     // pair.0: a value of a tuple, by its position
-                    push(member, self.take());
+                    member.push(self.take());
                 } else {
-                    push(member, self.name("a member name"));
-                    push(member, self.typeArgumentsIfAny());
+                    member.push(self.name("a member name"));
+                    member.push(self.typeArgumentsIfAny());
                 }
 
                 if self.literalFollows() {
                     // A struct of another module: module.Name { ... }
-                    push(member, space());
-                    push(member, self.fields());
+                    member.push(space());
+                    member.push(self.fields());
                     head = layout.concat([head, linked(links), layout.concat(member)]);
                     links = [];
                     named = false;
@@ -1881,7 +1879,7 @@ impl Parser {
                     continue;
                 }
 
-                push(links, Link { doc: layout.concat(member), calls: false });
+                links.push(Link { doc: layout.concat(member), calls: false });
                 self.shape = Shape.Plain;
                 continue;
             } else {
@@ -1889,7 +1887,7 @@ impl Parser {
             }
 
             self.shape = Shape.Plain;
-            let last = arrays.last(links);
+            let last = links.last();
 
             if last == null {
                 head = layout.concat([head, piece]);
@@ -1904,7 +1902,7 @@ impl Parser {
         // from; the calls that follow are the chain
         let from = 0;
 
-        while named && from < arrays.len(links) {
+        while named && from < links.len() {
             head = layout.concat([head, links[from].doc]);
             from++;
 
@@ -1913,13 +1911,13 @@ impl Parser {
             }
         }
 
-        let rest = arrays.drop(links, from);
+        let rest = links.drop(from);
 
-        if arrays.len(rest) < 2 {
+        if rest.len() < 2 {
             return layout.concat([head, linked(rest)]);
         }
 
-        let steps = arrays.map(rest, link -> layout.concat([Doc.Soft, link.doc]));
+        let steps = rest.map(link -> layout.concat([Doc.Soft, link.doc]));
         return layout.group(layout.concat([head, layout.indent(layout.concat(steps))]));
     }
 
@@ -1944,13 +1942,13 @@ impl Parser {
             last = self.shape;
 
             if !self.is(",") {
-                push(items, item);
+                items.push(item);
                 break;
             }
 
             before += self.peek().end - from;
             hugs = hugs && !layout.forces(item);
-            push(items, layout.concat([item, self.drop()]));
+            items.push(layout.concat([item, self.drop()]));
         }
 
         // One argument of one word has no better place than where it is
@@ -1994,14 +1992,14 @@ impl Parser {
                 let parts = [self.take(), self.parameters()];
 
                 if self.is("->") {
-                    push(parts, space());
-                    push(parts, self.take());
-                    push(parts, space());
-                    push(parts, self.type());
+                    parts.push(space());
+                    parts.push(self.take());
+                    parts.push(space());
+                    parts.push(self.type());
                 }
 
-                push(parts, space());
-                push(parts, self.block());
+                parts.push(space());
+                parts.push(self.block());
                 self.shape = Shape.Function;
                 return layout.concat(parts);
             }
@@ -2102,24 +2100,22 @@ impl Parser {
             simple = simple && (tokens == 1 || (tokens == 2 && self.tokens[from].text == "-"));
 
             if !self.is(",") {
-                push(items, item);
+                items.push(item);
                 break;
             }
 
-            push(items, layout.concat([item, self.drop()]));
+            items.push(layout.concat([item, self.drop()]));
         }
 
         // An item with a comment has a line of its own
         for at in start..=self.at {
-            simple = simple
-                && arrays.isEmpty(self.tokens[at].before)
-                && self.tokens[at].after == "";
+            simple = simple && self.tokens[at].before.isEmpty() && self.tokens[at].after == "";
         }
 
         let close = self.expect("]");
         self.shape = Shape.Literal;
 
-        if !simple || arrays.len(items) < 2 {
+        if !simple || items.len() < 2 {
             return list(open, items, close);
         }
 
@@ -2142,7 +2138,7 @@ impl Parser {
         let close = self.expect(")");
         let doc = list(open, items, close);
 
-        if arrays.len(items) == 1 {
+        if items.len() == 1 {
             // No comma comes after a value in parentheses
             doc = layout.group(
                 layout.concat([
@@ -2196,9 +2192,9 @@ impl Parser {
         ];
 
         if self.is("if") {
-            push(parts, self.ifValue());
+            parts.push(self.ifValue());
         } else {
-            push(parts, self.valueBlock());
+            parts.push(self.valueBlock());
         }
 
         return layout.concat(parts);
@@ -2219,7 +2215,7 @@ impl Parser {
         while !self.is("}") {
             let lead = self.lead();
             let doc = Doc.Nothing;
-            alone = alone && rows.count == 0 && arrays.isEmpty(lead.comments);
+            alone = alone && rows.count == 0 && lead.comments.isEmpty();
 
             match self.peek().text {
                 case "let"
@@ -2250,7 +2246,7 @@ impl Parser {
             rows.add(lead, doc, false);
         }
 
-        alone = alone && rows.count == 1 && arrays.isEmpty(self.peek().before);
+        alone = alone && rows.count == 1 && self.peek().before.isEmpty();
         rows.close(self.lead());
         self.plain = plain;
         self.patterns = patterns;
@@ -2275,7 +2271,7 @@ impl Parser {
 // (first, second): on one line, or one item to a line with a comma after
 // each.
 fn list(open: Doc, items: [Doc], close: Doc) -> Doc {
-    if arrays.isEmpty(items) {
+    if items.isEmpty() {
         return layout.concat([open, close]);
     }
 
@@ -2294,7 +2290,7 @@ fn list(open: Doc, items: [Doc], close: Doc) -> Doc {
 
 // { first, second }: the same, with room inside the braces.
 fn spaced(open: Doc, items: [Doc], close: Doc, tall: Bool) -> Doc {
-    if arrays.isEmpty(items) {
+    if items.isEmpty() {
         return layout.concat([open, close]);
     }
 
@@ -2320,11 +2316,11 @@ fn spaced(open: Doc, items: [Doc], close: Doc, tall: Bool) -> Doc {
 // takes several lines by itself, a function with its body, stays on the
 // line of its operator.
 fn chained(first: Doc, operators: [Doc], operands: [Doc]) -> Doc {
-    if arrays.isEmpty(operands) {
+    if operands.isEmpty() {
         return first;
     }
 
-    let last = arrays.len(operands) - 1;
+    let last = operands.len() - 1;
     let hugs = layout.forces(operands[last]) && !layout.forces(first);
     let parts: [Doc] = [];
 
@@ -2334,9 +2330,9 @@ fn chained(first: Doc, operators: [Doc], operands: [Doc]) -> Doc {
 
     for i, operand in operands {
         if hugs {
-            push(parts, layout.concat([space(), operators[i], space(), operand]));
+            parts.push(layout.concat([space(), operators[i], space(), operand]));
         } else {
-            push(parts, layout.concat([Doc.Line, operators[i], space(), operand]));
+            parts.push(layout.concat([Doc.Line, operators[i], space(), operand]));
         }
     }
 
@@ -2348,5 +2344,5 @@ fn chained(first: Doc, operators: [Doc], operands: [Doc]) -> Doc {
 }
 
 fn linked(links: [Link]) -> Doc {
-    return layout.concat(arrays.map(links, link -> link.doc));
+    return layout.concat(links.map(link -> link.doc));
 }

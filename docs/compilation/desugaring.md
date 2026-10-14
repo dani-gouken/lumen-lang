@@ -183,7 +183,7 @@ if x == 1 {
 // Before
 match value {
     case Int: { handleInt(value + 1); }
-    case String: { handleString(strings.len(value)); }
+    case String: { handleString(value.len()); }
     default: { handleOther(); }
 }
 
@@ -191,7 +191,7 @@ match value {
 if value is Int {
     handleInt(value + 1);
 } else if value is String {
-    handleString(strings.len(value));
+    handleString(value.len());
 } else {
     handleOther();
 }

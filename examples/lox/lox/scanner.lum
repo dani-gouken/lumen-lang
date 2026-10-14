@@ -4,14 +4,14 @@ import std.strings;
 import lox.token.{Kind, Token, Reporter, keyword};
 
 pub fn scan(source: String, reporter: Reporter) -> [Token] {
-    let scanner = Scanner { source: source, length: strings.len(source), reporter: reporter };
+    let scanner = Scanner { source: source, length: source.len(), reporter: reporter };
 
     while !scanner.atEnd() {
         scanner.start = scanner.current;
         scanner.token();
     }
 
-    push(scanner.tokens, Token { kind: Kind.Eof, lexeme: "", line: scanner.line });
+    scanner.tokens.push(Token { kind: Kind.Eof, lexeme: "", line: scanner.line });
     return scanner.tokens;
 }
 
@@ -70,11 +70,11 @@ impl Scanner {
     }
 
     fn lexeme() -> String {
-        return strings.substring(self.source, self.start, self.current);
+        return self.source.substring(self.start, self.current);
     }
 
     fn add(kind: Kind) {
-        push(self.tokens, Token { kind: kind, lexeme: self.lexeme(), line: self.line });
+        self.tokens.push(Token { kind: kind, lexeme: self.lexeme(), line: self.line });
     }
 
     fn either(second: String, both: Kind, alone: Kind) {
@@ -194,9 +194,9 @@ impl Scanner {
 
         self.current++;  // The closing quote
 
-        let said = strings.substring(self.source, self.start + 1, self.current - 1);
+        let said = self.source.substring(self.start + 1, self.current - 1);
 
-        push(self.tokens, Token {
+        self.tokens.push(Token {
             kind: Kind.Text,
             lexeme: self.lexeme(),
             line: self.line,
@@ -218,9 +218,9 @@ impl Scanner {
             }
         }
 
-        let worth = strings.parseFloat(self.lexeme()) ?? 0.0;
+        let worth = self.lexeme().parseFloat() ?? 0.0;
 
-        push(self.tokens, Token {
+        self.tokens.push(Token {
             kind: Kind.Number,
             lexeme: self.lexeme(),
             line: self.line,

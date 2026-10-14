@@ -139,7 +139,7 @@ func TestAttemptRecoversFromEveryKindOfFailure(t *testing.T) {
 			fn() -> Int { return 140737488355327 + 1; },
 			fn() -> Int { return deep(0); },
 			fn() -> Int { let v: Any = "x"; return v as Int; },
-			fn() -> Int { return strings.len(strings.substring("abc", 2, 9)); },
+			fn() -> Int { return "abc".substring(2, 9).len(); },
 			fn() -> Int { return check(21); },
 		];
 		for i, job in jobs {
@@ -150,7 +150,7 @@ func TestAttemptRecoversFromEveryKindOfFailure(t *testing.T) {
 		}
 		// The program is whole after all that: deep recursion still has
 		// its full depth, and values made before are intact
-		println(arrays.len(jobs), attempt(fn() -> Int { return check(1); }));
+		println(jobs.len(), attempt(fn() -> Int { return check(1); }));
 	`, `0 ok 2
 1 Bounds | index out of bounds: 7 (length 3) | pick
 2 Panic | negative: -4 | check
@@ -169,10 +169,10 @@ func TestAttemptLeavesTheProgramConsistent(t *testing.T) {
 		struct Account { balance: Int; log: [String]; }
 
 		fn withdraw(a: Account, amount: Int) {
-			push(a.log, "asked " + toString(amount));
+			a.log.push("asked " + toString(amount));
 			if amount > a.balance { panic("not enough"); }
 			a.balance -= amount;
-			push(a.log, "gave " + toString(amount));
+			a.log.push("gave " + toString(amount));
 		}
 		fn depth(n: Int) -> Int { if n == 0 { return 0; } return 1 + depth(n - 1); }
 		fn fails(n: Int) -> Int { if n == 0 { panic("bottom"); } return fails(n - 1); }
@@ -189,7 +189,7 @@ func TestAttemptLeavesTheProgramConsistent(t *testing.T) {
 		let failed = 0;
 		for n in [3, 0, 5, 0, 7] {
 			match attempt(fn() -> Int { return 100 / n; }) {
-				case Result.Ok(q): { push(done, q); }
+				case Result.Ok(q): { done.push(q); }
 				case Result.Err(_): { failed++; }
 			}
 		}
@@ -208,7 +208,7 @@ func TestAttemptLeavesTheProgramConsistent(t *testing.T) {
 		let keep: [fn() -> Int] = [];
 		guard(fn() -> Void {
 			let counter = 10;
-			push(keep, fn() -> Int { counter++; return counter; });
+			keep.push(fn() -> Int { counter++; return counter; });
 			let boom = [1][5];
 		});
 		println(keep[0](), keep[0](), keep[0]());
@@ -233,7 +233,7 @@ func TestAttemptLeavesTheProgramConsistent(t *testing.T) {
 		let count = 0;
 		let round = 0;
 		while round < 3000 {
-			let f = guard(fn() -> Void { let big = arrays.fill(200, "x"); panic("discard", arrays.len(big)); });
+			let f = guard(fn() -> Void { let big = arrays.fill(200, "x"); panic("discard", big.len()); });
 			if f != null { count++; }
 			round++;
 		}
@@ -268,7 +268,7 @@ fn main() -> Int {
             println(f.kind == Kind.Bounds, f.message);
             println(f.at.function, f.at.file, f.at.line, f.at.column);
             println(f.describe());
-            println(arrays.map(f.stack, fn(l: result.Location) -> String { return l.function + ":" + toString(l.line); }));
+            println(f.stack.map(fn(l: result.Location) -> String { return l.function + ":" + toString(l.line); }));
             println(f.trace());
             match f.kind {
                 case Kind.Bounds: { println("handled as an index problem"); }
@@ -352,7 +352,7 @@ func TestResultCarriesReasons(t *testing.T) {
 
 		fn count(text: String) -> Result<Int, Problem> {
 			if text == "" { return Result.Err(Problem.Empty); }
-			let n = strings.parseInt(text);
+			let n = text.parseInt();
 			if n == null { return Result.Err(Problem.NotANumber(text)); }
 			return Result.Ok(n);
 		}

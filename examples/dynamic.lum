@@ -39,11 +39,11 @@ fn describe(value: Any) -> String {
         }
 
         case String: {
-            return "a text of " + toString(strings.len(value)) + " characters";
+            return "a text of " + toString(value.len()) + " characters";
         }
 
         case [Int]: {
-            return toString(arrays.len(value)) + " numbers";
+            return toString(value.len()) + " numbers";
         }
 
         case Square: {

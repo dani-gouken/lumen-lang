@@ -430,7 +430,7 @@ func TestNativeArraysThroughBytecode(t *testing.T) {
 	}
 	code = append(code, NewInstr(OpRET, 4, 0, 0))
 
-	chunk := chunkOf([]string{"push", "std.arrays.cutLast"}, []Value{NewInt(0)},
+	chunk := chunkOf([]string{"__push", "std.arrays.cutLast"}, []Value{NewInt(0)},
 		fnDef{FunctionPrototype{Name: "main", RegisterCount: 5}, code})
 	chunk.StringPool = []string{"item"}
 

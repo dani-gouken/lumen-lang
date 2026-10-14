@@ -46,7 +46,7 @@ func TestOperatorsOnStructs(t *testing.T) {
 
 		struct Path { steps: [Point]; calls: Int; }
 		impl Path {
-			fn last() -> Point { self.calls++; return self.steps[arrays.len(self.steps) - 1]; }
+			fn last() -> Point { self.calls++; return self.steps[self.steps.len() - 1]; }
 		}
 	`, `
 		let a = Point { x: 1, y: 2 };
@@ -72,15 +72,15 @@ func TestOperatorsOnStructs(t *testing.T) {
 		let v3 = Version { major: 2, minor: 0 };
 		println(v1 < v2, v2 < v1, v1 <= v1, v1 >= v2, v3 > v2, v1 < v2 && v2 < v3);
 		println(v1.isBefore(v2), v3.isAfter(v3), Suit.Clubs < Suit.Hearts, Suit.Hearts <= Suit.Clubs);
-		println(ops.max(v1, v3).major, ops.min(v2, v1).minor, arrays.map(ops.sorted([v3, v1, v2]), fn(v: Version) -> Int { return v.major * 100 + v.minor; }));
+		println(ops.max(v1, v3).major, ops.min(v2, v1).minor, ops.sorted([v3, v1, v2]).map(fn(v: Version) -> Int { return v.major * 100 + v.minor; }));
 
 		// Arrays of them, through the library
-		println(arrays.contains([a, c], b), arrays.indexOf([c, a], b), ops.contains([a], c), ops.indexOf([c, c, a], b), ops.same([a, c], [b, c]), ops.same([a], [c]));
+		println([a, c].contains(b), [c, a].indexOf(b), ops.contains([a], c), ops.indexOf([c, c, a], b), ops.same([a, c], [b, c]), ops.same([a], [c]));
 
 		// What does not say when it is equal is equal to itself only
 		let p = Plain { n: 1 };
 		let q = Plain { n: 1 };
-		println(p == p, p == q, p != q, arrays.contains([p], q), arrays.contains([p], p));
+		println(p == p, p == q, p != q, [p].contains(q), [p].contains(p));
 
 		// Null on either side is still a test for null
 		let maybe: Point? = null;
@@ -150,7 +150,7 @@ func TestTraitsWithDefaultMethods(t *testing.T) {
 			fn name() -> String;
 			fn greet() -> String { return "hello, ${self.name()}"; }
 			fn greetTwice() -> String { return self.greet() + " and " + self.greet(); }
-			fn loud(times: Int) -> String { return strings.repeat(strings.upper(self.name()) + "!", times); }
+			fn loud(times: Int) -> String { return (self.name().upper() + "!").repeat(times); }
 		}
 		struct Cat { }
 		impl Greeter for Cat { fn name() -> String { return "cat"; } }
@@ -199,7 +199,7 @@ func TestTraitsWithDefaultMethods(t *testing.T) {
 
 		println(Square { side: 2 }.larger(Square { side: 3 }).side, Square { side: 5 }.larger(Square { side: 3 }).side, Square { side: 2 }.describe(), Rect { w: 2, h: 3 }.describe(), Rect { w: 1, h: 1 }.larger(Rect { w: 2, h: 2 }).describe());
 		let shapes: [Shape] = [Square { side: 3 }, Rect { w: 4, h: 5 }];
-		println(arrays.map(shapes, fn(shape: Shape) -> String { return shape.describe(); }));
+		println(shapes.map(fn(shape: Shape) -> String { return shape.describe(); }));
 	`, `hello, cat woof from dog hello, owl CROW!CROW!
 hello, cat and hello, cat woof from dog and woof from dog 3
 hello, cat / CAT!
@@ -242,12 +242,12 @@ func TestRequirementsOnTypeParameters(t *testing.T) {
 		impl<T: Ordered> Sorted<T> {
 			fn add(item: T) -> Sorted<T> {
 				let at = 0;
-				while at < arrays.len(self.items) && self.items[at].compare(item) <= 0 { at++; }
-				self.items = arrays.inserted(self.items, at, item);
+				while at < self.items.len() && self.items[at].compare(item) <= 0 { at++; }
+				self.items = self.items.inserted(at, item);
 				return self;
 			}
 			fn top() -> T? {
-				let best = arrays.first(self.items)?;
+				let best = self.items.first()?;
 				for item in self.items { if item > best { best = item; } }
 				return best;
 			}
@@ -256,7 +256,7 @@ func TestRequirementsOnTypeParameters(t *testing.T) {
 				return false;
 			}
 			fn between(low: T, high: T) -> [T] {
-				return arrays.filter(self.items, fn(item: T) -> Bool { return item >= low && item <= high; });
+				return self.items.filter(fn(item: T) -> Bool { return item >= low && item <= high; });
 			}
 		}
 
@@ -286,7 +286,7 @@ func TestRequirementsOnTypeParameters(t *testing.T) {
 					case Tree.Leaf: { }
 					case Tree.Node(left, value, right): {
 						left.inOrder(out);
-						push(out, value);
+						out.push(value);
 						right.inOrder(out);
 					}
 				}
@@ -336,10 +336,10 @@ func TestTraitsWithTypeParameters(t *testing.T) {
 			fn next() -> T?;
 			fn take(count: Int) -> [T] {
 				let out: [T] = [];
-				while arrays.len(out) < count {
+				while out.len() < count {
 					let item = self.next();
 					if item == null { break; }
-					push(out, item);
+					out.push(item);
 				}
 				return out;
 			}
@@ -360,7 +360,7 @@ func TestTraitsWithTypeParameters(t *testing.T) {
 		struct Letters { text: String; at: Int; }
 		impl Source<String> for Letters {
 			fn next() -> String? {
-				if self.at >= strings.len(self.text) { return null; }
+				if self.at >= self.text.len() { return null; }
 				self.at++;
 				return self.text[self.at - 1];
 			}
@@ -375,11 +375,11 @@ func TestTraitsWithTypeParameters(t *testing.T) {
 		// The type argument of the trait is worked out from the value
 		fn drain<T>(source: Source<T>) -> [T] { return source.take(100); }
 		fn firstOf<T, S: Source<T>>(source: S) -> T? { return source.next(); }
-		fn total(source: Source<Int>) -> Int { return arrays.sum(source.take(3)); }
+		fn total(source: Source<Int>) -> Int { return source.take(3).sum(); }
 
 		trait Converter<From, To> { fn convert(value: From) -> To; }
 		struct Length { }
-		impl Converter<String, Int> for Length { fn convert(value: String) -> Int { return strings.len(value); } }
+		impl Converter<String, Int> for Length { fn convert(value: String) -> Int { return value.len(); } }
 		struct Twice { }
 		impl Converter<Int, Int> for Twice { fn convert(value: Int) -> Int { return value * 2; } }
 		fn through<A, B, C>(first: Converter<A, B>, second: Converter<B, C>, value: A) -> C {
@@ -402,7 +402,7 @@ func TestTraitsWithTypeParameters(t *testing.T) {
 		for source in sources { print(source.take(2), source.next(), ""); }
 		println("");
 		let texts: [Source<String>] = [Letters { text: "ab", at: 0 }, Repeat<String> { item: "z" }];
-		println(arrays.map(texts, fn(source: Source<String>) -> [String] { return source.take(2); }));
+		println(texts.map(fn(source: Source<String>) -> [String] { return source.take(2); }));
 
 		println(through(Length { }, Twice { }, "four"), Twice { }.convert(21), sumOf(Range { from: 1, to: 5 }));
 		for n in (Range { from: 0, to: 3 }) { print(n, ""); }
@@ -436,7 +436,7 @@ func TestStructsInBracketsAndLoops(t *testing.T) {
 		struct Scores { names: [String]; points: [Int]; }
 		impl Indexed<String, Int?> for Scores {
 			fn at(key: String) -> Int? {
-				let i = arrays.indexOf(self.names, key)?;
+				let i = self.names.indexOf(key)?;
 				return self.points[i];
 			}
 		}
@@ -513,13 +513,13 @@ func TestMethodsAsValuesAndFieldDefaults(t *testing.T) {
 		let plus = c.plus;
 		println(bump(), bump(), c.count);
 		add(10);
-		println(c.count, plus(1, 2), arrays.map([1, 2], fn(n: Int) -> Int { return plus(n, 0); }));
+		println(c.count, plus(1, 2), [1, 2].map(fn(n: Int) -> Int { return plus(n, 0); }));
 
 		// Handed to what takes a function
 		let ages = dict.empty<Int>();
 		ages.set("ada", 36);
 		ages.set("bob", 41);
-		println(arrays.map(["ada", "eve", "bob"], ages.get), arrays.filter(["ada", "eve"], ages.has));
+		println(["ada", "eve", "bob"].map(ages.get), ["ada", "eve"].filter(ages.has));
 		let other = Counter { step: 5 };
 		let tick = other.ticker();
 		println(tick(), tick(), other.count, c.count);
@@ -537,14 +537,14 @@ func TestMethodsAsValuesAndFieldDefaults(t *testing.T) {
 		println(custom.host, custom.port, custom.tags, custom.retry, custom.owner);
 
 		// Each literal gets a value of its own
-		push(plain.tags, "mine");
+		plain.tags.push("mine");
 		plain.headers.set("k", "v");
 		plain.retry.times = 0;
 		let fresh = Config { name: "c" };
 		println(plain.tags, fresh.tags, fresh.headers.size(), fresh.retry.times);
 
 		let shelf = Shelf<Int> { };
-		push(shelf.items, 4);
+		shelf.items.push(4);
 		println(shelf.items, shelf.label, Shelf<String> { label: "top" }.label, Shelf<String> { }.items);
 		println(Button { label: "ok" }.onClick("ok"), Button { label: "x", onClick: fn(l: String) -> String { return "!"; } }.onClick("x"));
 	`, `1 2 2
@@ -723,14 +723,14 @@ func TestTraitsAcrossModules(t *testing.T) {
 			pub fn empty<T: Priced>() -> Cart<T> { return Cart<T> { }; }
 
 			impl<T: Priced> Cart<T> {
-				pub fn add(item: T) { push(self.items, item); }
+				pub fn add(item: T) { self.items.push(item); }
 				pub fn total() -> Money {
 					let sum = Money { };
 					for item in self.items { sum += item.price(); }
 					return sum;
 				}
 				pub fn dearest() -> T? {
-					let best = arrays.first(self.items)?;
+					let best = self.items.first()?;
 					for item in self.items {
 						if item.price() > best.price() { best = item; }
 					}
@@ -746,26 +746,42 @@ Emma 7.05 costs 7.05 false
 `)
 }
 
-// The usual methods of arrays, texts and numbers come with modules of the
-// library. A program that calls one without the module is told which.
-func TestMethodsOfBuiltinTypesNeedTheirModule(t *testing.T) {
-	cases := []struct{ name, src, msg, suggestion string }{
-		{"an array", "fn main() -> Int { return [1, 2].len(); }", "an array has no method 'len'", "import std.arrays;"},
-		{"a text", "fn main() -> String { return \"a\".trim(); }", "a text has no method 'trim'", "import std.strings;"},
-		{"a whole number", "fn main() -> Int { return 5.abs(); }", "a number has no method 'abs'", "import std.math;"},
-		{"a Float", "fn main() -> Float { return 2.5.sqrt(); }", "a number has no method 'sqrt'", "import std.math;"},
+// The usual methods of arrays, texts and numbers are there without an
+// import: the modules of the library that declare them come with any
+// program that calls one. Their names are another matter: a function of
+// such a module still wants its import.
+func TestMethodsOfBuiltinTypesNeedNoImport(t *testing.T) {
+	out, _, err := runProgram(t, `
+		struct Point { x: Int; y: Int; }
+
+		fn main() {
+			println([3, 1, 2].sortedNumbers(), ["b", "a"].join("-"), "  Hi ".trim().lower().len());
+			println((0 - 5).abs(), 2.pow(8), 6.25.sqrt(), 7.toFloat() / 2);
+			let points = [Point { x: 1, y: 2 }];
+			points.push(Point { x: 3, y: 4 });
+			println(points.map(p -> p.x + p.y), points.len(), (0..4).map(n -> n * n).filter(n -> n.isEven()));
+		}
+	`)
+	if want := "[1, 2, 3] b-a 2\n5 256 2.5 3.5\n[3, 7] 2 [0, 4]\n"; err != nil || out != want {
+		t.Errorf("unexpected output\n--- want ---\n%s--- got ---\n%s%v", want, out, err)
 	}
-	for _, tt := range cases {
-		t.Run(tt.name, func(t *testing.T) {
-			errs := errors.NewHandler()
-			Compile(tt.src, "test.lum", errs)
-			if !errs.HasErrors() {
-				t.Fatal("expected a diagnostic, got none")
-			}
-			d := errs.Diagnostics[0]
-			if d.Code != "E2015" || !strings.Contains(d.Message, tt.msg) || !strings.Contains(d.Suggestion, tt.suggestion) {
-				t.Errorf("expected E2015 %q suggesting %q, got %s: %s (%s)", tt.msg, tt.suggestion, d.Code, d.Message, d.Suggestion)
-			}
-		})
+
+	// A program that calls none has none of the modules in it
+	errs := errors.NewHandler()
+	result := Compile("fn main() { println(1 + 2); }", "test.lum", errs)
+	if errs.HasErrors() {
+		t.Fatalf("unexpected diagnostics: %v", errs.Diagnostics)
+	}
+	for _, proto := range result.Chunk.Prototypes {
+		if strings.HasPrefix(proto.Name, "std.") {
+			t.Errorf("expected nothing of the library in a program that uses none of it, found %s", proto.Name)
+		}
+	}
+
+	// The name of a module is only known where it is imported
+	errs = errors.NewHandler()
+	Compile("fn main() { println(arrays.range(0, 3).len()); }", "test.lum", errs)
+	if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "arrays") {
+		t.Errorf("expected the module to be unknown without its import, got %v", errs.Diagnostics)
 	}
 }

@@ -89,7 +89,7 @@ struct BadLine {
 impl BadLine {
     fn describe() -> String {
         return match self.problem {
-            case Problem.Shape: "line ${self.number}: not a log line: ${strings.first(self.text, 40)}...";
+            case Problem.Shape: "line ${self.number}: not a log line: ${self.text.first(40)}...";
             case Problem.Date(date): "line ${self.number}: no such date: ${date}";
         };
     }
@@ -136,11 +136,11 @@ impl Reader {
             user: user,
             at: at,
             method: parts[3],
-            path: strings.split(parts[4], "?")[0],
+            path: parts[4].split("?")[0],
             // The pattern only lets digits through
-            status: strings.parseInt(parts[5]) ?? 0,
-            bytes: strings.parseInt(parts[6]) ?? 0,
-            seconds: strings.parseFloat(parts[7]) ?? 0.0,
+            status: parts[5].parseInt() ?? 0,
+            bytes: parts[6].parseInt() ?? 0,
+            seconds: parts[7].parseFloat() ?? 0.0,
         });
     }
 }
@@ -154,18 +154,18 @@ fn load(text: String) -> Log {
     let lines = reader();
     let log = Log { hits: [], bad: [] };
 
-    for i, line in strings.lines(text) {
-        if strings.isBlank(line) {
+    for i, line in text.lines() {
+        if line.isBlank() {
             continue;
         }
 
         match lines.read(i + 1, line) {
             case Result.Ok(hit): {
-                push(log.hits, hit);
+                log.hits.push(hit);
             }
 
             case Result.Err(bad): {
-                push(log.bad, bad);
+                log.bad.push(bad);
             }
         }
     }
@@ -176,12 +176,12 @@ fn load(text: String) -> Log {
 fn heading(title: String) {
     println("");
     println(title);
-    println(strings.repeat("=", strings.len(title)));
+    println("=".repeat(title.len()));
 }
 
 fn report(log: Log) {
     let hits = log.hits;
-    let count = arrays.len(hits);
+    let count = hits.len();
 
     if count == 0 {
         println("no requests");
@@ -190,8 +190,8 @@ fn report(log: Log) {
 
     let first = hits[0].at;
     let last = hits[count - 1].at;
-    let clients = hits |> arrays.map(hit -> hit.client) |> set.of();
-    let bytes = arrays.sumOf(hits, hit -> hit.bytes);
+    let clients = hits.map(hit -> hit.client) |> set.of();
+    let bytes = hits.sumOf(hit -> hit.bytes);
 
     heading("Access log, ${first.format("dddd D MMMM YYYY")}");
     println("${format.plural(count, "request", "requests")} from ${format.plural(clients.size(), "client", "clients")}, ${first.format("HH:mm")} to ${last.format("HH:mm")}");
@@ -200,7 +200,7 @@ fn report(log: Log) {
     heading("By outcome");
 
     for outcome in [Outcome.Ok, Outcome.Redirect, Outcome.ClientError, Outcome.ServerError] {
-        let n = arrays.count(hits, hit -> hit.outcome() == outcome);
+        let n = hits.count(hit -> hit.outcome() == outcome);
 
         println(
             format.pad(outcome.label(), 26, Align.Left),
@@ -210,8 +210,8 @@ fn report(log: Log) {
     }
 
     heading("By hour");
-    let hours = arrays.countBy(hits, hit -> hit.at.format("HH:00"));
-    let busiest = arrays.largest(hours.values()) ?? 1;
+    let hours = hits.countBy(hit -> hit.at.format("HH:00"));
+    let busiest = hours.values().largest() ?? 1;
 
     for hour in hours.sortedKeys() {
         let n = hours.getOr(hour, 0);
@@ -220,22 +220,20 @@ fn report(log: Log) {
 
     heading("Busiest routes");
     let numbers = regex.must("/\\d+");
-    let routes = arrays.groupBy(hits, hit -> hit.route(numbers));
+    let routes = hits.groupBy(hit -> hit.route(numbers));
     let rows: [[String]] = [];
 
-    let mostVisited = routes.keys()
-        |> arrays.sortedBy(route -> -arrays.len(routes.get(route) ?? []))
-        |> arrays.take(5);
+    let mostVisited = routes.keys().sortedBy(route -> -(routes.get(route) ?? []).len()).take(5);
 
     for route in mostVisited {
         let there = routes.get(route) ?? [];
-        let slowest = arrays.fold(there, 0.0, (worst, hit) -> math.fmax(worst, hit.seconds));
-        let failed = arrays.count(there, hit -> hit.outcome() == Outcome.ServerError);
+        let slowest = there.fold(0.0, (worst, hit) -> worst.max(hit.seconds));
+        let failed = there.count(hit -> hit.outcome() == Outcome.ServerError);
 
-        push(rows, [
+        rows.push([
             route,
-            toString(arrays.len(there)),
-            format.duration(math.round(slowest * 1000.0)),
+            toString(there.len()),
+            format.duration((slowest * 1000.0).round()),
             toString(failed),
         ]);
     }
@@ -254,35 +252,34 @@ fn report(log: Log) {
             if theirs == null {
                 users.set(user, [hit]);
             } else {
-                push(theirs, hit);
+                theirs.push(hit);
             }
         }
     }
 
     users.each(fn(user: String, theirs: [Hit]) {
-        let writes = arrays.count(theirs, hit -> hit.method != "GET");
-        println("${user}: ${format.plural(arrays.len(theirs), "request", "requests")}, ${writes} of them changing something");
+        let writes = theirs.count(hit -> hit.method != "GET");
+        println("${user}: ${format.plural(theirs.len(), "request", "requests")}, ${writes} of them changing something");
     });
 
     heading("Worth a look");
 
-    let suspects = arrays.groupBy(
-        arrays.filter(hits, hit -> hit.outcome() == Outcome.ClientError),
+    let suspects = hits.filter(hit -> hit.outcome() == Outcome.ClientError).groupBy(
         hit -> hit.client,
     );
 
     suspects.each(fn(client: String, refused: [Hit]) {
-        if arrays.len(refused) >= 3 {
-            let paths = refused |> arrays.map(hit -> hit.path) |> strings.join(", ");
-            println("${client} was refused ${arrays.len(refused)} times in a row: ${paths}");
+        if refused.len() >= 3 {
+            let paths = refused.map(hit -> hit.path).join(", ");
+            println("${client} was refused ${refused.len()} times in a row: ${paths}");
         }
     });
 
-    for hit in arrays.filter(hits, hit -> hit.seconds >= 1.0) {
+    for hit in hits.filter(hit -> hit.seconds >= 1.0) {
         println("${hit.method} ${hit.path} took ${format.fixed(hit.seconds, 1)}s at ${hit.at.format("HH:mm:ss")} (status ${hit.status})");
     }
 
-    if arrays.len(log.bad) > 0 {
+    if log.bad.len() > 0 {
         heading("Lines left out");
 
         for bad in log.bad {
@@ -293,7 +290,7 @@ fn report(log: Log) {
 
 fn main() -> Int {
     // Without an argument: the log that comes with the program
-    let file = arrays.first(os.args()) ?? path.inside(path.dir(os.program()), "access.log");
+    let file = os.args().first() ?? path.inside(path.dir(os.program()), "access.log");
 
     match io.readFile(file) {
         case Result.Ok(text): {

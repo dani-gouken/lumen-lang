@@ -13,7 +13,7 @@ import std.strings;
 // helpers are the documents the tests build: a list between brackets, as
 // the formatter writes one.
 const layoutHelpers = `
-		let words = fn(texts: [String]) -> [Doc] { return arrays.map(texts, word -> layout.text(word)); };
+		let words = fn(texts: [String]) -> [Doc] { return texts.map(word -> layout.text(word)); };
 		let list = fn(items: [Doc]) -> Doc {
 			return layout.group(layout.concat([
 				layout.text("["),
@@ -116,7 +116,7 @@ func TestLayoutNesting(t *testing.T) {
 // A list that fills its lines puts as many items on each as fit.
 func TestLayoutFill(t *testing.T) {
 	expect(t, layoutImports, `
-		let numbers = arrays.map(arrays.range(1, 31), n -> layout.text(toString(n * 111)));
+		let numbers = arrays.range(1, 31).map(n -> layout.text(toString(n * 111)));
 		let table = layout.group(layout.concat([
 			layout.text("["),
 			layout.indent(layout.concat([Doc.Soft, layout.fill(numbers)])),
@@ -125,7 +125,7 @@ func TestLayoutFill(t *testing.T) {
 		]));
 		let text = layout.render(table, 40, 4);
 		print(text);
-		println(arrays.all(strings.lines(text), line -> strings.len(line) <= 40));
+		println(text.lines().all(line -> line.len() <= 40));
 		print(layout.render(table, 200, 4));
 	`,
 		"[",
@@ -200,14 +200,14 @@ func TestLayoutCommentsAndEmptyLines(t *testing.T) {
 func TestLayoutItems(t *testing.T) {
 	expect(t, layoutImports, `
 		let block = fn(head: String, body: [String]) -> Doc {
-			let inside = arrays.map(body, line -> layout.concat([Doc.Hard, layout.text(line)]));
+			let inside = body.map(line -> layout.concat([Doc.Hard, layout.text(line)]));
 			return layout.concat([layout.text(head + " {"), layout.indent(layout.concat(inside)), Doc.Hard, layout.text("}")]);
 		};
 		let rows = fn(items: [Doc]) -> Doc {
 			let parts: [Doc] = [];
 			for i, item in items {
-				if i > 0 { push(parts, Doc.Gap); }
-				push(parts, Doc.Item(item, i > 0));
+				if i > 0 { parts.push(Doc.Gap); }
+				parts.push(Doc.Item(item, i > 0));
 			}
 			return layout.concat(parts);
 		};

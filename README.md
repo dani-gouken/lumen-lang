@@ -41,7 +41,7 @@ make build
 
 ### A language that catches mistakes before the program runs
 
-- **Static types that stay out of the way.** Types are worked out where they can be: `let total = 0;`, `names.map(n -> strings.len(n))`.
+- **Static types that stay out of the way.** Types are worked out where they can be: `let total = 0;`, `names.map(n -> n.len())`.
 - **No null surprises.** A value that may be missing has a type that says so (`String?`), and the compiler makes you look before you use it. `?.`, `??` and `?` keep that short.
 - **Enums that hold values, and `match` checked for completeness.** Forget a case and the program does not compile. A `match` gives a value where one is wanted, and a case can take several patterns, a range or a condition: `case Shape.Circle(r) if r > 10.0:`.
 - **Failures as values.** A function that can fail returns a `Result`; `?` passes a failure on. A bug that stops the program can still be survived with `attempt`, where it matters, and `defer` cleans up whichever way a block is left.
@@ -60,7 +60,7 @@ task.run(fn() {
     for name in files { lines.send(io.readFile(name).orElse("")); }
     lines.close();
 });
-lines.each(fn(text: String) { println(strings.len(text)); });
+lines.each(fn(text: String) { println(text.len()); });
 ```
 
 - A task that fails does not take the program down: whoever waits for it gets the failure as a `Result`.
@@ -147,7 +147,7 @@ A test is a function `fn testATotalAddsUp()` in a file called `*_test.lum`: [doc
 $ lumen repl
 [1]> import std.arrays;
 [2]> let prices = [12.5, 3.0, 8.25]
-[3]> arrays.fold(prices, 0.0, (sum, p) -> sum + p)
+[3]> prices.fold(0.0, (sum, p) -> sum + p)
 23.75
 ```
 

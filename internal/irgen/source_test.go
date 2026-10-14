@@ -345,7 +345,7 @@ func TestLoopIterationsDetachTheirClosures(t *testing.T) {
 			while i < 3 {
 				let x = i * 2;
 				i += 1;
-				push(fs, fn() -> Int { return x; });
+				__push(fs, fn() -> Int { return x; });
 				if x == 2 { continue; }
 				i += 0;
 			}
@@ -389,7 +389,7 @@ func TestLoopIterationsDetachTheirClosures(t *testing.T) {
 	nested := `
 		fn main() -> Int {
 			let fs: [fn() -> Int] = [];
-			for a in [1, 2] { for b in [3, 4] { push(fs, fn() -> Int { return a * b; }); } }
+			for a in [1, 2] { for b in [3, 4] { __push(fs, fn() -> Int { return a * b; }); } }
 			return fs[0]();
 		}`
 	dump = dumpFunction(t, nested, "main")

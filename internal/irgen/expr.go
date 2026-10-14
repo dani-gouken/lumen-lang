@@ -497,8 +497,26 @@ func (fc *FunctionCompiler) compileMethodCall(expr *ast.CallExpr, member *ast.Me
 	receiver := fc.compileExpr(member.Expr)
 	fc.setPos(member)
 
+	if how == dispatchStatic && len(expr.Args) == 0 && fc.gen.isLengthMethod(structName, member.Name) {
+		// items.len(): the length of an array or a text is one instruction
+		dest := fc.builder.NewRegister()
+		fc.builder.Emit(ir.OpLen, dest, receiver)
+		return dest
+	}
+
+	if how == dispatchStatic && len(expr.Args) == 1 && fc.gen.forwarded(structName, member.Name) == resolve.PushFunction {
+		// items.push(value): one instruction, like the length
+		value := fc.compileExpr(expr.Args[0])
+		fc.setPos(expr)
+		fc.builder.Emit(ir.OpPush, nil, receiver, value)
+		return fc.builder.CreateMov(ir.Constant{Val: nil, Type: "Null"})
+	}
+
 	var fn *ir.Register
-	if how == dispatchStatic {
+	if target := fc.gen.forwarded(structName, member.Name); how == dispatchStatic && target != "" {
+		// A method of the library that is a function under another name
+		fn = fc.builder.CreateMov(ir.Constant{Val: target, Type: "FuncRef"})
+	} else if how == dispatchStatic {
 		fn = fc.builder.CreateMov(ir.Constant{Val: methodIRName(structName, member.Name), Type: "FuncRef"})
 	} else {
 		fn = fc.lookUpMethod(receiver, member.Name)
@@ -528,7 +546,7 @@ func (fc *FunctionCompiler) lookUpMethod(receiver *ir.Register, name string) *ir
 	for _, builtin := range builtins {
 		test := fc.builder.CreateMov(ir.Constant{Val: TypeTestIntrinsic, Type: "FuncRef"})
 		described := strings.ToLower(builtin)
-		if builtin == ast.ArrayImpl {
+		if _, arrays := ast.IsArrayImpl(builtin); arrays {
 			described = "[any]" // An array, whatever it holds
 		}
 		desc := fc.builder.CreateMov(ir.Constant{Val: described, Type: "String"})

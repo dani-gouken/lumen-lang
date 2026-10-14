@@ -30,8 +30,8 @@ fn double(n: Int) -> Int { return n * 2; }
 
 fn main() -> Int {
     let p = Point { x: 1, y: 2 };
-    let total = double(p.sum()) + math.abs(-3);
-    let names = arrays.map([1, 2], n -> n + total);
+    let total = double(p.sum()) + (-3).abs();
+    let names = [1, 2].map(n -> n + total);
     let job = task.start(fn() -> Int { return limit; });
     println(p.x, names, job.wait(), Shape.Dot);
     return 0;
@@ -92,13 +92,13 @@ func TestDescribe(t *testing.T) {
 		// A method, through a value
 		{23, 26, "fn Point.sum() -> Int", "Both coordinates added.", "main.lum", [2]int{11, 8}, [2]int{26, 29}},
 		// A function of the library, named through its module: one name
-		{23, 40, "fn math.abs(n: Int) -> Int", "", "<std>/math.lum", [2]int{24, 8}, [2]int{35, 43}},
-		{24, 24, "fn arrays.map<T, U>(items: [T], convert: fn(T) -> U) -> [U]", "What the function makes of each item, in the same order.", "<std>/arrays.lum", [2]int{244, 8}, [2]int{17, 27}},
+		{23, 40, "fn Int.abs() -> Int", "", "<std>/math.lum", [2]int{222, 12}, [2]int{40, 43}},
+		{24, 24, "fn map<U>(convert: fn(T) -> U) -> [U]", "What the function makes of each item, in the same order.", "<std>/arrays.lum", [2]int{783, 12}, [2]int{24, 27}},
 		// A struct where a value of it is made
 		{22, 14, "struct Point {\n    x: Int;\n    y: Int;\n}", "A place on the grid.", "main.lum", [2]int{7, 8}, [2]int{13, 18}},
 		// Variables: a let, a parameter of a short function, a constant
 		{23, 24, "let p: Point", "", "main.lum", [2]int{22, 9}, [2]int{24, 25}},
-		{24, 41, "(parameter) n: Int", "", "main.lum", [2]int{24, 36}, [2]int{41, 42}},
+		{24, 33, "(parameter) n: Int", "", "main.lum", [2]int{24, 28}, [2]int{33, 34}},
 		{25, 47, "const limit: Int", "", "main.lum", [2]int{16, 7}, [2]int{47, 52}},
 		{26, 18, "let names: [Int]", "", "main.lum", [2]int{24, 9}, [2]int{18, 23}},
 		// A field, an enum, a variant, a method of the library on a generic value
@@ -165,8 +165,9 @@ func TestComplete(t *testing.T) {
 	if !has(job, "wait", "method", "fn wait() -> Result<T, Failure>") || !has(job, "isDone", "method", "") || has(job, "take", "method", "") {
 		t.Errorf("after a value of a struct of the library: %s", labels(job))
 	}
-	module := Complete("main.lum", edit(26, "    let z = math.ab"), 26, 20)
-	if !has(module, "abs", "function", "fn abs(n: Int) -> Int") || !has(module, "pi", "constant", "") || has(module, "println", "", "") {
+	// What a module keeps to itself is not suggested: abs is a method now
+	module := Complete("main.lum", edit(26, "    let z = math."), 26, 18)
+	if !has(module, "pi", "constant", "") || has(module, "abs", "", "") || has(module, "println", "", "") {
 		t.Errorf("after a module: %s", labels(module))
 	}
 	// Only what the module makes public: Outcome is its own business
@@ -518,7 +519,7 @@ fn main() -> Int {
         case Result.Ok(value): { println(value); }
         case Result.Err(failure): { println(failure.message); }
     }
-    return math.abs(price.cents);
+    return price.cents.abs();
 }
 `
 	for _, c := range []struct {

@@ -189,7 +189,7 @@ pub fn min<T: Ordered>(a: T, b: T) -> T {
 
 // The largest item, or null for an empty array.
 pub fn largest<T: Ordered>(items: [T]) -> T? {
-    if arrays.len(items) == 0 {
+    if items.len() == 0 {
         return null;
     }
 
@@ -206,7 +206,7 @@ pub fn largest<T: Ordered>(items: [T]) -> T? {
 
 // The smallest item, or null for an empty array.
 pub fn smallest<T: Ordered>(items: [T]) -> T? {
-    if arrays.len(items) == 0 {
+    if items.len() == 0 {
         return null;
     }
 
@@ -224,25 +224,25 @@ pub fn smallest<T: Ordered>(items: [T]) -> T? {
 // The items from the one that comes first to the one that comes last.
 // Items of which neither comes first stay in the order they were in.
 pub fn sorted<T: Ordered>(items: [T]) -> [T] {
-    if arrays.len(items) < 2 {
+    if items.len() < 2 {
         let same: [T] = [];
 
         for item in items {
-            push(same, item);
+            same.push(item);
         }
 
         return same;
     }
 
-    let middle = arrays.len(items) / 2;
+    let middle = items.len() / 2;
     let left: [T] = [];
     let right: [T] = [];
 
     for i, item in items {
         if i < middle {
-            push(left, item);
+            left.push(item);
         } else {
-            push(right, item);
+            right.push(item);
         }
     }
 
@@ -253,23 +253,23 @@ pub fn sorted<T: Ordered>(items: [T]) -> [T] {
     let l = 0;
     let r = 0;
 
-    while l < arrays.len(left) && r < arrays.len(right) {
+    while l < left.len() && r < right.len() {
         if right[r].compare(left[l]) < 0 {
-            push(out, right[r]);
+            out.push(right[r]);
             r++;
         } else {
-            push(out, left[l]);
+            out.push(left[l]);
             l++;
         }
     }
 
-    while l < arrays.len(left) {
-        push(out, left[l]);
+    while l < left.len() {
+        out.push(left[l]);
         l++;
     }
 
-    while r < arrays.len(right) {
-        push(out, right[r]);
+    while r < right.len() {
+        out.push(right[r]);
         r++;
     }
 
@@ -300,7 +300,7 @@ pub fn indexOf<T: Equal>(items: [T], wanted: T) -> Int? {
 
 // Whether two arrays hold equal items in the same order.
 pub fn same<T: Equal>(first: [T], second: [T]) -> Bool {
-    if arrays.len(first) != arrays.len(second) {
+    if first.len() != second.len() {
         return false;
     }
 
@@ -448,7 +448,7 @@ impl Range {
         let out: [Int] = [];
 
         for n in self {
-            push(out, n);
+            out.push(n);
         }
 
         return out;
@@ -459,7 +459,7 @@ impl Range {
         let out: [U] = [];
 
         for n in self {
-            push(out, convert(n));
+            out.push(convert(n));
         }
 
         return out;
@@ -471,7 +471,7 @@ impl Range {
 
         for n in self {
             if wanted(n) {
-                push(out, n);
+                out.push(n);
             }
         }
 

@@ -54,7 +54,7 @@ fn primesBelow(limit: Int) -> [Int] {
             return primes;
         }
 
-        push(primes, prime);
+        primes.push(prime);
         numbers = without(prime, numbers);
     }
 }
@@ -122,7 +122,7 @@ struct Done {
 fn countWords(text: String) -> Dict<Int> {
     let counts = dict.empty<Int>();
 
-    for word in strings.split(strings.lower(text), " ") {
+    for word in text.lower().split(" ") {
         if word != "" {
             counts.update(word, 0, n -> n + 1);
         }
@@ -132,7 +132,7 @@ fn countWords(text: String) -> Dict<Int> {
 }
 
 fn shareOut(texts: [String], workers: Int) -> [Done] {
-    let jobs = task.channel<Job>(arrays.len(texts));
+    let jobs = task.channel<Job>(texts.len());
     let done = task.channel<Done>(0);
 
     for i, text in texts {
@@ -144,8 +144,7 @@ fn shareOut(texts: [String], workers: Int) -> [Done] {
     let crew: [Task<Bool>] = [];
 
     for worker in arrays.range(1, workers + 1) {
-        push(
-            crew,
+        crew.push(
             task.run(fn() {
                 jobs.each(fn(job: Job) {
                     done.send(Done { job: job.id, worker: worker, words: countWords(job.text) });
@@ -159,7 +158,7 @@ fn shareOut(texts: [String], workers: Int) -> [Done] {
         done.close();
     });
 
-    return arrays.sortedBy(done.drain(), one -> one.job);
+    return done.drain().sortedBy(one -> one.job);
 }
 
 fn main() -> Int {
@@ -168,8 +167,7 @@ fn main() -> Int {
     // Ten tasks each try to take 30 out of 100
     let account = openAccount(100);
 
-    let takers = arrays.map(
-        arrays.range(0, 10),
+    let takers = arrays.range(0, 10).map(
         n -> task.start(fn() -> Result<Int, Refusal> {
             return account.withdraw(30);
         }),
@@ -197,7 +195,7 @@ fn main() -> Int {
     let lucky = task.map(arrays.range(0, 10), n -> careless.withdrawCarelessly(30));
 
     println(
-        arrays.count(lucky.orElse([]), went -> went),
+        lucky.orElse([]).count(went -> went),
         "careless withdrawals,",
         careless.balance,
         "left",
@@ -233,12 +231,9 @@ fn main() -> Int {
     let texts = ["the cat and the hat", "a cat is a cat", "", "The end"];
 
     for one in shareOut(texts, 3) {
-        let words = arrays.map(
-            one.words.sortedKeys(),
-            word -> "${word}=${one.words.getOr(word, 0)}",
-        );
+        let words = one.words.sortedKeys().map(word -> "${word}=${one.words.getOr(word, 0)}");
 
-        println("job ${one.job} by worker ${one.worker}:", strings.join(words, " "));
+        println("job ${one.job} by worker ${one.worker}:", words.join(" "));
     }
 
     // main returns; this one is still to run

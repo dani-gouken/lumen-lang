@@ -1,5 +1,5 @@
 [ERROR] R0002: index out of bounds: 7 (length 3)
 --> test/e2e/cases/runtime_error.lum:3:17 in function 'pick'
  3 |     return items[index];
-Suggestion: Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing
+Suggestion: Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing
 called from test/e2e/cases/runtime_error.lum:8:17 in function 'main'

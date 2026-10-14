@@ -156,13 +156,13 @@ pub fn trace(message: String, stack: [Location]) -> String {
 
     for i, call in stack {
         if i == 0 {
-            push(lines, "  at " + call.describe());
+            lines.push("  at " + call.describe());
         } else {
-            push(lines, "  called from " + call.describe());
+            lines.push("  called from " + call.describe());
         }
     }
 
-    return strings.join(lines, "\n");
+    return lines.join("\n");
 }
 
 // The places listed by the runtime, from the entry `from`: four entries
@@ -171,12 +171,12 @@ fn locations(parts: [String], from: Int) -> [Location] {
     let out: [Location] = [];
     let i = from;
 
-    while i + 3 < arrays.len(parts) {
-        push(out, Location {
+    while i + 3 < parts.len() {
+        out.push(Location {
             function: parts[i],
             file: parts[i + 1],
-            line: strings.parseInt(parts[i + 2]) ?? 0,
-            column: strings.parseInt(parts[i + 3]) ?? 0,
+            line: parts[i + 2].parseInt() ?? 0,
+            column: parts[i + 3].parseInt() ?? 0,
         });
 
         i += 4;
@@ -245,7 +245,7 @@ pub fn failureOf(parts: [String]) -> Failure {
     let stack = locations(parts, 2);
     let at = Location { function: "", file: "", line: 0, column: 0 };
 
-    if arrays.len(stack) > 0 {
+    if stack.len() > 0 {
         at = stack[0];
     }
 

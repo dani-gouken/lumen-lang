@@ -241,7 +241,7 @@ fn testAPriceIsRead() {
 	priceModule = `import std.arrays;
 
 pub fn total(prices: [Int]) -> Int {
-    return arrays.sum(prices);
+    return prices.sum();
 }
 
 pub fn discounted(prices: [Int], percent: Int) -> Int {

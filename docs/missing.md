@@ -23,12 +23,13 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 
 ### Methods on builtin types — what is left
 
-Arrays, texts and numbers have methods: those of the library (`items.filter(isEven).len()`, `name.trim().lower()`) and any a program gives them with `impl` ([guide](guide.md#methods-on-arrays-texts-and-numbers)). What is not there:
+Arrays, texts and numbers have methods: those of the library (`items.filter(isEven).len()`, `name.trim().lower()`), with no import, and any a program gives them with `impl` ([guide](guide.md#methods-on-arrays-texts-and-numbers)). What is not there:
 
-*   **Without the module, no methods.** The methods of arrays come with `import std.arrays;`, those of texts with `std.strings`, those of numbers with `std.math`. A call without the import is an error that names it.
-*   **An impl for arrays of arrays, or of optionals**: `impl<T> [[T]]`. An impl is for every array, or for the arrays of one named type.
+*   **A method handed to a function as it is**: `names.map(String.upper)`. A function that calls it is written instead: `names.map(name -> name.upper())`.
+*   **An impl for arrays of arrays, or of optionals**: `impl<T> [[T]]`. An impl is for every array, or for the arrays of one named type; `arrays.flatten` stays a function for that reason.
 *   **A trait for the arrays of one type** (`impl Sized for [Int]`): what an array holds is not known when the program runs, which is when a value seen through a trait finds its method. A trait is implemented for every array.
 *   **Methods on tuples, optionals and functions.**
+*   **Starting as fast as before**: the module of the methods a program calls is compiled with it, every time. A program that calls a method of arrays takes about 40 ms longer to start than one that calls none.
 *   **`.length`** is still not a field: it is `items.len()`, and writing it is an error (`E2033`) that says so.
 
 ### More for failures — S to M each
@@ -40,7 +41,7 @@ Arrays, texts and numbers have methods: those of the library (`items.filter(isEv
 | `attempt` on a function with arguments | Wrap the call in a lambda |
 | One shape for all errors | `io.Error`, `Failure` and your own each have `describe()` by convention. A trait for it can now be written and required (`<E: Describe>`); the library does not have one yet |
 | Underlining exactly what failed | A runtime error underlines the name or number that starts where the instruction's source does; the end of the expression is not recorded |
-| `Result` from the functions that parse | `strings.parseInt` returns an optional: the reason is always "not a number" |
+| `Result` from the functions that parse | `parseInt` returns an optional: the reason is always "not a number" |
 
 ### Arrays with a fixed size — L
 
@@ -151,15 +152,15 @@ Requirements on type parameters, traits with type parameters, methods with a bod
 | `%` on floats | `E2006`, although the VM implements it |
 | A literal for dictionaries | `dict.empty<V>()` then `set`; there is no `{"a": 1}` |
 | Numbers | `Int` is 48 bits (±140 737 488 355 327), not 64; there are no unsigned or sized integers, and no bytes: a file is read as text only |
-| Characters | A character is a text of length 1; `strings.code` and `fromCode` go to and from its number |
+| Characters | A character is a text of length 1; `code` and `fromCode` go to and from its number |
 | `\u` escapes in a text | Not parsed; write the character itself |
-| Formatting inside `${...}`: a width, a number of decimals | Call a function: `"${strings.padLeft(toString(n), 5)}"` |
+| Formatting inside `${...}`: a width, a number of decimals | Call a function: `"${toString(n).padLeft(5)}"` |
 | `x!`, to insist a value is not null | Not parsed. `x ?? panic(...)` does not type either: test against `null`, or use `?` |
 | Several processors at once | Tasks and channels are there ([tasks.md](tasks.md)), taking turns on one processor. Not there: `select`, waits that give up after some time, stopping a task from outside |
 | Type aliases | Not parsed |
 | Tuples of more than six values, or of one | A struct |
 | Taking a tuple apart in a parameter (`fn(key, value)` for a function of a pair) or a struct apart at all | `let (key, value) = pair;` as the first line |
-| `?.` followed by an index: `items?[0]` | `arrays.at`, or a test against `null` |
+| `?.` followed by an index: `items?[0]` | `at`, or a test against `null` |
 | `?` in `main`, to end the program with the failure | A `match` |
 | Types on a short function: `(n: Int) -> n * 2` | The long form, `fn(n: Int) -> Int { return n * 2; }`; a short one always takes its types from outside |
 | A short function where nothing is expected: `let f = x -> x + 1;` | `E2037`; give the variable a type, or use the long form |
@@ -215,7 +216,7 @@ A cast to a function type is checked against the signature recorded when the fun
 
 ### Strings are not counted when they grow — S
 
-`a + b` and `text += part` create a new string each time, and each is counted. But building a long string in a loop makes garbage proportional to the square of its length (every step copies everything so far). Collecting the pieces in an array and calling `strings.join` once avoids it; there is no string builder that does this behind `+=`.
+`a + b` and `text += part` create a new string each time, and each is counted. But building a long string in a loop makes garbage proportional to the square of its length (every step copies everything so far). Collecting the pieces in an array and calling `join` once avoids it; there is no string builder that does this behind `+=`.
 
 ### Method dispatch cost — M
 

@@ -16,7 +16,7 @@ import notes.book;
 // A request as the server would hand it over. The address may carry a
 // query: "/notes?tag=work".
 pub fn request(method: Method, address: String, body: String) -> Request {
-    let (path, query) = strings.cut(address, "?") ?? (address, "");
+    let (path, query) = address.cut("?") ?? (address, "");
 
     return Request {
         method: method,
@@ -57,7 +57,7 @@ fn document(response: Response) -> Json {
 }
 
 fn titles(response: Response) -> [String] {
-    return arrays.map(document(response).items() ?? [], fn(note: Json) -> String {
+    return (document(response).items() ?? []).map(fn(note: Json) -> String {
         return note.get("title")?.text() ?? "?";
     });
 }
@@ -102,7 +102,7 @@ pub fn suite() -> Suite {
             test.contains(errorOf(answer), "already a note called 'Groceries'");
         })
         .test("refuses a title that is too long", fn() {
-            let answer = post(service(), "{\"title\": \"${strings.repeat("x", 61)}\"}");
+            let answer = post(service(), "{\"title\": \"${"x".repeat(61)}\"}");
             test.equal(answer.status, 413);
         })
         .test("refuses a body that is not JSON, and says where", fn() {

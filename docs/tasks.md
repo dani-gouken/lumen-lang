@@ -80,7 +80,7 @@ task.run(fn() {
     for name in files { lines.send(io.readFile(name).orElse("")); }
     lines.close();
 });
-lines.each(fn(text: String) { println(strings.len(text)); });
+lines.each(fn(text: String) { println(text.len()); });
 ```
 
 | | |

@@ -70,7 +70,7 @@ func TestFunctionObjectsAreReused(t *testing.T) {
 
 func TestCallingAFunctionDoesNotAllocate(t *testing.T) {
 	// main: i = 0; while i < 250 { helper(); toString-less host call; i++ }
-	chunk := chunkOf([]string{"push"}, []Value{NewInt(250)},
+	chunk := chunkOf([]string{"__push"}, []Value{NewInt(250)},
 		fnDef{FunctionPrototype{Name: "main", RegisterCount: 8}, []Instr{
 			NewInstr(OpNEWARRAY, 6, 0, 0),
 			NewInstr(OpLOADI, 1, 0, 0),

@@ -273,7 +273,24 @@ func (c *Checker) methodOn(recv Type, name string) (*ast.FnDecl, map[string]Type
 				return decl, nil
 			}
 		}
-		return c.methods[ast.ArrayImpl][name], nil
+		if decl := c.methods[ast.ArrayImpl][name]; decl != nil {
+			return decl, nil
+		}
+		// [].sum(): nothing says what the array holds. When only the
+		// arrays of one type have the method, it is theirs
+		if isUnknown(t.ElementType) {
+			var found *ast.FnDecl
+			for owner, methods := range c.methods {
+				if item, arrays := ast.IsArrayImpl(owner); arrays && item != "" && methods[name] != nil {
+					if found != nil {
+						return nil, nil
+					}
+					found = methods[name]
+				}
+			}
+			return found, nil
+		}
+		return nil, nil
 	case *BehaviorType:
 		return fromTrait(t)
 	case *TypeParam:

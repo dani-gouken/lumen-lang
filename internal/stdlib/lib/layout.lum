@@ -104,10 +104,10 @@ pub fn join(items: [Doc], separator: Doc) -> Doc {
 
     for i, item in items {
         if i > 0 {
-            push(parts, separator);
+            parts.push(separator);
         }
 
-        push(parts, item);
+        parts.push(item);
     }
 
     return Doc.Concat(parts);
@@ -119,10 +119,10 @@ pub fn fill(items: [Doc]) -> Doc {
 
     for i, item in items {
         if i > 0 {
-            push(parts, Doc.Glue(item));
+            parts.push(Doc.Glue(item));
         }
 
-        push(parts, item);
+        parts.push(item);
     }
 
     return Doc.Concat(parts);
@@ -137,7 +137,7 @@ pub fn forces(doc: Doc) -> Bool {
         }
 
         case Doc.Trailing(comment): {
-            return strings.startsWith(comment, "//");
+            return comment.startsWith("//");
         }
 
         case Doc.Group(_, must): {
@@ -153,7 +153,7 @@ pub fn forces(doc: Doc) -> Bool {
         }
 
         case Doc.Concat(parts): {
-            return arrays.any(parts, forces);
+            return parts.any(forces);
         }
 
         default: {
@@ -222,10 +222,10 @@ struct Printer {
 
 impl Printer {
     fn print(doc: Doc) {
-        push(self.stack, Command { indent: 0, flat: false, doc: doc });
+        self.stack.push(Command { indent: 0, flat: false, doc: doc });
 
         while true {
-            let command = arrays.pop(self.stack);
+            let command = self.stack.pop();
 
             if command == null {
                 break;
@@ -236,7 +236,7 @@ impl Printer {
     }
 
     fn later(indent: Int, flat: Bool, doc: Doc) {
-        push(self.stack, Command { indent: indent, flat: flat, doc: doc });
+        self.stack.push(Command { indent: indent, flat: flat, doc: doc });
     }
 
     // Writes one document, or puts what it is made of on the stack.
@@ -261,7 +261,7 @@ impl Printer {
             }
 
             case Doc.Concat(parts): {
-                let i = arrays.len(parts) - 1;
+                let i = parts.len() - 1;
 
                 while i >= 0 {
                     self.later(indent, flat, parts[i]);
@@ -299,7 +299,7 @@ impl Printer {
             }
 
             case Doc.Fresh: {
-                if !arrays.isEmpty(self.parts) || self.comment != "" {
+                if !self.parts.isEmpty() || self.comment != "" {
                     self.newline(indent);
                 }
             }
@@ -338,12 +338,12 @@ impl Printer {
                     gap = self.gap;
                 }
 
-                push(self.stack, Command {
+                self.stack.push(Command {
                     indent: indent,
                     flat: flat,
                     doc: Doc.Nothing,
                     ends: true,
-                    start: arrays.len(self.rows),
+                    start: self.rows.len(),
                     gap: gap,
                 });
 
@@ -358,7 +358,7 @@ impl Printer {
                     self.newline(indent);
                 }
 
-                self.gap = arrays.len(self.rows);
+                self.gap = self.rows.len();
             }
         }
     }
@@ -366,14 +366,14 @@ impl Printer {
     // An item is written: if it took several lines, an empty one goes
     // before it, and the gap that follows will leave one after it.
     fn endItem(command: Command) {
-        self.tall = arrays.len(self.rows) > command.start;
+        self.tall = self.rows.len() > command.start;
         let gap = command.gap;
 
         if !self.tall || gap < 1 || isEmpty(self.rows[gap - 1]) {
             return;
         }
 
-        arrays.insertAt(self.rows, gap, Row { indent: 0, code: "", comment: "", raw: false });
+        self.rows.insertAt(gap, Row { indent: 0, code: "", comment: "", raw: false });
     }
 
     // Whether a document fits in what is left of the line, with what
@@ -381,10 +381,10 @@ impl Printer {
     fn fits(first: Command) -> Bool {
         let left = self.width - self.column;
         let ahead = [first];
-        let rest = arrays.len(self.stack);
+        let rest = self.stack.len();
 
         while left >= 0 {
-            let command = arrays.pop(ahead);
+            let command = ahead.pop();
 
             if command == null {
                 // What follows the document, as it is going to be written
@@ -400,30 +400,30 @@ impl Printer {
 
             match next.doc {
                 case Doc.Text(text): {
-                    left -= strings.len(text);
+                    left -= text.len();
                 }
 
                 case Doc.Verbatim(text, _): {
                     // Its first line is what there is to fit
-                    let end = strings.indexOf(text, "\n") ?? strings.len(text);
+                    let end = text.indexOf("\n") ?? text.len();
                     return left >= end;
                 }
 
                 case Doc.Concat(parts): {
-                    let i = arrays.len(parts) - 1;
+                    let i = parts.len() - 1;
 
                     while i >= 0 {
-                        push(ahead, Command { indent: 0, flat: flat, doc: parts[i] });
+                        ahead.push(Command { indent: 0, flat: flat, doc: parts[i] });
                         i--;
                     }
                 }
 
                 case Doc.Indent(inner): {
-                    push(ahead, Command { indent: 0, flat: flat, doc: inner });
+                    ahead.push(Command { indent: 0, flat: flat, doc: inner });
                 }
 
                 case Doc.Group(inner, must): {
-                    push(ahead, Command { indent: 0, flat: flat && !must, doc: inner });
+                    ahead.push(Command { indent: 0, flat: flat && !must, doc: inner });
                 }
 
                 case Doc.Line: {
@@ -445,14 +445,14 @@ impl Printer {
                 }
 
                 case Doc.Item(inner, _): {
-                    push(ahead, Command { indent: 0, flat: flat, doc: inner });
+                    ahead.push(Command { indent: 0, flat: flat, doc: inner });
                 }
 
                 case Doc.IfBroken(taken, fitting): {
                     if flat {
-                        push(ahead, Command { indent: 0, flat: flat, doc: fitting });
+                        ahead.push(Command { indent: 0, flat: flat, doc: fitting });
                     } else {
-                        push(ahead, Command { indent: 0, flat: flat, doc: taken });
+                        ahead.push(Command { indent: 0, flat: flat, doc: taken });
                     }
                 }
 
@@ -476,8 +476,8 @@ impl Printer {
             return;
         }
 
-        push(self.parts, text);
-        self.column += strings.len(text);
+        self.parts.push(text);
+        self.column += text.len();
     }
 
     // Ends the line being written and starts one indented by `indent`.
@@ -489,10 +489,10 @@ impl Printer {
     }
 
     fn endRow() {
-        let code = strings.join(self.parts, "");
+        let code = self.parts.join("");
 
         if !self.raw {
-            code = strings.trimEnd(code);
+            code = code.trimEnd();
         }
 
         let row = Row { indent: self.indent, code: code, comment: self.comment, raw: self.raw };
@@ -501,20 +501,20 @@ impl Printer {
         self.raw = false;
 
         // No empty line at the top, and never two in a row
-        let last = arrays.last(self.rows);
+        let last = self.rows.last();
 
         if isEmpty(row) && (last == null || isEmpty(last)) {
             return;
         }
 
-        push(self.rows, row);
+        self.rows.push(row);
     }
 
     // Text over several lines: its first line goes on the line being
     // written, and the others follow it as far as it moved from where it
     // was, when they can.
     fn verbatim(text: String, was: Int) {
-        let lines = strings.split(text, "\n");
+        let lines = text.split("\n");
         let (shift, margin) = shiftOf(lines, self.indent - was);
 
         for i, line in lines {
@@ -536,16 +536,16 @@ impl Printer {
 
         // No empty line at the bottom
         while true {
-            let last = arrays.last(self.rows);
+            let last = self.rows.last();
 
             if last == null || !isEmpty(last) {
                 break;
             }
 
-            arrays.pop(self.rows);
+            self.rows.pop();
         }
 
-        if arrays.isEmpty(self.rows) {
+        if self.rows.isEmpty() {
             return "";
         }
 
@@ -556,37 +556,37 @@ impl Printer {
             let line = row.code;
 
             if !row.raw && line != "" {
-                line = strings.repeat(" ", row.indent) + line;
+                line = " ".repeat(row.indent) + line;
             }
 
             if row.comment != "" {
                 if line == "" {
-                    line = strings.repeat(" ", row.indent) + row.comment;
+                    line = " ".repeat(row.indent) + row.comment;
                 } else {
-                    let gap = columns[i] - strings.len(line);
+                    let gap = columns[i] - line.len();
 
                     if gap < 2 {
                         gap = 2;
                     }
 
-                    line = line + strings.repeat(" ", gap) + row.comment;
+                    line = line + " ".repeat(gap) + row.comment;
                 }
             }
 
-            push(lines, line);
+            lines.push(line);
         }
 
-        return strings.join(lines, "\n") + "\n";
+        return lines.join("\n") + "\n";
     }
 
     // For each line, the column its comment starts in: the comments of
     // lines that follow each other at the same depth start in the same
     // column, as in the fields of a struct.
     fn commentColumns() -> [Int] {
-        let columns = arrays.fill(arrays.len(self.rows), 0);
+        let columns = arrays.fill(self.rows.len(), 0);
         let i = 0;
 
-        while i < arrays.len(self.rows) {
+        while i < self.rows.len() {
             if !self.commented(i) {
                 i++;
                 continue;
@@ -597,7 +597,7 @@ impl Printer {
             let end = i;
             let next = i + 1;
 
-            while next < arrays.len(self.rows) && self.continues(i, next) {
+            while next < self.rows.len() && self.continues(i, next) {
                 if self.commented(next) {
                     end = next;
                 }
@@ -608,7 +608,7 @@ impl Printer {
             let column = 0;
 
             for at in i..=end {
-                let reach = self.rows[at].indent + strings.len(self.rows[at].code);
+                let reach = self.rows[at].indent + self.rows[at].code.len();
 
                 if self.commented(at) && reach <= widest && reach > column {
                     column = reach;
@@ -646,15 +646,15 @@ fn isEmpty(row: Row) -> Bool {
 fn flatWidth(doc: Doc) -> Int {
     match doc {
         case Doc.Text(text): {
-            return strings.len(text);
+            return text.len();
         }
 
         case Doc.Verbatim(text, _): {
-            return strings.len(text);
+            return text.len();
         }
 
         case Doc.Concat(parts): {
-            return arrays.fold(parts, 0, (total, part) -> total + flatWidth(part));
+            return parts.fold(0, (total, part) -> total + flatWidth(part));
         }
 
         case Doc.Indent(inner): {
@@ -690,7 +690,7 @@ fn flatWidth(doc: Doc) -> Int {
 fn leadingSpaces(line: String) -> Int {
     let count = 0;
 
-    while count < strings.len(line) && line[count] == " " {
+    while count < line.len() && line[count] == " " {
         count++;
     }
 
@@ -706,13 +706,13 @@ fn leadingSpaces(line: String) -> Int {
 // with the quotes and the others stay, and the text is the same text
 // after. Where that cannot be had, nothing moves.
 fn shiftOf(lines: [String], wanted: Int) -> (Int, Int) {
-    let last = lines[arrays.len(lines) - 1];
+    let last = lines[lines.len() - 1];
     let margin = 0;
 
-    if strings.startsWith(lines[0], "\"\"\"") {
+    if lines[0].startsWith("\"\"\"") {
         margin = leadingSpaces(last);
 
-        if strings.from(last, margin) != "\"\"\"" || margin + wanted < 0 {
+        if last.from(margin) != "\"\"\"" || margin + wanted < 0 {
             return (0, 0);
         }
     }
@@ -723,7 +723,7 @@ fn shiftOf(lines: [String], wanted: Int) -> (Int, Int) {
 
     for i, line in lines {
         let room = leadingSpaces(line);
-        let stays = i == 0 || line == "" || (margin == 0 && strings.isBlank(line));
+        let stays = i == 0 || line == "" || (margin == 0 && line.isBlank());
 
         if !stays && (room < margin || room < -wanted) {
             return (0, 0);
@@ -734,13 +734,13 @@ fn shiftOf(lines: [String], wanted: Int) -> (Int, Int) {
 }
 
 fn shifted(line: String, shift: Int, margin: Int) -> String {
-    if line == "" || leadingSpaces(line) < margin || (margin == 0 && strings.isBlank(line)) {
+    if line == "" || leadingSpaces(line) < margin || (margin == 0 && line.isBlank()) {
         return line;
     }
 
     if shift >= 0 {
-        return strings.repeat(" ", shift) + line;
+        return " ".repeat(shift) + line;
     }
 
-    return strings.from(line, -shift);
+    return line.from(-shift);
 }

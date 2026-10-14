@@ -5,7 +5,7 @@ Make the function return Result<..., string>, or handle the failure here with a 
 shortcuts_errors.lum:20:33
 Turn one into the other first: value.mapErr(convert)?
 [ERROR] E2034: '?' on a value that may be null returns null to the caller, and this function returns int
-shortcuts_errors.lum:24:34
+shortcuts_errors.lum:24:27
 Make the function return int?, give a fallback with '??', or test against null
 [ERROR] E2034: '?' is for a Result or a value that may be null, and this is a int
 shortcuts_errors.lum:28:13

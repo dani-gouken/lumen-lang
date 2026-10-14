@@ -80,7 +80,7 @@ trait Entrant {
 
     // The same for every entrant, unless it says otherwise
     fn line() -> String {
-        return "${strings.padRight(self.name(), 8)} ${self.score()}";
+        return "${self.name().padRight(8)} ${self.score()}";
     }
 
     fn leads(other: Self) -> Bool {
@@ -125,7 +125,7 @@ impl Entrant for Team {
     }
 
     fn line() -> String {
-        return "${self.label} (${arrays.len(self.members)} players): ${self.score()}";
+        return "${self.label} (${self.members.len()} players): ${self.score()}";
     }
 }
 
@@ -138,17 +138,17 @@ struct Table<T: Entrant> {
 
 impl<T: Entrant> Table<T> {
     fn add(row: T) -> Table<T> {
-        push(self.rows, row);
+        self.rows.push(row);
         return self;
     }
 
     // Best first. The order is the one Score gives itself
     fn ranked() -> [T] {
-        return arrays.sorted(self.rows, (a, b) -> a.score() > b.score());
+        return self.rows.sorted((a, b) -> a.score() > b.score());
     }
 
     fn leader() -> T? {
-        return arrays.first(self.ranked());
+        return self.ranked().first();
     }
 }
 
@@ -174,7 +174,7 @@ trait Source<T> {
         let item = self.next();
 
         while item != null {
-            push(out, item);
+            out.push(item);
             item = self.next();
         }
 
@@ -190,11 +190,11 @@ struct Fixtures {
 
 impl Source<(String, Result, String)> for Fixtures {
     fn next() -> (String, Result, String)? {
-        while self.at < arrays.len(self.lines) {
-            let words = strings.words(self.lines[self.at]);
+        while self.at < self.lines.len() {
+            let words = self.lines[self.at].words();
             self.at++;
 
-            if arrays.len(words) != 3 {
+            if words.len() != 3 {
                 continue;
             }
 
@@ -224,18 +224,18 @@ fn widest<T: Show>(items: [T]) -> Int {
     let most = 0;
 
     for item in items {
-        most = math.max(most, strings.len(item.show()));
+        most = most.max(item.show().len());
     }
 
     return most;
 }
 
 fn podium<T: Entrant>(table: Table<T>) -> String {
-    return table.ranked() |> arrays.take(3) |> arrays.map(row -> row.name()) |> strings.join(" > ");
+    return table.ranked().take(3).map(row -> row.name()).join(" > ");
 }
 
 fn main() -> Int {
-    let fixtures = Fixtures { lines: strings.lines("""
+    let fixtures = Fixtures { lines: """
         ada beat bob
         cy drew dee
         ada beat cy
@@ -243,7 +243,7 @@ fn main() -> Int {
         bob lost dee
         dee drew ada
         bob beat cy
-        """) };
+        """.lines() };
 
     // Scores by name, added up as the results come
     let scores = dict.empty<Score>();
@@ -265,7 +265,7 @@ fn main() -> Int {
         println(" ${i + 1}. ${player.line()}");
     }
 
-    println("leader: ${players[0].name()}, last: ${players[arrays.len(players.rows) - 1].name()}, podium: ${podium(players)}");
+    println("leader: ${players[0].name()}, last: ${players[players.rows.len() - 1].name()}, podium: ${podium(players)}");
 
     let ada = players[0];
     let dee = players[1];
@@ -299,15 +299,15 @@ fn main() -> Int {
 
     // Everything through the trait, each doing what its own type says
     let everyone: [Entrant] = [ada, teams[0], dee];
-    println(arrays.map(everyone, entrant -> entrant.name()), strings.len(everyone[1].line()));
+    println(everyone.map(entrant -> entrant.name()), everyone[1].line().len());
 
     // Methods as values, and what the library does with types that say
     // how they compare and read
-    let all = arrays.map(players.ranked(), player -> player.total);
+    let all = players.ranked().map(player -> player.total);
     let lookup = scores.get;
 
     println(
-        arrays.map(["dee", "eve"], lookup),
+        ["dee", "eve"].map(lookup),
         ops.largest(all),
         ops.smallest(all),
         widest(all),
@@ -317,9 +317,9 @@ fn main() -> Int {
     println(ops.join(ops.sorted(all), " < "));
 
     println(
-        arrays.contains(all, Score { points: 4, wins: 1, played: 3 }),
+        all.contains(Score { points: 4, wins: 1, played: 3 }),
         ops.indexOf(all, Score { points: 4, wins: 1 }),
-        arrays.len(all),
+        all.len(),
     );
 
     return 0;

@@ -39,7 +39,7 @@ pub struct Table {
 // Reads the table of a name: the file name.csv of the folder, whose first
 // line names the columns and says what they hold, as in `id:int,name:text`.
 pub fn load(folder: String, name: String) -> Result<Table, String> {
-    let file = path.join([folder, strings.lower(name) + ".csv"]);
+    let file = path.join([folder, name.lower() + ".csv"]);
 
     let text = match io.readFile(file) {
         case Result.Ok(content): content;
@@ -57,7 +57,7 @@ pub fn load(folder: String, name: String) -> Result<Table, String> {
         }
     };
 
-    if arrays.isEmpty(lines) {
+    if lines.isEmpty() {
         return Result.Err("the table ${name} is empty: it has no line of column names");
     }
 
@@ -65,34 +65,34 @@ pub fn load(folder: String, name: String) -> Result<Table, String> {
     let kinds: [String] = [];
 
     for title in lines[0] {
-        let parts = strings.cut(title, ":");
+        let parts = title.cut(":");
 
         if parts == null {
-            push(columns, title);
-            push(kinds, "text");
+            columns.push(title);
+            kinds.push("text");
         } else {
             let (column, kind) = parts;
-            push(columns, column);
-            push(kinds, kind);
+            columns.push(column);
+            kinds.push(kind);
         }
     }
 
     let rows: [[Value]] = [];
 
-    for at in 1..arrays.len(lines) {
+    for at in 1..lines.len() {
         let cells = lines[at];
 
-        if arrays.len(cells) != arrays.len(columns) {
-            return Result.Err("line ${at + 1} of the table ${name} has ${arrays.len(cells)} values for ${arrays.len(columns)} columns");
+        if cells.len() != columns.len() {
+            return Result.Err("line ${at + 1} of the table ${name} has ${cells.len()} values for ${columns.len()} columns");
         }
 
         let row: [Value] = [];
 
         for i, cell in cells {
-            push(row, parse(cell, kinds[i]));
+            row.push(parse(cell, kinds[i]));
         }
 
-        push(rows, row);
+        rows.push(row);
     }
 
     return Result.Ok(Table { name: name, columns: columns, rows: rows });
@@ -109,8 +109,8 @@ struct Column {
 
 fn find(columns: [Column], table: String, name: String) -> Result<Int, String> {
     // Names are the same whatever their case, as in SQL
-    let wanted = strings.lower(name);
-    let of = strings.lower(table);
+    let wanted = name.lower();
+    let of = table.lower();
     let found = -1;
 
     for at, column in columns {
@@ -159,7 +159,7 @@ fn bindAll(expressions: [Expr], columns: [Column], grouped: Bool) -> Result<[Exp
     let out: [Expr] = [];
 
     for expression in expressions {
-        push(out, bind(expression, columns, grouped)?);
+        out.push(bind(expression, columns, grouped)?);
     }
 
     return Result.Ok(out);
@@ -256,8 +256,8 @@ fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, Stri
                 return Result.Ok(expression);
             }
 
-            if arrays.len(arguments) < least || arrays.len(arguments) > most {
-                return Result.Err("${function} does not take ${arrays.len(arguments)} values");
+            if arguments.len() < least || arguments.len() > most {
+                return Result.Err("${function} does not take ${arguments.len()} values");
             }
 
             if isAggregate(function) {
@@ -276,7 +276,7 @@ fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, Stri
             let bound: [(Expr, Expr)] = [];
 
             for (condition, value) in branches {
-                push(bound, (bind(condition, columns, grouped)?, bind(value, columns, grouped)?));
+                bound.push((bind(condition, columns, grouped)?, bind(value, columns, grouped)?));
             }
 
             if otherwise == null {
@@ -298,7 +298,7 @@ fn aggregates(expression: Expr) -> Bool {
         case Expr.Not(inner): aggregates(inner);
         case Expr.Binary(operator, left, right): aggregates(left) || aggregates(right);
         case Expr.Like(value, pattern, negated): aggregates(value) || aggregates(pattern);
-        case Expr.In(value, options, negated): aggregates(value) || arrays.any(options, aggregates);
+        case Expr.In(value, options, negated): aggregates(value) || options.any(aggregates);
 
         case Expr.Between(value, low, high, negated): aggregates(value)
             || aggregates(low)
@@ -307,7 +307,7 @@ fn aggregates(expression: Expr) -> Bool {
         case Expr.IsNull(inner, negated): aggregates(inner);
 
         case Expr.Call(function, arguments, star): isAggregate(function)
-            || arrays.any(arguments, aggregates);
+            || arguments.any(aggregates);
 
         case Expr.Case(branches, otherwise): {
             for (condition, value) in branches {
@@ -341,7 +341,7 @@ fn eval(expression: Expr, row: [Value], group: [[Value]]?) -> Value {
         }
 
         case Expr.Slot(at): {
-            if at >= arrays.len(row) {
+            if at >= row.len() {
                 return Value.Null;
             }
 
@@ -383,9 +383,7 @@ fn eval(expression: Expr, row: [Value], group: [[Value]]?) -> Value {
                 return Value.Null;
             }
 
-            return fromBool(
-                like(strings.lower(show(value)), strings.lower(show(pattern))) != negated,
-            );
+            return fromBool(like(show(value).lower(), show(pattern).lower()) != negated);
         }
 
         case Expr.In(valueExpr, options, negated): {
@@ -534,8 +532,8 @@ fn binary(operator: String, a: Value, b: Value) -> Value {
 // Whether a text is of a pattern, where % stands for any run of
 // characters and _ for any one. Both are in lower case already.
 fn like(text: String, pattern: String) -> Bool {
-    let textLength = strings.len(text);
-    let patternLength = strings.len(pattern);
+    let textLength = text.len();
+    let patternLength = pattern.len();
     let t = 0;
     let p = 0;
     // Where to come back to when what followed the last % did not fit
@@ -575,7 +573,7 @@ fn call(function: String, arguments: [Expr], row: [Value], group: [[Value]]?) ->
                 return first;
             }
 
-            for at in 1..arrays.len(arguments) {
+            for at in 1..arguments.len() {
                 let value = eval(arguments[at], row, group);
 
                 if value != Value.Null {
@@ -603,21 +601,21 @@ fn call(function: String, arguments: [Expr], row: [Value], group: [[Value]]?) ->
 
     match function {
         case "UPPER": {
-            return Value.Text(strings.upper(show(first)));
+            return Value.Text(show(first).upper());
         }
 
         case "LOWER": {
-            return Value.Text(strings.lower(show(first)));
+            return Value.Text(show(first).lower());
         }
 
         case "LENGTH": {
-            return Value.Int(strings.len(show(first)));
+            return Value.Int(show(first).len());
         }
 
         case "ABS": {
             return match first {
-                case Value.Int(n): Value.Int(math.abs(n));
-                case Value.Real(x): Value.Real(math.fabs(x));
+                case Value.Int(n): Value.Int(n.abs());
+                case Value.Real(x): Value.Real(x.abs());
                 default: Value.Real(0.0);
             };
         }
@@ -625,7 +623,7 @@ fn call(function: String, arguments: [Expr], row: [Value], group: [[Value]]?) ->
         case "ROUND": {
             let digits = 0;
 
-            if arrays.len(arguments) == 2 {
+            if arguments.len() == 2 {
                 match eval(arguments[1], row, group) {
                     case Value.Int(n): {
                         digits = n;
@@ -640,38 +638,38 @@ fn call(function: String, arguments: [Expr], row: [Value], group: [[Value]]?) ->
             }
 
             let x = match first {
-                case Value.Int(n): math.toFloat(n);
+                case Value.Int(n): n.toFloat();
                 case Value.Real(real): real;
                 default: 0.0;
             };
 
-            return Value.Real(rounded(x, math.clamp(digits, 0, 12)));
+            return Value.Real(rounded(x, digits.clamp(0, 12)));
         }
 
         default: {
             // SUBSTR(text, from, count): positions start at 1
             let text = show(first);
-            let length = strings.len(text);
+            let length = text.len();
 
             let from = match eval(arguments[1], row, group) {
                 case Value.Int(n): n;
                 default: 1;
             };
 
-            let start = math.clamp(from - 1, 0, length);
+            let start = (from - 1).clamp(0, length);
             let end = length;
 
-            if arrays.len(arguments) == 3 {
+            if arguments.len() == 3 {
                 match eval(arguments[2], row, group) {
                     case Value.Int(count): {
-                        end = math.clamp(start + count, start, length);
+                        end = (start + count).clamp(start, length);
                     }
 
                     default: {}
                 }
             }
 
-            return Value.Text(strings.substring(text, start, end));
+            return Value.Text(text.substring(start, end));
         }
     }
 }
@@ -686,13 +684,13 @@ fn rounded(x: Float, digits: Int) -> Float {
         scale = scale * 10.0;
     }
 
-    let size = math.fabs(x);
+    let size = x.abs();
 
     if size > 100000000000.0 {
         return x;
     }  // Too large to have decimals worth rounding
 
-    let cut = math.toFloat(math.trunc((size + 0.5 / scale) * scale)) / scale;
+    let cut = ((size + 0.5 / scale) * scale).trunc().toFloat() / scale;
 
     if x < 0.0 {
         return -cut;
@@ -705,7 +703,7 @@ fn rounded(x: Float, digits: Int) -> Float {
 // smallest, the largest. Rows where the value is NULL do not count.
 fn aggregate(function: String, arguments: [Expr], star: Bool, rows: [[Value]]) -> Value {
     if star {
-        return Value.Int(arrays.len(rows));
+        return Value.Int(rows.len());
     }
 
     let count = 0;
@@ -726,7 +724,7 @@ fn aggregate(function: String, arguments: [Expr], star: Bool, rows: [[Value]]) -
         match value {
             case Value.Int(n): {
                 whole += n;
-                sum += math.toFloat(n);
+                sum += n.toFloat();
             }
 
             case Value.Real(x): {
@@ -769,7 +767,7 @@ fn aggregate(function: String, arguments: [Expr], star: Bool, rows: [[Value]]) -
                 return Value.Null;
             }
 
-            return Value.Real(sum / math.toFloat(count));
+            return Value.Real(sum / count.toFloat());
         }
     };
 }
@@ -789,8 +787,8 @@ struct Entry {
 }
 
 fn side(table: Table, alias: String) -> [Column] {
-    let asked = strings.lower(alias);
-    return arrays.map(table.columns, name -> Column { table: asked, name: strings.lower(name) });
+    let asked = alias.lower();
+    return table.columns.map(name -> Column { table: asked, name: name.lower() });
 }
 
 fn nulls(count: Int) -> [Value] {
@@ -809,7 +807,7 @@ fn joined(
     keepUnmatched: Bool,
 ) -> [[Value]] {
     let out: [[Value]] = [];
-    let rightWidth = arrays.len(right.columns);
+    let rightWidth = right.columns.len();
 
     match on {
         case Expr.Binary("=", Expr.Slot(a), Expr.Slot(b)): {
@@ -829,16 +827,16 @@ fn joined(
         let matched = false;
 
         for other in right.rows {
-            let pair = arrays.concat(row, other);
+            let pair = row.concat(other);
 
             if truth(eval(on, pair, null)) == true {
-                push(out, pair);
+                out.push(pair);
                 matched = true;
             }
         }
 
         if !matched && keepUnmatched {
-            push(out, arrays.concat(row, nulls(rightWidth)));
+            out.push(row.concat(nulls(rightWidth)));
         }
     }
 
@@ -853,7 +851,7 @@ fn matched(
     rightColumn: Int,
     keepUnmatched: Bool,
 ) -> [[Value]] {
-    let rightWidth = arrays.len(right.columns);
+    let rightWidth = right.columns.len();
 
     let places = dict.empty<[Int]>();
 
@@ -868,7 +866,7 @@ fn matched(
         if found == null {
             places.set(lookup, [at]);
         } else {
-            push(found, at);
+            found.push(at);
         }
     }
 
@@ -883,10 +881,10 @@ fn matched(
 
         if found != null {
             for at in found {
-                push(out, arrays.concat(row, right.rows[at]));
+                out.push(row.concat(right.rows[at]));
             }
         } else if keepUnmatched {
-            push(out, arrays.concat(row, nulls(rightWidth)));
+            out.push(row.concat(nulls(rightWidth)));
         }
     }
 
@@ -902,8 +900,8 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
 
     for join in query.joins {
         let table = load(folder, join.source.table)?;
-        let width = arrays.len(columns);
-        columns = arrays.concat(columns, side(table, join.source.alias));
+        let width = columns.len();
+        columns = columns.concat(side(table, join.source.alias));
         rows = joined(rows, width, table, bind(join.on, columns, false)?, join.left);
     }
 
@@ -912,7 +910,7 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
 
     if filter != null {
         let condition = bind(filter, columns, false)?;
-        rows = arrays.filter(rows, row -> truth(eval(condition, row, null)) == true);
+        rows = rows.filter(row -> truth(eval(condition, row, null)) == true);
     }
 
     // What is asked: everything, or the items of the query
@@ -922,19 +920,19 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
         asked = [];
 
         for at, column in columns {
-            push(asked, Item { value: Expr.Slot(at), name: column.name });
+            asked.push(Item { value: Expr.Slot(at), name: column.name });
         }
     }
 
     let having = query.having;
 
-    let grouped = !arrays.isEmpty(query.groups)
+    let grouped = !query.groups.isEmpty()
         || having != null
-        || arrays.any(asked, item -> aggregates(item.value))
-        || arrays.any(query.order, by -> aggregates(by.value));
+        || asked.any(item -> aggregates(item.value))
+        || query.order.any(by -> aggregates(by.value));
 
-    let items = bindAll(arrays.map(asked, item -> item.value), columns, grouped)?;
-    let names = arrays.map(asked, item -> item.name);
+    let items = bindAll(asked.map(item -> item.value), columns, grouped)?;
+    let names = asked.map(item -> item.name);
 
     // ORDER BY names a result by the name it was given, or by its place,
     // or is something to work out like any other
@@ -942,19 +940,16 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
 
     for by in query.order {
         let place: Int? = match by.value {
-            case Expr.Column("", name): arrays.findIndex(
-                names,
-                given -> strings.lower(given) == strings.lower(name),
-            );
+            case Expr.Column("", name): names.findIndex(given -> given.lower() == name.lower());
 
             case Expr.Literal(Value.Int(n)): n - 1;
             default: null;
         };
 
-        if place != null && place >= 0 && place < arrays.len(items) {
-            push(keys, items[place]);
+        if place != null && place >= 0 && place < items.len() {
+            keys.push(items[place]);
         } else {
-            push(keys, bind(by.value, columns, grouped)?);
+            keys.push(bind(by.value, columns, grouped)?);
         }
     }
 
@@ -967,23 +962,21 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
         let places = dict.empty<Int>();
 
         for row in rows {
-            let lookup = by
-                |> arrays.map(expression -> key(eval(expression, row, null)))
-                |> strings.join("|");
+            let lookup = by.map(expression -> key(eval(expression, row, null))).join("|");
 
             let place = places.get(lookup);
 
             if place == null {
-                places.set(lookup, arrays.len(groups));
-                push(groups, [row]);
+                places.set(lookup, groups.len());
+                groups.push([row]);
             } else {
-                push(groups[place], row);
+                groups[place].push(row);
             }
         }
 
         // Without GROUP BY the rows are one group, also when there are none
-        if arrays.isEmpty(query.groups) && arrays.isEmpty(groups) {
-            push(groups, noRows());
+        if query.groups.isEmpty() && groups.isEmpty() {
+            groups.push(noRows());
         }
 
         let condition: Expr? = null;
@@ -995,7 +988,7 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
         for group in groups {
             let row: [Value] = [];
 
-            if !arrays.isEmpty(group) {
+            if !group.isEmpty() {
                 row = group[0];
             }
 
@@ -1003,16 +996,16 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
                 continue;
             }
 
-            push(entries, Entry {
-                row: arrays.map(items, item -> eval(item, row, group)),
-                keys: arrays.map(keys, item -> eval(item, row, group)),
+            entries.push(Entry {
+                row: items.map(item -> eval(item, row, group)),
+                keys: keys.map(item -> eval(item, row, group)),
             });
         }
     } else {
         for row in rows {
-            push(entries, Entry {
-                row: arrays.map(items, item -> eval(item, row, null)),
-                keys: arrays.map(keys, item -> eval(item, row, null)),
+            entries.push(Entry {
+                row: items.map(item -> eval(item, row, null)),
+                keys: keys.map(item -> eval(item, row, null)),
             });
         }
     }
@@ -1023,11 +1016,11 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
         let unique: [Entry] = [];
 
         for entry in entries {
-            let lookup = entry.row |> arrays.map(key) |> strings.join("|");
+            let lookup = entry.row.map(key).join("|");
 
             if !seen.has(lookup) {
                 seen.set(lookup, true);
-                push(unique, entry);
+                unique.push(entry);
             }
         }
 
@@ -1035,10 +1028,10 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
     }
 
     // ORDER BY
-    if !arrays.isEmpty(keys) {
-        let descending = arrays.map(query.order, by -> by.descending);
+    if !keys.isEmpty() {
+        let descending = query.order.map(by -> by.descending);
 
-        entries = arrays.sorted(entries, (a, b) -> {
+        entries = entries.sorted((a, b) -> {
             for at, down in descending {
                 let ordered = order(a.keys[at], b.keys[at]);
 
@@ -1052,14 +1045,14 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
     }
 
     // LIMIT, OFFSET
-    let from = math.min(query.offset, arrays.len(entries));
-    let to = arrays.len(entries);
+    let from = query.offset.min(entries.len());
+    let to = entries.len();
     let limit = query.limit;
 
     if limit != null {
-        to = math.min(from + limit, to);
+        to = (from + limit).min(to);
     }
 
-    let kept = entries |> arrays.slice(from, to) |> arrays.map(entry -> entry.row);
+    let kept = entries.slice(from, to).map(entry -> entry.row);
     return Result.Ok(Answer { names: names, rows: kept });
 }

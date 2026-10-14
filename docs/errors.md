@@ -20,7 +20,7 @@ enum Problem { Empty, NotANumber(String) }
 
 fn count(text: String) -> Result<Int, Problem> {
     if text == "" { return Result.Err(Problem.Empty); }
-    let n = strings.parseInt(text);
+    let n = text.parseInt();
     if n == null { return Result.Err(Problem.NotANumber(text)); }
     return Result.Ok(n);
 }
@@ -76,7 +76,7 @@ The same operator works on an optional, in a function that may return `null`: `l
 
 ### An optional or a `Result`?
 
-`T?` says "there may be nothing", and that is all `strings.indexOf` or `list.first()` have to say. `Result` is for when there is a *why*: `strings.parseInt` returns an optional, `io.readFile` a `Result`.
+`T?` says "there may be nothing", and that is all `indexOf` or `list.first()` have to say. `Result` is for when there is a *why*: `parseInt` returns an optional, `io.readFile` a `Result`.
 
 ## A Trace for an Error That Is a Value
 
@@ -145,7 +145,7 @@ match io.readFile("settings.conf") {
 
 ```rust
 fn take(queue: Queue) -> Int {
-    if arrays.len(queue.items) == 0 {
+    if queue.items.len() == 0 {
         panic("the queue is empty after", queue.taken, "items");
     }
     ...
@@ -176,7 +176,7 @@ A program that stops, by `panic` or by any failure the virtual machine finds, is
  12 |     return items[index];
       |                 ^
       |
-      = Suggestion: Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing
+      = Suggestion: Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing
   called from orders.lum:31:20 in function 'total'
   called from orders.lum:48:13 in function 'main'
 ```

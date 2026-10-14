@@ -252,9 +252,9 @@ func (c *Checker) inferTypeArgs(sig genericSignature, args []ast.Expr, expected 
 // checked again, against the inferred signature, and mistakes in them are
 // reported then.
 func (c *Checker) typesOf(exprs []ast.Expr) []Type {
-	reported := c.errs
-	c.errs = errors.NewHandler()
-	defer func() { c.errs = reported }()
+	reported, said := c.errs, c.said
+	c.errs, c.said = errors.NewHandler(), nil
+	defer func() { c.errs, c.said = reported, said }()
 
 	types := make([]Type, len(exprs))
 	for i, expr := range exprs {

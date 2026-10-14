@@ -67,7 +67,7 @@ fn fromDocument(document: Json) -> Result<[Task], StoreError> {
 
     for item in items {
         // The first task that cannot be read ends it, with its reason
-        push(tasks, task.fromJson(item).mapErr(StoreError.NotTasks)?);
+        tasks.push(task.fromJson(item).mapErr(StoreError.NotTasks)?);
     }
 
     return Result.Ok(tasks);
@@ -82,26 +82,26 @@ impl Store {
     // One more than the highest id in use: ids are never given twice,
     // even after a task is removed from the middle.
     pub fn nextId() -> Int {
-        return (self.tasks |> arrays.map(t -> t.id) |> arrays.largest() ?? 0) + 1;
+        return (self.tasks.map(t -> t.id).largest() ?? 0) + 1;
     }
 
     pub fn find(id: Int) -> Task? {
-        return arrays.find(self.tasks, t -> t.id == id);
+        return self.tasks.find(t -> t.id == id);
     }
 
     pub fn add(new: Task) {
-        push(self.tasks, new);
+        self.tasks.push(new);
     }
 
     // Returns whether there was such a task.
     pub fn remove(id: Int) -> Bool {
-        let at = arrays.findIndex(self.tasks, t -> t.id == id);
+        let at = self.tasks.findIndex(t -> t.id == id);
 
         if at == null {
             return false;
         }
 
-        self.tasks = arrays.without(self.tasks, at);
+        self.tasks = self.tasks.without(at);
         return true;
     }
 }

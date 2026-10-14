@@ -22,7 +22,7 @@ impl Describable for Account {
 impl Account {
     fn deposit(amount: Int) -> Void {
         self.balance = self.balance + amount;
-        push(self.history, amount);
+        self.history.push(amount);
     }
 
     fn largest() -> Int {
@@ -104,7 +104,7 @@ fn main() -> Int {
     let account = open("ada", 50, 120, 30);
     log(account.describe());
     log("largest deposit " + toString(account.largest()));
-    log(toString(account.history) + " / " + toString(arrays.len(account.history)));
+    log(toString(account.history) + " / " + toString(account.history.len()));
 
     let empty = open("bob");
     log(empty.describe());

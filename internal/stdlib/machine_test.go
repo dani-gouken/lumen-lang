@@ -69,7 +69,7 @@ func TestMemoryIsGivenBackWhateverWasMade(t *testing.T) {
 
 		fn apply(account: Account, event: Event) -> Int {
 			match event {
-				case Event.Deposit(amount): { account.balance += amount; push(account.history, amount); }
+				case Event.Deposit(amount): { account.balance += amount; account.history.push(amount); }
 				case Event.Transfer(to, amount): { account.balance -= amount; }
 				case Event.Closed: { account.balance = 0; }
 			}
@@ -84,14 +84,14 @@ func TestMemoryIsGivenBackWhateverWasMade(t *testing.T) {
 				let step = round % 7;
 				let add = fn(n: Int) -> Int { return n + step; };
 				total = (total + add(1)) % 1000003;
-				if round % 50000 == 0 { push(kept, add); }
+				if round % 50000 == 0 { kept.push(add); }
 
 				// A struct, an array in it, values of an enum, a text
 				let account = Account { owner: "owner-" + toString(round % 10), balance: 10, history: [] };
 				apply(account, Event.Deposit(round % 5));
 				apply(account, Event.Transfer(account.owner, 3));
 				if round % 100000 == 99999 { apply(account, Event.Closed); }
-				total = (total + account.balance + arrays.len(account.history)) % 1000003;
+				total = (total + account.balance + account.history.len()) % 1000003;
 			}
 			// A dictionary that grows and is dropped, over and over
 			for round in 0..200 {
@@ -101,7 +101,7 @@ func TestMemoryIsGivenBackWhateverWasMade(t *testing.T) {
 			}
 			let fromKept = 0;
 			for add in kept { fromKept += add(100); }
-			println(total, arrays.len(kept), fromKept);
+			println(total, kept.len(), fromKept);
 			return 0;
 		}`, nil)
 	if err != nil {
@@ -125,8 +125,8 @@ func TestRunningOutOfMemoryIsAFailureLikeAnother(t *testing.T) {
 			let rows: [Row] = [];
 			let i = 0;
 			while i >= 0 {
-				push(rows, Row { id: i, label: "row number " + toString(i) });
-				if i % 1000 == 0 { push(seen, i); }
+				rows.push(Row { id: i, label: "row number " + toString(i) });
+				if i % 1000 == 0 { seen.push(i); }
 				i += 1;
 			}
 			return i;
@@ -146,11 +146,11 @@ func TestRunningOutOfMemoryIsAFailureLikeAnother(t *testing.T) {
 				}
 			}
 			// What was done before each failure stays done
-			println(arrays.len(seen) > 30, seen[1]);
+			println(seen.len() > 30, seen[1]);
 
 			let again: [Row] = [];
-			for i in 0..1000 { push(again, Row { id: i, label: "again" }); }
-			println(arrays.len(again), again[999].id);
+			for i in 0..1000 { again.push(Row { id: i, label: "again" }); }
+			println(again.len(), again[999].id);
 			return 0;
 		}`, nil)
 	if err != nil {
@@ -178,7 +178,7 @@ func TestDeepCallsKeepTheirVariables(t *testing.T) {
 		// then changes the variable the closure follows
 		fn descend(depth: Int, limit: Int, readers: [fn() -> Int]) -> Int {
 			let mine = depth;
-			push(readers, fn() -> Int { return mine; });
+			readers.push(fn() -> Int { return mine; });
 			let below = 0;
 			if depth < limit { below = descend(depth + 1, limit, readers); }
 			mine = mine * 2;
@@ -195,7 +195,7 @@ func TestDeepCallsKeepTheirVariables(t *testing.T) {
 
 		fn main() -> Int {
 			let readers: [fn() -> Int] = [];
-			println(descend(0, 6000, readers), arrays.len(readers));
+			println(descend(0, 6000, readers), readers.len());
 			// Every closure sees what its call left in the variable
 			let wrong = 0;
 			for i, read in readers { if read() != i * 2 { wrong += 1; } }
@@ -260,9 +260,9 @@ func TestFieldsOfManyStructsThroughTheSameCode(t *testing.T) {
 		fn main() -> Int {
 			let shapes: [Shape] = [];
 			for i in 0..3000 {
-				if i % 3 == 0 { push(shapes, Rect { width: i, height: 2 }); }
-				if i % 3 == 1 { push(shapes, Square { side: i % 10 }); }
-				if i % 3 == 2 { push(shapes, Tower { height: 3, width: i % 4, floors: 2 }); }
+				if i % 3 == 0 { shapes.push(Rect { width: i, height: 2 }); }
+				if i % 3 == 1 { shapes.push(Square { side: i % 10 }); }
+				if i % 3 == 2 { shapes.push(Tower { height: 3, width: i % 4, floors: 2 }); }
 			}
 			let before = total(shapes);
 			for shape in shapes { shape.grow(1); }
@@ -296,23 +296,23 @@ func TestReadingALongTextByPosition(t *testing.T) {
 
 		fn count(text: String, wanted: String) -> Int {
 			let found = 0;
-			for i in 0..strings.len(text) { if text[i] == wanted { found += 1; } }
+			for i in 0..text.len() { if text[i] == wanted { found += 1; } }
 			return found;
 		}
 
 		fn main() -> Int {
-			let plain = strings.repeat("abcdefghij", 30000);
-			let mixed = strings.repeat("aé日🙂-", 30000);
-			println(strings.len(plain), count(plain, "a"), count(plain, "j"));
-			println(strings.len(mixed), count(mixed, "é"), count(mixed, "🙂"), count(mixed, "x"));
+			let plain = "abcdefghij".repeat(30000);
+			let mixed = "aé日🙂-".repeat(30000);
+			println(plain.len(), count(plain, "a"), count(plain, "j"));
+			println(mixed.len(), count(mixed, "é"), count(mixed, "🙂"), count(mixed, "x"));
 			println(mixed[0], mixed[1], mixed[2], mixed[3], mixed[149999], plain[299999]);
 
 			// Pieces taken from anywhere, by position
 			let pieces = 0;
 			for i in 0..30000 {
-				if strings.substring(mixed, i * 5, i * 5 + 4) == "aé日🙂" { pieces += 1; }
+				if mixed.substring(i * 5, i * 5 + 4) == "aé日🙂" { pieces += 1; }
 			}
-			println(pieces, strings.substring(mixed, 149995, 150000), strings.substring(plain, 0, 300000) == plain);
+			println(pieces, mixed.substring(149995, 150000), plain.substring(0, 300000) == plain);
 			return 0;
 		}`, nil)
 	if err != nil {
@@ -347,14 +347,14 @@ func TestValuesThatHoldThemselves(t *testing.T) {
 		fn main() -> Int {
 			let ring = Node { name: "ring", next: null };
 			ring.next = ring;
-			println(strings.len(toString(ring)) < 500);
+			println(toString(ring).len() < 500);
 
 			// Fifty times itself, eight levels deep: more text than there
 			// are atoms, were it written out
 			let nest: [Any] = [];
-			for i in 0..50 { push(nest, nest); }
+			for i in 0..50 { nest.push(nest); }
 			let text = toString(nest);
-			println(strings.len(text) > 1000, strings.len(text) < 3000000, strings.endsWith(text, "...]"));
+			println(text.len() > 1000, text.len() < 3000000, text.endsWith("...]"));
 
 			let a = chain(300000);
 			let b = chain(300000);
@@ -449,9 +449,9 @@ func TestMachinesSideBySide(t *testing.T) {
 
 		fn main() -> Int {
 			let jobs: [Job] = [];
-			for i in 0..20 { push(jobs, Job { id: i + 1, weight: 50 + i }); }
+			for i in 0..20 { jobs.push(Job { id: i + 1, weight: 50 + i }); }
 			let results = task.map(jobs, work).expect("the jobs");
-			println(arrays.sum(results));
+			println(results.sum());
 			return 0;
 		}`
 	errs := errors.NewHandler()
@@ -509,7 +509,7 @@ func TestValuesKnowWhatTheyAre(t *testing.T) {
 		struct Junction { name: String; lights: [Light]; }
 
 		impl Describe for Junction {
-			fn describe() -> String { return self.name + " with " + toString(arrays.len(self.lights)) + " lights"; }
+			fn describe() -> String { return self.name + " with " + toString(self.lights.len()) + " lights"; }
 		}
 		impl Describe for Empty {
 			fn describe() -> String { return "nothing"; }
@@ -589,11 +589,11 @@ func TestValuesKnowWhatTheyAre(t *testing.T) {
 				let made = Light.Green;
 				if i % 3 == 1 { made = Light.Amber; }
 				if i % 3 == 2 { made = Light.Flashing(i); }
-				push(lights, made);
+				lights.push(made);
 				seen.set("light" + toString(i), made);
 			}
 			let junction = Junction { name: "north", lights: lights };
-			let green = arrays.len(arrays.filter(junction.lights, l -> l == Light.Green));
+			let green = junction.lights.filter(l -> l == Light.Green).len();
 			println(green, seen.getOr("light5", Light.Red), seen.getOr("light4", Light.Red) == Light.Amber, junction.describe());
 
 			// A tree of values that hold values
@@ -610,7 +610,7 @@ func TestValuesKnowWhatTheyAre(t *testing.T) {
 			// What a value is, asked as a value and branched on
 			let things: [Any] = [Light.Red, tree, junction, wide, 42, "text", Empty { }, Light.Broken("fuse", 1)];
 			let kinds: [String] = [];
-			for thing in things { push(kinds, kind(thing)); }
+			for thing in things { kinds.push(kind(thing)); }
 			println(kinds);
 			let isLight = things[0] is Light;
 			let isTree = things[0] is Tree;
@@ -669,7 +669,7 @@ func TestAFieldAndAMethodOfTheSameName(t *testing.T) {
 			fn name() -> String { return "dial"; }
 		}
 		impl Countable for Shelf {
-			fn count() -> Int { return arrays.len(self.items); }
+			fn count() -> Int { return self.items.len(); }
 		}
 
 		fn total(things: [Countable]) -> Int {
@@ -719,10 +719,10 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 		// Whether a dictionary holds exactly these keys with these values,
 		// in this order, by every way of asking
 		fn same(held: Dict<Int>, keys: [String], values: [Int]) -> Bool {
-			if held.size() != arrays.len(keys) || held.isEmpty() != (arrays.len(keys) == 0) { return false; }
+			if held.size() != keys.len() || held.isEmpty() != (keys.len() == 0) { return false; }
 			let listed = held.keys();
 			let worth = held.values();
-			if arrays.len(listed) != arrays.len(keys) || arrays.len(worth) != arrays.len(keys) { return false; }
+			if listed.len() != keys.len() || worth.len() != keys.len() { return false; }
 			for i, key in keys {
 				if listed[i] != key || worth[i] != values[i] { return false; }
 				if !held.has(key) || held.get(key) != values[i] || held.getOr(key, -1) != values[i] { return false; }
@@ -737,7 +737,7 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 			held.each((key, value) -> { if key == keys[seen] && value == values[seen] { seen++; } });
 			let looped = 0;
 			for key in held { if key == keys[looped] { looped++; } }
-			return seen == arrays.len(keys) && looped == arrays.len(keys)
+			return seen == keys.len() && looped == keys.len()
 				&& !held.has("never set") && held.get("never set") == null && held.getOr("never set", -7) == -7;
 		}
 
@@ -752,8 +752,8 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 			for i in 0..40 {
 				let key = "key" + toString(i * 3 % 41);
 				held.set(key, i);
-				push(keys, key);
-				push(values, i);
+				keys.push(key);
+				values.push(i);
 				if !same(held, keys, values) { ok = false; }
 			}
 			println(ok, held.size());
@@ -766,25 +766,25 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 				}
 			}
 			held["key0"] = -5;
-			values[arrays.indexOf(keys, "key0") ?? 0] = -5;
+			values[keys.indexOf("key0") ?? 0] = -5;
 			held.update("key3", 0, n -> n + 1000);
-			values[arrays.indexOf(keys, "key3") ?? 0] += 1000;
+			values[keys.indexOf("key3") ?? 0] += 1000;
 			println(same(held, keys, values));
 
 			// Taken away one by one, down to none: enough of them for the
 			// empty places to be taken out several times on the way
 			let removed = true;
 			for round in 0..40 {
-				let at = (round * 7) % arrays.len(keys);
+				let at = (round * 7) % keys.len();
 				if !held.remove(keys[at]) || held.remove(keys[at]) { removed = false; }
-				keys = arrays.without(keys, at);
-				values = arrays.without(values, at);
+				keys = keys.without(at);
+				values = values.without(at);
 				if !same(held, keys, values) { removed = false; }
 				// A key set again after it was taken away goes to the end
 				if round % 9 == 4 {
 					held.set("back" + toString(round), round);
-					push(keys, "back" + toString(round));
-					push(values, round);
+					keys.push("back" + toString(round));
+					values.push(round);
 				}
 			}
 			println(removed, held.size(), held.keys());
@@ -810,8 +810,8 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 			}
 			let total = 0;
 			for name in stock { total += stock.getOr(name, Stock { item: "", count: 0 }).count; }
-			let words = strings.split("the quick fox and the lazy dog and the cat", " ");
-			let counts = arrays.countBy(words, w -> w);
+			let words = "the quick fox and the lazy dog and the cat".split(" ");
+			let counts = words.countBy(w -> w);
 			println(stock.size(), total, stock.getOr("item699", Stock { item: "", count: 0 }).count, counts.keys(), counts.values());
 			return 0;
 		}`, nil)
@@ -842,12 +842,12 @@ func TestConditionsAndTextsBuiltInLoops(t *testing.T) {
 		impl Trace {
 			// A test that says it was made
 			fn is(name: String, answer: Bool) -> Bool {
-				push(self.asked, name);
+				self.asked.push(name);
 				return answer;
 			}
 			fn took() -> String {
-				let said = strings.join(self.asked, "");
-				arrays.clear(self.asked);
+				let said = self.asked.join("");
+				self.asked.clear();
 				return said;
 			}
 		}
@@ -876,7 +876,7 @@ func TestConditionsAndTextsBuiltInLoops(t *testing.T) {
 					line = line + t.took() + " ";
 					if (t.is("a", a) || t.is("b", b)) && (t.is("c", !a) || t.is("d", b)) { line = line + "both "; }
 					line = line + t.took();
-					push(seen, line);
+					seen.push(line);
 				}
 			}
 			for line in seen { println(line); }
@@ -893,20 +893,20 @@ func TestConditionsAndTextsBuiltInLoops(t *testing.T) {
 			let kinds = "";
 			let letters = "";
 			let rest = "";
-			for i in 0..strings.len(source) {
+			for i in 0..source.len() {
 				let c = source[i];
 				let kind = classify(c);
-				kinds = kinds + strings.substring(kind, 0, 1);
+				kinds = kinds + kind.substring(0, 1);
 				if kind == "letter" || kind == "other" && c != "!" { letters = letters + c; } else { rest = rest + c; }
 			}
 			println(kinds);
-			println(letters, "|", rest, strings.len(letters) + strings.len(rest) == strings.len(source));
+			println(letters, "|", rest, letters.len() + rest.len() == source.len());
 
 			// The same text written twice is the same text; built two ways too
 			let dot = ".";
 			let built = "";
 			for i in 0..40 { built = built + dot + "-"; }
-			println(dot == ".", built == strings.repeat(".-", 40), strings.len(built), built[78] + built[79]);
+			println(dot == ".", built == ".-".repeat(40), built.len(), built[78] + built[79]);
 			return 0;
 		}`, nil)
 	if err != nil {
@@ -937,20 +937,20 @@ func TestLengthIsOnlyAName(t *testing.T) {
 		struct Rope { length: Int; pieces: [String]; }
 		impl Rope {
 			fn add(piece: String) {
-				push(self.pieces, piece);
-				self.length += strings.len(piece);
+				self.pieces.push(piece);
+				self.length += piece.len();
 			}
 		}
 		struct Queue { items: [Int]; }
 		impl Queue {
-			fn length() -> Int { return arrays.len(self.items); }
+			fn length() -> Int { return self.items.len(); }
 		}
 
 		fn main() {
 			let rope = Rope { length: 0, pieces: [] };
 			rope.add("été");
 			rope.add("日本");
-			println(rope.length, arrays.len(rope.pieces));
+			println(rope.length, rope.pieces.len());
 			rope.length = 100;
 			println(rope.length);
 
@@ -958,8 +958,8 @@ func TestLengthIsOnlyAName(t *testing.T) {
 			println(length);
 
 			// Given to another function, and over what a loop walks
-			println(arrays.map(["a", "bcd", ""], strings.len));
-			println(arrays.map([[1], [], [1, 2]], xs -> arrays.len(xs)));
+			println(["a", "bcd", ""].map(text -> text.len()));
+			println([[1], [], [1, 2]].map(xs -> xs.len()));
 			let seen = 0;
 			for piece in rope.pieces { for c in piece { seen++; } }
 			println(seen);
@@ -1005,7 +1005,7 @@ func TestPipe(t *testing.T) {
 		}
 
 		fn parse(text: String) -> Result<Int, String> {
-			let n = strings.parseInt(text);
+			let n = text.parseInt();
 			if n == null { return Result.Err("not a number: '${text}'"); }
 			return Result.Ok(n);
 		}
@@ -1013,8 +1013,8 @@ func TestPipe(t *testing.T) {
 		// Leaves with the first failure
 		fn sum(line: String) -> Result<Int, String> {
 			let total = 0;
-			for part in line |> strings.split(",") {
-				total += part |> strings.trim() |> parse()?;
+			for part in line.split(",") {
+				total += part.trim() |> parse()?;
 			}
 			return Result.Ok(total);
 		}
@@ -1022,25 +1022,35 @@ func TestPipe(t *testing.T) {
 		fn twice<T>(value: T, f: fn(T) -> T) -> T { return value |> f |> f; }
 		fn area(shape: Shape) -> Int { return shape.area(); }
 
+		// Functions of the program, which is what the pipe is for: the
+		// library's are methods, and follow one another by themselves
+		fn paidOnly(all: [Order]) -> [Order] { return all.filter(o -> o.paid); }
+		fn totals(all: [Order]) -> [Int] { return all.map(o -> o.total); }
+		fn added(numbers: [Int], extra: Int) -> Int { return numbers.sum() + extra; }
+		fn customers(all: [Order]) -> [String] { return all.map(o -> o.customer).unique(); }
+		fn listed(names: [String], separator: String) -> String { return names.map(n -> n.upper()).join(separator); }
+		fn size(n: Int) -> Int { return n.abs(); }
+		fn atLeast(n: Int, low: Int) -> Int { return n.max(low); }
+		fn count<T>(items: [T]) -> Int { return items.len(); }
+
 		fn main() {
-			// A chain over the library, each step with what the one before gave
+			// A chain of functions, each with what the one before gave
 			let paid = orders()
-				|> arrays.filter(o -> o.paid)
-				|> arrays.map(o -> o.total)
-				|> arrays.fold(0, (sum, n) -> sum + n);
+				|> paidOnly()
+				|> totals()
+				|> added(0);
 			println(paid);
 
-			let names = orders()
-				|> arrays.map(o -> o.customer)
-				|> arrays.unique()
-				|> arrays.map(strings.upper)
-				|> strings.join(", ");
+			let names = orders() |> customers |> listed(", ");
 			println(names);
 
 			// Looser than arithmetic, tighter than comparisons
-			println(2 + 3 |> math.abs);
-			println(0 - 7 |> math.abs |> math.max(3) * 2);
-			if orders() |> arrays.len == 4 && paid |> math.min(1000) > 300 { println("four orders"); }
+			println(2 + 3 |> size);
+			println(0 - 7 |> size |> atLeast(3) * 2);
+			if orders() |> count == 4 && paid |> atLeast(1000) > 300 { println("four orders"); }
+
+			// With the methods of the library on either side
+			println(orders().filter(o -> !o.paid) |> totals |> added(1), (orders() |> customers).len());
 
 			// Failures
 			println("1, 2, 39" |> sum);
@@ -1051,7 +1061,7 @@ func TestPipe(t *testing.T) {
 			println("hey" |> twice(shout));
 			println(3 |> twice(n -> n * n));
 			println("go" |> shout |> shout);
-			println([Shape.Circle(2), Shape.Square(3)] |> arrays.map(area) |> arrays.sum());
+			println([Shape.Circle(2), Shape.Square(3)].map(area).sum());
 
 			let seen: Dict<Int> = dict.empty();
 			for order in orders() { order.customer |> seen.set((seen.get(order.customer) ?? 0) + order.total); }
@@ -1064,6 +1074,7 @@ func TestPipe(t *testing.T) {
 	expectLines(t, out,
 		"350", "ADA, BOB, CY",
 		"5", "14", "four orders",
+		"81 3",
 		"Ok(42)", "Err(\"not a number: 'two'\")",
 		"hey!!", "81", "go!!", "21",
 		"150 200 null")
@@ -1080,7 +1091,7 @@ func TestRangesAsValues(t *testing.T) {
 		struct Booking { guest: String; nights: Range; }
 		impl Booking {
 			fn overlaps(other: Booking) -> Bool {
-				return arrays.any(self.nights.toArray(), n -> other.nights.contains(n));
+				return self.nights.toArray().any(n -> other.nights.contains(n));
 			}
 		}
 
@@ -1126,9 +1137,9 @@ func TestRangesAsValues(t *testing.T) {
 			for at, n in (20..0).step(-4) {
 				if n == 12 { continue; }
 				if n == 4 { break; }
-				push(seen, "${at}:${n}");
+				seen.push("${at}:${n}");
 			}
-			println(seen |> strings.join(" "));
+			println(seen.join(" "));
 
 			// The range is read once: what the body does to it changes nothing
 			let window = 0..3;
@@ -1142,12 +1153,12 @@ func TestRangesAsValues(t *testing.T) {
 			println(pairs);
 
 			// With the rest of the language
-			println((1..=5).map(n -> n * n) |> arrays.sum());
-			println((1..=3).map(n -> strings.repeat("*", n)) |> strings.join(" "));
+			println((1..=5).map(n -> n * n).sum());
+			println((1..=3).map(n -> "*".repeat(n)).join(" "));
 			let stays = [Booking { guest: "ada", nights: 3..6 }, Booking { guest: "bob", nights: 5..8 }, Booking { guest: "cy", nights: 6..7 }];
 			println(stays[0].overlaps(stays[1]), stays[0].overlaps(stays[2]), stays[1].overlaps(stays[2]));
 			let ranges = [0..2, 10..=11, (5..0).step(-2)];
-			println(arrays.map(ranges, r -> r.len()), arrays.map(ranges, total));
+			println(ranges.map(r -> r.len()), ranges.map(total));
 
 			// A loop that counts needs none of this, and still counts
 			let plain = 0;
@@ -1242,9 +1253,9 @@ func TestBitwiseOperators(t *testing.T) {
 		}
 		fn names(flags: Int) -> [String] {
 			let out: [String] = [];
-			if has(flags, READ) { push(out, "read"); }
-			if has(flags, WRITE) { push(out, "write"); }
-			if has(flags, EXEC) { push(out, "exec"); }
+			if has(flags, READ) { out.push("read"); }
+			if has(flags, WRITE) { out.push("write"); }
+			if has(flags, EXEC) { out.push("exec"); }
 			return out;
 		}
 
@@ -1269,7 +1280,7 @@ func TestBitwiseOperators(t *testing.T) {
 			// With signs: the bits of a negative number go on to the left for ever
 			println(-1 & 0xFF, -2 | 1, -1 ^ 0xF, ~-1, (-8) >> 1);
 			// Each binds tighter than a comparison
-			println(5 & 4 == 4, 1 | 2 == 3, 8 >> 1 > 3, [1, 2, 3, 4] |> arrays.filter(n -> n & 1 == 0));
+			println(5 & 4 == 4, 1 | 2 == 3, 8 >> 1 > 3, [1, 2, 3, 4].filter(n -> n & 1 == 0));
 
 			match flags | WRITE {
 				case 1 | 2: println("one of the first two");
@@ -1322,7 +1333,7 @@ func TestIfAsAValue(t *testing.T) {
 		fn size(n: Int) -> String { return if n > 100 { "large" } else if n > 10 { "medium" } else { "small" }; }
 		fn sign(n: Int) -> Int { return if n > 0 { 1 } else if n < 0 { -1 } else { 0 }; }
 		fn bossOf(user: User) -> String { return if user.manager != null { user.manager.name } else { "nobody" }; }
-		fn first(xs: [Int]) -> Int? { return if arrays.isEmpty(xs) { null } else { xs[0] }; }
+		fn first(xs: [Int]) -> Int? { return if xs.isEmpty() { null } else { xs[0] }; }
 		fn area(shape: Shape) -> Int { return if shape is Shape.Circle(r) { 3 * r * r } else if shape is Shape.Square(side) { side * side } else { 0 }; }
 
 		// A branch that leaves gives nothing, and need not
@@ -1337,7 +1348,7 @@ func TestIfAsAValue(t *testing.T) {
 		}
 
 		// Only the branch chosen is worked out
-		fn loud(calls: [String], name: String, value: Int) -> Int { push(calls, name); return value; }
+		fn loud(calls: [String], name: String, value: Int) -> Int { calls.push(name); return value; }
 
 		fn main() {
 			println(size(5), size(50), size(500), sign(9), sign(-9), sign(0));
@@ -1347,15 +1358,15 @@ func TestIfAsAValue(t *testing.T) {
 			println(half(10), half(7), sumUntilNegative([1, 2, 3, -1, 100]));
 
 			let calls: [String] = [];
-			let chosen = if arrays.len(calls) == 0 { loud(calls, "then", 1) } else { loud(calls, "else", 2) };
+			let chosen = if calls.len() == 0 { loud(calls, "then", 1) } else { loud(calls, "else", 2) };
 			println(chosen, calls);
 
 			// Statements before the value; names of a branch stay in it
 			let n = 4;
 			let label = if n > 2 {
 				let twice = n * 2;
-				let parts = arrays.map([n, twice], toString);
-				strings.join(parts, "<")
+				let parts = [n, twice].map(toString);
+				parts.join("<")
 			} else {
 				"small"
 			};
@@ -1364,7 +1375,7 @@ func TestIfAsAValue(t *testing.T) {
 			// Anywhere a value goes
 			println(1 + if n == 4 { 10 } else { 20 } * 2);
 			println(wrap(if n > 0 { "positive" } else { "negative" }).value, pick(n > 9, "yes", "no"));
-			println([1, 2, 3, 4] |> arrays.map(x -> if x % 2 == 0 { "even" } else { "odd" }) |> strings.join(","));
+			println([1, 2, 3, 4].map(x -> if x % 2 == 0 { "even" } else { "odd" }).join(","));
 			println("${if n > 3 { "more" } else { "less" }} than three");
 			let either: Int | String = if n > 9 { 1 } else { "one" };
 			let none: [String] = if n > 9 { ["some"] } else { [] };
@@ -1409,7 +1420,7 @@ func TestWholeNumbersAreTakenForFloats(t *testing.T) {
 		struct Vec { x: Float; y: Float = 2; }
 		impl Vec {
 			fn scaled(by: Float) -> Vec { return Vec { x: self.x * by, y: self.y * by }; }
-			fn length() -> Float { return math.sqrt(self.x * self.x + self.y * self.y); }
+			fn length() -> Float { return (self.x * self.x + self.y * self.y).sqrt(); }
 		}
 		enum Shape { Circle(Float), Rect(Float, Float) }
 		struct Box<T> { value: T; }
@@ -1452,16 +1463,16 @@ func TestWholeNumbersAreTakenForFloats(t *testing.T) {
 
 			// In arrays, branches and closures
 			let xs: [Float] = [1, 2, n];
-			push(xs, 4);
-			println(xs, xs[2] / 2, arrays.map(xs, kind), [1, 2.5, n], kind([1, 2.5][0]));
+			xs.push(4);
+			println(xs, xs[2] / 2, xs.map(kind), [1, 2.5, n], kind([1, 2.5][0]));
 			let chosen = if n > 3 { 1 } else { 2.5 };
 			let other = if n > 9 { 1 } else { 2.5 };
 			println(chosen / 2, other, kind(chosen));
 			let scale: fn(Int) -> Float = fn(k: Int) -> Float { return k; };
-			println(scale(3) / 2, arrays.map([1, 2, 3], fn(k: Int) -> Float { return k; }));
+			println(scale(3) / 2, [1, 2, 3].map(fn(k: Int) -> Float { return k; }));
 
 			// The functions of the library that take a Float
-			println(math.sqrt(16), math.fmax(n, 2.5), math.floor(7 / 2.0), math.round(n / 2.0), math.powf(2, 10));
+			println(16.sqrt(), n.toFloat().max(2.5), (7 / 2.0).floor(), (n / 2.0).round(), 2.pow(10));
 
 			// A whole number that stays one is still one
 			let count = 7;
@@ -1524,12 +1535,12 @@ func TestConstantsThatAreStructsAndArrays(t *testing.T) {
 				case Shape.Rect(w, h): w * h;
 			};
 		}
-		fn brightest(colors: [Color]) -> Int { return arrays.largest(arrays.map(colors, c -> c.r + c.g + c.b)) ?? 0; }
+		fn brightest(colors: [Color]) -> Int { return colors.map(c -> c.r + c.g + c.b).largest() ?? 0; }
 
 		fn main() {
 			println(RED.r, RED.g, RED.b, RED.a, CLEAR.a, ORIGIN.x, ORIGIN.y / 2);
-			println(PRIMES, arrays.sum(PRIMES), PRIMES[4], arrays.len(PALETTE), PALETTE[2].b, brightest(PALETTE));
-			println(DAYS |> strings.join("-"), GRID[1][1], GRID, START == Light.Red, arrays.len(ORDER), ORDER[2] == Light.Green);
+			println(PRIMES, PRIMES.sum(), PRIMES[4], PALETTE.len(), PALETTE[2].b, brightest(PALETTE));
+			println(DAYS.join("-"), GRID[1][1], GRID, START == Light.Red, ORDER.len(), ORDER[2] == Light.Green);
 			println(area(UNIT), area(PAGE), ONE / 2, HALF, HALF * 2 == ONE);
 			println(PLAIN.name, PLAIN.ink.a, PLAIN.paper.r, PLAIN.margins, PLAIN.paper.a);
 
@@ -1539,14 +1550,14 @@ func TestConstantsThatAreStructsAndArrays(t *testing.T) {
 			// A copy is the program's to change
 			let mine = Color { r: RED.r, g: RED.g, b: RED.b };
 			mine.r = 0;
-			let more = arrays.copy(PRIMES);
-			push(more, 13);
+			let more = PRIMES.copy();
+			more.push(13);
 			println(mine.r, RED.r, more, PRIMES);
 
 			// In a loop, a pattern and a closure
 			let total = 0;
 			for p in PRIMES { total += p; }
-			let reds = arrays.map([1, 2], n -> RED.r * n);
+			let reds = [1, 2].map(n -> RED.r * n);
 			match START { case Light.Red: println(total, reds, "stop"); default: println("go"); }
 		}
 	`, nil)
@@ -1628,7 +1639,7 @@ func TestCastsToTypeParameters(t *testing.T) {
 				case Result.Ok(xs): println("got", xs);
 				case Result.Err(failure): println(failure.message);
 			}
-			match result.attempt(() -> arrays.len(opt<[Int]>("text") ?? [])) {
+			match result.attempt(() -> (opt<[Int]>("text") ?? []).len()) {
 				case Result.Ok(n): println("got", n);
 				case Result.Err(failure): println(failure.message);
 			}
@@ -1724,7 +1735,7 @@ func TestConstantsCannotBeChanged(t *testing.T) {
 		const ROUND = Shape.Circle(RED);
 
 		fn darken(c: Color) { c.r = 0; }
-		fn grow(xs: [Int]) { push(xs, 1); }
+		fn grow(xs: [Int]) { xs.push(1); }
 	`
 	writes := map[string]string{
 		"a field, through a variable":         `let c = RED; c.r = 0;`,
@@ -1737,13 +1748,13 @@ func TestConstantsCannotBeChanged(t *testing.T) {
 		"an item":                             `let xs = PRIMES; xs[0] = 1;`,
 		"an item of an array in an array":     `let row = GRID[0]; row[0] = 9;`,
 		"an item of an array in a struct":     `let m = PLAIN.margins; m[0] = 9;`,
-		"an array pushed onto":                `let xs = PRIMES; push(xs, 11);`,
+		"an array pushed onto":                `let xs = PRIMES; xs.push(11);`,
 		"an array pushed onto in a function":  `grow(PRIMES);`,
-		"an array a field holds, pushed onto": `push(PLAIN.margins, 3);`,
-		"the last item taken out":             `let xs = PRIMES; arrays.pop(xs);`,
-		"an item taken out":                   `let xs = PRIMES; arrays.removeAt(xs, 0);`,
-		"an item put in":                      `let xs = PRIMES; arrays.insertAt(xs, 0, 1);`,
-		"an array emptied":                    `let xs = PRIMES; arrays.clear(xs);`,
+		"an array a field holds, pushed onto": `PLAIN.margins.push(3);`,
+		"the last item taken out":             `let xs = PRIMES; xs.pop();`,
+		"an item taken out":                   `let xs = PRIMES; xs.removeAt(0);`,
+		"an item put in":                      `let xs = PRIMES; xs.insertAt(0, 1);`,
+		"an array emptied":                    `let xs = PRIMES; xs.clear();`,
 		"a field set by its name":             `reflect.set(RED, "r", 0);`,
 	}
 	for name, body := range writes {
@@ -1760,19 +1771,19 @@ func TestConstantsCannotBeChanged(t *testing.T) {
 		fn main() {
 			match result.attempt(() -> { grow(PRIMES); return 1; }) {
 				case Result.Ok(n): println("grew");
-				case Result.Err(failure): println(strings.first(failure.message, 35));
+				case Result.Err(failure): println(failure.message.first(35));
 			}
 			println(RED.r, PRIMES, GRID, PLAIN.margins, PLAIN.ink.r);
 
 			// What is made from a constant, and not the constant, can change
-			let copy = arrays.copy(PRIMES);
-			push(copy, 11);
+			let copy = PRIMES.copy();
+			copy.push(11);
 			copy[0] = 0;
-			let rows = arrays.map(GRID, row -> arrays.copy(row));
+			let rows = GRID.map(row -> row.copy());
 			rows[0][0] = 9;
 			let mine = Color { r: RED.r, g: RED.g, b: RED.b };
 			mine.r = 1;
-			let theme = Theme { ink: mine, margins: arrays.concat(PLAIN.margins, [3]) };
+			let theme = Theme { ink: mine, margins: PLAIN.margins.concat([3]) };
 			theme.ink.g = 2;
 			println(copy, rows, mine.r, theme.ink.g, theme.margins);
 			println(RED.r, RED.g, PRIMES, GRID, PLAIN.margins);
@@ -1874,7 +1885,7 @@ func TestMethodsOnBuiltinTypes(t *testing.T) {
 		fn main() {
 			// What the library gives, one call after the other
 			println(orders().filter(o -> o.paid).map(o -> o.total).sum(), orders().revenue());
-			println(orders().map(o -> o.customer).unique().map(strings.upper).join(", "));
+			println(orders().map(o -> o.customer).unique().map(text -> text.upper()).join(", "));
 			println("  The Quick brown fox ".trim().lower().split(" ").filter(w -> w.len() > 3).map(w -> w.capitalize()).join("-"));
 			println([3, 1, 2].sortedNumbers().reversed(), [1, 2, 3].first(), [1, 2, 3].contains(2), [1, 2, 3].fold(0, (a, b) -> a + b));
 			println(orders().groupBy(o -> o.customer).keys(), orders().maxBy(o -> o.total)?.customer, orders().any(o -> o.total > 150));
@@ -1895,7 +1906,7 @@ func TestMethodsOnBuiltinTypes(t *testing.T) {
 			// The program's own
 			println("ada lovelace".shout(), "grace brewster hopper".initials(), 7.squared(), 0.256.percent(), true.yesNo(), (1 > 2).yesNo());
 			let seen: [Int] = [];
-			3.times(i -> push(seen, i * i));
+			3.times(i -> seen.push(i * i));
 			println(seen, seen.second(), [1, 2, 3].pairs(), ["a"].second());
 			println([Point { x: 3, y: 0 }, Point { x: 9, y: 1 }].widest(), [Point { x: 1, y: 1 }].size(), "abc".size());
 
@@ -1905,7 +1916,7 @@ func TestMethodsOnBuiltinTypes(t *testing.T) {
 			println(sizes(things), tell([1, 2]), tell(5), tell(["x"]));
 
 			// With the pipe, the functions of the library and failures
-			println([1, 2, 3].map(n -> n * 2) |> arrays.sum, arrays.len([1, 2].concat([3])), "a b".words().len() |> math.max(1));
+			println([1, 2, 3].map(n -> n * 2).sum(), [1, 2].concat([3]).len(), "a b".words().len().max(1));
 			match result.attempt(() -> ([1, 2].at(5) ?? 0) + ([3].first() ?? 0)) {
 				case Result.Ok(n): println("got", n);
 				case Result.Err(failure): println(failure.message);
@@ -1933,4 +1944,51 @@ func TestMethodsOnBuiltinTypes(t *testing.T) {
 		"[2, 5, 2, 1] 2 items the number 5 1 items",
 		"12 3 2",
 		"got 3")
+}
+
+// A function that calls nothing keeps its first argument where it arrived,
+// which is also where what it returns is put. A function it makes, that
+// captured the argument, must not find the result there instead.
+func TestCapturedFirstArgumentOutlivesTheCall(t *testing.T) {
+	out, err := runWith(t, 16<<20, `
+		struct Counter { value: Int; undo: [fn() -> Void]; }
+		impl Counter {
+			fn add(n: Int) {
+				let before = self.value;
+				self.undo.push(fn() { self.value = before; });
+				self.value += n;
+			}
+			fn back() {
+				let last = self.undo.pop();
+				if last != null { last(); }
+			}
+		}
+
+		fn keep(n: Int, box: [fn() -> Int]) { box[0] = fn() -> Int { return n; }; }
+		fn keepText(text: String, box: [fn() -> String]) { box[0] = () -> text + "!"; }
+		fn later(n: Int) -> fn() -> Int { return fn() -> Int { return n * 2; }; }
+		fn zero() -> Int { return 0; }
+		fn none() -> String { return ""; }
+
+		fn main() {
+			let counter = Counter { value: 1, undo: [] };
+			counter.add(5);
+			counter.add(10);
+			println(counter.value);
+			counter.back();
+			println(counter.value);
+			counter.back();
+			println(counter.value);
+
+			let box = [zero];
+			keep(41, box);
+			let texts = [none];
+			keepText("kept", texts);
+			println(box[0](), texts[0](), later(21)());
+		}
+	`, nil)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	expectLines(t, out, "16", "6", "1", "41 kept! 42")
 }

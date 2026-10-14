@@ -28,11 +28,11 @@ func TestSandboxPermitsChangingArrays(t *testing.T) {
 
 		fn main() -> Int {
 			let xs = [1, 2, 3, 4];
-			let last = arrays.pop(xs);
-			let first = arrays.removeAt(xs, 0);
-			arrays.insertAt(xs, 1, 9);
+			let last = xs.pop();
+			let first = xs.removeAt(0);
+			xs.insertAt(1, 9);
 			println(last, first, xs);
-			arrays.clear(xs);
+			xs.clear();
 			let names = list.of(["a", "b"]);
 			names.insert(0, "z");
 			println(xs, names.pop(), names.removeAt(0), names.toArray());

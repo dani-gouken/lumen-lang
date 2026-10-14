@@ -205,6 +205,9 @@ func (c *Checker) methodTypeArgs(recv Type, member *ast.MemberExpr, e *ast.CallE
 	switch {
 	case len(decl.TypeParams) == 0:
 		c.errorf(member.Token(), ErrMethodTypeArgs, "method '%s' takes no type arguments", member.Name)
+	case len(args) == 0 && hasShortFn(e.Args):
+		// items.map((a, b) -> ...): what is wrong is in the function
+		// written there, and is said when it is checked as an argument
 	case len(args) == 0:
 		c.errorfWithSuggestion(member.Token(), ErrMethodTypeArgs,
 			fmt.Sprintf("Write the types for <%s>: %s<...>(...)", params, member.Name),
@@ -355,6 +358,17 @@ func (c *Checker) noBuiltinMethod(e *ast.CallExpr, member *ast.MemberExpr, what,
 		fmt.Sprintf("Give %s a method of your own: %s { fn %s(...) { ... } }", what, impl, member.Name),
 		"%s has no method '%s'", what, member.Name)
 	return Unknown
+}
+
+// hasShortFn reports whether one of the arguments of a call is a function
+// written with `->`.
+func hasShortFn(args []ast.Expr) bool {
+	for _, arg := range args {
+		if fn, ok := arg.(*ast.FnExpr); ok && fn.Short {
+			return true
+		}
+	}
+	return false
 }
 
 // similarMember suggests a field or method of a struct close to name.

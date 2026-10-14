@@ -12,7 +12,7 @@ fn orders(count: Int) -> [Order] {
     let out: [Order] = [];
 
     for i in 0..count {
-        push(out, Order {
+        out.push(Order {
             id: i,
             customer: (i * 7919) % 97,
             amount: (i * 104729) % 5000 + 1,
@@ -29,11 +29,11 @@ fn main() -> Int {
 
     for threshold in 0..12 {
         let least = threshold * 400;
-        let large = arrays.filter(all, order -> order.amount > least);
-        let perItem = arrays.map(large, order -> order.amount / order.items);
-        let sum = arrays.fold(perItem, 0, (acc, n) -> (acc + n) % 1000003);
-        let busiest = arrays.sumOf(large, order -> order.items);
-        total = (total + sum + busiest + arrays.len(large)) % 1000003;
+        let large = all.filter(order -> order.amount > least);
+        let perItem = large.map(order -> order.amount / order.items);
+        let sum = perItem.fold(0, (acc, n) -> (acc + n) % 1000003);
+        let busiest = large.sumOf(order -> order.items);
+        total = (total + sum + busiest + large.len()) % 1000003;
     }
 
     // A counter per customer, each a closure over its own variable
@@ -42,7 +42,7 @@ fn main() -> Int {
     for customer in 0..97 {
         let seen = 0;
 
-        push(counters, fn(amount: Int) -> Int {
+        counters.push(fn(amount: Int) -> Int {
             seen += amount;
             return seen;
         });

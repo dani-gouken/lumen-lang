@@ -107,7 +107,7 @@ fn asJson(note: Note) -> Json {
 
 // The id in the address; -1, which no note has, if it is not a number.
 fn idOf(request: Request) -> Int {
-    return strings.parseInt(request.params.get("id") ?? "") ?? -1;
+    return (request.params.get("id") ?? "").parseInt() ?? -1;
 }
 
 // Every failure is said the same way: a status, and {"error": "..."}.

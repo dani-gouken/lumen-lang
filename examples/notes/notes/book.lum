@@ -55,7 +55,7 @@ pub fn empty() -> Book {
 
 impl Book {
     pub fn find(id: Int) -> Note? {
-        return arrays.find(self.notes, note -> note.id == id);
+        return self.notes.find(note -> note.id == id);
     }
 
     // The notes that carry a tag, or all of them without one.
@@ -64,22 +64,22 @@ impl Book {
             return self.notes;
         }
 
-        return arrays.filter(self.notes, note -> arrays.contains(note.tags, tag));
+        return self.notes.filter(note -> note.tags.contains(tag));
     }
 
     // The notes whose title or body holds a text, whatever its case.
     pub fn search(text: String) -> [Note] {
-        let wanted = strings.lower(text);
+        let wanted = text.lower();
 
-        return arrays.filter(self.notes, fn(note: Note) -> Bool {
-            return note.title + " " + note.body |> strings.lower() |> strings.contains(wanted);
+        return self.notes.filter(fn(note: Note) -> Bool {
+            return (note.title + " " + note.body).lower().contains(wanted);
         });
     }
 
     // Every tag in use, each once, in alphabetical order.
     pub fn tags() -> [String] {
-        let all = self.notes |> arrays.flatMap(note -> note.tags) |> set.of();
-        return all.items() |> arrays.sortedTexts();
+        let all = self.notes.flatMap(note -> note.tags) |> set.of();
+        return all.items().sortedTexts();
     }
 
     // Adds the note a document describes.
@@ -87,7 +87,7 @@ impl Book {
         let note = self.checked(document, null)?;
         self.lastId++;
         note.id = self.lastId;
-        push(self.notes, note);
+        self.notes.push(note);
         return Result.Ok(note);
     }
 
@@ -104,13 +104,13 @@ impl Book {
     }
 
     pub fn remove(id: Int) -> Bool {
-        let at = arrays.findIndex(self.notes, note -> note.id == id);
+        let at = self.notes.findIndex(note -> note.id == id);
 
         if at == null {
             return false;
         }
 
-        self.notes = arrays.without(self.notes, at);
+        self.notes = self.notes.without(at);
         return true;
     }
 
@@ -118,20 +118,17 @@ impl Book {
     // `replacing` is the id of the note being replaced, if any: that one
     // may keep its own title.
     fn checked(document: Json, replacing: Int?) -> Result<Note, Refusal> {
-        let title = strings.trim(document.get("title")?.text() ?? "");
+        let title = (document.get("title")?.text() ?? "").trim();
 
         if title == "" {
             return Result.Err(Refusal.Missing("title"));
         }
 
-        if strings.len(title) > 60 {
+        if title.len() > 60 {
             return Result.Err(Refusal.TooLong("title", 60));
         }
 
-        let taken = arrays.find(
-            self.notes,
-            note -> strings.lower(note.title) == strings.lower(title),
-        );
+        let taken = self.notes.find(note -> note.title.lower() == title.lower());
 
         if taken != null && taken.id != replacing {
             return Result.Err(Refusal.Duplicate(taken.title));
@@ -139,7 +136,7 @@ impl Book {
 
         let body = document.get("body")?.text() ?? "";
 
-        if strings.len(body) > 2000 {
+        if body.len() > 2000 {
             return Result.Err(Refusal.TooLong("body", 2000));
         }
 
@@ -147,7 +144,7 @@ impl Book {
         let tags = set.texts();
 
         for tag in document.get("tags")?.items() ?? [] {
-            let name = tag.text() ?? "" |> strings.trim() |> strings.lower();
+            let name = (tag.text() ?? "").trim().lower();
 
             if name != "" {
                 tags.add(name);

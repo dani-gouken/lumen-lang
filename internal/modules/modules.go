@@ -22,8 +22,10 @@ package modules
 import (
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/errors"
@@ -61,6 +63,12 @@ type Options struct {
 	// the root: with "std" in "vendor/std", the module std.list is the
 	// file vendor/std/list.lum and the module std is vendor/std.lum.
 	Packages map[string]string
+
+	// EveryMethod brings the modules that give the builtin types their
+	// methods (MethodModules) into the program whether it calls one or
+	// not: for an editor, which suggests them after a dot before any is
+	// written.
+	EveryMethod bool
 }
 
 // item is a top-level declaration of a module.
@@ -103,11 +111,14 @@ func (m *module) display() string {
 }
 
 type loader struct {
-	errs     *errors.Handler
-	read     ReadFile
-	rootDir  string
-	rootSet  bool // The root was given, not taken from the entry file
-	packages map[string]string
+	errs        *errors.Handler
+	read        ReadFile
+	rootDir     string
+	rootSet     bool // The root was given, not taken from the entry file
+	packages    map[string]string
+	everyMethod bool // See Options.EveryMethod
+	// The method modules the program's library does not have
+	noMethods map[string]bool
 
 	root    *module
 	modules map[string]*module // By dotted path; nil for one that failed to load
@@ -120,12 +131,13 @@ type loader struct {
 // stages.
 func Load(src, file string, opts Options, errs *errors.Handler) *ast.Program {
 	l := &loader{
-		errs:     errs,
-		read:     opts.Read,
-		rootDir:  opts.Root,
-		rootSet:  opts.Root != "",
-		packages: opts.Packages,
-		modules:  make(map[string]*module),
+		errs:        errs,
+		read:        opts.Read,
+		rootDir:     opts.Root,
+		rootSet:     opts.Root != "",
+		packages:    opts.Packages,
+		everyMethod: opts.EveryMethod,
+		modules:     make(map[string]*module),
 	}
 	if !l.rootSet {
 		l.rootDir = filepath.Dir(file)
@@ -253,6 +265,40 @@ const (
 	RangeStruct = RangeModule + ".Range"
 )
 
+// MethodModules are the modules of the standard library that give the
+// builtin types their methods. Every program has them.
+var MethodModules = []string{"std.arrays", "std.strings", "std.math"}
+
+// methodDeclared finds the methods a module of the library declares: the
+// functions written inside its impls, which are the indented ones.
+var methodDeclared = regexp.MustCompile(`(?m)^[ \t]+(?:pub )?fn (\w+)`)
+
+// methodsOf caches the names of the methods of the method modules, by the
+// text of the module.
+var methodsOf sync.Map
+
+// callsMethodOf reports whether a file writes, after a dot, the name of a
+// method the module with that source declares.
+func callsMethodOf(prog *ast.Program, src string) bool {
+	if prog == nil || len(prog.Members) == 0 {
+		return false
+	}
+	names, known := methodsOf.Load(src)
+	if !known {
+		found := make(map[string]bool)
+		for _, match := range methodDeclared.FindAllStringSubmatch(src, -1) {
+			found[match[1]] = true
+		}
+		names, _ = methodsOf.LoadOrStore(src, found)
+	}
+	for name := range names.(map[string]bool) {
+		if prog.Members[name] {
+			return true
+		}
+	}
+	return false
+}
+
 func (l *loader) loadImports(m *module) {
 	// A range kept as a value is a Range of std.ops, which the file need
 	// not have imported. Without the library there is none, and the
@@ -261,6 +307,37 @@ func (l *loader) loadImports(m *module) {
 		file := l.path(RangeModule)
 		if src, err := l.read(file); err == nil {
 			l.modules[RangeModule] = l.parse(RangeModule, file, src)
+		}
+	}
+	// The modules that give arrays, texts and numbers their methods are
+	// part of every program that calls one: items.len() and name.trim()
+	// work without an import. Their names are not: arrays.range(0, 3)
+	// still wants `import std.arrays;`. A module is only read into the
+	// program when a name written after a dot is one of its methods, so
+	// that a program that calls none starts as fast as it did. A program
+	// that brings a library of its own without them has no such methods.
+	for _, name := range MethodModules {
+		// Only where the library is a package of the program: a folder
+		// called std next to it is not the library
+		first, _, _ := strings.Cut(name, ".")
+		if _, seen := l.modules[name]; seen || m.name == name || l.packages[first] == "" || l.noMethods[name] {
+			continue
+		}
+		if !l.everyMethod && len(m.prog.Members) == 0 {
+			continue
+		}
+		file := l.path(name)
+		src, err := l.read(file)
+		if err != nil {
+			// A library of the program's own, without this module
+			if l.noMethods == nil {
+				l.noMethods = make(map[string]bool)
+			}
+			l.noMethods[name] = true
+			continue
+		}
+		if l.everyMethod || callsMethodOf(m.prog, src) {
+			l.modules[name] = l.parse(name, file, src)
 		}
 	}
 	for _, imp := range m.prog.Imports {

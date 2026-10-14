@@ -3,7 +3,7 @@
 //
 //     let names = list.of(["ada", "linus"]);
 //     names.add("grace");
-//     names.filter(n -> strings.len(n) > 3).size()
+//     names.filter(n -> n.len() > 3).size()
 
 import std.arrays;
 import std.ops.{Iterable, Indexed, IndexedSet};
@@ -40,27 +40,27 @@ pub fn empty<T>() -> List<T> {
 
 // A list of the items of an array. The list has its own copy.
 pub fn of<T>(items: [T]) -> List<T> {
-    return List<T> { items: arrays.copy<T>(items) };
+    return List<T> { items: items.copy() };
 }
 
 impl<T> List<T> {
     pub fn size() -> Int {
-        return arrays.len(self.items);
+        return self.items.len();
     }
 
     pub fn isEmpty() -> Bool {
-        return arrays.len(self.items) == 0;
+        return self.items.len() == 0;
     }
 
     // --- Changing the list ---
 
     pub fn add(value: T) {
-        push(self.items, value);
+        self.items.push(value);
     }
 
     pub fn addAll(values: [T]) {
         for value in values {
-            push(self.items, value);
+            self.items.push(value);
         }
     }
 
@@ -72,76 +72,76 @@ impl<T> List<T> {
     // Puts `value` at `index`, moving the items from there on up. An index
     // at or past the end adds it at the end; a negative one changes nothing.
     pub fn insert(index: Int, value: T) {
-        arrays.insertAt<T>(self.items, index, value);
+        self.items.insertAt(index, value);
     }
 
     // Takes out the item at `index` and returns it, or null if there is
     // none there.
     pub fn removeAt(index: Int) -> T? {
-        return arrays.removeAt<T>(self.items, index);
+        return self.items.removeAt(index);
     }
 
     // Takes out the last item and returns it, or null for an empty list.
     pub fn pop() -> T? {
-        return arrays.pop<T>(self.items);
+        return self.items.pop();
     }
 
     pub fn clear() {
-        arrays.clear<T>(self.items);
+        self.items.clear();
     }
 
-    // Puts the list itself in order; see arrays.sorted.
+    // Puts the list itself in order; see items -> items.sorted().
     pub fn sort(before: fn(T, T) -> Bool) {
-        self.items = arrays.sorted<T>(self.items, before);
+        self.items = self.items.sorted(before);
     }
 
     // --- Reading ---
 
     // The item at `index`, or null if there is none there.
     pub fn get(index: Int) -> T? {
-        return arrays.at<T>(self.items, index);
+        return self.items.at(index);
     }
 
     pub fn first() -> T? {
-        return arrays.first<T>(self.items);
+        return self.items.first();
     }
 
     pub fn last() -> T? {
-        return arrays.last<T>(self.items);
+        return self.items.last();
     }
 
     pub fn find(wanted: fn(T) -> Bool) -> T? {
-        return arrays.find<T>(self.items, wanted);
+        return self.items.find(wanted);
     }
 
     pub fn findIndex(wanted: fn(T) -> Bool) -> Int? {
-        return arrays.findIndex<T>(self.items, wanted);
+        return self.items.findIndex(wanted);
     }
 
-    // Whether an item is equal to `value`; see arrays.indexOf.
+    // Whether an item is equal to `value`; see items -> items.indexOf().
     pub fn contains(value: T) -> Bool {
-        return arrays.contains<T>(self.items, value);
+        return self.items.contains(value);
     }
 
     pub fn indexOf(value: T) -> Int? {
-        return arrays.indexOf<T>(self.items, value);
+        return self.items.indexOf(value);
     }
 
     pub fn any(wanted: fn(T) -> Bool) -> Bool {
-        return arrays.any<T>(self.items, wanted);
+        return self.items.any(wanted);
     }
 
     pub fn all(wanted: fn(T) -> Bool) -> Bool {
-        return arrays.all<T>(self.items, wanted);
+        return self.items.all(wanted);
     }
 
     pub fn count(wanted: fn(T) -> Bool) -> Int {
-        return arrays.count<T>(self.items, wanted);
+        return self.items.count(wanted);
     }
 
     // An array of the items; changing it does not change the list.
     pub fn toArray() -> [T] {
-        return arrays.copy<T>(self.items);
+        return self.items.copy();
     }
 
     // --- New lists from this one ---
@@ -157,19 +157,19 @@ impl<T> List<T> {
     }
 
     pub fn filter(wanted: fn(T) -> Bool) -> List<T> {
-        return List<T> { items: arrays.filter<T>(self.items, wanted) };
+        return List<T> { items: self.items.filter(wanted) };
     }
 
     pub fn sorted(before: fn(T, T) -> Bool) -> List<T> {
-        return List<T> { items: arrays.sorted<T>(self.items, before) };
+        return List<T> { items: self.items.sorted(before) };
     }
 
     pub fn reversed() -> List<T> {
-        return List<T> { items: arrays.reversed<T>(self.items) };
+        return List<T> { items: self.items.reversed() };
     }
 
     pub fn slice(from: Int, to: Int) -> List<T> {
-        return List<T> { items: arrays.slice<T>(self.items, from, to) };
+        return List<T> { items: self.items.slice(from, to) };
     }
 
     pub fn fold<A>(start: A, combine: fn(A, T) -> A) -> A {

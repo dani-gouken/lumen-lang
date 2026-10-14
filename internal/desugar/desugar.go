@@ -125,6 +125,8 @@ func (d *Desugarer) desugarFnDecl(fn *ast.FnDecl) *ast.FnDecl {
 
 	newBody := d.desugarStmt(fn.Body).(*ast.BlockStmt)
 
+	// Everything it was declared with (its module, whether it is public),
+	// and the new body
 	return &ast.FnDecl{
 		BaseNode:      fn.BaseNode,
 		Name:          fn.Name,
@@ -133,6 +135,7 @@ func (d *Desugarer) desugarFnDecl(fn *ast.FnDecl) *ast.FnDecl {
 		ReturnType:    fn.ReturnType,
 		Body:          newBody,
 		IsTraitMethod: fn.IsTraitMethod,
+		Module:        fn.Module,
 	}
 }
 

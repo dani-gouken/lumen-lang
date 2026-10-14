@@ -8,7 +8,7 @@ import std.dict;
 
 fn main() -> Int {
     let counts = dict.empty<Int>();
-    for word in strings.words("to be or not to be") {
+    for word in "to be or not to be".words() {
         counts.set(word, (counts.get(word) ?? 0) + 1);
     }
     println(counts.keys(), counts.values());      // ["to", "be", "or", "not"] [2, 2, 1, 1]
@@ -49,20 +49,20 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.formatter`](#stdformatter) | The formatter of Lumen: what `lumen fmt` runs |
 | [`std.ops`](#stdops) | The traits behind operators, loops and brackets; `sorted`, `max`, `join` for any type that has them |
 
-The modules are imported and used like any other ([modules.md](modules.md)): `import std.math;` then `math.abs(-3)`, or `import std.math.{abs};` then `abs(-3)`.
+The modules are imported and used like any other ([modules.md](modules.md)): `import std.path;` then `path.dir(file)`, or `import std.path.{dir};` then `dir(file)`. The methods of arrays, texts and numbers need no import (see below).
 
 `print`, `println`, `toString`, `push` and `panic` are not part of the library: they are builtins, available without an import.
 
 ## Conventions
 
-**A function, or a method.** What a function of `std.arrays`, `std.strings` or `std.math` does to an array, a text or a number, a method of the same name does too: `arrays.filter(items, wanted)` is `items.filter(wanted)`, `strings.trim(name)` is `name.trim()`, `math.sqrt(x)` is `x.sqrt()`. The tables below list the functions; the method takes the same arguments without the first. Methods follow one another (`line.trim().split(",").map(parse)`); the function form is what is passed to another function (`names.map(strings.upper)`). A few methods have the name the type makes natural where the function has another: on a `Float`, `abs`, `min`, `max` and `pow` are `fabs`, `fmin`, `fmax` and `powf`; arrays have `push`, and arrays of texts `join`.
+**Methods, not functions.** What the library does to an array, a text or a number is a method of it: `items.filter(wanted)`, `name.trim()`, `x.sqrt()`. The tables of `std.arrays`, `std.strings` and `std.math` below list them as `name(receiver, arguments)`: the receiver is what stands before the dot, so `take(items, count)` is called as `items.take(count)`. Nothing is imported for a method: these three modules are part of any program that calls one of their methods. An import is only for the few functions that have nothing to stand on: `arrays.range`, `arrays.fill`, `arrays.flatten`, `arrays.unzip`, `strings.fromCode`, and the constants `math.pi` and `math.e`. To hand a method to another function, write a function that calls it: `names.map(name -> name.upper())`.
 
 **Nothing instead of failure.** A function that may have no answer returns an optional, and `null` means "none": the position of something not found, the first item of an empty array, a text that is not a number. Where there is a reason worth knowing, as for a file that cannot be read, it returns a [`Result`](#stdresult) with the reason in it. The type checker then makes sure the program deals with it:
 
 ```rust
-let n = strings.parseInt(line);      // Int?
+let n = line.parseInt();      // Int?
 if n != null { total += n; }         // an Int in here
-let port = strings.parseInt(text) ?? 8080;
+let port = text.parseInt() ?? 8080;
 ```
 
 **A failure is for a mistake in the program.** Asking for characters 2 to 9 of a three-letter text, the square root of a negative number, or a random number below zero stops the program, like an index out of bounds does. The message names the function as the program called it and the line that called it:
@@ -71,14 +71,14 @@ let port = strings.parseInt(text) ?? 8080;
 [ERROR] R0007: std.strings.substring: range 0..5 is outside a text of 3 characters
   --> main.lum:8:19 in function 'shorten'
      |
- 8 |     return strings.substring(name, 0, 5) + "...";
+ 8 |     return name.substring(0, 5) + "...";
      |                   ^^^^^^^^^^
   called from main.lum:13:13 in function 'main'
 ```
 
 **Arrays are not changed** by the functions of `std.arrays`; they return new ones. The exceptions say so (`pop`, `removeAt`, `insertAt`, `clear`, `swap`, `random.shuffle`). A `List` is the reverse: its methods change it, unless they return a new list.
 
-**Ranges** are given as `from, to`: `from` is included, `to` is not. Positions count from 0. In texts they count characters, not bytes, like `text[i]` and `strings.len(text)`.
+**Ranges** are given as `from, to`: `from` is included, `to` is not. Positions count from 0. In texts they count characters, not bytes, like `text[i]` and `text.len()`.
 
 ---
 
@@ -126,7 +126,7 @@ The four fail if the number does not fit in an `Int`.
 // The length of the diagonal of a 3 by 4 rectangle
 let a = 3;
 let b = 4;
-let diagonal = math.sqrt(a * a + b * b);    // 5.0
+let diagonal = (a * a + b * b).sqrt();    // 5.0
 ```
 
 ---
@@ -166,7 +166,7 @@ Building a long text piece by piece with `+=` copies everything so far at each s
 | Function | Result |
 |----------|--------|
 | `indexOf(text, part) -> Int?` | Where `part` first occurs, or `null` |
-| `cut(text, separator) -> (String, String)?` | What is before the first separator, and what is after it: `let (name, value) = strings.cut("port=80", "=") ?? ("", "");` |
+| `cut(text, separator) -> (String, String)?` | What is before the first separator, and what is after it: `let (name, value) = "port=80".cut("=") ?? ("", "");` |
 | `lastIndexOf(text, part) -> Int?` | Where it last occurs, or `null` |
 | `contains(text, part)`, `startsWith(text, start)`, `endsWith(text, end)` | |
 | `count(text, part) -> Int` | How many times `part` occurs, not counting overlaps |
@@ -202,10 +202,10 @@ Going the other way, any value becomes text with the builtin `toString`.
 
 ```rust
 let line = "name = Ada Lovelace";
-let at = strings.indexOf(line, "=");
+let at = line.indexOf("=");
 if at != null {
-    let key = strings.trim(strings.first(line, at));          // "name"
-    let value = strings.trim(strings.from(line, at + 1));     // "Ada Lovelace"
+    let key = line.first(at).trim();          // "name"
+    let value = line.from(at + 1).trim();     // "Ada Lovelace"
 }
 ```
 
@@ -213,7 +213,7 @@ if at != null {
 
 ## `std.arrays`
 
-Generic functions on plain arrays. Type arguments are inferred: `arrays.reversed([1, 2, 3])`. Where there is nothing to infer from, write them: `arrays.first<Int>([])`.
+Generic functions on plain arrays. Type arguments are inferred: `[1, 2, 3].reversed()`. Where there is nothing to infer from, write them: `[].first()`.
 
 | Function | Result |
 |----------|--------|
@@ -245,25 +245,25 @@ With `push`, these make an array a stack (`push`, `pop`) or a queue (`push`, `re
 
 ```rust
 let stack = [1, 2];
-push(stack, 3);
-let top = arrays.pop(stack);          // 3, an Int?; stack is [1, 2]
-arrays.insertAt(stack, 0, 0);         // [0, 1, 2]
-let first = arrays.removeAt(stack, 0);
+stack.push(3);
+let top = stack.pop();          // 3, an Int?; stack is [1, 2]
+stack.insertAt(0, 0);         // [0, 1, 2]
+let first = stack.removeAt(0);
 
-while !arrays.isEmpty(stack) {        // until nothing is left
-    let item = arrays.pop(stack);
+while !stack.isEmpty() {        // until nothing is left
+    let item = stack.pop();
 }
 ```
 
 Two things to know:
 
 - **`null` from an array of optionals.** In a `[Int?]` an item can itself be `null`, and `pop` then gives `null` for that item as it does for an empty array. Ask `isEmpty` (or `len`) before, as the loop above does, instead of waiting for `null`.
-- **Not inside `for ... in` over the same array.** That loop counts the items once, before it starts; an array made shorter under it is read past its end, which stops the program (`index out of bounds`). Use `while` with an index that only moves on when nothing was removed, go down from the end, or loop over `arrays.copy(items)`:
+- **Not inside `for ... in` over the same array.** That loop counts the items once, before it starts; an array made shorter under it is read past its end, which stops the program (`index out of bounds`). Use `while` with an index that only moves on when nothing was removed, go down from the end, or loop over `items.copy()`:
 
 ```rust
 let i = 0;
-while i < arrays.len(tasks) {
-    if tasks[i].done { arrays.removeAt(tasks, i); } else { i++; }
+while i < tasks.len() {
+    if tasks[i].done { tasks.removeAt(i); } else { i++; }
 }
 ```
 
@@ -321,7 +321,7 @@ while i < arrays.len(tasks) {
 | `groupBy(items, name) -> Dict<[T]>` | The items sorted into groups by a text worked out from each |
 | `countBy(items, name) -> Dict<Int>` | How many items give each text |
 | `unique(texts)`, `uniqueBy(items, name)` | Without repeats; the first of each is kept |
-| `partition(items, wanted) -> ([T], [T])` | The items a function accepts, and the others: `let (even, odd) = arrays.partition(numbers, math.isEven);` |
+| `partition(items, wanted) -> ([T], [T])` | The items a function accepts, and the others: `let (even, odd) = numbers.partition(n -> n.isEven());` |
 | `zip(first, second) -> [(A, B)]` | The items of two arrays side by side, as many as the shorter has |
 | `unzip(pairs) -> ([A], [B])` | The other way round |
 | `sortedBy(items, rank)`, `sortedByText(items, name)` | In the order of a number, or of a text, worked out from each |
@@ -333,10 +333,10 @@ while i < arrays.len(tasks) {
 ```rust
 let people = [Person { name: "Ada", age: 36 }, Person { name: "Linus", age: 21 }];
 
-let adults = arrays.filter(people, p -> p.age >= 18);
-let names = arrays.map(adults, p -> p.name);
-let oldestFirst = arrays.sorted(people, (a, b) -> a.age > b.age);
-let totalAge = arrays.fold(people, 0, (sum, p) -> sum + p.age);
+let adults = people.filter(p -> p.age >= 18);
+let names = adults.map(p -> p.name);
+let oldestFirst = people.sorted((a, b) -> a.age > b.age);
+let totalAge = people.fold(0, (sum, p) -> sum + p.age);
 ```
 
 ---
@@ -350,7 +350,7 @@ import std.list;
 
 let names = list.of(["ada", "linus"]);
 names.add("grace");
-let long = names.filter(n -> strings.len(n) > 3).sorted(alphabetical);
+let long = names.filter(n -> n.len() > 3).sorted(alphabetical);
 
 for name in names { println(name); }    // a list goes where an array does
 names[0] = "Ada";                       // as with an array, a position that is not there stops the program
@@ -394,7 +394,7 @@ They change the array the list holds, as the functions of [`std.arrays`](#stdarr
 
 `map<U>(convert)`, `filter(wanted)`, `sorted(before)`, `reversed()`, `slice(from, to)`.
 
-`map` and `fold` have a type parameter of their own, for what they produce. It is worked out from the function passed, or can be written: `names.map<Int>(n -> strings.len(n))`.
+`map` and `fold` have a type parameter of their own, for what they produce. It is worked out from the function passed, or can be written: `names.map<Int>(n -> n.len())`.
 
 The field `items` is the array itself, for a `for` loop: `for name in names.items { ... }`.
 
@@ -444,12 +444,12 @@ The values can be of any type, including arrays, structs and other dictionaries 
 // Group words by their first letter
 let groups = dict.empty<[String]>();
 for word in words {
-    let letter = strings.first(word, 1);
+    let letter = word.first(1);
     let group = groups.get(letter);
     if group == null {
         groups.set(letter, [word]);
     } else {
-        push(group, word);
+        group.push(word);
     }
 }
 ```
@@ -466,14 +466,14 @@ import std.option;
 // Without: one test per step
 let line = io.readLine();
 if line != null {
-    let n = strings.parseInt(line);
+    let n = line.parseInt();
     if n != null {
         println(n * 2);
     }
 }
 
 // With: each step runs only if the one before gave a value
-let doubled = option.map(option.then(io.readLine(), strings.parseInt), n -> n * 2);
+let doubled = option.map(option.then(io.readLine(), text -> text.parseInt()), n -> n * 2);
 ```
 
 | Function | Result |
@@ -499,7 +499,7 @@ let found = option.then(manager, k -> users.get(k));
 println(option.mapOr(found, "no manager", u -> u.name));
 ```
 
-Type arguments are worked out from the values and functions passed. A function of the library can be passed directly (`strings.parseInt`, `toString`); a method cannot, so a call of one is wrapped: `fn(k: String) -> User? { return users.get(k); }`.
+Type arguments are worked out from the values and functions passed. A function of the library can be passed directly (`parseInt`, `toString`); a method cannot, so a call of one is wrapped: `fn(k: String) -> User? { return users.get(k); }`.
 
 There is no separate `Option` type with `Some` and `None`: `T?` is that type, and the type checker already refuses to use one as a plain value. These functions add the chaining.
 
@@ -581,8 +581,8 @@ import std.strings;
 fn main() -> Int {
     match io.readFile("notes.txt") {
         case Result.Ok(content): {
-            for i, line in strings.lines(content) {
-                println(strings.padLeft(toString(i + 1), 4), line);
+            for i, line in content.lines() {
+                println(toString(i + 1).padLeft(4), line);
             }
         }
         case Result.Err(error): {
@@ -805,7 +805,7 @@ pub enum Json { Null, Bool(Bool), Number(Float), String(String), Array([Json]), 
 | `stringify()`, `pretty()` | On one line; over several, indented |
 | `json.int(n)`, `json.texts(items)`, `json.ints(items)`, `json.array(items, convert)` | Making documents |
 | `json.object()` | An object built a key at a time: `.text(k, v)`, `.int`, `.number`, `.bool`, `.none`, `.set(k, json)`, then `.done()` |
-| `json.textOf`, `intOf`, `numberOf`, `boolOf`, `itemsOf` | The same accessors as functions, to hand to `arrays.map` and the like |
+| `json.textOf`, `intOf`, `numberOf`, `boolOf`, `itemsOf` | The same accessors as functions, to hand to `map` and the like |
 
 ```rust
 let document = json.parse(text).expect("a document");
@@ -1023,7 +1023,7 @@ task.run(fn() {
     for name in files { lines.send(io.readFile(name).orElse("")); }
     lines.close();
 });
-lines.each(fn(text: String) { println(strings.len(text)); });
+lines.each(fn(text: String) { println(text.len()); });
 ```
 
 One task runs at a time, until it waits: for a task, a channel, `time.sleep`, the network, a line of input, another program. Tasks share everything and need no locks, as long as a change does not have a wait in its middle.
@@ -1274,7 +1274,7 @@ What it decides is in [formatting.md](formatting.md). It needs a text whose brac
 
 The library has two halves.
 
-**Lumen source.** Each module is a `.lum` file in `internal/stdlib/lib/`, compiled into the `lumen` binary. Most of the library is written here, in the language itself: `math.gcd`, `arrays.sorted`, all of `List` and `Dict`. These are ordinary modules; a program importing one gets its functions compiled along with its own.
+**Lumen source.** Each module is a `.lum` file in `internal/stdlib/lib/`, compiled into the `lumen` binary. Most of the library is written here, in the language itself: `gcd`, `sorted`, all of `List` and `Dict`. These are ordinary modules; a program importing one gets its functions compiled along with its own.
 
 **Native functions.** What cannot be written in Lumen, because it needs the machine (files, the clock) or would be too slow (searching a text), is declared in the module without a body:
 

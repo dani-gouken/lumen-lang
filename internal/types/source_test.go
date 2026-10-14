@@ -181,7 +181,7 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 			fn main() -> Int { return first<Int>([1, 2]) + 1; }`},
 		{"generic struct", `struct Box<T> { value: T; } fn unwrap<T>(b: Box<T>) -> T { return b.value; }
 			fn main() -> Int { let b = Box<Int> { value: 1 }; return b.value + unwrap<Int>(b); }`},
-		{"typed empty array", `fn main() -> Int { let xs: [Int] = []; push(xs, 1); return xs[0] + 1; }`},
+		{"typed empty array", `fn main() -> Int { let xs: [Int] = []; __push(xs, 1); return xs[0] + 1; }`},
 		{"Any accepts everything", `fn show(v: Any) -> Void { println(v); }
 			fn main() -> Int { show(1); show("s"); show(null); show([1]); return 0; }`},
 		{"function accepting more than required", `fn show(v: Any) -> String { return "v"; }
@@ -226,7 +226,7 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 			fn measure(s: Sized) -> Int { return s.size(); }
 			fn main() -> Int { return measure(List<String> { items: ["a"] }); }`},
 		{"method with its own type parameter", `struct Stack<T> { items: [T]; }
-			impl<T> Stack<T> { fn map<U>(f: fn(T) -> U) -> Stack<U> { let out = Stack<U> { items: [] }; for i in self.items { push(out.items, f(i)); } return out; } }
+			impl<T> Stack<T> { fn map<U>(f: fn(T) -> U) -> Stack<U> { let out = Stack<U> { items: [] }; for i in self.items { __push(out.items, f(i)); } return out; } }
 			fn main() -> Int { let s = Stack<Int> { items: [1] }; let t: Stack<String> = s.map<String>(toString); return __len(t.items[0]); }`},
 		{"generic method on a plain struct", `struct U { n: Int; } impl U { fn id<T>(v: T) -> T { return v; } }
 			fn main() -> Int { let u = U { n: 1 }; return u.id<Int>(1) + __len(u.id<String>("s")); }`},
@@ -272,7 +272,7 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 		{"match on types narrows each case", `struct P { x: Int; }
 			fn f(v: Any) -> Int { match v { case Int: { return v + 1; } case String: { return __len(v); } case [Int]: { return v[0]; } case P: { return v.x; } default: { return 0; } } }`},
 		{"type argument inferred from an array", `fn first<T>(xs: [T]) -> T { return xs[0]; } fn main() -> Int { return first([1, 2]) + 1; }`},
-		{"type arguments inferred from a function", `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { let out: [U] = []; for x in xs { push(out, f(x)); } return out; }
+		{"type arguments inferred from a function", `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { let out: [U] = []; for x in xs { __push(out, f(x)); } return out; }
 			fn main() -> Int { let ls: [String] = map([1], toString); let ns: [Int] = map(["a"], fn(s: String) -> Int { return __len(s); }); return ns[0]; }`},
 		{"type argument inferred from variadic arguments", `fn collect<T>(items: ...T) -> [T] { return items; }
 			fn main() -> Int { let xs: [String] = collect("a", "b"); return collect(1, 2, 3)[0]; }`},
@@ -300,7 +300,7 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 			fn count(n: Int) -> Int { if n == 0 { return 0; } return 1 + count(n - 1); }
 			fn f(p: P) -> Int { if p.x != null { count(3); return p.x + 1; } return 0; }`},
 		{"field stays narrowed across an element assignment", `struct P { x: Int?; }
-			fn f(p: P, ps: [P]) -> Int { if p.x != null { ps[0] = p; push(ps, p); return p.x + 1; } return 0; }`},
+			fn f(p: P, ps: [P]) -> Int { if p.x != null { ps[0] = p; __push(ps, p); return p.x + 1; } return 0; }`},
 		{"field stays narrowed through a loop that writes nothing", `struct P { x: Int?; }
 			fn f(p: P) -> Int { if p.x == null { return 0; } let i = 0; while i < 2 { i = i + p.x; println(i); } return i; }`},
 		{"field stays narrowed across a trait method no struct implements by writing", `struct P { x: Int?; }
@@ -331,12 +331,12 @@ func TestCheckAcceptsValidPrograms(t *testing.T) {
 		{"loop index over a string", `fn main() -> Int { let t = 0; for i, c in "abc" { let s: String = c; t += i; } return t; }`},
 		{"loop variables read, and a copy changed", `fn main() -> Int { let t = 0; for i, x in [1] { let j = i; j += x; let y = x; y *= 2; t += j + y; } return t; }`},
 		{"value reached through the loop variable changed", `struct P { n: Int; items: [Int]; }
-			fn main() -> Int { let ps = [P { n: 1, items: [1] }]; for i, p in ps { p.n = 5; p.n += i; p.items[0]++; push(p.items, 2); } return ps[0].n; }`},
+			fn main() -> Int { let ps = [P { n: 1, items: [1] }]; for i, p in ps { p.n = 5; p.n += i; p.items[0]++; __push(p.items, 2); } return ps[0].n; }`},
 		{"collection changed by index inside its loop", `fn main() -> Int { let xs = [1, 2]; for i, x in xs { xs[i] = x * 2; xs[i] += 1; } return xs[0]; }`},
 		{"same name reused after the loop", `fn main() -> Int { for i, x in [1] { } let i = 0; i = 1; let x = 2; x++; return i + x; }`},
 		{"loop variable shadowed inside the body", `fn main() -> Int { for i, x in [1] { { let i = 5; i++; let x = "s"; x += "t"; } } return 0; }`},
 		{"nested loop indexes", `fn main() -> Int { let t = 0; for i, row in [[1], [2, 3]] { for j, cell in row { t += i + j + cell; } } return t; }`},
-		{"loop index captured by a lambda", `fn main() -> Int { let fs: [fn() -> Int] = []; for i, x in [1, 2] { push(fs, fn() -> Int { return i + x; }); } return fs[0](); }`},
+		{"loop index captured by a lambda", `fn main() -> Int { let fs: [fn() -> Int] = []; for i, x in [1, 2] { __push(fs, fn() -> Int { return i + x; }); } return fs[0](); }`},
 		{"largest and smallest Int literals", `fn main() -> Int { let big = 140737488355327; let small = -140737488355328; return 0; }`},
 		{"Any compared and printed", `fn same(a: Any, b: Any) -> Bool { return a == b; }`},
 
@@ -589,8 +589,8 @@ func TestCheckRejectsInvalidPrograms(t *testing.T) {
 		{"assignment to a loop variable in a nested block", `fn main() -> Int { for i, x in [1] { if x > 0 { while true { i = 0; break; } } } return 0; }`, "cannot assign to loop index 'i'"},
 		{"assignment to a loop variable from a lambda", `fn main() -> Int { for i, x in [1] { let f = fn() -> Void { x = 2; }; f(); } return 0; }`, "cannot assign to loop variable 'x'"},
 		{"assignment to an outer loop's index", `fn main() -> Int { for i, row in [[1]] { for j, cell in row { i = j; } } return 0; }`, "cannot assign to loop index 'i'"},
-		{"push wrong element", `fn main() -> Int { let xs: [Int] = []; push(xs, true); return 0; }`, "cannot push type bool onto [int]"},
-		{"push onto a non-array", `fn main() -> Int { push(1, 2); return 0; }`, "push expects an array, got int"},
+		{"push wrong element", `fn main() -> Int { let xs: [Int] = []; __push(xs, true); return 0; }`, "cannot push type bool onto [int]"},
+		{"push onto a non-array", `fn main() -> Int { __push(1, 2); return 0; }`, "push expects an array, got int"},
 		{"mixed arithmetic is a Float", `fn main() -> Int { return 1 + 2.5; }`, "cannot return type float from function returning int"},
 		{"a number and a text", `fn main() -> Int { return 1 + "2"; }`, "operator + not defined for types int and string"},
 		{"a Float is not taken for a whole number", `fn main() -> Int { let n: Int = 2.0; return n; }`, "cannot assign type float to int"},

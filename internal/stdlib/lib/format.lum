@@ -34,17 +34,17 @@ pub fn grouped(n: Int) -> String {
 
 // The same with another separator: a space, a dot, a thin space.
 pub fn groupedWith(n: Int, separator: String) -> String {
-    let digits = toString(math.abs(n));
+    let digits = toString(n.abs());
     let groups: [String] = [];
-    let end = strings.len(digits);
+    let end = digits.len();
 
     while end > 3 {
-        push(groups, strings.substring(digits, end - 3, end));
+        groups.push(digits.substring(end - 3, end));
         end -= 3;
     }
 
-    push(groups, strings.first(digits, end));
-    let text = groups |> arrays.reversed() |> strings.join(separator);
+    groups.push(digits.first(end));
+    let text = groups.reversed().join(separator);
 
     if n < 0 {
         return "-" + text;
@@ -55,8 +55,8 @@ pub fn groupedWith(n: Int, separator: String) -> String {
 
 // A whole number with zeros in front, to a width: padded(7, 3) is "007".
 pub fn padded(n: Int, width: Int) -> String {
-    let digits = toString(math.abs(n));
-    let zeros = strings.repeat("0", math.max(0, width - strings.len(digits)));
+    let digits = toString(n.abs());
+    let zeros = "0".repeat(0.max(width - digits.len()));
 
     if n < 0 {
         return "-" + zeros + digits;
@@ -73,7 +73,7 @@ pub fn percent(share: Float, digits: Int) -> String {
 // An amount with two decimals and its digits grouped: money(1234567.5)
 // is "1,234,567.50".
 pub fn money(amount: Float) -> String {
-    let cents = math.round(math.fabs(amount) * 100.0);
+    let cents = (amount.abs() * 100.0).round();
     let text = grouped(cents / 100) + "." + padded(cents % 100, 2);
 
     if amount < 0.0 && cents != 0 {
@@ -86,10 +86,10 @@ pub fn money(amount: Float) -> String {
 // A size in bytes, in the unit that reads best: "512 B", "1.5 MB".
 pub fn bytes(size: Int) -> String {
     let units = ["B", "KB", "MB", "GB", "TB", "PB"];
-    let amount = math.toFloat(size);
+    let amount = size.toFloat();
     let unit = 0;
 
-    while math.fabs(amount) >= 1024.0 && unit < arrays.len(units) - 1 {
+    while amount.abs() >= 1024.0 && unit < units.len() - 1 {
         amount = amount / 1024.0;
         unit++;
     }
@@ -113,7 +113,7 @@ pub fn duration(milliseconds: Int) -> String {
     }
 
     if milliseconds < 60000 {
-        return fixed(math.toFloat(milliseconds) / 1000.0, 1) + "s";
+        return fixed(milliseconds.toFloat() / 1000.0, 1) + "s";
     }
 
     let seconds = milliseconds / 1000;
@@ -134,8 +134,8 @@ pub fn duration(milliseconds: Int) -> String {
 
 // A number with its ending: 1st, 2nd, 3rd, 4th, 11th, 22nd.
 pub fn ordinal(n: Int) -> String {
-    let last = math.abs(n) % 10;
-    let lastTwo = math.abs(n) % 100;
+    let last = n.abs() % 10;
+    let lastTwo = n.abs() % 100;
 
     if lastTwo >= 11 && lastTwo <= 13 {
         return "${n}th";
@@ -165,20 +165,20 @@ pub enum Align { Left, Right, Center }
 
 // A text in a column of that width. One that is too long is left whole.
 pub fn pad(text: String, width: Int, align: Align) -> String {
-    let space = math.max(0, width - strings.len(text));
+    let space = 0.max(width - text.len());
 
     match align {
         case Align.Left: {
-            return text + strings.repeat(" ", space);
+            return text + " ".repeat(space);
         }
 
         case Align.Right: {
-            return strings.repeat(" ", space) + text;
+            return " ".repeat(space) + text;
         }
 
         case Align.Center: {
             let before = space / 2;
-            return strings.repeat(" ", before) + text + strings.repeat(" ", space - before);
+            return " ".repeat(before) + text + " ".repeat(space - before);
         }
     }
 }
@@ -196,18 +196,18 @@ pub fn table(titles: [String], rows: [[String]]) -> String {
     let aligns: [Align] = [];
 
     for column, _ in titles {
-        let numeric = arrays.len(rows) > 0;
+        let numeric = rows.len() > 0;
 
         for row in rows {
-            if column < arrays.len(row) && strings.parseFloat(row[column]) == null {
+            if column < row.len() && row[column].parseFloat() == null {
                 numeric = false;
             }
         }
 
         if numeric {
-            push(aligns, Align.Right);
+            aligns.push(Align.Right);
         } else {
-            push(aligns, Align.Left);
+            aligns.push(Align.Left);
         }
     }
 
@@ -216,12 +216,12 @@ pub fn table(titles: [String], rows: [[String]]) -> String {
 
 // The same, saying how each column is set.
 pub fn tableWith(titles: [String], aligns: [Align], rows: [[String]]) -> String {
-    let widths = arrays.map(titles, title -> strings.len(title));
+    let widths = titles.map(title -> title.len());
 
     for row in rows {
         for column, value in row {
-            if column < arrays.len(widths) {
-                widths[column] = math.max(widths[column], strings.len(value));
+            if column < widths.len() {
+                widths[column] = widths[column].max(value.len());
             }
         }
     }
@@ -230,21 +230,21 @@ pub fn tableWith(titles: [String], aligns: [Align], rows: [[String]]) -> String 
         let cells: [String] = [];
 
         for column, width in widths {
-            let value = arrays.at(values, column) ?? "";
-            push(cells, pad(value, width, arrays.at(aligns, column) ?? Align.Left));
+            let value = values.at(column) ?? "";
+            cells.push(pad(value, width, aligns.at(column) ?? Align.Left));
         }
 
-        return cells |> strings.join("  ") |> strings.trimEnd();
+        return cells.join("  ").trimEnd();
     };
 
     let lines = [line(titles)];
-    push(lines, line(arrays.map(widths, width -> strings.repeat("-", width))));
+    lines.push(line(widths.map(width -> "-".repeat(width))));
 
     for row in rows {
-        push(lines, line(row));
+        lines.push(line(row));
     }
 
-    return strings.join(lines, "\n") + "\n";
+    return lines.join("\n") + "\n";
 }
 
 // A bar of a chart: bar(3, 10, 20) is six blocks out of twenty.
@@ -253,6 +253,6 @@ pub fn bar(value: Int, largest: Int, width: Int) -> String {
         return "";
     }
 
-    let filled = math.clamp(value * width / largest, 0, width);
-    return strings.repeat("#", filled);
+    let filled = (value * width / largest).clamp(0, width);
+    return "#".repeat(filled);
 }

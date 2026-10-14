@@ -333,7 +333,7 @@ func TestForeignResultsAreCollected(t *testing.T) {
 			while i < 100000 {
 				camera = probe_camera_zoom(camera, 1.0);
 				total += probe_rect_grow(Rect { x: 0.0, y: 0.0, width: 1.0, height: 1.0 }, 1.0).width;
-				length += strings.len(probe_greet("again"));
+				length += probe_greet("again").len();
 				i++;
 			}
 			println(total);

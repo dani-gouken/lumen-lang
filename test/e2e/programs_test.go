@@ -24,8 +24,8 @@ func TestProgramArguments(t *testing.T) {
 			import std.path;
 			import std.arrays;
 			fn main() -> Int {
-				println(os.args(), path.base(os.program()), path.isAbsolute(os.program()) || arrays.len(path.parts(os.program())) > 0);
-				return arrays.len(os.args());
+				println(os.args(), path.base(os.program()), path.isAbsolute(os.program()) || path.parts(os.program()).len() > 0);
+				return os.args().len();
 			}`,
 		"lumen.json": `{"name": "args", "entry": "args.lum"}`,
 	})
@@ -77,7 +77,7 @@ func TestExitStatus(t *testing.T) {
 				return 99;
 			}
 			fn main() -> Int {
-				let status = strings.parseInt(os.args()[0]) ?? 0;
+				let status = os.args()[0].parseInt() ?? 0;
 				println("before");
 				if os.args()[1] == "caught" {
 					let outcome = attempt(fn() -> Int { return leave(status); });

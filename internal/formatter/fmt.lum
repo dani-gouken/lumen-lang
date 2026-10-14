@@ -50,15 +50,15 @@ fn filesOf(target: String) -> Result<[String], String> {
             let inside = 0;
 
             if folder != "." {
-                inside = strings.len(folder) + 1;
+                inside = folder.len() + 1;
             }
 
             let hidden = fn(file: String) -> Bool {
-                let below = path.parts(strings.from(path.clean(file), inside));
-                return arrays.any(below, part -> strings.startsWith(part, "."));
+                let below = path.parts(path.clean(file).from(inside));
+                return below.any(part -> part.startsWith("."));
             };
 
-            return Result.Ok(arrays.filter(found, file -> !hidden(file)));
+            return Result.Ok(found.filter(file -> !hidden(file)));
         }
 
         case Result.Err(error): {
@@ -106,7 +106,7 @@ fn tidy(file: String, check: Bool, tally: Tally) {
 // The input, formatted, on the output: for an editor, which has the
 // text and wants the text.
 fn filter() -> Int {
-    let source = strings.join(io.readLines(), "\n") + "\n";
+    let source = io.readLines().join("\n") + "\n";
 
     match formatter.format(source) {
         case Result.Ok(tidy): {
@@ -132,16 +132,16 @@ fn main() -> Int {
 
         if argument == "--check" {
             check = true;
-        } else if strings.startsWith(argument, "-") {
+        } else if argument.startsWith("-") {
             io.printError("lumen fmt: unknown option ${argument}\n${usage}");
             return 2;
         } else {
-            push(targets, argument);
+            targets.push(argument);
         }
     }
 
-    if arrays.isEmpty(targets) {
-        push(targets, ".");
+    if targets.isEmpty() {
+        targets.push(".");
     }
 
     let tally = Tally {};

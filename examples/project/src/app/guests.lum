@@ -6,5 +6,5 @@ pub fn invited() -> [String] {
 }
 
 pub fn count(names: [String]) -> String {
-    return pad.left(toString(arrays.len(names)), 5);
+    return pad.left(toString(names.len()), 5);
 }

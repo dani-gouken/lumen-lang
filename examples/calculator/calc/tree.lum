@@ -49,8 +49,8 @@ impl Env {
             }
         }
 
-        push(self.names, name);
-        push(self.values, value);
+        self.names.push(name);
+        self.values.push(value);
     }
 
     pub fn describe() -> String {

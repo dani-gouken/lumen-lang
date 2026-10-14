@@ -28,7 +28,7 @@ fn isLetter(c: String) -> Bool {
 
 pub fn tokens(source: String) -> Result<[Token], String> {
     let out: [Token] = [];
-    let length = strings.len(source);
+    let length = source.len();
     let at = 0;
 
     while at < length {
@@ -47,8 +47,8 @@ pub fn tokens(source: String) -> Result<[Token], String> {
                 at++;
             }
 
-            let word = strings.substring(source, start, at);
-            push(out, Token { kind: Kind.Word, text: word, upper: strings.upper(word), at: start });
+            let word = source.substring(start, at);
+            out.push(Token { kind: Kind.Word, text: word, upper: word.upper(), at: start });
         } else if isDigit(c) {
             while at < length && isDigit(source[at]) {
                 at++;
@@ -62,8 +62,8 @@ pub fn tokens(source: String) -> Result<[Token], String> {
                 }
             }
 
-            let number = strings.substring(source, start, at);
-            push(out, Token { kind: Kind.Number, text: number, upper: number, at: start });
+            let number = source.substring(start, at);
+            out.push(Token { kind: Kind.Number, text: number, upper: number, at: start });
         } else if c == "'" {
             // A quote inside a text is written twice
             let said = "";
@@ -87,7 +87,7 @@ pub fn tokens(source: String) -> Result<[Token], String> {
                 return Result.Err("a text that starts at ${start} is not closed");
             }
 
-            push(out, Token { kind: Kind.Text, text: said, upper: said, at: start });
+            out.push(Token { kind: Kind.Text, text: said, upper: said, at: start });
         } else {
             let two = "";
 
@@ -99,20 +99,20 @@ pub fn tokens(source: String) -> Result<[Token], String> {
 
             if two == "!=" || two == "<>" || two == "<=" || two == ">=" || two == "||" {
                 symbol = two;
-            } else if !strings.contains("(),.*+-/%=<>;", c) {
+            } else if !"(),.*+-/%=<>;".contains(c) {
                 return Result.Err("did not expect '${c}' at ${start}");
             }
 
-            at += strings.len(symbol);
+            at += symbol.len();
 
             if symbol == "<>" {
                 symbol = "!=";
             }
 
-            push(out, Token { kind: Kind.Symbol, text: symbol, upper: symbol, at: start });
+            out.push(Token { kind: Kind.Symbol, text: symbol, upper: symbol, at: start });
         }
     }
 
-    push(out, Token { kind: Kind.End, text: "the end", upper: "", at: length });
+    out.push(Token { kind: Kind.End, text: "the end", upper: "", at: length });
     return Result.Ok(out);
 }

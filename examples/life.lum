@@ -20,10 +20,10 @@ fn newGrid(width: Int, height: Int) -> Grid {
         let row: [Bool] = [];
 
         for x in 0..width {
-            push(row, false);
+            row.push(false);
         }
 
-        push(cells, row);
+        cells.push(row);
     }
 
     return Grid { width: width, height: height, cells: cells };

@@ -14,13 +14,13 @@ import std.strings;
 // `before(a, b)` says whether a must come before b.
 
 fn sorted<T>(items: [T], before: fn(T, T) -> Bool) -> [T] {
-    if arrays.len(items) < 2 {
+    if items.len() < 2 {
         return items;
     }
 
-    let middle = arrays.len(items) / 2;
+    let middle = items.len() / 2;
     let left = sorted<T>(slice<T>(items, 0, middle), before);
-    let right = sorted<T>(slice<T>(items, middle, arrays.len(items)), before);
+    let right = sorted<T>(slice<T>(items, middle, items.len()), before);
     return merge<T>(left, right, before);
 }
 
@@ -28,7 +28,7 @@ fn slice<T>(items: [T], from: Int, to: Int) -> [T] {
     let out: [T] = [];
 
     for i in from..to {
-        push(out, items[i]);
+        out.push(items[i]);
     }
 
     return out;
@@ -39,25 +39,25 @@ fn merge<T>(left: [T], right: [T], before: fn(T, T) -> Bool) -> [T] {
     let l = 0;
     let r = 0;
 
-    while l < arrays.len(left) && r < arrays.len(right) {
+    while l < left.len() && r < right.len() {
         // Taking from the left on a tie keeps equal items in their
         // original order
         if before(right[r], left[l]) {
-            push(out, right[r]);
+            out.push(right[r]);
             r++;
         } else {
-            push(out, left[l]);
+            out.push(left[l]);
             l++;
         }
     }
 
-    while l < arrays.len(left) {
-        push(out, left[l]);
+    while l < left.len() {
+        out.push(left[l]);
         l++;
     }
 
-    while r < arrays.len(right) {
-        push(out, right[r]);
+    while r < right.len() {
+        out.push(right[r]);
         r++;
     }
 
@@ -67,7 +67,7 @@ fn merge<T>(left: [T], right: [T], before: fn(T, T) -> Bool) -> [T] {
 // --- Quicksort: sorts the array itself ---
 
 fn quicksort<T>(items: [T], before: fn(T, T) -> Bool) {
-    sortRange<T>(items, 0, arrays.len(items) - 1, before);
+    sortRange<T>(items, 0, items.len() - 1, before);
 }
 
 fn sortRange<T>(items: [T], low: Int, high: Int, before: fn(T, T) -> Bool) {
@@ -103,7 +103,7 @@ fn swap<T>(items: [T], a: Int, b: Int) {
 // is too big.
 fn search<T>(items: [T], compare: fn(T) -> Int) -> Int? {
     let low = 0;
-    let high = arrays.len(items) - 1;
+    let high = items.len() - 1;
 
     while low <= high {
         let middle = (low + high) / 2;
@@ -134,7 +134,7 @@ fn names(cities: [City]) -> [String] {
     let out: [String] = [];
 
     for city in cities {
-        push(out, city.name);
+        out.push(city.name);
     }
 
     return out;
@@ -153,7 +153,7 @@ fn main() -> Int {
     // Texts compare alphabetically with <
     let words = ["pear", "fig", "banana", "kiwi", "apple"];
     println("alphabetic:", sorted(words, (a, b) -> a < b));
-    println("by length: ", sorted(words, (a, b) -> strings.len(a) < strings.len(b)));
+    println("by length: ", sorted(words, (a, b) -> a.len() < b.len()));
 
     // Structs, by whichever field
     let cities = [

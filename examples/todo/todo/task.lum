@@ -29,7 +29,7 @@ impl Priority {
 }
 
 pub fn priorityOf(name: String) -> Priority? {
-    return match strings.lower(name) {
+    return match name.lower() {
         case "low": Priority.Low;
         case "normal": Priority.Normal;
         case "high": Priority.High;

@@ -38,11 +38,11 @@ fn logged(handler: fn(Request) -> Response) -> fn(Request) -> Response {
 fn main() -> Int {
     let args = os.args();
 
-    if arrays.first(args) != "serve" {
+    if args.first() != "serve" {
         return checks.suite().run().exitCode();
     }
 
-    let port = strings.parseInt(arrays.at(args, 1) ?? "8080") ?? 8080;
+    let port = (args.at(1) ?? "8080").parseInt() ?? 8080;
     let app = api.routes(book.empty());
     println("notes are served on http://localhost:${port}, stop with Ctrl+C");
 

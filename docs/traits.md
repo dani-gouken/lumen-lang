@@ -53,7 +53,7 @@ impl Config {
 
 ```rust
 let ages = dict.empty<Int>();
-let names = arrays.filter(candidates, ages.has);      // fn(String) -> Bool
+let names = candidates.filter(ages.has);      // fn(String) -> Bool
 let lookup = ages.get;                                // fn(String) -> Int?
 ```
 
@@ -103,7 +103,7 @@ trait Source<T> {
     fn all() -> [T] {
         let out: [T] = [];
         let item = self.next();
-        while item != null { push(out, item); item = self.next(); }
+        while item != null { out.push(item); item = self.next(); }
         return out;
     }
 }
@@ -136,7 +136,7 @@ Inside `fn f<T>(x: T)` nothing is known of a `T`, so nothing can be done with `x
 import std.ops.{Ordered, Show};
 
 fn largest<T: Ordered>(items: [T]) -> T? {
-    let best = arrays.first(items)?;
+    let best = items.first()?;
     for item in items {
         if item > best { best = item; }        // T is Ordered
     }
@@ -197,7 +197,7 @@ if total > limit { println("over by ${total}"); }
 ```
 
 *   `compare` gives a number below zero when the value comes first, zero when neither does, above zero when it comes after.
-*   **Without `Equal`, two structs are equal only when they are the very same one.** With it, `==` asks the struct, and so do `arrays.contains`, `arrays.indexOf` and `test.equal`, which are written with `==`.
+*   **Without `Equal`, two structs are equal only when they are the very same one.** With it, `==` asks the struct, and so do `contains`, `indexOf` and `test.equal`, which are written with `==`.
 *   A comparison with `null` is always a test for null, whatever the type implements.
 *   The key of `Indexed` is whatever the type asks for: a grid can be indexed by a pair, `grid[(2, 3)]`.
 *   `Int`, `Float`, `String` and `Bool` implement `Equal` and `Show`, and all but `Bool` implement `Ordered`: a function that requires those takes numbers and texts too.
@@ -232,7 +232,7 @@ The standard library uses them itself: a `List` and a `Dict` take brackets and l
 
 **A number or a text carries nothing**, so a call that is decided when the program runs first tests the value for being of a builtin type that has a method of that name, and calls that type's function directly. The test is only made for method names that some builtin type has.
 
-**Operators, loops and brackets** are rewritten by the desugarer into the method calls of the table above, at the places the type checker found a type that implements the trait. `a != b` is `!a.equals(b)`, `a < b` is `a.compare(b) < 0`, `a += b` is `a = a.plus(b)`, `for x in a` is `for x in a.iterate()`. This happens after generic functions are instantiated, which is why `arrays.contains`, written long before with a plain `==`, compares structs by content in its copy for a type that implements `Equal`.
+**Operators, loops and brackets** are rewritten by the desugarer into the method calls of the table above, at the places the type checker found a type that implements the trait. `a != b` is `!a.equals(b)`, `a < b` is `a.compare(b) < 0`, `a += b` is `a = a.plus(b)`, `for x in a` is `for x in a.iterate()`. This happens after generic functions are instantiated, which is why `contains`, written long before with a plain `==`, compares structs by content in its copy for a type that implements `Equal`.
 
 **A method as a value** becomes the function that calls it, `fn(key: String) -> Int? { return ages.get(key); }`, with the types the checker found; **a field's own value** is added to each literal that leaves the field out.
 

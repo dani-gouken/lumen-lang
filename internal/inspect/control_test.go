@@ -17,7 +17,7 @@ fn describe(shape: Shape, limit: Float) -> String {
     return match shape {
         case Shape.Circle(radius) if radius > limit: "big";
         case Shape.Circle(_) | Shape.Dot: "round";
-        case Shape.At(place): strings.repeat("x", place.sum());
+        case Shape.At(place): "x".repeat(place.sum());
     };
 }
 
@@ -115,12 +115,12 @@ func TestControlFlowInTheEditor(t *testing.T) {
 	if !has(inGuard, "radius", "variable", "") || !has(inGuard, "limit", "variable", "") {
 		t.Errorf("in the condition of a case: %s", labels(inGuard))
 	}
-	inCase := complete(11, `strings.repeat("x", place.sum())`, "sha")
+	inCase := complete(11, `"x".repeat(place.sum())`, "sha")
 	if !has(inCase, "place", "variable", "") {
 		t.Errorf("in a case, before its name is used: %s", labels(inCase))
 	}
 	// ...and after a dot there, before the colon of the case is written
-	if got := labels(complete(11, `case Shape.At(place): strings.repeat("x", place.sum());`, "case Shape.At(place) if place.")); got != "x y sum" {
+	if got := labels(complete(11, `case Shape.At(place): "x".repeat(place.sum());`, "case Shape.At(place) if place.")); got != "x y sum" {
 		t.Errorf("after a dot in a condition being typed: %q", got)
 	}
 	inLoop := complete(21, "println(word);", "de")

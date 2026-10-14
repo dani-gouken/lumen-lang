@@ -64,7 +64,7 @@ struct Filter {
 }
 
 fn page(text: String) -> Result<Int, String> {
-    let n = strings.parseInt(text);
+    let n = text.parseInt();
 
     if n == null {
         return Result.Err("'${text}' is not a number of pages");
@@ -85,27 +85,27 @@ fn both(first: fn(Book) -> Bool, second: fn(Book) -> Bool) -> fn(Book) -> Bool {
 fn main() -> Int {
     let books = shelf();
 
-    println(arrays.map(books, b -> b.title));
-    println(arrays.map(arrays.sortedBy(books, b -> b.year), b -> "${b.year} ${b.title}"));
+    println(books.map(b -> b.title));
+    println(books.sortedBy(b -> b.year).map(b -> "${b.year} ${b.title}"));
 
     println(
-        arrays.fold(books, 0, (sum, b) -> sum + b.pages),
+        books.fold(0, (sum, b) -> sum + b.pages),
         "pages,",
-        arrays.count(books, b -> b.rating == null),
+        books.count(b -> b.rating == null),
         "unrated",
     );
 
-    let classics = arrays.filter(books, b -> arrays.contains(b.tags, "classic"));
-    let rated = arrays.filter(classics, b -> b.rating != null);
-    let best = arrays.maxBy(rated, b -> math.round((b.rating ?? 0.0) * 10.0));
-    println(arrays.len(classics), "classics, the best rated:", best?.title ?? "none");
+    let classics = books.filter(b -> b.tags.contains("classic"));
+    let rated = classics.filter(b -> b.rating != null);
+    let best = rated.maxBy(b -> ((b.rating ?? 0.0) * 10.0).round());
+    println(classics.len(), "classics, the best rated:", best?.title ?? "none");
 
     // Grouped, then each group summed up
-    let byAuthor = arrays.groupBy(books, b -> b.author);
+    let byAuthor = books.groupBy(b -> b.author);
 
-    let rows = arrays.map(byAuthor.sortedKeys(), author -> {
+    let rows = byAuthor.sortedKeys().map(author -> {
         let theirs = byAuthor[author] ?? [];
-        return [author, toString(arrays.len(theirs)), toString(arrays.sumOf(theirs, b -> b.pages))];
+        return [author, toString(theirs.len()), toString(theirs.sumOf(b -> b.pages))];
     });
 
     print(format.table(["author", "books", "pages"], rows));
@@ -113,29 +113,27 @@ fn main() -> Int {
     // Filters as values, tried one after the other
     let filters = [
         Filter { label: "long", keeps: longerThan(400) },
-        Filter { label: "science fiction", keeps: b -> arrays.contains(b.tags, "sf") },
+        Filter { label: "science fiction", keeps: b -> b.tags.contains("sf") },
         Filter {
             label: "long science fiction",
-            keeps: both(longerThan(260), b -> arrays.contains(b.tags, "sf")),
+            keeps: both(longerThan(260), b -> b.tags.contains("sf")),
         },
         Filter { label: "before 1900", keeps: b -> b.year < 1900 },
     ];
 
     for filter in filters {
-        let kept = arrays.filter(books, filter.keeps);
-        println("${strings.padRight(filter.label, 22)} ${strings.join(arrays.map(kept, b -> b.title), ", ")}");
+        let kept = books.filter(filter.keeps);
+        println("${filter.label.padRight(22)} ${kept.map(b -> b.title).join(", ")}");
     }
 
     // With the methods of the library's own types
-    let titles = list.of(arrays.map(books, b -> b.title));
+    let titles = list.of(books.map(b -> b.title));
+
+    println(titles.filter(t -> t.len() > 4).map(t -> t.first(3).upper()).items);
 
     println(
-        titles.filter(t -> strings.len(t) > 4).map(t -> strings.upper(strings.first(t, 3))).items,
-    );
-
-    println(
-        option.map(arrays.find(books, b -> b.year > 1980), b -> b.author),
-        option.map(arrays.find(books, b -> b.year > 2000), b -> b.author),
+        option.map(books.find(b -> b.year > 1980), b -> b.author),
+        option.map(books.find(b -> b.year > 2000), b -> b.author),
     );
 
     println(
@@ -146,9 +144,9 @@ fn main() -> Int {
 
     // Counting done by functions that give nothing back
     let words = dict.empty<Int>();
-    arrays.each(books, b -> arrays.each(b.tags, tag -> words[tag] = (words[tag] ?? 0) + 1));
+    books.each(b -> b.tags.each(tag -> words[tag] = (words[tag] ?? 0) + 1));
     let seen = 0;
-    arrays.each(books, b -> seen++);
+    books.each(b -> seen++);
     println(words.entries(), seen);
     return 0;
 }

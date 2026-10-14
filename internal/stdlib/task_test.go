@@ -76,16 +76,16 @@ func TestTasksTakeTurns(t *testing.T) {
 	expect(t, taskImports, `
 		let log: [String] = [];
 		let a = task.start(fn() -> Int {
-			push(log, "a starts as ${task.current()}");
+			log.push("a starts as ${task.current()}");
 			task.pause();
-			push(log, "a goes on");
+			log.push("a goes on");
 			return 1;
 		});
 		let b = task.start(fn() -> String {
-			push(log, "b starts as ${task.current()}");
+			log.push("b starts as ${task.current()}");
 			return "two";
 		});
-		push(log, "main is ${task.current()}");
+		log.push("main is ${task.current()}");
 		println(a.isDone(), b.isDone());
 		println(a.wait(), b.wait());
 		println(a.isDone(), b.isDone());
@@ -122,7 +122,7 @@ func TestTaskValues(t *testing.T) {
 			// What a task returns is whatever its function does
 			let point = task.start(fn() -> Point { return Point { x: 3, y: 4 }; });
 			let nothing = task.start(fn() -> Int? { return null; });
-			let pair = task.start(fn() -> (String, [Int]) { return ("squares", arrays.map([1, 2, 3], n -> n * n)); });
+			let pair = task.start(fn() -> (String, [Int]) { return ("squares", [1, 2, 3].map(n -> n * n)); });
 			let areas = task.map([Shape.Circle(1.0), Shape.Square(2.0)], area);
 			println(point.wait().map(p -> p.x * p.y), nothing.wait(), pair.wait(), areas);
 
@@ -130,19 +130,19 @@ func TestTaskValues(t *testing.T) {
 			let total = 0;
 			let adders: [Task<Bool>] = [];
 			for step in [1, 10, 100] {
-				push(adders, task.run(fn() { total += step; task.pause(); total += step; }));
+				adders.push(task.run(fn() { total += step; task.pause(); total += step; }));
 			}
 			println(task.all(adders), total);
 
 			// A task for what it does
 			let seen: [Int] = [];
-			let job = task.run(fn() { push(seen, task.current()); });
-			println(job.wait(), arrays.len(seen), task.all([job, job]));
+			let job = task.run(fn() { seen.push(task.current()); });
+			println(job.wait(), seen.len(), task.all([job, job]));
 
 			// Tasks that start tasks
 			let nested = task.start(fn() -> Int {
 				let inner = task.map([1, 2, 3], n -> task.map([n, n], m -> m * 10).expect("inner"));
-				return arrays.sum(arrays.flatten(inner.expect("outer")));
+				return arrays.flatten(inner.expect("outer")).sum();
 			});
 			println(nested.wait());
 			return 0;
@@ -167,7 +167,7 @@ func TestTaskFailures(t *testing.T) {
 			match bad.wait() {
 				case Result.Ok(n): { println("unexpected", n); }
 				case Result.Err(failure): {
-					println(failure.kind == Kind.Bounds, failure.message, failure.at.function, failure.at.line, arrays.len(failure.stack));
+					println(failure.kind == Kind.Bounds, failure.message, failure.at.function, failure.at.line, failure.stack.len());
 				}
 			}
 			// Asked again, and by several: the same failure
@@ -177,7 +177,7 @@ func TestTaskFailures(t *testing.T) {
 
 			// The first failure of several, after all have ended
 			let done: [Int] = [];
-			let mixed = task.map([1, 0, 2, 0], fn(n: Int) -> Int { push(done, n); return 10 / n; });
+			let mixed = task.map([1, 0, 2, 0], fn(n: Int) -> Int { done.push(n); return 10 / n; });
 			println(mixed.reason()?.message, mixed.reason()?.kind == Kind.Arithmetic, done);
 
 			// A failure caught inside the task is the task's own business,
@@ -194,7 +194,7 @@ func TestTaskFailures(t *testing.T) {
 			let counters: [fn() -> Int] = [];
 			let maker = task.run(fn() {
 				let count = 40;
-				push(counters, fn() -> Int { count++; return count; });
+				counters.push(fn() -> Int { count++; return count; });
 				third([]);
 			});
 			println(maker.wait().isErr(), counters[0](), counters[0]());
@@ -217,24 +217,24 @@ func TestChannels(t *testing.T) {
 			let log: [String] = [];
 			let hand = task.channel<Int>(0);
 			let sender = task.run(fn() {
-				for n in [1, 2, 3] { push(log, "send ${n}"); hand.send(n); push(log, "sent ${n}"); }
+				for n in [1, 2, 3] { log.push("send ${n}"); hand.send(n); log.push("sent ${n}"); }
 				hand.close();
 			});
-			hand.each(fn(n: Int) { push(log, "got ${n}"); });
-			println(strings.join(log, ", "));
+			hand.each(fn(n: Int) { log.push("got ${n}"); });
+			println(log.join(", "));
 			println(sender.wait(), hand.receive(), hand.isClosed(), hand.length());
 
 			// With room for two: the sender runs ahead by two, then waits
 			let trace: [String] = [];
 			let queue = task.channel<String>(2);
 			task.run(fn() {
-				for word in ["a", "b", "c", "d"] { queue.send(word); push(trace, "+${word}"); }
+				for word in ["a", "b", "c", "d"] { queue.send(word); trace.push("+${word}"); }
 				queue.close();
 			});
 			task.pause();
-			push(trace, "len ${queue.length()}");
-			queue.each(fn(word: String) { push(trace, "-${word}"); });
-			println(strings.join(trace, " "));
+			trace.push("len ${queue.length()}");
+			queue.each(fn(word: String) { trace.push("-${word}"); });
+			println(trace.join(" "));
 
 			// What was sent before closing is still received
 			let last = task.channel<Int>(3);
@@ -268,7 +268,7 @@ func TestChannels(t *testing.T) {
 			let results = task.channel<Int>(0);
 			let workers: [Task<Bool>] = [];
 			for worker in [1, 2, 3] {
-				push(workers, task.run(fn() {
+				workers.push(task.run(fn() {
 					jobs.each(fn(n: Int) { task.pause(); results.send(n * n); });
 				}));
 			}
@@ -283,7 +283,7 @@ func TestChannels(t *testing.T) {
 				results.close();
 			});
 			let squares = results.drain();
-			println(arrays.len(squares), arrays.sum(squares), arrays.sum(arrays.map(arrays.range(0, 100), n -> n * n)));
+			println(squares.len(), squares.sum(), arrays.range(0, 100).map(n -> n * n).sum());
 
 			// A long queue, emptied as it fills
 			let stream = task.channel<Int>(1000);
@@ -315,7 +315,7 @@ func TestTasksWaitForTheClock(t *testing.T) {
 		let order: [Int] = [];
 		let naps: [Task<Bool>] = [];
 		for ms in [120, 40, 80] {
-			push(naps, task.run(fn() { time.sleep(ms); push(order, ms); }));
+			naps.push(task.run(fn() { time.sleep(ms); order.push(ms); }));
 		}
 		println(task.all(naps).isOk(), order);
 
@@ -465,7 +465,7 @@ func TestTasksUnderMemoryPressure(t *testing.T) {
 
 		fn build(worker: Int, round: Int) -> Batch {
 			let rows: [String] = [];
-			for i in arrays.range(0, 200) { push(rows, "worker ${worker} round ${round} row ${i}"); }
+			for i in arrays.range(0, 200) { rows.push("worker ${worker} round ${round} row ${i}"); }
 			return Batch { name: "batch ${worker}.${round}", rows: rows };
 		}
 
@@ -473,7 +473,7 @@ func TestTasksUnderMemoryPressure(t *testing.T) {
 			let batches = task.channel<Batch>(2);
 			let workers: [Task<Int>] = [];
 			for worker in arrays.range(0, 6) {
-				push(workers, task.start(fn() -> Int {
+				workers.push(task.start(fn() -> Int {
 					let made = 0;
 					for round in arrays.range(0, 40) {
 						let mine = build(worker, round);
@@ -490,11 +490,11 @@ func TestTasksUnderMemoryPressure(t *testing.T) {
 			let rows = 0;
 			let names = 0;
 			batches.each(fn(batch: Batch) {
-				if !strings.startsWith(batch.rows[0], "worker ") || !strings.startsWith(batch.name, "batch ") { panic("a batch was spoiled"); }
-				rows += arrays.len(batch.rows);
+				if !batch.rows[0].startsWith("worker ") || !batch.name.startsWith("batch ") { panic("a batch was spoiled"); }
+				rows += batch.rows.len();
 				names++;
 			});
-			println(rows, names, task.all(workers).map(made -> arrays.sum(made)));
+			println(rows, names, task.all(workers).map(made -> made.sum()));
 			return 0;
 		}`, 4<<20)
 	if err != nil {
@@ -517,12 +517,12 @@ func TestManyTasks(t *testing.T) {
 
 		fn main() -> Int {
 			let ring: [Channel<Int>] = [];
-			for i in arrays.range(0, 300) { push(ring, task.channel<Int>(0)); }
+			for i in arrays.range(0, 300) { ring.push(task.channel<Int>(0)); }
 			for i in arrays.range(0, 299) { passOn(ring[i], ring[i + 1]); }
 			ring[0].send(0);
 			println(ring[299].receive());
 
-			println(task.map(arrays.range(0, 2000), n -> n % 7).map(all -> arrays.sum(all)));
+			println(task.map(arrays.range(0, 2000), n -> n % 7).map(all -> all.sum()));
 			return 0;
 		}`,
 		"299",

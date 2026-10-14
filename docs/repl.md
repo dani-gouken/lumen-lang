@@ -7,7 +7,7 @@ $ lumen repl
 Lumen. :help says what can be typed here, Ctrl-D leaves.
 [1]> import std.strings;
 [2]> let name = "ada"
-[3]> strings.upper(name)
+[3]> name.upper()
 "ADA"
 [4]> fn greet(who: String) -> String {
 ...>     return "hello, ${who}";
@@ -127,7 +127,7 @@ Mistakes are reported as everywhere else. The place is given by the number of th
  2 |     return items[2];
      |                 ^
      |
-     = Suggestion: Compare the index with arrays.len(...) before using it, or use arrays.at, which gives null instead of failing
+     = Suggestion: Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing
   called from [8]:1:1 in function 'main'
 ```
 
@@ -147,7 +147,7 @@ When its input is not a terminal, `lumen repl` reads the same inputs without a p
 
 ```bash
 lumen repl < session.txt
-echo 'import std.math; math.sqrt(2.0)' | lumen repl
+echo 'import std.math; 2.0.sqrt()' | lumen repl
 ```
 
 Values and what the programs print go to the output, diagnostics to the error output. The status is 0 if every input went well and 1 if one did not; the session goes on after a mistake, as it does at a terminal. Programs that read lines (`io.readLine`) read them from the same input, after the line that calls them.

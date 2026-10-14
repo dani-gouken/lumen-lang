@@ -582,7 +582,11 @@ func TestPackages(t *testing.T) {
 	for _, d := range errs.Diagnostics {
 		t.Fatalf("unexpected diagnostic:\n%s", d.String())
 	}
-	want := "vendor/std.lum vendor/std/list.lum vendor/std/text/pad.lum ../shared/shapes/circle.lum util.lum"
+	// The program calls methods, and std is one of its packages: the
+	// modules that would give the builtin types theirs are looked for
+	// there, once each, and are not there
+	want := "vendor/std/arrays.lum vendor/std/strings.lum vendor/std/math.lum " +
+		"vendor/std.lum vendor/std/list.lum vendor/std/text/pad.lum ../shared/shapes/circle.lum util.lum"
 	if got := strings.Join(read, " "); got != want {
 		t.Errorf("expected the files\n  %s\ngot\n  %s", want, got)
 	}

@@ -456,7 +456,7 @@ slots; the names are kept once per shape.
 Positions in a text are characters; its bytes are UTF-8. A text of plain
 ASCII is indexed directly. For any other, where every 32nd character starts is
 worked out the first time a position is asked for and kept, so `text[i]`,
-the length and `strings.substring` do not depend on how long the text is. The
+the length and `substring` do not depend on how long the text is. The
 texts of one ASCII character, which is what indexing mostly gives, are made
 once each.
 

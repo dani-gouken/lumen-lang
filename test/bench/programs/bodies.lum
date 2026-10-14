@@ -63,7 +63,7 @@ fn main() -> Int {
     let bodies: [Body] = [];
 
     for i in 0..400 {
-        push(bodies, Body {
+        bodies.push(Body {
             position: Vec { x: (i * 37) % size, y: (i * 91) % size },
             speed: Vec { x: i % 7 - 3, y: i % 5 - 2 },
             bounces: 0,
@@ -89,8 +89,8 @@ fn main() -> Int {
     println(
         bounces,
         spread,
-        centre.x / arrays.len(bodies),
-        centre.y / arrays.len(bodies),
+        centre.x / bodies.len(),
+        centre.y / bodies.len(),
         centre.scaled(2).manhattan(),
     );
 

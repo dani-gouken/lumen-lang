@@ -39,16 +39,16 @@ pub fn parseWith(text: String, separator: String) -> Result<[[String]], ParseErr
 
     if found == null {
         let parts = problem();
-        let where = strings.split(parts[0], ":");
+        let where = parts[0].split(":");
 
-        if arrays.len(where) < 2 {
+        if where.len() < 2 {
             return Result.Err(ParseError { message: parts[1], line: 0, column: 0 });
         }
 
         return Result.Err(ParseError {
             message: parts[1],
-            line: strings.parseInt(where[0]) ?? 0,
-            column: strings.parseInt(where[1]) ?? 0,
+            line: where[0].parseInt() ?? 0,
+            column: where[1].parseInt() ?? 0,
         });
     }
 
@@ -76,37 +76,37 @@ pub fn table(text: String) -> Result<Table, ParseError> {
 }
 
 fn asTable(all: [[String]]) -> Result<Table, ParseError> {
-    if arrays.len(all) == 0 {
+    if all.len() == 0 {
         return Result.Err(ParseError { message: "there is no header row", line: 0, column: 0 });
     }
 
     let header = all[0];
 
     for i, row in all {
-        if arrays.len(row) != arrays.len(header) {
+        if row.len() != header.len() {
             return Result.Err(ParseError {
-                message: "expected ${arrays.len(header)} values, as in the header, found ${arrays.len(row)}",
+                message: "expected ${header.len()} values, as in the header, found ${row.len()}",
                 line: i + 1,
                 column: 1,
             });
         }
     }
 
-    return Result.Ok(Table { header: header, rows: arrays.slice(all, 1, arrays.len(all)) });
+    return Result.Ok(Table { header: header, rows: all.slice(1, all.len()) });
 }
 
 impl Table {
     pub fn size() -> Int {
-        return arrays.len(self.rows);
+        return self.rows.len();
     }
 
     // The values of a column, or null if there is none of that name.
     pub fn column(name: String) -> [String]? {
-        let at = arrays.indexOf(self.header, name)?;
+        let at = self.header.indexOf(name)?;
         let out: [String] = [];
 
         for row in self.rows {
-            push(out, row[at]);
+            out.push(row[at]);
         }
 
         return out;
@@ -114,9 +114,9 @@ impl Table {
 
     // The value of a column in a row, or null.
     pub fn cell(row: Int, name: String) -> String? {
-        let at = arrays.indexOf(self.header, name);
+        let at = self.header.indexOf(name);
 
-        if at == null || row < 0 || row >= arrays.len(self.rows) {
+        if at == null || row < 0 || row >= self.rows.len() {
             return null;
         }
 
@@ -134,7 +134,7 @@ impl Table {
                 record.set(name, row[i]);
             }
 
-            push(out, record);
+            out.push(record);
         }
 
         return out;
@@ -146,7 +146,7 @@ impl Table {
 
         for i, record in self.records() {
             if wanted(record) {
-                push(kept, self.rows[i]);
+                kept.push(self.rows[i]);
             }
         }
 
@@ -155,7 +155,7 @@ impl Table {
 
     // The table as CSV text, header first.
     pub fn write() -> String {
-        return text(arrays.concat([self.header], self.rows), ",");
+        return text([self.header].concat(self.rows), ",");
     }
 }
 

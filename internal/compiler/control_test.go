@@ -38,7 +38,7 @@ func TestMatchGivesAValue(t *testing.T) {
 		}
 
 		fn first(items: [Int]) -> Int? {
-			let head = match arrays.len(items) {
+			let head = match items.len() {
 				case 0: { return null; }
 				default: items[0];
 			};
@@ -87,16 +87,16 @@ func TestMatchGivesAValue(t *testing.T) {
 
 		// One of the values is null: the match gives an optional
 		let maybe = match short { case 4: "four"; default: null; };
-		println(maybe ?? "nothing", strings.len(maybe ?? ""));
+		println(maybe ?? "nothing", (maybe ?? "").len());
 
 		// As an argument, in a function written with '->', inside another
-		println(arrays.map([1, 2, 3], n -> match n { case 2: 0; default: n * 2; }));
+		println([1, 2, 3].map(n -> match n { case 2: 0; default: n * 2; }));
 		println(match short { case 4: match name { case "square": "yes"; default: "no"; }; default: "never"; });
 
 		// On types: inside the case the value is of that type
 		let mixed: [Int | String] = [1, "two"];
 		for value in mixed {
-			println(match value { case Int: value + 1; case String: strings.len(value); default: 0; });
+			println(match value { case Int: value + 1; case String: value.len(); default: 0; });
 		}
 	`, `dog cat
 circle 2 rect 1 by 2.5 dot
@@ -141,7 +141,7 @@ func TestMatchGuardsAndAlternatives(t *testing.T) {
 			match value {
 				case Int | Float: { return "number"; }
 				case String if value == "": { return "empty"; }
-				case String: { return "text of ${strings.len(value)}"; }
+				case String: { return "text of ${value.len()}"; }
 				default: { return "?"; }
 			}
 		}
@@ -242,7 +242,7 @@ func TestRanges(t *testing.T) {
 
 		// Each iteration has its own variable for the functions made in it
 		let fns: [fn() -> Int] = [];
-		for i in 0..3 { push(fns, () -> i * i); }
+		for i in 0..3 { fns.push(() -> i * i); }
 		for f in fns { print(f(), ""); }
 		println("");
 
@@ -268,7 +268,7 @@ func TestDefer(t *testing.T) {
 
 		struct Journal { lines: [String]; }
 		impl Journal {
-			fn note(text: String) { push(self.lines, text); }
+			fn note(text: String) { self.lines.push(text); }
 			fn read() -> [String] {
 				let lines = self.lines;
 				self.lines = [];
@@ -277,7 +277,7 @@ func TestDefer(t *testing.T) {
 		}
 
 		fn parse(text: String) -> Result<Int, String> {
-			let n = strings.parseInt(text);
+			let n = text.parseInt();
 			if n == null { return Result.Err("not a number: ${text}"); }
 			return Result.Ok(n);
 		}
@@ -338,8 +338,8 @@ func TestDefer(t *testing.T) {
 		fn closures() -> [fn() -> Int] {
 			let fns: [fn() -> Int] = [];
 			for i in 0..3 {
-				defer push(fns, () -> i * 10);
-				push(fns, () -> i);
+				defer fns.push(() -> i * 10);
+				fns.push(() -> i);
 			}
 			return fns;
 		}
@@ -354,7 +354,7 @@ func TestDefer(t *testing.T) {
 		println(loops(journal), journal.read());
 
 		let outs: [Int] = [];
-		for f in closures() { push(outs, f()); }
+		for f in closures() { outs.push(f()); }
 		println(outs);
 
 		// A block of its own: left at its closing brace
@@ -395,7 +395,7 @@ func TestDeferRunsWhenSomethingFails(t *testing.T) {
 
 		struct Journal { lines: [String]; }
 		impl Journal {
-			fn note(text: String) { push(self.lines, text); }
+			fn note(text: String) { self.lines.push(text); }
 			fn read() -> [String] {
 				let lines = self.lines;
 				self.lines = [];
@@ -457,7 +457,7 @@ func TestDeferRunsWhenSomethingFails(t *testing.T) {
 
 		// When nothing fails after all, they run once
 		println(attempt(() -> deep(0 - 1, journal)).isErr());
-		println(arrays.len(journal.read()) > 100);
+		println(journal.read().len() > 100);
 
 		// In a task: the failure reaches whoever waits, the cleanup has run
 		let work = task.run(fn() { defer journal.note("task cleaned"); deep(1, journal); });

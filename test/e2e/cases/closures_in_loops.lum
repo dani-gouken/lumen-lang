@@ -10,7 +10,7 @@ fn schedule(names: [String]) -> [Task] {
     for i, name in names {
         let attempts = 0;
 
-        push(tasks, Task {
+        tasks.push(Task {
             name: name,
             run: fn() -> String {
                 attempts++;
@@ -40,7 +40,7 @@ fn main() -> Int {
     while factor <= 3 {
         let by = factor;
 
-        push(multipliers, fn(n: Int) -> Int {
+        multipliers.push(fn(n: Int) -> Int {
             return n * by;
         });
 

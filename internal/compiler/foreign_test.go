@@ -152,7 +152,7 @@ func foreignModules(library string) sources {
 
 			fn main() {
 				let colors = [Color { r: 1, g: 2, b: 3 }, probe.opaque(9, 8, 7), probe.probe_color_unpack(16909060)];
-				println(arrays.map(colors, c -> probe.probe_color_pack(c)));
+				println(colors.map(c -> probe.probe_color_pack(c)));
 				let at = Vec2 { x: 1.0, y: 1.0 }.plus(Vec2 { x: 0.5, y: 2.0 }).plus(probe.unit());
 				println("${at.x} ${at.y}");
 				println(probe.sum([1, 2, 3, 4]));
@@ -180,7 +180,7 @@ func foreignModules(library string) sources {
 			pub fn sum(values: [Int]) -> Int {
 				let address = ffi.int32s(values);
 				defer ffi.free(address);
-				return probe_sum(address, arrays.len(values));
+				return probe_sum(address, values.len());
 			}
 		`,
 	}

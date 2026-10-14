@@ -7,10 +7,10 @@ import std.arrays;
 // How many bytes a text takes in UTF-8: "é" is one character and two
 // bytes. For what counts in bytes: a file's size, the length a protocol
 // announces.
-pub extern fn byteLength(text: String) -> Int;
+extern fn byteLength(text: String) -> Int;
 
 // How many characters a text has.
-pub fn len(text: String) -> Int {
+fn len(text: String) -> Int {
     return __len(text);
 }
 
@@ -18,15 +18,15 @@ pub fn len(text: String) -> Int {
 
 // The characters from `from` up to, not including, `to`. Fails if the
 // range is not inside the text.
-pub extern fn substring(text: String, from: Int, to: Int) -> String;
+extern fn substring(text: String, from: Int, to: Int) -> String;
 
 // The text from position `from` to its end.
-pub fn from(text: String, from: Int) -> String {
+fn from(text: String, from: Int) -> String {
     return substring(text, from, len(text));
 }
 
 // The first `count` characters, or the whole text if it is shorter.
-pub fn first(text: String, count: Int) -> String {
+fn first(text: String, count: Int) -> String {
     if count >= len(text) {
         return text;
     }
@@ -39,7 +39,7 @@ pub fn first(text: String, count: Int) -> String {
 }
 
 // The last `count` characters, or the whole text if it is shorter.
-pub fn last(text: String, count: Int) -> String {
+fn last(text: String, count: Int) -> String {
     if count >= len(text) {
         return text;
     }
@@ -53,23 +53,23 @@ pub fn last(text: String, count: Int) -> String {
 
 // The pieces between occurrences of the separator: split("a,b", ",") is
 // ["a", "b"]. An empty separator gives the characters.
-pub extern fn split(text: String, separator: String) -> [String];
+extern fn split(text: String, separator: String) -> [String];
 
-pub fn chars(text: String) -> [String] {
+fn chars(text: String) -> [String] {
     return split(text, "");
 }
 
 // The lines of a text, without their line ends.
-pub fn lines(text: String) -> [String] {
+fn lines(text: String) -> [String] {
     let parts = split(replace(text, "\r\n", "\n"), "\n");
 
     // A text ending in a line end has no empty line after it
-    if arrays.len(parts) > 0 && parts[arrays.len(parts) - 1] == "" {
+    if parts.len() > 0 && parts[parts.len() - 1] == "" {
         let out: [String] = [];
 
         for i, part in parts {
-            if i < arrays.len(parts) - 1 {
-                push(out, part);
+            if i < parts.len() - 1 {
+                out.push(part);
             }
         }
 
@@ -80,14 +80,14 @@ pub fn lines(text: String) -> [String] {
 }
 
 // The words of a text: what is between spaces, tabs and line ends.
-pub fn words(text: String) -> [String] {
+fn words(text: String) -> [String] {
     let out: [String] = [];
     let word = "";
 
     for c in text {
         if c == " " || c == "\t" || c == "\n" || c == "\r" {
             if word != "" {
-                push(out, word);
+                out.push(word);
             }
 
             word = "";
@@ -97,7 +97,7 @@ pub fn words(text: String) -> [String] {
     }
 
     if word != "" {
-        push(out, word);
+        out.push(word);
     }
 
     return out;
@@ -106,13 +106,13 @@ pub fn words(text: String) -> [String] {
 // --- Putting together ---
 
 // The parts with the separator between them: join(["a", "b"], ", ").
-pub extern fn join(parts: [String], separator: String) -> String;
+extern fn join(parts: [String], separator: String) -> String;
 
 // The text `count` times over.
-pub extern fn repeat(text: String, count: Int) -> String;
+extern fn repeat(text: String, count: Int) -> String;
 
 // The text with spaces in front until it is `width` characters long.
-pub fn padLeft(text: String, width: Int) -> String {
+fn padLeft(text: String, width: Int) -> String {
     if len(text) >= width {
         return text;
     }
@@ -121,7 +121,7 @@ pub fn padLeft(text: String, width: Int) -> String {
 }
 
 // The text with spaces after it until it is `width` characters long.
-pub fn padRight(text: String, width: Int) -> String {
+fn padRight(text: String, width: Int) -> String {
     if len(text) >= width {
         return text;
     }
@@ -129,13 +129,13 @@ pub fn padRight(text: String, width: Int) -> String {
     return text + repeat(" ", width - len(text));
 }
 
-pub fn reverse(text: String) -> String {
+fn reverse(text: String) -> String {
     let parts = chars(text);
     let out: [String] = [];
-    let i = arrays.len(parts) - 1;
+    let i = parts.len() - 1;
 
     while i >= 0 {
-        push(out, parts[i]);
+        out.push(parts[i]);
         i--;
     }
 
@@ -145,25 +145,25 @@ pub fn reverse(text: String) -> String {
 // --- Searching ---
 
 // Where `part` first occurs, or null.
-pub extern fn indexOf(text: String, part: String) -> Int?;
+extern fn indexOf(text: String, part: String) -> Int?;
 
 // Where `part` last occurs, or null.
-pub extern fn lastIndexOf(text: String, part: String) -> Int?;
+extern fn lastIndexOf(text: String, part: String) -> Int?;
 
-pub fn contains(text: String, part: String) -> Bool {
+fn contains(text: String, part: String) -> Bool {
     return indexOf(text, part) != null;
 }
 
 // What is before the first occurrence of a separator, and what is after
 // it; null if the text does not hold it.
 //
-//     let (name, value) = strings.cut("port=8080", "=") ?? ("", "");
-pub fn cut(text: String, separator: String) -> (String, String)? {
+//     let (name, value) = "port=8080".cut("=") ?? ("", "");
+fn cut(text: String, separator: String) -> (String, String)? {
     let at = indexOf(text, separator)?;
     return (first(text, at), from(text, at + len(separator)));
 }
 
-pub fn startsWith(text: String, start: String) -> Bool {
+fn startsWith(text: String, start: String) -> Bool {
     if len(start) > len(text) {
         return false;
     }
@@ -171,7 +171,7 @@ pub fn startsWith(text: String, start: String) -> Bool {
     return substring(text, 0, len(start)) == start;
 }
 
-pub fn endsWith(text: String, end: String) -> Bool {
+fn endsWith(text: String, end: String) -> Bool {
     if len(end) > len(text) {
         return false;
     }
@@ -180,31 +180,31 @@ pub fn endsWith(text: String, end: String) -> Bool {
 }
 
 // How many times `part` occurs, not counting overlaps.
-pub fn count(text: String, part: String) -> Int {
+fn count(text: String, part: String) -> Int {
     if part == "" {
         return 0;
     }
 
-    return arrays.len(split(text, part)) - 1;
+    return split(text, part).len() - 1;
 }
 
 // --- Changing ---
 
 // Every occurrence of `old` replaced. Fails if `old` is empty.
-pub extern fn replace(text: String, old: String, with: String) -> String;
+extern fn replace(text: String, old: String, with: String) -> String;
 
-pub extern fn upper(text: String) -> String;
-pub extern fn lower(text: String) -> String;
+extern fn upper(text: String) -> String;
+extern fn lower(text: String) -> String;
 
 // Without the spaces, tabs and line ends at both ends.
-pub extern fn trim(text: String) -> String;
+extern fn trim(text: String) -> String;
 
 // Without the spaces and line ends at the start only, or at the end only.
-pub extern fn trimStart(text: String) -> String;
-pub extern fn trimEnd(text: String) -> String;
+extern fn trimStart(text: String) -> String;
+extern fn trimEnd(text: String) -> String;
 
 // The first character in upper case: capitalize("ada") is "Ada".
-pub fn capitalize(text: String) -> String {
+fn capitalize(text: String) -> String {
     if text == "" {
         return text;
     }
@@ -214,17 +214,17 @@ pub fn capitalize(text: String) -> String {
 
 // --- Asking ---
 
-pub fn isEmpty(text: String) -> Bool {
+fn isEmpty(text: String) -> Bool {
     return len(text) == 0;
 }
 
 // Empty, or only spaces, tabs and line ends.
-pub fn isBlank(text: String) -> Bool {
+fn isBlank(text: String) -> Bool {
     return len(trim(text)) == 0;
 }
 
 // Whether every character is a digit, and there is at least one.
-pub fn isDigits(text: String) -> Bool {
+fn isDigits(text: String) -> Bool {
     if text == "" {
         return false;
     }
@@ -242,25 +242,25 @@ pub fn isDigits(text: String) -> Bool {
 
 // The whole number a text spells, or null: parseInt("42") is 42,
 // parseInt("4x") is null.
-pub extern fn parseInt(text: String) -> Int?;
+extern fn parseInt(text: String) -> Int?;
 
 // The number a text spells, or null: parseFloat("2.5").
-pub extern fn parseFloat(text: String) -> Float?;
+extern fn parseFloat(text: String) -> Float?;
 
 // The number of the first character: code("A") is 65. Fails for "".
-pub extern fn code(text: String) -> Int;
+extern fn code(text: String) -> Int;
 
 // The character with that number: fromCode(65) is "A".
 pub extern fn fromCode(code: Int) -> String;
 
 // A number that is the same for equal texts and, almost always, different
 // for different ones. Never negative.
-pub extern fn hash(text: String) -> Int;
+extern fn hash(text: String) -> Int;
 
 // --- The same, as methods ---
 //
 // Everything above that works on a text is also a method of texts:
-// strings.trim(name) is name.trim(), and calls follow one another:
+// name.trim() is name.trim(), and calls follow one another:
 // line.trim().lower().split(",").
 
 impl String {
@@ -353,7 +353,7 @@ impl String {
     // What is before the first occurrence of a separator, and what is after
     // it; null if the text does not hold it.
     //
-    //     let (name, value) = strings.cut("port=8080", "=") ?? ("", "");
+    //     let (name, value) = "port=8080".cut("=") ?? ("", "");
     pub fn cut(separator: String) -> (String, String)? {
         return cut(self, separator);
     }

@@ -56,7 +56,7 @@ The variant is always written with its enum: `Shape.Circle`, never `Circle` alon
 A variant with values, not called, is the function that makes one:
 
 ```rust
-let circles = arrays.map([1.0, 2.0, 3.0], Shape.Circle);    // [Shape]
+let circles = [1.0, 2.0, 3.0].map(Shape.Circle);    // [Shape]
 let make: fn(Float) -> Shape = Shape.Circle;
 ```
 
@@ -295,7 +295,7 @@ In a pattern the type arguments are those of the value being matched; the names 
 fn first(r: Result<[Int], String>) -> Int {
     match r {
         case Result.Ok(items): { return items[0]; }       // items: [Int]
-        case Result.Err(message): { return strings.len(message); }  // message: String
+        case Result.Err(message): { return message.len(); }  // message: String
     }
 }
 ```

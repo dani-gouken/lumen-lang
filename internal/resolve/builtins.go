@@ -7,6 +7,10 @@ import "github.com/dani-gouken/lumen/internal/ast"
 // language has no `.length`.
 const LengthFunction = "__len"
 
+// PushFunction is the builtin that adds an item at the end of an array.
+// The method `push` of arrays is written with it.
+const PushFunction = "__push"
+
 // ConstantPrefix starts the name of the function that makes the value of
 // a constant that is a struct, an array or a value of an enum. No program
 // writes such a function: the compiler does, one for each of those
@@ -54,8 +58,10 @@ func Builtins() []*ast.FnDecl {
 		},
 		// Stops the program with a message. It never returns.
 		{Name: "panic", Params: variadicAny("message"), ReturnType: basic("Void")},
+		// Adds an item at the end of an array: what items.push(value) is
+		// made of, under a name no program writes
 		{
-			Name: "push",
+			Name: PushFunction,
 			Params: []*ast.Param{
 				{Name: "array", Type: basic("Any")},
 				{Name: "value", Type: basic("Any")},

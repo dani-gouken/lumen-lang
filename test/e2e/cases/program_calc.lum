@@ -31,7 +31,7 @@ fn tokenize(input: String) -> [Token]? {
     let tokens: [Token] = [];
     let i = 0;
 
-    while i < strings.len(input) {
+    while i < input.len() {
         let ch = input[i];
 
         if ch == " " {
@@ -43,20 +43,20 @@ fn tokenize(input: String) -> [Token]? {
             let value = 0;
             let text = "";
 
-            while i < strings.len(input) && isDigit(input[i]) {
+            while i < input.len() && isDigit(input[i]) {
                 value = value * 10 + digitValue(input[i]);
                 text += input[i];
                 i++;
             }
 
-            push(tokens, Token { kind: "num", text: text, value: value });
+            tokens.push(Token { kind: "num", text: text, value: value });
             continue;
         }
 
         if ch == "(" || ch == ")" {
-            push(tokens, Token { kind: ch, text: ch, value: 0 });
+            tokens.push(Token { kind: ch, text: ch, value: 0 });
         } else if ch == "+" || ch == "-" || ch == "*" || ch == "/" {
-            push(tokens, Token { kind: "op", text: ch, value: 0 });
+            tokens.push(Token { kind: "op", text: ch, value: 0 });
         } else {
             return null;
         }
@@ -64,7 +64,7 @@ fn tokenize(input: String) -> [Token]? {
         i++;
     }
 
-    push(tokens, Token { kind: "end", text: "", value: 0 });
+    tokens.push(Token { kind: "end", text: "", value: 0 });
     return tokens;
 }
 
@@ -173,7 +173,7 @@ impl Parser {
     }
 
     fn fail(message: String) -> Expr {
-        push(self.errors, message + " at token " + toString(self.pos));
+        self.errors.push(message + " at token " + toString(self.pos));
         return Num { value: 0 };
     }
 
@@ -254,7 +254,7 @@ fn calculate(input: String) -> Outcome<Int> {
         parser.fail("unexpected input");
     }
 
-    if arrays.len(parser.errors) > 0 {
+    if parser.errors.len() > 0 {
         return Outcome<Int> { input: input, value: null, note: parser.errors[0] };
     }
 
@@ -318,6 +318,6 @@ fn main() -> Int {
     let tokens = tokenize("1 + 2 * -(3 - 4)") as [Token];
     let parser = Parser { tokens: tokens, pos: 0, errors: [] };
     let tree = parser.expr();
-    println(tree.show(), "has", countNodes(tree), "nodes and", arrays.len(tokens), "tokens");
+    println(tree.show(), "has", countNodes(tree), "nodes and", tokens.len(), "tokens");
     return failures;
 }
