@@ -1,6 +1,7 @@
 package e2e
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -74,5 +75,48 @@ func TestScripts(t *testing.T) {
 	}
 	if text := read(t, dir, "check.lum"); !strings.HasPrefix(text, "#!/usr/bin/env lumen\n") {
 		t.Errorf("expected lumen fmt to keep the #! line, got\n%s", text)
+	}
+}
+
+// TestCheck compiles programs without running them, and says what is
+// wrong as text or as JSON, for a CI step or an agent.
+func TestCheck(t *testing.T) {
+	dir := project(t, map[string]string{
+		"good.lum": "fn main() -> Int {\n    println(\"never run\");\n    return 0;\n}\n",
+		"bad.lum":  "fn main() -> Int {\n    let s = [1, 2];\n    return s.lenght();\n}\n",
+	})
+	run := func(args ...string) (string, string, int) {
+		var stdout, stderr strings.Builder
+		cmd := exec.Command(lumen, args...)
+		cmd.Dir, cmd.Stdout, cmd.Stderr = dir, &stdout, &stderr
+		cmd.Run()
+		return stdout.String(), stderr.String(), cmd.ProcessState.ExitCode()
+	}
+
+	if out, _, status := run("check", "good.lum"); status != 0 || out != "good.lum: no problems\n" {
+		t.Errorf("expected good.lum to have no problems, without running, got %q (%d)", out, status)
+	}
+	if _, errs, status := run("check", "bad.lum"); status != 1 || !strings.Contains(errs, "an array has no method 'lenght'") {
+		t.Errorf("expected the mistake of bad.lum, got %q (%d)", errs, status)
+	}
+
+	out, _, status := run("check", "--json", "good.lum", "bad.lum")
+	var report struct {
+		OK          bool     `json:"ok"`
+		Files       []string `json:"files"`
+		Diagnostics []struct {
+			Severity, Code, Message, File, Suggestion string
+			Line, Column                              int
+		} `json:"diagnostics"`
+	}
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("expected JSON, got %v:\n%s", err, out)
+	}
+	if status != 1 || report.OK || len(report.Files) != 2 || len(report.Diagnostics) != 1 {
+		t.Fatalf("unexpected report (%d): %+v", status, report)
+	}
+	d := report.Diagnostics[0]
+	if d.Severity != "error" || d.Code != "E2015" || d.File != "bad.lum" || d.Line != 3 || d.Suggestion != "Did you mean 'len'?" {
+		t.Errorf("unexpected diagnostic: %+v", d)
 	}
 }

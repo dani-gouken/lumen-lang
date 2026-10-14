@@ -126,9 +126,32 @@ All of raylib is declared in [examples/raylib](examples/raylib), with a Breakout
 - **Reflection** ([`std.reflect`](docs/stdlib.md#stdreflect)): a value asked at run time for its type, its fields by name, the variant of its enum. Enough to write a serializer that was never told about your structs.
 - **The compiler as a module** ([`std.compiler`](docs/stdlib.md#stdcompiler)): the mistakes of a program, what it declares, what a name is and where it comes from. The language server is 350 lines on top of it.
 
+### Scripts that don't break
+
+A file that starts with `#!/usr/bin/env lumen` runs on its own, and [`std.sh`](docs/stdlib.md#stdsh) runs the commands it is made of: what they write shows as it comes, and one that fails stops the script, saying which and why.
+
+```rust
+#!/usr/bin/env lumen
+import std.sh;
+
+fn main() -> Int {
+    sh.run("composer install --no-interaction");
+    let branch = sh.output("git rev-parse --abbrev-ref HEAD");
+
+    match sh.attempt("composer pint-test") {
+        case Result.Ok(_): { println("✓ lint on ${branch}"); }
+        case Result.Err(failed): { println("✗ lint, status", failed.status); }
+    }
+    sh.run("git tag release-${branch} -m 'Released from ${branch}'");   // a value never splits
+    return 0;
+}
+```
+
+A command is written as it is typed, and what `${...}` puts in it stays one argument: no shell reads it, so a value cannot become another command. A misspelt name is found before anything runs, and `?` in `main` ends the script with the reason.
+
 ### The whole toolchain, in one binary
 
-`lumen run`, `build` to bytecode, `test`, `fmt`, a REPL, a bytecode assembler and disassembler, a debugger that shows source lines, a look at the intermediate representation, limits on memory and call depth, and `lumen lsp`.
+`lumen run`, `build` to bytecode, `test`, `fmt`, `check` (`--json` for a CI step or an agent: every mistake with its code, its place and what usually fixes it), a REPL, a bytecode assembler and disassembler, a debugger that shows source lines, a look at the intermediate representation, limits on memory and call depth, and `lumen lsp`.
 
 ```text
 $ lumen test
@@ -164,6 +187,7 @@ Variables, functions and types stay from one line to the next, a declaration typ
 - **Syntax and semantics**: [docs/language-spec.md](docs/language-spec.md) (draft, with an implementation status table)
 - **How the compiler works**: [docs/compilation/pipeline.md](docs/compilation/pipeline.md)
 - **What is not there yet**: [docs/missing.md](docs/missing.md)
+- **For an AI writing Lumen**: [llms.txt](llms.txt), the language on one page
 
 ## What is luvm?
 

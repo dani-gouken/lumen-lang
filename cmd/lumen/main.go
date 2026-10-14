@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -117,7 +118,7 @@ func parseOptions(args []string) []string {
 		}
 		isOurs := name == "--heap-mb" || name == "--max-depth" || arg == "--strip"
 		// fmt and test have options of their own, which they read themselves
-		ofTool := len(rest) >= 2 && (rest[1] == "fmt" || rest[1] == "test")
+		ofTool := len(rest) >= 2 && (rest[1] == "fmt" || rest[1] == "test" || rest[1] == "check")
 		if !strings.HasPrefix(arg, "--") || ((afterFile || ofTool) && !isOurs) {
 			rest = append(rest, arg)
 			continue
@@ -220,6 +221,9 @@ func main() {
 	case "test":
 		cmdTest(os.Args[2:])
 
+	case "check":
+		cmdCheck(os.Args[2:])
+
 	case "asm":
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: lumen asm <input.lasm> <output.lc>")
@@ -260,7 +264,7 @@ func main() {
 
 // commands are the first words lumen understands. A file of that name is
 // run with lumen run.
-var commands = []string{"run", "build", "ir", "repl", "lsp", "fmt", "test", "asm", "disasm", "exec", "runasm", "lumdbg"}
+var commands = []string{"run", "build", "ir", "repl", "lsp", "fmt", "test", "check", "asm", "disasm", "exec", "runasm", "lumdbg"}
 
 // isProgram reports whether a first argument names a program to run
 // rather than a command: a .lum or .lc file, or any file that is not
@@ -287,6 +291,7 @@ func printHelp() {
 	fmt.Println("  lumen ir <file.lum>        Print the intermediate representation")
 	fmt.Println("  lumen repl                 Type Lumen in a line at a time")
 	fmt.Println("  lumen test [files]         Run the tests: the functions test...() of the files *_test.lum")
+	fmt.Println("  lumen check [--json] [files] Compile without running and say what is wrong; --json for tools")
 	fmt.Println("  lumen fmt [files]          Format .lum files where they are; --check only says which would change")
 	fmt.Println("  lumen lsp                  Start the language server, for an editor to talk to")
 	fmt.Println("  lumen asm <in> <out>       Assemble .lasm to .lc bytecode")
@@ -491,6 +496,84 @@ func cmdFmt() {
 // Each file is a program of its own, compiled with a main that runs its
 // tests (see internal/testrun). The process ends with 1 if a test failed
 // or a file could not be run.
+// cmdCheck compiles programs without running them and says what is wrong
+// with them: for an editor, a CI step or an agent that writes code. With
+// --json the diagnostics are one JSON document on the standard output.
+func cmdCheck(args []string) {
+	const usage = "Usage: lumen check [--json] [file.lum | project folder]..."
+	asJSON := false
+	var paths []string
+	for _, arg := range args {
+		switch {
+		case arg == "--json":
+			asJSON = true
+		case strings.HasPrefix(arg, "-"):
+			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", arg, usage)
+			os.Exit(2)
+		default:
+			paths = append(paths, arg)
+		}
+	}
+	if len(paths) == 0 {
+		paths = []string{""}
+	}
+
+	type position struct {
+		File      string `json:"file"`
+		Line      int    `json:"line"`
+		Column    int    `json:"column"`
+		EndColumn int    `json:"endColumn,omitempty"`
+	}
+	type diagnostic struct {
+		Severity string `json:"severity"`
+		Code     string `json:"code"`
+		Message  string `json:"message"`
+		position
+		Suggestion string `json:"suggestion,omitempty"`
+	}
+	report := struct {
+		OK          bool         `json:"ok"`
+		Files       []string     `json:"files"`
+		Diagnostics []diagnostic `json:"diagnostics"`
+	}{OK: true, Diagnostics: []diagnostic{}}
+
+	for _, path := range paths {
+		file := sourceFile(path, usage)
+		report.Files = append(report.Files, file)
+		errs := errors.NewHandler()
+		if _, err := compiler.CompileFileOptions(file, projectOptions(file), errs); err != nil {
+			fatal(err)
+		}
+		for _, d := range errs.Diagnostics {
+			if d.Severity == errors.SeverityError {
+				report.OK = false
+			}
+			if !asJSON {
+				fmt.Fprintln(os.Stderr, d.String())
+				continue
+			}
+			at := position{File: d.Pos.File, Line: d.Pos.Line, Column: d.Pos.Col}
+			if len(d.Highlights) > 0 {
+				at.EndColumn = d.Highlights[0].EndCol
+			}
+			report.Diagnostics = append(report.Diagnostics, diagnostic{
+				Severity: strings.ToLower(d.Severity.String()), Code: d.Code, Message: d.Message,
+				position: at, Suggestion: d.Suggestion,
+			})
+		}
+	}
+
+	if asJSON {
+		out, _ := json.MarshalIndent(report, "", "  ")
+		fmt.Println(string(out))
+	} else if report.OK {
+		fmt.Printf("%s: no problems\n", strings.Join(report.Files, ", "))
+	}
+	if !report.OK {
+		os.Exit(1)
+	}
+}
+
 func cmdTest(args []string) {
 	const usage = "Usage: lumen test [--filter=text] [file_test.lum | folder]..."
 	filter := ""
