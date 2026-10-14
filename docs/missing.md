@@ -29,7 +29,7 @@ Arrays, texts and numbers have methods: those of the library (`items.filter(isEv
 *   **An impl for arrays of arrays, or of optionals**: `impl<T> [[T]]`. An impl is for every array, or for the arrays of one named type; `arrays.flatten` stays a function for that reason.
 *   **A trait for the arrays of one type** (`impl Sized for [Int]`): what an array holds is not known when the program runs, which is when a value seen through a trait finds its method. A trait is implemented for every array.
 *   **Methods on tuples, optionals and functions.**
-*   **Starting as fast as before**: the module of the methods a program calls is compiled with it, every time. A program that calls a method of arrays takes about 40 ms longer to start than one that calls none.
+*   **Starting as fast as before**: the module of the methods a program calls is compiled with it, every time. A program that calls a method of arrays takes about 10 ms longer to start than one that calls none: its module is read and checked every time, though only what is used goes further.
 *   **`.length`** is still not a field: it is `items.len()`, and writing it is an error (`E2033`) that says so.
 
 ### More for failures — S to M each
