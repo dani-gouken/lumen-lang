@@ -71,6 +71,18 @@ The function has to return a `Result` whose reason is of the same type. When it 
 
 The same operator works on an optional, in a function that may return `null`: `let user = find(id)?;` gives the user, or returns `null`.
 
+**Nothing to give back.** A function that does something and may fail, with nothing to say when it worked, returns a `Result<Void, E>`, and `Result.Ok()` when it went well:
+
+```rust
+fn save(order: Order) -> Result<Void, String> {
+    if full() { return Result.Err("the disk is full"); }
+    write(order);
+    return Result.Ok();
+}
+```
+
+`save(order)?;` passes its failure on, and `case Result.Ok(_):` matches the success. `Result.Ok()` is refused where nothing says the value is `Void`.
+
 **The reason can be any type.** A text is the least useful: a program cannot act on it. An enum lets the caller tell the cases apart; a struct can carry whatever helps.
 
 ### An optional or a `Result`?

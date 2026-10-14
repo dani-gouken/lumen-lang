@@ -432,3 +432,42 @@ fn main() -> Int { panic("state:", P { x: 1 }, [1, 2], 3.5, true, null); }`)
 func regexpReplace(s, pattern, with string) string {
 	return regexp.MustCompile(pattern).ReplaceAllString(s, with)
 }
+
+// TestResultWithNothing checks a Result<Void, E>: what a function gives
+// that does something and may fail, but has nothing to say when it worked.
+func TestResultWithNothing(t *testing.T) {
+	expectOutput(t, failureImports+`
+		fn save(ok: Bool) -> Result<Void, String> {
+			if !ok { return Result.Err("disk full"); }
+			return Result.Ok();
+		}
+		fn both(second: Bool) -> Result<Void, String> {
+			save(true)?;
+			save(second)?;
+			return Result.Ok(null);
+		}
+	`, `
+		match save(true) {
+			case Result.Ok(_): { println("saved"); }
+			case Result.Err(reason): { println("not saved:", reason); }
+		}
+		println(both(true).isOk(), both(false).reason() ?? "fine");
+		let kept: Result<Void, String> = Result.Ok();
+		let made = Result<Void, String>.Ok();
+		println(kept.isOk(), made.isOk(), kept == made);
+	`, `saved
+true disk full
+true true true
+`)
+
+	for _, src := range []string{
+		"fn f() -> Result<Int, String> { return Result.Ok(); }",
+		"fn f() -> Int { let r = Result.Ok(); return 0; }",
+	} {
+		errs := errors.NewHandler()
+		Compile(failureImports+src+"\nfn main() -> Int { return 0; }", "test.lum", errs)
+		if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "Result.Ok holds 1 value, got 0") {
+			t.Errorf("expected Result.Ok() to be refused where its value is not Void: %s, got %v", src, errs.Diagnostics)
+		}
+	}
+}

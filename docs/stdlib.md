@@ -510,7 +510,7 @@ There is no separate `Option` type with `Some` and `None`: `T?` is that type, an
 
 For failures: returning one with its reason, and surviving one that would stop the program. The whole subject is in [errors.md](errors.md); this is the reference.
 
-**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none. The name `Result` needs no import: every file has it, unless it declares a `Result` of its own. The rest of the module (`attempt`, `Failure`, `Kind`) is imported as usual.
+**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none. A `Result<Void, E>` is for an action that has nothing to give back: `Result.Ok()` is its success. The name `Result` needs no import: every file has it, unless it declares a `Result` of its own. The rest of the module (`attempt`, `Failure`, `Kind`) is imported as usual.
 
 | Method | Gives |
 |--------|-------|
@@ -762,6 +762,16 @@ Running other programs the way a script does: what they write shows as they writ
 | `run(program, arguments)` | Runs a program and waits for it. What it writes, and writes as errors, goes where the script's does; it reads what the script would |
 | `output(program, arguments) -> String` | What the program wrote, without the line break at the end. What it writes as errors still shows |
 | `status(program, arguments) -> Int` | Runs it as `run` does and gives its status, 0 or not |
+| `attempt(program, arguments) -> Result<Void, Failed>` | Runs it as `run` does and, instead of stopping the script, gives what went wrong |
+
+A `Failed` has `command` (as it would be typed), `status` (`-1` for a program that could not be started), `err` (the last lines it wrote as errors, which were shown as well) and `describe()`, which says it as `run` would have:
+
+```rust
+match sh.attempt("composer", ["pint-test"]) {
+    case Result.Ok(_): { println("✓ pint"); }
+    case Result.Err(failed): { println("✗ pint, status", failed.status, "\n", failed.err); }
+}
+```
 
 ```rust
 #!/usr/bin/env lumen
@@ -785,7 +795,7 @@ A status other than 0 from `run` or `output`, or a program that cannot be starte
   --> check.lum:5:7 in function 'main'
 ```
 
-`status` stops only for a program that cannot be started. `attempt` survives either: `attempt(fn() -> Bool { sh.run("make", ["lint"]); return true; })`.
+`status` stops only for a program that cannot be started; `sh.attempt` stops for nothing.
 
 The arguments go to the program as they are, one by one. No shell reads them, so a space, a `;` or a `*` in one is part of it, and a value from outside cannot become another command. For what only a shell does, pipes or `*`, run one and say so: `sh.run("sh", ["-c", "cat *.log | grep ERROR"])`.
 

@@ -62,7 +62,6 @@ Most of this list has since been added, and the library and the examples rewritt
 | Missing | What it cost |
 |---------|--------------|
 | **`${` in a text that is not an insertion** | A regex replacement naming a group is `"\${year}"`: easy to forget, and the error is "undefined identifier 'year'" |
-| **A `Result` with nothing in it** | `fs.makeDir` gives back the path it was given, for want of a `Result<Void, Error>` |
 | **Keywords as names** | `for case in cases` is a syntax error; so are `match`, `in`, `is` as names of variables |
 
 ### Getting packages — L

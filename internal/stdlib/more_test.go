@@ -189,6 +189,26 @@ func TestShell(t *testing.T) {
 		"std.sh.run: sh -c 'exit 2' ended with status 2",
 		`std.sh.output: false 'a b' 'it'\''s' '' ended with status 1`,
 	)
+	expect(t, "import std.sh;", `
+		match sh.attempt("sh", ["-c", "echo working; echo first >&2; echo why it broke >&2; exit 3"]) {
+			case Result.Ok(_): { println("went well"); }
+			case Result.Err(failed): {
+				println(failed.status, failed.command);
+				println(failed.err.split("\n"));
+				println(failed.describe());
+			}
+		}
+		println(sh.attempt("true", []).isOk());
+		let missing = sh.attempt("no-such-program-of-lumen", ["x"]);
+		println(missing.reason()?.status, missing.reason()?.err, missing.reason()?.describe());
+	`,
+		"working",
+		"3 sh -c 'echo working; echo first >&2; echo why it broke >&2; exit 3'",
+		`["first", "why it broke"]`,
+		"sh -c 'echo working; echo first >&2; echo why it broke >&2; exit 3' ended with status 3",
+		"true",
+		"-1  there is no program called 'no-such-program-of-lumen'",
+	)
 	for _, call := range []string{`sh.run("no-such-program-of-lumen", [])`, `sh.status("no-such-program-of-lumen", ["x"])`} {
 		expectFailure(t, "import std.sh;", call+";", "there is no program called 'no-such-program-of-lumen'")
 	}

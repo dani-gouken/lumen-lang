@@ -7,7 +7,7 @@
 // A program ending with a status other than 0, or one that cannot be
 // started, stops the program here, naming the command and the status, as
 // `set -e` would in a shell, but saying why. Where a failure is expected,
-// sh.status gives the status instead; `attempt` survives the others.
+// sh.status gives the status instead, and sh.attempt what went wrong.
 //
 // The arguments go to the program as they are, one by one: no shell reads
 // them, so a space or a ';' in one is part of it. For std.os.run, which
@@ -26,3 +26,41 @@ pub extern fn output(program: String, arguments: [String]) -> String;
 //
 //     if sh.status("git", ["diff", "--quiet"]) != 0 { println("there are changes"); }
 pub extern fn status(program: String, arguments: [String]) -> Int;
+
+// A program that failed: what attempt gives instead of stopping the script.
+pub struct Failed {
+    command: String;  // as it would be typed
+    status: Int;      // what it ended with; -1 if it could not be started, or was stopped
+    err: String;      // the last lines it wrote as errors, which were shown as well
+    message: String;  // what went wrong, as run would have said it
+}
+
+impl Failed {
+    pub fn describe() -> String {
+        return self.message;
+    }
+}
+
+// Runs a program as run does, and gives what went wrong instead of
+// stopping the script:
+//
+//     match sh.attempt("composer", ["pint-test"]) {
+//         case Result.Ok(_): { println("✓ pint"); }
+//         case Result.Err(failed): { println("✗ pint, status", failed.status); }
+//     }
+pub fn attempt(program: String, arguments: [String]) -> Result<Void, Failed> {
+    let parts = attempted(program, arguments);
+
+    if parts[3] == "" {
+        return Result.Ok();
+    }
+
+    return Result.Err(Failed {
+        command: parts[1],
+        status: parts[0].parseInt() ?? -1,
+        err: parts[2],
+        message: parts[3],
+    });
+}
+
+extern fn attempted(program: String, arguments: [String]) -> [String];

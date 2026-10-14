@@ -1290,7 +1290,7 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 	var result Type
 	if member, ok := e.Func.(*ast.MemberExpr); ok && c.isVariantRef(member) {
 		// Shape.Circle(2.0): a value of an enum, not a method call
-		return c.checkVariant(member, e.Args, true, expected)
+		return c.checkVariant(member, e, expected)
 	} else if ok {
 		result = c.checkMethodCall(e, member, expected)
 	} else {
@@ -1390,7 +1390,7 @@ func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
 	if c.isVariantRef(e) {
 		expected := c.expected
 		c.expected = nil
-		return c.checkVariant(e, nil, false, expected)
+		return c.checkVariant(e, nil, expected)
 	}
 	recv := c.checkExpr(e.Expr)
 
