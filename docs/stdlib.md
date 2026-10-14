@@ -1066,13 +1066,24 @@ if newest != null && newest > installed { ... }
 A `Template` is a text written with `${...}` in it, kept in its pieces: `parts`, what was written around the values (one more than there are values), and `values`, what each `${...}` gave, as text. `text()` puts them together. A function whose parameter is a `Template` gets those, where one taking a `String` would get the text:
 
 ```rust
-import std.ops.{Template};
-
 fn shout(t: Template) -> String { ... }
 shout("hello ${name}, ${count} times");   // parts ["hello ", ", ", " times"], values [name, count]
 ```
 
-The function can then tell what the program wrote from what was put in it, which is how [`std.sh`](#stdsh) makes each value one argument of a command, and how a query or a page could escape what is put in them. Only a text written in the program becomes a `Template`: a `String` made elsewhere is refused, since nothing would then say which of it was written and which was put in.
+The function can then tell what the program wrote from what was put in it, which is how [`std.sh`](#stdsh) makes each value one argument of a command, and how a query or a page could escape what is put in them.
+
+A text written in the program becomes a `Template` wherever that is the type it must have: an argument, a variable or a field declared `Template`, a `return` from a function that returns one, an item of a `[Template]`. So a command can be kept, built by a function or carried in a struct:
+
+```rust
+struct Job { name: String; command: Template; }
+
+fn deploy(target: String) -> Template { return "make deploy ENV=${target}"; }
+
+let jobs = [Job { name: "lint", command: "composer pint-test" }, Job { name: "deploy", command: deploy(env) }];
+for job in jobs { sh.run(job.command); }
+```
+
+Like `Result`, the name `Template` needs no import. A `String` made elsewhere is refused where a `Template` is expected, since nothing would then say which of it was written and which was put in. Everywhere else, `"${...}"` is a `String` as always, and `t.text()` turns a `Template` into one.
 
 ---
 

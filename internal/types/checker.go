@@ -528,6 +528,7 @@ func (c *Checker) checkAssignment(e *ast.BinaryExpr) Type {
 
 	var right Type
 	if left != nil {
+		asTemplate(&e.Right, left)
 		right = c.checkExprAs(e.Right, left)
 	} else {
 		right = c.checkExpr(e.Right)
@@ -754,8 +755,9 @@ func (c *Checker) checkLetStmt(s *ast.LetStmt) {
 	}
 
 	declType := c.resolveType(s.Type)
+	asTemplate(&s.Value, declType)
 	valType := c.checkExprAs(s.Value, declType)
-	if valType != nil && !c.assignable(declType, valType) {
+	if valType != nil && !c.assignable(declType, valType) && !c.refusedAsTemplate(s.Value, declType, valType, ErrTypeMismatch) {
 		c.errorfWithSuggestion(s.Value.Token(), ErrTypeMismatch, fmt.Sprintf("Ensure the value is of type %s", describe(declType)), "cannot assign type %s to %s", valType, declType)
 	}
 }
@@ -777,9 +779,10 @@ func (c *Checker) checkReturnStmt(s *ast.ReturnStmt) {
 	}
 
 	if s.Value != nil {
+		asTemplate(&s.Value, returnType)
 		valType := c.checkExprAs(s.Value, returnType)
 		if valType != nil {
-			if !c.assignable(returnType, valType) {
+			if !c.assignable(returnType, valType) && !c.refusedAsTemplate(s.Value, returnType, valType, ErrReturnMismatch) {
 				c.errorfWithSuggestion(s.Value.Token(), ErrReturnMismatch, fmt.Sprintf("Ensure the return value is of type %s", describe(returnType)), "cannot return type %s from function returning %s", valType, returnType)
 			}
 		}
@@ -1363,8 +1366,11 @@ func (c *Checker) checkStructInitExpr(e *ast.StructInitExpr) Type {
 			c.errorf(value.Token(), ErrUnknownField, "struct %s has no field '%s'", e.Name, name)
 			continue
 		}
+		if asTemplate(&value, fieldType) {
+			e.Fields[name] = value
+		}
 		valType := c.checkExprAs(value, fieldType)
-		if valType != nil && !c.assignable(fieldType, valType) {
+		if valType != nil && !c.assignable(fieldType, valType) && !c.refusedAsTemplate(value, fieldType, valType, ErrTypeMismatch) {
 			c.errorf(value.Token(), ErrTypeMismatch, "cannot use type %s for field '%s' of type %s", valType, name, fieldType)
 		}
 	}

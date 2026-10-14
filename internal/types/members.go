@@ -469,10 +469,8 @@ func (c *Checker) checkArgs(e *ast.CallExpr, ft *FunctionType) Type {
 			continue
 		}
 
-		if template := templateOf(arg, paramType); template != nil {
-			// A text written in the program, given where a Template is
-			// expected: its parts and its values are given apart
-			e.Args[i], arg = template, template
+		if asTemplate(&e.Args[i], paramType) {
+			arg = e.Args[i]
 		}
 
 		argType := c.checkExprAs(arg, paramType)
@@ -481,10 +479,7 @@ func (c *Checker) checkArgs(e *ast.CallExpr, ft *FunctionType) Type {
 		}
 
 		if !c.assignable(paramType, argType) {
-			if st, ok := paramType.(*StructType); ok && st.Name == TemplateStruct && argType.Equals(String) {
-				c.errorfWithSuggestion(arg.Token(), ErrArgType,
-					"Write the text here, with ${...} for what changes: what is written in the program and what is put in it are then told apart",
-					"a Template is a text written in the program, and this is a String made elsewhere")
+			if c.refusedAsTemplate(arg, paramType, argType, ErrArgType) {
 				continue
 			}
 			c.errorf(arg.Token(), ErrArgType, "cannot use type %s as argument of type %s", argType, paramType)
@@ -577,7 +572,9 @@ func (c *Checker) checkExprExpecting(expr ast.Expr, expected Type) Type {
 		return c.checkExpr(expr)
 	}
 
-	for _, elem := range literal.Elements {
+	for i := range literal.Elements {
+		asTemplate(&literal.Elements[i], want.ElementType)
+		elem := literal.Elements[i]
 		elemType := c.checkExprAs(elem, want.ElementType)
 		if elemType != nil && !c.assignable(want.ElementType, elemType) {
 			c.errorfWithSuggestion(elem.Token(), ErrTypeMismatch,

@@ -67,7 +67,7 @@ fn main() -> Int {
 }
 ```
 
-- A command is written as typed and split on spaces; `'...'` and `"..."` group words. Each `${value}` stays inside its word whatever it holds. A String built elsewhere is refused as a command; for a list use `sh.command("git", ["add"] + files)`.
+- A command is written as typed and split on spaces; `'...'` and `"..."` group words. Each `${value}` stays inside its word whatever it holds. Commands are of type `Template` (no import): `let c: Template = "make ${target}";`, `fn deploy() -> Template { return "..."; }` and struct fields of that type all work. A `String` built elsewhere is refused as a command; for a list use `sh.command("git", ["add"] + files)`.
 - No pipes or globs: `sh.run("sh -c 'cat *.log | grep ERROR'")` when a shell is really wanted.
 - `std.os.run(program, args)` captures everything and never stops: `Result<Output, Error>` with `status`, `out`, `err`.
 
@@ -83,4 +83,4 @@ io (readFile, writeFile, readLine, env), fs (folders), path, os (args, exit, run
 - Writing `Circle(1.0)` instead of `Shape.Circle(1.0)`.
 - Forgetting that `let f = x -> x + 1;` needs the long form or a declared type.
 - Using `cond ? a : b`: use `if cond { a } else { b }`.
-- Writing a command as a variable: `sh.run(cmd)` is refused; write the text in place with `${...}`.
+- Building a command as a `String` (`let cmd = "rm ${f}"; sh.run(cmd);`) is refused: declare it `let cmd: Template = "rm ${f}";`.

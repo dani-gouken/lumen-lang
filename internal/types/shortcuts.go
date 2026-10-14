@@ -149,12 +149,43 @@ func (c *Checker) checkTry(e *ast.UnaryExpr) Type {
 // kept apart (see templateOf).
 const TemplateStruct = "std.ops.Template"
 
+// refusedAsTemplate reports a String given where a Template is expected,
+// saying why, and whether it did: the text was made elsewhere, and nothing
+// says any more which of it was written and which was put in.
+func (c *Checker) refusedAsTemplate(expr ast.Expr, expected, actual Type, code string) bool {
+	st, ok := withoutNull(expected).(*StructType)
+	if !ok || st.Name != TemplateStruct || !withoutNull(actual).Equals(String) {
+		return false
+	}
+	c.errorfWithSuggestion(expr.Token(), code,
+		"Write the text here, with ${...} for what changes: what is written in the program and what is put in it are then told apart",
+		"a Template is a text written in the program, and this is a String made elsewhere")
+	return true
+}
+
+// asTemplate replaces a text written in the program, where a Template is
+// expected, with the Template it stands for: its parts and its values
+// apart. It is called wherever a value meets the type it must have: an
+// argument, a variable or a field declared with it, a return, an item of
+// an array. It reports whether it replaced the expression.
+func asTemplate(expr *ast.Expr, expected Type) bool {
+	if *expr == nil {
+		return false
+	}
+	template := templateOf(*expr, expected)
+	if template == nil {
+		return false
+	}
+	*expr = template
+	return true
+}
+
 // templateOf gives, for a text written in the program, with or without
 // ${...} in it, given where a Template is expected, the Template it
 // stands for; nil for anything else. The lexer writes "a ${x} b" as
 // "a " + __text(x) + " b", which is taken apart again here.
 func templateOf(arg ast.Expr, expected Type) ast.Expr {
-	if st, ok := expected.(*StructType); !ok || st.Name != TemplateStruct {
+	if st, ok := withoutNull(expected).(*StructType); !ok || st.Name != TemplateStruct {
 		return nil
 	}
 	var pieces []ast.Expr

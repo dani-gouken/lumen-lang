@@ -555,3 +555,43 @@ lines
 		t.Errorf("expected a String in a variable to be refused as a Template, got %v", errs.Diagnostics)
 	}
 }
+
+// TestTemplatesWhereverOneIsExpected checks that a text written in the
+// program becomes a Template wherever the type says so, without an import:
+// a variable, a return, a field, an item of an array, an optional, an
+// assignment; and that a String is refused in each of those places.
+func TestTemplatesWhereverOneIsExpected(t *testing.T) {
+	expectOutput(t, `
+		struct Job { name: String; command: Template; }
+		fn build(n: String) -> Template { return "make ${n}"; }
+		fn show(t: Template) -> String { return "${t.parts}|${t.values}"; }
+	`, `
+		let name = "a b";
+		let kept: Template = "keep ${name}";
+		let job = Job { name: "one", command: "run ${name} now" };
+		let all: [Template] = ["first", "second ${name}"];
+		let maybe: Template? = "maybe ${name}";
+		println(show(kept), show(build(name)), show(job.command));
+		println(show(all[0]), show(all[1]), show(maybe ?? kept));
+		kept = "again ${name}";
+		println(show(kept), kept.text());
+		let plain = "still a String ${name}";
+		println(plain.len());
+	`, `["keep ", ""]|["a b"] ["make ", ""]|["a b"] ["run ", " now"]|["a b"]
+["first"]|[] ["second ", ""]|["a b"] ["maybe ", ""]|["a b"]
+["again ", ""]|["a b"] again a b
+18
+`)
+
+	for _, src := range []string{
+		`fn main() -> Int { let s = "x"; let t: Template = s; return 0; }`,
+		`fn f(s: String) -> Template { return s; }` + "\nfn main() -> Int { return 0; }",
+		`struct Job { command: Template; }` + "\n" + `fn main() -> Int { let s = "x"; let j = Job { command: s }; return 0; }`,
+	} {
+		errs := errors.NewHandler()
+		Compile(src, "test.lum", errs)
+		if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "a Template is a text written in the program, and this is a String made elsewhere") {
+			t.Errorf("expected a String to be refused as a Template:\n%s\ngot %v", src, errs.Diagnostics)
+		}
+	}
+}
