@@ -1,0 +1,78 @@
+package e2e
+
+import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+// TestScripts runs programs the way scripts are run: named right after
+// lumen, and as files that start with #!/usr/bin/env lumen.
+func TestScripts(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("#! lines are for Unix")
+	}
+	script := "#!/usr/bin/env lumen\n" +
+		"import std.os;\n" +
+		"import std.sh;\n" +
+		"fn main() -> Int {\n" +
+		"    println(\"args\", os.args());\n" +
+		"    sh.run(\"sh\", [\"-c\", \"echo from sh; echo to stderr >&2\"]);\n" +
+		"    sh.run(\"sh\", [\"-c\", \"exit 4\"]);\n" +
+		"    println(\"not reached\");\n" +
+		"    return 0;\n" +
+		"}\n"
+	dir := project(t, map[string]string{"check.lum": script, "deploy": script})
+	for _, name := range []string{"check.lum", "deploy"} {
+		if err := os.Chmod(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	path := filepath.Dir(lumen) + string(os.PathListSeparator) + os.Getenv("PATH")
+
+	for _, c := range []struct {
+		name string
+		args []string
+	}{
+		{"lumen run", []string{lumen, "run", "check.lum", "a b", "--flag"}},
+		{"lumen and the file", []string{lumen, "check.lum", "a b", "--flag"}},
+		{"lumen and a file without .lum", []string{lumen, "deploy", "a b", "--flag"}},
+		{"the file itself", []string{"./check.lum", "a b", "--flag"}},
+		{"a file without .lum itself", []string{"./deploy", "a b", "--flag"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			var stdout, stderr strings.Builder
+			cmd := exec.Command(c.args[0], c.args[1:]...)
+			cmd.Dir, cmd.Stdout, cmd.Stderr = dir, &stdout, &stderr
+			cmd.Env = append(os.Environ(), "PATH="+path)
+			cmd.Run()
+
+			if want := "args [\"a b\", \"--flag\"]\nfrom sh\n"; stdout.String() != want {
+				t.Errorf("expected the output %q, got %q", want, stdout.String())
+			}
+			file := filepath.Base(c.args[len(c.args)-3])
+			for _, want := range []string{"to stderr", "std.sh.run: sh -c 'exit 4' ended with status 4", file + ":7:"} {
+				if !strings.Contains(stderr.String(), want) {
+					t.Errorf("expected %q in what was written as errors:\n%s", want, stderr.String())
+				}
+			}
+			if status := cmd.ProcessState.ExitCode(); status != 1 {
+				t.Errorf("expected the status 1, got %d", status)
+			}
+		})
+	}
+
+	// A command keeps its meaning when a file has its name
+	write(t, dir, map[string]string{"fmt": "not a program"})
+	cmd := exec.Command(lumen, "fmt", "check.lum")
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil || !strings.Contains(string(out), "1 file") {
+		t.Errorf("lumen fmt: %v\n%s", err, out)
+	}
+	if text := read(t, dir, "check.lum"); !strings.HasPrefix(text, "#!/usr/bin/env lumen\n") {
+		t.Errorf("expected lumen fmt to keep the #! line, got\n%s", text)
+	}
+}

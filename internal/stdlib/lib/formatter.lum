@@ -249,7 +249,11 @@ impl Lexer {
             let c = self.char(start);
             let next = self.char(start + 1);
 
-            if c == "/" && (next == "/" || next == "*") {
+            // A line that starts the file with #! is for the system (it
+            // names the program that runs the file) and is kept as it is
+            let shebang = start == 0 && c == "#" && next == "!";
+
+            if (c == "/" && (next == "/" || next == "*")) || shebang {
                 self.pass(self.endOfComment(start));
                 let text = self.source.substring(start, self.at).trimEnd();
                 let followed = self.codeFollows();
@@ -340,7 +344,7 @@ impl Lexer {
     fn endOfComment(start: Int) -> Int {
         let at = start + 2;
 
-        if self.char(start + 1) == "/" {
+        if self.char(start + 1) == "/" || self.char(start + 1) == "!" {
             while self.char(at) != "\n" && self.char(at) != "" {
                 at++;
             }

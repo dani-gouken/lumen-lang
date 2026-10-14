@@ -1,0 +1,28 @@
+// Running other programs the way a script does: what they write shows as
+// they write it, and one that fails stops the script.
+//
+//     sh.run("composer", ["install", "--no-interaction"]);
+//     let branch = sh.output("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+//
+// A program ending with a status other than 0, or one that cannot be
+// started, stops the program here, naming the command and the status, as
+// `set -e` would in a shell, but saying why. Where a failure is expected,
+// sh.status gives the status instead; `attempt` survives the others.
+//
+// The arguments go to the program as they are, one by one: no shell reads
+// them, so a space or a ';' in one is part of it. For std.os.run, which
+// keeps everything a program writes and never stops, see std.os.
+
+// Runs a program and waits for it. What it writes, and what it writes as
+// errors, goes where the script's does; it reads what the script would.
+pub extern fn run(program: String, arguments: [String]);
+
+// Runs a program and gives what it wrote, without the line break at the
+// end. What it writes as errors still shows.
+pub extern fn output(program: String, arguments: [String]) -> String;
+
+// Runs a program as run does, and gives its status: 0 says it went well.
+// It stops the program only if the program cannot be started.
+//
+//     if sh.status("git", ["diff", "--quiet"]) != 0 { println("there are changes"); }
+pub extern fn status(program: String, arguments: [String]) -> Int;

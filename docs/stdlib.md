@@ -33,6 +33,7 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.path`](#stdpath) | Paths taken apart and put together |
 | [`std.fs`](#stdfs) | Folders: listing, walking, creating, copying |
 | [`std.os`](#stdos) | Program arguments, exit, running other programs |
+| [`std.sh`](#stdsh) | Running other programs the way a script does |
 | [`std.format`](#stdformat) | Numbers, sizes, durations and tables written for people |
 | [`std.json`](#stdjson) | Reading, searching and writing JSON |
 | [`std.regex`](#stdregex) | Regular expressions |
@@ -749,6 +750,44 @@ lumen run todo.lum add "Buy milk" --due=2026-10-20
 lumen run --heap-mb=64 report.lum -- --heap-mb=this-one-is-mine
 lumen run . list                 # a project: name its folder, then the arguments
 ```
+
+---
+
+## `std.sh`
+
+Running other programs the way a script does: what they write shows as they write it, and one that fails stops the script, saying which command and with what status. `std.os.run` is for the other cases: it keeps everything a program writes, and a status other than 0 is for the program to look at.
+
+| Function | Result |
+|----------|--------|
+| `run(program, arguments)` | Runs a program and waits for it. What it writes, and writes as errors, goes where the script's does; it reads what the script would |
+| `output(program, arguments) -> String` | What the program wrote, without the line break at the end. What it writes as errors still shows |
+| `status(program, arguments) -> Int` | Runs it as `run` does and gives its status, 0 or not |
+
+```rust
+#!/usr/bin/env lumen
+import std.sh;
+
+fn main() -> Int {
+    sh.run("composer", ["install", "--no-interaction"]);
+    let branch = sh.output("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+
+    if sh.status("git", ["diff", "--quiet"]) != 0 {
+        println("${branch} has changes that are not committed");
+    }
+    return 0;
+}
+```
+
+A status other than 0 from `run` or `output`, or a program that cannot be started, stops the program where the call is, as `set -e` would in a shell, but saying why:
+
+```
+[ERROR] R0007: std.sh.run: docker compose exec -T fpm composer pint-test ended with status 1
+  --> check.lum:5:7 in function 'main'
+```
+
+`status` stops only for a program that cannot be started. `attempt` survives either: `attempt(fn() -> Bool { sh.run("make", ["lint"]); return true; })`.
+
+The arguments go to the program as they are, one by one. No shell reads them, so a space, a `;` or a `*` in one is part of it, and a value from outside cannot become another command. For what only a shell does, pipes or `*`, run one and say so: `sh.run("sh", ["-c", "cat *.log | grep ERROR"])`.
 
 ---
 

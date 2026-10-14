@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"unsafe"
@@ -174,6 +175,11 @@ func init() {
 }
 
 func main() {
+	if len(os.Args) > 1 && isProgram(os.Args[1]) {
+		// lumen script.lum is lumen run script.lum: what a file that starts
+		// with #!/usr/bin/env lumen is run with
+		os.Args = append([]string{os.Args[0], "run"}, os.Args[1:]...)
+	}
 	os.Args = parseOptions(os.Args)
 	if len(os.Args) < 2 {
 		printHelp()
@@ -252,12 +258,31 @@ func main() {
 	}
 }
 
+// commands are the first words lumen understands. A file of that name is
+// run with lumen run.
+var commands = []string{"run", "build", "ir", "repl", "lsp", "fmt", "test", "asm", "disasm", "exec", "runasm", "lumdbg"}
+
+// isProgram reports whether a first argument names a program to run
+// rather than a command: a .lum or .lc file, or any file that is not
+// called as a command is (a script without an extension, run through #!).
+func isProgram(arg string) bool {
+	if strings.HasSuffix(arg, ".lum") || strings.HasSuffix(arg, ".lc") {
+		return true
+	}
+	if slices.Contains(commands, arg) || strings.HasPrefix(arg, "-") {
+		return false
+	}
+	info, err := os.Stat(arg)
+	return err == nil && info.Mode().IsRegular()
+}
+
 func printHelp() {
 	fmt.Println("Lumen Programming Language")
 	fmt.Println()
 	fmt.Println("Usage:")
 	fmt.Println("  lumen run <file.lum>       Compile and run a Lumen source file")
 	fmt.Println("  lumen run <file.lc>        Run a program built earlier, as its source would run")
+	fmt.Println("  lumen <file.lum> [args]    The same as lumen run: what #!/usr/bin/env lumen runs")
 	fmt.Println("  lumen build <in> <out>     Compile .lum to .lc bytecode (or .lasm text)")
 	fmt.Println("  lumen ir <file.lum>        Print the intermediate representation")
 	fmt.Println("  lumen repl                 Type Lumen in a line at a time")

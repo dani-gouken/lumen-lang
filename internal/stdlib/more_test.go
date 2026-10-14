@@ -166,6 +166,34 @@ func TestOs(t *testing.T) {
 	)
 }
 
+// TestShell checks std.sh: what a program writes goes with the script's
+// output, a status other than 0 stops the script, and the command is named.
+func TestShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	expect(t, "import std.sh;\nimport std.result.{attempt};", `
+		println("before");
+		sh.run("sh", ["-c", "echo written; echo hidden >&2"]);
+		println("[${sh.output("printf", ["%s\\n", "one two"])}]");
+		println(sh.status("sh", ["-c", "exit 3"]), sh.status("true", []));
+		let failed = attempt(fn() -> Bool { sh.run("sh", ["-c", "exit 2"]); return true; });
+		println(failed.reason()?.message ?? "went on");
+		let quoted = attempt(fn() -> String { return sh.output("false", ["a b", "it's", ""]); });
+		println(quoted.reason()?.message ?? "went on");
+	`,
+		"before",
+		"written",
+		"[one two]",
+		"3 0",
+		"std.sh.run: sh -c 'exit 2' ended with status 2",
+		`std.sh.output: false 'a b' 'it'\''s' '' ended with status 1`,
+	)
+	for _, call := range []string{`sh.run("no-such-program-of-lumen", [])`, `sh.status("no-such-program-of-lumen", ["x"])`} {
+		expectFailure(t, "import std.sh;", call+";", "there is no program called 'no-such-program-of-lumen'")
+	}
+}
+
 // TestExit checks that os.exit ends the program at once, whatever is
 // around the call, and hands its status to whoever ran the program.
 func TestExit(t *testing.T) {

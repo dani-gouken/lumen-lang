@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/modules"
 	"github.com/dani-gouken/lumen/internal/resolve"
 )
 
@@ -328,27 +329,34 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 }
 
 // noBuiltinMethod reports a method an array, a text or a number does not
-// have. Their usual methods come with a module of the library: when it is
-// not part of the program, that is most likely what is missing.
+// have, with the one of the library it most likely is, or how to write it.
+// The library's come with a module that a program has only when it calls
+// one of them, so a misspelt one is compared with the module's source.
 func (c *Checker) noBuiltinMethod(e *ast.CallExpr, member *ast.MemberExpr, what, key, known, module string) Type {
 	c.checkArgsOnly(e)
-	if c.methods[key][known] == nil {
-		c.errorfWithSuggestion(member.Token(), ErrUnknownMethod,
-			fmt.Sprintf("The methods of %s come with %s: import %s;", what, module, module),
-			"%s has no method '%s'", what, member.Name)
-		return Unknown
-	}
 	var candidates []string
-	for method := range c.methods[key] {
-		candidates = append(candidates, method)
-	}
-	sort.Strings(candidates)
-	for _, candidate := range candidates {
-		if strings.EqualFold(candidate, member.Name) || editDistanceAtMostOne(candidate, member.Name) {
-			c.errorfWithSuggestion(member.Token(), ErrUnknownMethod, "Did you mean '"+candidate+"'?",
+	if c.methods[key][known] == nil {
+		// The program calls none of the module's methods, so it does not
+		// have them: compare with what the module would have given
+		candidates = modules.LibraryMethods(module)
+		if len(candidates) == 0 {
+			c.errorfWithSuggestion(member.Token(), ErrUnknownMethod,
+				fmt.Sprintf("The methods of %s come with %s, which the library of this program does not have", what, module),
 				"%s has no method '%s'", what, member.Name)
 			return Unknown
 		}
+	}
+	for method := range c.methods[key] {
+		candidates = append(candidates, method)
+	}
+	// As for a function of a module, which these methods were (lenght is
+	// len), but no further than half the name: a short one is near too
+	// many others, and ["a"].sum() did not mean map
+	similar := resolve.ClosestName(member.Name, candidates)
+	if similar != "" && resolve.Distance(member.Name, similar) <= len(member.Name)/2 {
+		c.errorfWithSuggestion(member.Token(), ErrUnknownMethod, "Did you mean '"+similar+"'?",
+			"%s has no method '%s'", what, member.Name)
+		return Unknown
 	}
 	impl := "impl " + key
 	if key == ast.ArrayImpl {

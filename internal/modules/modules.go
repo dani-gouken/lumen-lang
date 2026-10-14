@@ -31,6 +31,7 @@ import (
 	"github.com/dani-gouken/lumen/internal/errors"
 	"github.com/dani-gouken/lumen/internal/parser"
 	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/stdlib"
 	"github.com/dani-gouken/lumen/internal/token"
 )
 
@@ -321,6 +322,17 @@ func callsMethodOf(prog *ast.Program, src string) bool {
 	if prog == nil || len(prog.Members) == 0 {
 		return false
 	}
+	for name := range methodNames(src) {
+		if prog.Members[name] {
+			return true
+		}
+	}
+	return false
+}
+
+// methodNames gives the methods a module of the library declares, from
+// its source.
+func methodNames(src string) map[string]bool {
 	names, known := methodsOf.Load(src)
 	if !known {
 		found := make(map[string]bool)
@@ -329,12 +341,24 @@ func callsMethodOf(prog *ast.Program, src string) bool {
 		}
 		names, _ = methodsOf.LoadOrStore(src, found)
 	}
-	for name := range names.(map[string]bool) {
-		if prog.Members[name] {
-			return true
-		}
+	return names.(map[string]bool)
+}
+
+// LibraryMethods lists, sorted, the methods that a module of MethodModules
+// declares in the standard library of the lumen binary. A program that
+// calls none of them does not have the module, and a method it misspells
+// is compared with these.
+func LibraryMethods(module string) []string {
+	src, err := stdlib.Read(stdlib.Root + "/" + strings.TrimPrefix(module, stdlib.Package+".") + ".lum")
+	if err != nil {
+		return nil
 	}
-	return false
+	var names []string
+	for name := range methodNames(src) {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (l *loader) loadImports(m *module) {

@@ -116,8 +116,10 @@ func (l *Lexer) scan() token.Token {
 		return l.lexString(start)
 	}
 
-	// Comments
-	if ch == '/' && l.peek(1) == '/' {
+	// Comments. A first line that starts with #! names the program that
+	// runs the file (#!/usr/bin/env lumen); it is a comment too
+	shebang := l.pos == 0 && ch == '#' && l.peek(1) == '!'
+	if (ch == '/' && l.peek(1) == '/') || shebang {
 		begin := l.pos
 		for l.pos < len(l.src) && l.peek(0) != '\n' {
 			l.advance()
