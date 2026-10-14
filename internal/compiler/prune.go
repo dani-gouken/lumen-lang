@@ -29,10 +29,27 @@ import (
 // writing their name: what a loop over a range that was kept stops at.
 var alwaysCalled = map[string]bool{"stop": true}
 
+// It is done twice. Before the program is checked, the functions of the
+// library that nothing can reach lose their bodies: they are still
+// declared, so that what the program gets wrong about them is said as it
+// was (a method that does not exist is still told from one that takes
+// other arguments), but nothing in them is named or checked. After the
+// check they go altogether.
+
 // pruneLibrary returns the program without the declarations of the
 // standard library that nothing reaches. The program it is given is left
 // as it was: it is what the compilation hands back as the program read.
 func pruneLibrary(prog *ast.Program) *ast.Program {
+	return prune(prog, false)
+}
+
+// emptyLibrary returns the program with the functions of the standard
+// library that nothing reaches left without their bodies.
+func emptyLibrary(prog *ast.Program) *ast.Program {
+	return prune(prog, true)
+}
+
+func prune(prog *ast.Program, onlyBodies bool) *ast.Program {
 	inLibrary := func(name string) bool { return strings.HasPrefix(name, stdlib.Package+".") }
 	libraryImpl := func(impl *ast.ImplDecl) bool {
 		if len(impl.Methods) == 0 {
@@ -146,6 +163,40 @@ func pruneLibrary(prog *ast.Program) *ast.Program {
 	}
 
 	kept := make([]ast.Decl, 0, len(prog.Decls))
+	if onlyBodies {
+		// Everything stays declared; what is not reached is a signature
+		bodiless := func(fn *ast.FnDecl) *ast.FnDecl {
+			if p.kept[fn] || fn.Body == nil {
+				return fn
+			}
+			empty := *fn
+			empty.Body = nil
+			return &empty
+		}
+		for _, decl := range prog.Decls {
+			switch d := decl.(type) {
+			case *ast.FnDecl:
+				if inLibrary(d.Name) {
+					kept = append(kept, bodiless(d))
+					continue
+				}
+			case *ast.ImplDecl:
+				if libraryImpl(d) {
+					slim := *d
+					slim.Methods = make([]*ast.FnDecl, len(d.Methods))
+					for i, method := range d.Methods {
+						slim.Methods[i] = bodiless(method)
+					}
+					kept = append(kept, &slim)
+					continue
+				}
+			}
+			kept = append(kept, decl)
+		}
+		pruned := *prog
+		pruned.Decls = kept
+		return &pruned
+	}
 	for _, decl := range prog.Decls {
 		switch d := decl.(type) {
 		case *ast.ImplDecl:
