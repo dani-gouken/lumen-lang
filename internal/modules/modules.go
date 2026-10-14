@@ -579,6 +579,24 @@ func (m *module) lookup(name string, visiting map[*module]bool) (it *item, visib
 	return nil, false
 }
 
+// methodOwner names the type of the module that has a method called
+// name, or "" when none has: json.stringify(data) is data.stringify().
+func (m *module) methodOwner(name string) string {
+	if m.prog == nil {
+		return ""
+	}
+	for _, decl := range m.prog.Decls {
+		if impl, ok := decl.(*ast.ImplDecl); ok {
+			for _, method := range impl.Methods {
+				if method.Name == name {
+					return impl.StructName
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // find looks a name up in another module on behalf of m and reports what
 // is wrong when m cannot use it.
 func (l *loader) find(m, target *module, name string, tok token.Token) *item {
@@ -587,6 +605,8 @@ func (l *loader) find(m, target *module, name string, tok token.Token) *item {
 		suggestion := ""
 		if similar := resolve.ClosestName(name, target.exported()); similar != "" {
 			suggestion = "Did you mean '" + similar + "'?"
+		} else if owner := target.methodOwner(name); owner != "" {
+			suggestion = fmt.Sprintf("'%s' is a method of %s, not a function of the module: call it on the value, as in value.%s(...)", name, owner, name)
 		}
 		l.report(tok, ErrUnknownName, suggestion, "%s has no '%s'", target.display(), name)
 		return nil

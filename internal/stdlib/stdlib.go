@@ -11,8 +11,10 @@ import (
 	"embed"
 	"io/fs"
 	"path"
+	"regexp"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Package is the name the library is imported by: import std.math;
@@ -54,4 +56,36 @@ func Modules() []string {
 	}
 	sort.Strings(names)
 	return names
+}
+
+// declaration is a name a module of the library offers at its top level:
+// pub fn, pub extern fn, pub struct, pub enum, pub trait, pub const.
+var declaration = regexp.MustCompile(`(?m)^pub (?:extern )?(?:fn|struct|enum|trait|const) +([A-Za-z_][A-Za-z0-9_]*)`)
+
+var (
+	declaredOnce sync.Once
+	declared     map[string][]string // Name to the modules that offer it
+)
+
+// Declaring lists the modules of the library that offer a name at their
+// top level, sorted: Declaring("Ordered") is ["std.ops"]. It is what tells
+// a program that uses a name without importing it where the name is.
+func Declaring(name string) []string {
+	declaredOnce.Do(func() {
+		declared = make(map[string][]string)
+		for _, module := range Modules() {
+			data, err := files.ReadFile(path.Join("lib", strings.TrimPrefix(module, Package+".")+".lum"))
+			if err != nil {
+				continue
+			}
+			seen := make(map[string]bool)
+			for _, m := range declaration.FindAllStringSubmatch(string(data), -1) {
+				if !seen[m[1]] {
+					seen[m[1]] = true
+					declared[m[1]] = append(declared[m[1]], module)
+				}
+			}
+		}
+	})
+	return declared[name]
 }

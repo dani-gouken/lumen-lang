@@ -23,7 +23,7 @@
 - `if value is Shape.Circle(r) { ... }` tests one variant and names what it holds.
 - No `?:` operator: `let label = if ok { "yes" } else { "no" };`. A block's last expression without `;` is its value.
 - Loops: `for item in items`, `for i, item in items`, `for i in 0..10` (10 left out), `0..=10`, `while cond`. Loop variables are read-only; write `items[i] = ...`.
-- Functions: `fn add(a: Int, b: Int) -> Int { return a + b; }`, generic `fn first<T>(items: [T]) -> T?`, bounded `<T: Ordered>`. `return` is required in a function with a block body.
+- Functions: `fn add(a: Int, b: Int) -> Int { return a + b; }`, generic `fn first<T>(items: [T]) -> T?`, bounded `<T: Ordered>` after `import std.ops.{Ordered};` (the traits of std.ops: Equal, Ordered, Add, Subtract, Multiply, Divide, Iterable, Indexed, IndexedSet, Show). `return` is required in a function with a block body.
 - Lambdas: `xs.map(x -> x * 2)`, `(a, b) -> a + b`, `() -> run()`, `x -> { ...; }`; the long form `fn(x: Int) -> Int { return x * 2; }` is needed where nothing says the types (`let f = ...`).
 - `value |> f(a)` is `f(value, a)`.
 - Text: `"total ${n} items"`, `"""` for several lines (indentation of the closing `"""` is removed). A character is a String of length 1.
@@ -73,10 +73,11 @@ fn main() -> Int {
 
 ## Standard library modules (import std.NAME)
 
-io (readFile, writeFile, readLine, env), fs (folders), path, os (args, exit, run), sh, json (parse, Json enum, find, stringify), http (get, post, to(...).header().send(), router, serve), csv, regex, time (now, sleep, stopwatch, dates), format (duration, bytes, table), dict (`import std.dict.{Dict};`, `dict.empty<Int>()`, `get set has keys`), set, list, random, encoding (base64, hex, url), hash (sha256, hmacSha256), task (run, map, channel), test (equal, ...), reflect, ops (traits, Range, Template). Full reference: docs/stdlib.md.
+io (readFile, writeFile, readLine, env), fs (folders), path, os (args, exit, run), sh, json (`json.parse(text)` gives `Result<Json, ParseError>`; then methods of the value: `data.find("a.b")`, `data.get(key)`, `data.text()`, `data.int()`, `data.stringify()`, `data.pretty()`), http (get, post, to(...).header().send(), router, serve), csv, regex, time (now, sleep, stopwatch, dates), format (duration, bytes, table), dict (`import std.dict.{Dict};`, `dict.empty<Int>()`, `get set has keys`), set, list, random, encoding (base64, hex, url), hash (sha256, hmacSha256), task (run, map, channel), test (equal, ...), reflect, ops (traits, Range, Template). Full reference: docs/stdlib.md.
 
 ## Common mistakes
 
+- A trait, type or function of a module used without its import (`Ordered`, `Dict`, `attempt`): `lumen check` names the import to add.
 - Writing `x.length` or `len(x)`: it is `x.len()`. There is no `sort()`: `sorted(...)`, `sortedNumbers()`, `sortedTexts()` or `sortedBy(...)` return a new array, as `reversed()` does.
 - Writing `case X =>` or `case X { }`: it is `case X: { }`.
 - Writing `struct P { x: Int, y: Int }` with commas: fields end with `;`.
