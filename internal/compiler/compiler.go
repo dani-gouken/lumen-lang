@@ -152,6 +152,10 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	// name are called as those functions from here on
 	forwardLibraryMethods(prog, typeInfo)
 
+	// What nothing reaches of the standard library goes no further: the
+	// stages below are most of the work, and would do it for all of it
+	prog = pruneLibrary(prog)
+
 	// 4. Monomorphization. It adds declarations and rewrites call sites, so
 	// names and types are computed again for the new program.
 	mono := monomorph.NewMonomorphizer(prog, typeInfo, table, errs)

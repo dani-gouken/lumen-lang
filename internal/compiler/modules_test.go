@@ -3,6 +3,7 @@ package compiler
 import (
 	"bytes"
 	"fmt"
+	"github.com/dani-gouken/lumen/internal/ast"
 	"strings"
 	"testing"
 
@@ -1011,4 +1012,94 @@ func TestResultNeedsNoImport(t *testing.T) {
 	expectModulesError(t, sources{
 		"main.lum": "fn f() -> Result<Int, String> { return Result.Ok(\"one\"); }\nfn main() { f(); }",
 	}, "E2003", "main.lum", "cannot return type std.result.Result<string, string>")
+}
+
+// What a program does not use of the standard library does not go through
+// the compiler: it is dropped once the program is checked, before the
+// stages that would compile it for nothing.
+func TestTheLibraryIsPrunedEarly(t *testing.T) {
+	lowered := func(src string) (map[string]bool, *Result) {
+		t.Helper()
+		errs := errors.NewHandler()
+		result := Compile(src, "test.lum", errs)
+		if errs.HasErrors() {
+			t.Fatalf("unexpected diagnostics: %v", errs.Diagnostics)
+		}
+		names := make(map[string]bool)
+		for _, decl := range result.Lowered.Decls {
+			switch d := decl.(type) {
+			case *ast.FnDecl:
+				names[d.Name] = true
+			case *ast.StructDecl:
+				names[d.Name] = true
+			case *ast.EnumDecl:
+				names[d.Name] = true
+			case *ast.ImplDecl:
+				for _, method := range d.Methods {
+					names[d.StructName+"."+method.Name] = true
+				}
+			}
+		}
+		return names, result
+	}
+	library := func(names map[string]bool) int {
+		count := 0
+		for name := range names {
+			if strings.HasPrefix(name, "std.") || strings.HasPrefix(name, "[") || strings.HasPrefix(name, "String.") {
+				count++
+			}
+		}
+		return count
+	}
+
+	// One method of arrays: next to nothing of the module is compiled
+	names, result := lowered(`fn main() { println([3, 1, 2].first()); }`)
+	if n := library(names); n == 0 || n > 6 {
+		t.Errorf("expected a handful of declarations of the library for one method, got %d: %v", n, names)
+	}
+	for _, unwanted := range []string{"std.arrays.sorted", "std.arrays.groupBy", "std.dict.Dict", "[].map", "[].filter"} {
+		if names[unwanted] {
+			t.Errorf("expected %s to be left out of a program that does not use it", unwanted)
+		}
+	}
+	// What the compilation hands back as the program read is whole
+	whole := 0
+	for _, decl := range result.AST.Decls {
+		if fn, ok := decl.(*ast.FnDecl); ok && strings.HasPrefix(fn.Name, "std.arrays.") {
+			whole++
+		}
+	}
+	if whole < 30 {
+		t.Errorf("expected the program as read to still have all of std.arrays, found %d functions", whole)
+	}
+
+	// What is used through something else is kept: a method that calls
+	// others, a struct of the library and its methods, what an operator,
+	// a loop or brackets call, a method taken as a value
+	names, _ = lowered(`
+		import std.dict;
+		import std.dict.{Dict};
+		import std.list;
+
+		fn main() {
+			let seen: Dict<Int> = dict.empty();
+			seen["a"] = 1;
+			println(seen["a"], [1, 2, 3].groupBy(n -> toString(n % 2)).keys());
+			let items = list.of([3, 1, 2]);
+			for item in items { print(item, ""); }
+			let add = items.add;
+			add(4);
+			println(items.size(), (0..10).step(5).toArray());
+			for i in (0..4).reversed() { print(i, ""); }
+			println();
+		}
+	`)
+	for _, wanted := range []string{"std.dict.Dict", "std.dict.Dict.keys", "std.dict.Dict.at", "std.dict.Dict.put", "std.list.List.iterate", "std.list.List.add", "std.ops.Range.stop", "std.ops.Range.reversed"} {
+		if !names[wanted] {
+			t.Errorf("expected %s to be kept", wanted)
+		}
+	}
+	if names["std.list.List.sorted"] || names["std.dict.Dict.remove"] {
+		t.Errorf("expected the methods the program does not call to be left out")
+	}
 }
