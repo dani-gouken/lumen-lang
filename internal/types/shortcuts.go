@@ -143,3 +143,61 @@ func (c *Checker) checkTry(e *ast.UnaryExpr) Type {
 		"'?' is for a Result or a value that may be null, and this is a %s", describe(operand))
 	return operand
 }
+
+// TemplateStruct is the struct of the standard library that a text written
+// in the program becomes where one is expected: its parts and its values
+// kept apart (see templateOf).
+const TemplateStruct = "std.ops.Template"
+
+// templateOf gives, for a text written in the program, with or without
+// ${...} in it, given where a Template is expected, the Template it
+// stands for; nil for anything else. The lexer writes "a ${x} b" as
+// "a " + __text(x) + " b", which is taken apart again here.
+func templateOf(arg ast.Expr, expected Type) ast.Expr {
+	if st, ok := expected.(*StructType); !ok || st.Name != TemplateStruct {
+		return nil
+	}
+	var pieces []ast.Expr
+	var walk func(e ast.Expr) bool
+	walk = func(e ast.Expr) bool {
+		switch e := e.(type) {
+		case *ast.BinaryExpr:
+			return e.Op == "+" && walk(e.Left) && walk(e.Right)
+		case *ast.Literal:
+			pieces = append(pieces, e)
+			return e.Kind == "string"
+		case *ast.CallExpr:
+			pieces = append(pieces, e)
+			return isInterpolation(e)
+		}
+		return false
+	}
+	if !walk(arg) {
+		return nil
+	}
+
+	text := func(value string) *ast.Literal {
+		tok := arg.Token()
+		tok.Literal = value
+		return &ast.Literal{BaseNode: ast.BaseNode{Pos: arg.Position(), Tok: tok}, Kind: "string", Value: value}
+	}
+	parts := []ast.Expr{}
+	values := []ast.Expr{}
+	current := ""
+	for _, piece := range pieces {
+		if lit, ok := piece.(*ast.Literal); ok {
+			current += lit.Value
+			continue
+		}
+		parts = append(parts, text(current))
+		values = append(values, piece)
+		current = ""
+	}
+	parts = append(parts, text(current))
+
+	at := ast.BaseNode{Pos: arg.Position(), Tok: arg.Token()}
+	return &ast.StructInitExpr{BaseNode: at, Name: TemplateStruct, Fields: map[string]ast.Expr{
+		"parts":  &ast.ArrayLiteralExpr{BaseNode: at, Elements: parts},
+		"values": &ast.ArrayLiteralExpr{BaseNode: at, Elements: values},
+	}}
+}

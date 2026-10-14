@@ -469,12 +469,24 @@ func (c *Checker) checkArgs(e *ast.CallExpr, ft *FunctionType) Type {
 			continue
 		}
 
+		if template := templateOf(arg, paramType); template != nil {
+			// A text written in the program, given where a Template is
+			// expected: its parts and its values are given apart
+			e.Args[i], arg = template, template
+		}
+
 		argType := c.checkExprAs(arg, paramType)
 		if argType == nil {
 			continue
 		}
 
 		if !c.assignable(paramType, argType) {
+			if st, ok := paramType.(*StructType); ok && st.Name == TemplateStruct && argType.Equals(String) {
+				c.errorfWithSuggestion(arg.Token(), ErrArgType,
+					"Write the text here, with ${...} for what changes: what is written in the program and what is put in it are then told apart",
+					"a Template is a text written in the program, and this is a String made elsewhere")
+				continue
+			}
 			c.errorf(arg.Token(), ErrArgType, "cannot use type %s as argument of type %s", argType, paramType)
 		}
 	}

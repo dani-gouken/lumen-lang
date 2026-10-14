@@ -507,3 +507,34 @@ impl Show for Range {
         return text;
     }
 }
+
+// A text written with ${...} in it, kept in its pieces: what a function
+// whose parameter is a Template gets, where a String would get the text
+// they make. The values are written as ${...} writes them, and stay apart
+// from the parts written in the program, so that the function can tell
+// one from the other: std.sh makes each value one argument of a command,
+// whatever is in it.
+//
+//     fn shout(t: Template) -> String { ... }
+//     shout("hello ${name}, ${count} times");    // parts ["hello ", ", ", " times"], values [name, count]
+//
+// Only a text written in the program becomes one: a String held in a
+// variable is not a Template, and the compiler says so.
+pub struct Template {
+    parts: [String];   // what was written around the values; one more than there are values
+    values: [String];  // what each ${...} gave, as text
+}
+
+impl Template {
+    // The text it stands for, the values in their places.
+    pub fn text() -> String {
+        let all = [self.parts[0]];
+
+        for i, value in self.values {
+            all.push(value);
+            all.push(self.parts[i + 1]);
+        }
+
+        return all.join("");
+    }
+}

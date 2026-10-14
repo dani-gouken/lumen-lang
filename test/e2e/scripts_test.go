@@ -20,8 +20,8 @@ func TestScripts(t *testing.T) {
 		"import std.sh;\n" +
 		"fn main() -> Int {\n" +
 		"    println(\"args\", os.args());\n" +
-		"    sh.run(\"sh\", [\"-c\", \"echo from sh; echo to stderr >&2\"]);\n" +
-		"    sh.run(\"sh\", [\"-c\", \"exit 4\"]);\n" +
+		"    sh.run(\"sh -c 'echo from sh; echo to stderr >&2'\");\n" +
+		"    sh.run(\"sh -c 'exit 4'\");\n" +
 		"    println(\"not reached\");\n" +
 		"    return 0;\n" +
 		"}\n"

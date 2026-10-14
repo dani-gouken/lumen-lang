@@ -14,18 +14,18 @@ import (
 // the command and its status (a library failure, which `attempt` catches).
 func init() {
 	registerNatives("std.sh",
-		native{"run", 2, func(vm *VM, args []Value) (Value, error) {
+		native{"run", 1, func(vm *VM, args []Value) (Value, error) {
 			_, err := vm.shell(args, nil, true)
 			return NewNull(), err
 		}},
-		native{"output", 2, func(vm *VM, args []Value) (Value, error) {
+		native{"output", 1, func(vm *VM, args []Value) (Value, error) {
 			var out strings.Builder
 			if _, err := vm.shell(args, &out, true); err != nil {
 				return NewNull(), err
 			}
 			return vm.newString(strings.TrimSuffix(strings.TrimSuffix(out.String(), "\n"), "\r"))
 		}},
-		native{"status", 2, func(vm *VM, args []Value) (Value, error) {
+		native{"status", 1, func(vm *VM, args []Value) (Value, error) {
 			status, err := vm.shell(args, nil, false)
 			return NewInt(int64(status)), err
 		}},
@@ -33,7 +33,7 @@ func init() {
 		// gives the status (-1 for a program that could not be started),
 		// the command, the end of what it wrote as errors and why it
 		// failed, "" when it did not
-		native{"attempted", 2, func(vm *VM, args []Value) (Value, error) {
+		native{"attempted", 1, func(vm *VM, args []Value) (Value, error) {
 			var written tail
 			status, err := vm.shellTo(args, nil, &written, true)
 			if err != nil {
@@ -91,14 +91,11 @@ func (vm *VM) shell(args []Value, out *strings.Builder, strict bool) (int, error
 // shellTo is shell, keeping in errs, when it is not nil, what the program
 // writes as errors as well as showing it. Its failures are commandFailures.
 func (vm *VM) shellTo(args []Value, out *strings.Builder, errs io.Writer, strict bool) (int, error) {
-	name, err := argString(args, 0)
+	words, err := commandWords(args)
 	if err != nil {
 		return 0, err
 	}
-	arguments, err := argStrings(args, 1)
-	if err != nil {
-		return 0, err
-	}
+	name, arguments := words[0], words[1:]
 
 	cmd := exec.Command(name, arguments...)
 	// The terminal itself where there is one, so that a program that
@@ -136,6 +133,67 @@ func (vm *VM) shellTo(args []Value, out *strings.Builder, errs io.Writer, strict
 		return fail(exit.ExitCode(), "%s ended with status %d", command, exit.ExitCode())
 	}
 	return exit.ExitCode(), nil
+}
+
+// commandWords reads the command a std.ops.Template stands for: the
+// parts written in the program are split into words where there is
+// space, '...' and "..." keeping one together, and a value stays whole in
+// the word it is written in, whatever it holds.
+func commandWords(args []Value) ([]string, error) {
+	obj, ok := objectOf(args[0])
+	if !ok {
+		return nil, fmt.Errorf("expected a command, got %s", FormatValue(args[0]))
+	}
+	partsValue, _ := obj.Get("parts")
+	valuesValue, _ := obj.Get("values")
+	parts, err := argStrings([]Value{partsValue}, 0)
+	if err != nil {
+		return nil, err
+	}
+	values, err := argStrings([]Value{valuesValue}, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	var words []string
+	var word strings.Builder
+	inWord := false
+	var quote rune
+	for i, part := range parts {
+		for _, ch := range part {
+			switch {
+			case quote != 0 && ch == quote:
+				quote = 0
+			case quote != 0:
+				word.WriteRune(ch)
+			case ch == '\'' || ch == '"':
+				quote, inWord = ch, true
+			case ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r':
+				if inWord {
+					words = append(words, word.String())
+					word.Reset()
+					inWord = false
+				}
+			default:
+				word.WriteRune(ch)
+				inWord = true
+			}
+		}
+		if i < len(values) {
+			word.WriteString(values[i])
+			inWord = true
+		}
+	}
+	if quote != 0 {
+		return nil, fmt.Errorf("the command has a %c that is not closed", quote)
+	}
+	if inWord {
+		words = append(words, word.String())
+	}
+	if len(words) == 0 {
+		return nil, fmt.Errorf("the command is empty")
+	}
+	return words, nil
 }
 
 // commandLine writes a command as it would be typed, quoting the

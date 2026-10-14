@@ -759,34 +759,32 @@ Running other programs the way a script does: what they write shows as they writ
 
 | Function | Result |
 |----------|--------|
-| `run(program, arguments)` | Runs a program and waits for it. What it writes, and writes as errors, goes where the script's does; it reads what the script would |
-| `output(program, arguments) -> String` | What the program wrote, without the line break at the end. What it writes as errors still shows |
-| `status(program, arguments) -> Int` | Runs it as `run` does and gives its status, 0 or not |
-| `attempt(program, arguments) -> Result<Void, Failed>` | Runs it as `run` does and, instead of stopping the script, gives what went wrong |
-
-A `Failed` has `command` (as it would be typed), `status` (`-1` for a program that could not be started), `err` (the last lines it wrote as errors, which were shown as well) and `describe()`, which says it as `run` would have:
-
-```rust
-match sh.attempt("composer", ["pint-test"]) {
-    case Result.Ok(_): { println("✓ pint"); }
-    case Result.Err(failed): { println("✗ pint, status", failed.status, "\n", failed.err); }
-}
-```
+| `run(command)` | Runs a program and waits for it. What it writes, and writes as errors, goes where the script's does; it reads what the script would |
+| `output(command) -> String` | What the program wrote, without the line break at the end. What it writes as errors still shows |
+| `status(command) -> Int` | Runs it as `run` does and gives its status, 0 or not |
+| `attempt(command) -> Result<Void, Failed>` | Runs it as `run` does and, instead of stopping the script, gives what went wrong |
+| `command(program, arguments) -> Template` | A command made of a list, each item one argument: for arguments the script works out as it runs |
 
 ```rust
 #!/usr/bin/env lumen
 import std.sh;
 
 fn main() -> Int {
-    sh.run("composer", ["install", "--no-interaction"]);
-    let branch = sh.output("git", ["rev-parse", "--abbrev-ref", "HEAD"]);
+    sh.run("composer install --no-interaction");
+    let branch = sh.output("git rev-parse --abbrev-ref HEAD");
 
-    if sh.status("git", ["diff", "--quiet"]) != 0 {
+    if sh.status("git diff --quiet") != 0 {
         println("${branch} has changes that are not committed");
     }
+    sh.run("git log -n ${count} -- ${file}");
+    sh.run(sh.command("git", ["add"] + files));
     return 0;
 }
 ```
+
+**A command is written as it would be typed**, and split into words where there is space; `'...'` and `"..."` keep a word together. **What `${...}` puts in stays in its word, whatever it holds**: with `file` being `my notes; rm -rf ~`, `sh.run("rm ${file}")` removes the file of that name and nothing else. No shell ever reads a command, so nothing in a value can become another command, a pipe or a `*`. A command is a [`Template`](#templates): only a text written in the program is one, and a `String` made elsewhere is refused, where it could otherwise have been taken apart as words.
+
+For what only a shell does, pipes or `*`, run one and say so: `sh.run("sh -c 'cat *.log | grep ERROR'")`.
 
 A status other than 0 from `run` or `output`, or a program that cannot be started, stops the program where the call is, as `set -e` would in a shell, but saying why:
 
@@ -795,9 +793,15 @@ A status other than 0 from `run` or `output`, or a program that cannot be starte
   --> check.lum:5:7 in function 'main'
 ```
 
-`status` stops only for a program that cannot be started; `sh.attempt` stops for nothing.
+`status` stops only for a program that cannot be started; `attempt` stops for nothing. A `Failed` has `command` (as it would be typed), `status` (`-1` for a program that could not be started), `err` (the last lines it wrote as errors, which were shown as well) and `describe()`, which says it as `run` would have:
 
-The arguments go to the program as they are, one by one. No shell reads them, so a space, a `;` or a `*` in one is part of it, and a value from outside cannot become another command. For what only a shell does, pipes or `*`, run one and say so: `sh.run("sh", ["-c", "cat *.log | grep ERROR"])`.
+```rust
+match sh.attempt("composer pint-test") {
+    case Result.Ok(_): { println("✓ pint"); }
+    case Result.Err(failed): { println("✗ pint, status", failed.status, "\n", failed.err); }
+}
+sh.attempt("make deploy")?;      // in main: ends the program, saying why
+```
 
 ---
 
@@ -1056,6 +1060,19 @@ impl Ordered for Version {
 let newest = ops.largest(versions);
 if newest != null && newest > installed { ... }
 ```
+
+### Templates
+
+A `Template` is a text written with `${...}` in it, kept in its pieces: `parts`, what was written around the values (one more than there are values), and `values`, what each `${...}` gave, as text. `text()` puts them together. A function whose parameter is a `Template` gets those, where one taking a `String` would get the text:
+
+```rust
+import std.ops.{Template};
+
+fn shout(t: Template) -> String { ... }
+shout("hello ${name}, ${count} times");   // parts ["hello ", ", ", " times"], values [name, count]
+```
+
+The function can then tell what the program wrote from what was put in it, which is how [`std.sh`](#stdsh) makes each value one argument of a command, and how a query or a page could escape what is put in them. Only a text written in the program becomes a `Template`: a `String` made elsewhere is refused, since nothing would then say which of it was written and which was put in.
 
 ---
 

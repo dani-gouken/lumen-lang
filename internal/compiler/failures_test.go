@@ -518,3 +518,40 @@ fn main() -> Int {
 		}
 	}
 }
+
+// TestTemplates checks that a text written in the program, given where a
+// Template is expected, keeps its parts and its values apart, and that a
+// String made elsewhere is refused there.
+func TestTemplates(t *testing.T) {
+	expectOutput(t, `
+		import std.ops.{Template};
+		fn pieces(t: Template) -> String {
+			return "${t.parts} ${t.values} ${t.text()}";
+		}
+	`, `
+		let name = "ada";
+		let n = 3;
+		println(pieces("hello ${name}, ${n} times"));
+		println(pieces("${name}${n}"));
+		println(pieces("nothing put in"));
+		println(pieces("""
+			over ${name}
+			lines
+			"""));
+	`, `["hello ", ", ", " times"] ["ada", "3"] hello ada, 3 times
+["", "", ""] ["ada", "3"] ada3
+["nothing put in"] [] nothing put in
+["over ", "\nlines"] ["ada"] over ada
+lines
+`)
+
+	errs := errors.NewHandler()
+	Compile(`
+		import std.ops.{Template};
+		fn pieces(t: Template) -> String { return t.text(); }
+		fn main() -> Int { let made = "a " + "b"; println(pieces(made)); return 0; }
+	`, "test.lum", errs)
+	if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "a Template is a text written in the program, and this is a String made elsewhere") {
+		t.Errorf("expected a String in a variable to be refused as a Template, got %v", errs.Diagnostics)
+	}
+}
