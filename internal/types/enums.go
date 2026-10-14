@@ -140,9 +140,14 @@ func (c *Checker) checkEnumDecl(d *ast.EnumDecl) {
 
 // checkVariant types `Enum.Variant` and `Enum.Variant(args)`: the creation
 // of a value of an enum, or, for a variant with values named without
-// calling it, the function that creates one.
-func (c *Checker) checkVariant(member *ast.MemberExpr, args []ast.Expr, called bool, expected Type) Type {
+// calling it, the function that creates one. call is the call, or nil.
+func (c *Checker) checkVariant(member *ast.MemberExpr, call *ast.CallExpr, expected Type) Type {
 	decl, ident := c.enumOf(member.Expr)
+	called := call != nil
+	var args []ast.Expr
+	if called {
+		args = call.Args
+	}
 
 	variant := findVariant(decl, member.Name)
 	if variant == nil {
@@ -186,9 +191,16 @@ func (c *Checker) checkVariant(member *ast.MemberExpr, args []ast.Expr, called b
 	}
 	restore()
 
+	hint := c.hintFrom(decl, expected)
 	var argTypes []Type
 	if called {
 		switch {
+		case len(args) == 0 && len(variant.Values) == 1 && c.holdsNothing(declared[0], isParam, found, hint):
+			// Result.Ok() of a Result<Void, E>: the value it holds is
+			// nothing, which is null where the program runs, as what a
+			// function of Void returns
+			call.Args = []ast.Expr{&ast.Literal{BaseNode: member.BaseNode, Value: "null", Kind: "null"}}
+			args = call.Args
 		case len(variant.Values) == 0:
 			c.errorfWithSuggestion(member.Token(), ErrInvalidEnumUse,
 				fmt.Sprintf("Write %s.%s without parentheses", decl.Name, variant.Name),
@@ -208,9 +220,12 @@ func (c *Checker) checkVariant(member *ast.MemberExpr, args []ast.Expr, called b
 		// each argument is expected to be, so that the type arguments reach
 		// values inside values: let o: Option<Result<Int, String>> =
 		// Option.Some(Result.Ok(1));
-		hint := c.hintFrom(decl, expected)
 		for i, arg := range args {
 			argType := c.checkExprAs(arg, c.partial(declared[i], isParam, found, hint))
+			if isNullLiteral(arg) && c.holdsNothing(declared[i], isParam, found, hint) {
+				// Result.Ok(null), written so or for Result.Ok()
+				argType = Void
+			}
 			argTypes = append(argTypes, argType)
 			if argType != nil {
 				c.unify(declared[i], argType, isParam, found)
@@ -251,6 +266,26 @@ func (c *Checker) checkVariant(member *ast.MemberExpr, args []ast.Expr, called b
 		}
 	}
 	return result
+}
+
+// holdsNothing reports whether a value of a variant is declared with a
+// type parameter that is known, or expected, to be Void: the T of a
+// Result<Void, E>.
+func (c *Checker) holdsNothing(declared Type, isParam map[string]bool, found, hint map[string]Type) bool {
+	param, ok := declared.(*TypeParam)
+	if !ok || !isParam[param.Name] {
+		return false
+	}
+	t, known := found[param.Name]
+	if !known {
+		t, known = hint[param.Name]
+	}
+	return known && t.Equals(Void)
+}
+
+func isNullLiteral(e ast.Expr) bool {
+	lit, ok := e.(*ast.Literal)
+	return ok && lit.Kind == "null"
 }
 
 // partial is a declared type with the type parameters known so far filled

@@ -28,7 +28,9 @@ if [ -n "$USE_BINARY" ]; then
         exit 1
     fi
 else
-    GO_BIN="/usr/local/go/bin/go"
+    # The go the Makefile uses, else the one on the PATH, else where the
+    # official installer puts it
+    GO_BIN="${GO:-$(command -v go || echo /usr/local/go/bin/go)}"
     LUMEN="$GO_BIN run $PROJECT_ROOT/cmd/lumen"
 fi
 

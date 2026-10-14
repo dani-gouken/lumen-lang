@@ -1,7 +1,7 @@
 .PHONY: help build clean test test-unit test-e2e test-integration test-race bench fuzz run
 
-# Go binary location
-GO := /usr/local/go/bin/go
+# The go on the PATH, or where the official installer puts it
+GO ?= $(shell command -v go 2>/dev/null || echo /usr/local/go/bin/go)
 
 help:
 	@echo "Lumen Makefile"

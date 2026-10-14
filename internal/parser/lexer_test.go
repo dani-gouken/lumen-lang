@@ -33,6 +33,7 @@ func TestLexerTokens(t *testing.T) {
 			token.ASSIGN, token.LT, token.GT, token.NOT, token.QUESTION, token.PIPE, token.AMPERSAND,
 		}},
 		{"ellipsis and dot", "... .", []token.TokenType{token.ELLIPSIS, token.DOT}},
+		{"a #! line that starts the file", "#!/usr/bin/env lumen\nfn", []token.TokenType{token.FN}},
 		{"compound assignment", "+= -= *= /= %=", []token.TokenType{
 			token.PLUS_ASSIGN, token.MINUS_ASSIGN, token.STAR_ASSIGN, token.SLASH_ASSIGN, token.PERCENT_ASSIGN,
 		}},

@@ -30,6 +30,7 @@ import (
 	"github.com/dani-gouken/lumen/internal/errors"
 	"github.com/dani-gouken/lumen/internal/parser"
 	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/stdlib"
 	"github.com/dani-gouken/lumen/internal/token"
 )
 
@@ -279,40 +280,51 @@ const (
 // builtin types their methods. Every program has them.
 var MethodModules = []string{"std.arrays", "std.strings", "std.math"}
 
-// ResultModule is the module of the standard library whose Result every
-// file can name without importing it: fn load() -> Result<Config, String>.
-// A file that says Result and neither declares one nor imports it is read
-// as if it began with `import std.result.{Result};`.
+// The names of the standard library that every file can say without
+// importing them: fn load() -> Result<Config, String>, and the Template
+// a function of commands or queries takes. A file that says one of them,
+// and neither declares one nor imports one, is read as if it began with
+// `import std.result.{Result};` or `import std.ops.{Template};`.
 const (
-	ResultModule = "std.result"
-	ResultName   = "Result"
+	ResultModule   = "std.result"
+	ResultName     = "Result"
+	TemplateModule = "std.ops"
+	TemplateName   = "Template"
 )
 
-var saysResult = regexp.MustCompile(`\bResult\b`)
+var (
+	saysResult   = regexp.MustCompile(`\bResult\b`)
+	saysTemplate = regexp.MustCompile(`\bTemplate\b`)
+)
 
-// importsResult gives a file the import of Result it did not write, when
-// it names Result and has none of its own.
+// importsResult gives a file the imports of Result and Template it did not
+// write, when it names them and has none of its own.
 func (l *loader) importsResult(m *module, src string) {
-	first, _, _ := strings.Cut(ResultModule, ".")
-	if l.packages[first] == "" || m.name == ResultModule || m.types[ResultName] != nil ||
-		!strings.Contains(src, ResultName) || !saysResult.MatchString(src) {
+	l.importsImplicitly(m, src, ResultModule, ResultName, saysResult)
+	l.importsImplicitly(m, src, TemplateModule, TemplateName, saysTemplate)
+}
+
+func (l *loader) importsImplicitly(m *module, src, module, name string, says *regexp.Regexp) {
+	first, _, _ := strings.Cut(module, ".")
+	if l.packages[first] == "" || m.name == module || m.types[name] != nil ||
+		!strings.Contains(src, name) || !says.MatchString(src) {
 		return
 	}
 	for _, imp := range m.prog.Imports {
-		for _, name := range imp.Names {
-			if name.Name == ResultName {
+		for _, imported := range imp.Names {
+			if imported.Name == name {
 				return
 			}
 		}
-		if imp.Alias == ResultName {
+		if imp.Alias == name {
 			return
 		}
 	}
 	at := m.prog.BaseNode
 	m.prog.Imports = append(m.prog.Imports, &ast.ImportDecl{
 		BaseNode: at,
-		Path:     ResultModule,
-		Names:    []*ast.ImportName{{BaseNode: at, Name: ResultName}},
+		Path:     module,
+		Names:    []*ast.ImportName{{BaseNode: at, Name: name}},
 		Implicit: true,
 	})
 }
@@ -367,6 +379,23 @@ func callsMethod(prog *ast.Program, methods map[string]bool) bool {
 		}
 	}
 	return false
+}
+
+// LibraryMethods lists, sorted, the methods that a module of MethodModules
+// declares in the standard library of the lumen binary. A program that
+// calls none of them does not have the module, and a method it misspells
+// is compared with these.
+func LibraryMethods(module string) []string {
+	src, err := stdlib.Read(stdlib.Root + "/" + strings.TrimPrefix(module, stdlib.Package+".") + ".lum")
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for name := range methodNames(src) {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 func (l *loader) loadImports(m *module) {

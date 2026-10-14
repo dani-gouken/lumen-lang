@@ -230,6 +230,14 @@ func TestStyle(t *testing.T) {
 				"    return n * 2;",
 				"}",
 			)},
+		{"the #! line of a script stays first, as it was",
+			"#!/usr/bin/env lumen\nfn main(){println(1);}",
+			lines(
+				"#!/usr/bin/env lumen",
+				"fn main() {",
+				"    println(1);",
+				"}",
+			)},
 		{"an empty block stays closed",
 			"fn nothing(){}\nfn main(){while true{}}",
 			lines(

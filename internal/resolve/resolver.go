@@ -729,6 +729,12 @@ func ClosestName(target string, candidates []string) string {
 	return ""
 }
 
+// Distance is how many characters must be inserted, removed or replaced
+// to turn one name into the other.
+func Distance(a, b string) int {
+	return levenshtein(a, b)
+}
+
 // levenshtein computes the Levenshtein distance between two strings.
 func levenshtein(s1, s2 string) int {
 	r1, r2 := []rune(s1), []rune(s2)

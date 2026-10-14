@@ -462,7 +462,7 @@ func TestShortcutErrors(t *testing.T) {
 		{"try on an optional in a function that returns a value", "fn f() -> Int { return \"1\".parseInt()?; }", "E2034",
 			"returns null to the caller, and this function returns Int", "Make the function return Int?"},
 		{"try on a plain value", "fn f() -> Int? { return 5?; }", "E2034", "'?' is for a Result or a value that may be null, and this is a Int", "Remove the '?'"},
-		{"try in main", "fn main() -> Int { let n = number(\"1\")?; return n; }", "E2034", "this function returns Int, not a Result", ""},
+		{"try in a function that returns no Result", "fn helper() -> Int { let n = number(\"1\")?; return n; }", "E2034", "this function returns Int, not a Result", ""},
 		{"safe access on what is never null", "fn f(u: User) -> String? { return u?.name; }", "E2035", "'?.' is for a value that may be null, and this User never is", "Use '.' here"},
 		{"safe access on a Result", "fn f(r: Result<User, String>) -> String? { return r?.name; }", "E2035",
 			"'?.' is for a value that may be null, and a std.result.Result<User, String> never is", "(value?).member"},

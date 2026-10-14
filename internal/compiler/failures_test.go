@@ -432,3 +432,166 @@ fn main() -> Int { panic("state:", P { x: 1 }, [1, 2], 3.5, true, null); }`)
 func regexpReplace(s, pattern, with string) string {
 	return regexp.MustCompile(pattern).ReplaceAllString(s, with)
 }
+
+// TestResultWithNothing checks a Result<Void, E>: what a function gives
+// that does something and may fail, but has nothing to say when it worked.
+func TestResultWithNothing(t *testing.T) {
+	expectOutput(t, failureImports+`
+		fn save(ok: Bool) -> Result<Void, String> {
+			if !ok { return Result.Err("disk full"); }
+			return Result.Ok();
+		}
+		fn both(second: Bool) -> Result<Void, String> {
+			save(true)?;
+			save(second)?;
+			return Result.Ok(null);
+		}
+	`, `
+		match save(true) {
+			case Result.Ok(_): { println("saved"); }
+			case Result.Err(reason): { println("not saved:", reason); }
+		}
+		println(both(true).isOk(), both(false).reason() ?? "fine");
+		let kept: Result<Void, String> = Result.Ok();
+		let made = Result<Void, String>.Ok();
+		println(kept.isOk(), made.isOk(), kept == made);
+	`, `saved
+true disk full
+true true true
+`)
+
+	for _, src := range []string{
+		"fn f() -> Result<Int, String> { return Result.Ok(); }",
+		"fn f() -> Int { let r = Result.Ok(); return 0; }",
+	} {
+		errs := errors.NewHandler()
+		Compile(failureImports+src+"\nfn main() -> Int { return 0; }", "test.lum", errs)
+		if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "Result.Ok holds 1 value, got 0") {
+			t.Errorf("expected Result.Ok() to be refused where its value is not Void: %s, got %v", src, errs.Diagnostics)
+		}
+	}
+}
+
+// TestTryInMain checks `?` in main, which has no caller: a failure ends
+// the program there, as a panic does, saying why.
+func TestTryInMain(t *testing.T) {
+	for _, c := range []struct{ name, decls, want string }{
+		{"a reason that is a text", `fn load() -> Result<Int, String> { return Result.Err("the config is missing"); }`, "the config is missing"},
+		{"a reason that describes itself", `
+			struct Problem { file: String; }
+			impl Problem { fn describe() -> String { return "cannot read " + self.file; } }
+			fn load() -> Result<Int, Problem> { return Result.Err(Problem { file: "app.json" }); }`, "cannot read app.json"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out, _, err := runProgram(t, c.decls+`
+fn main() -> Int {
+    defer println("cleaned up");
+    println("before");
+    let n = load()?;
+    println("not reached", n);
+    return 0;
+}
+`)
+			if out != "before\ncleaned up\n" {
+				t.Errorf("expected the program to stop at the '?', its defer run, got %q", out)
+			}
+			failure, ok := err.(*vm.RuntimeError)
+			if !ok || failure.Kind != vm.KindPanic || failure.Message != c.want {
+				t.Fatalf("expected the program to end with %q, got %v", c.want, err)
+			}
+			if frame := failure.Stack[0]; frame.Function != "main" || strings.TrimSpace(frame.SourceLine) != "let n = load()?;" {
+				t.Errorf("expected the failure where the '?' is, got %+v", frame)
+			}
+		})
+	}
+
+	// Anywhere else, a function that does not return a Result has a caller
+	// to hand the failure to, and must say so
+	for _, src := range []string{
+		"fn f() -> Result<Int, String> { return Result.Ok(1); }\nfn helper() -> Int { return f()?; }\nfn main() -> Int { return helper(); }",
+		"fn f() -> Result<Int, String> { return Result.Ok(1); }\nfn main() -> Int { let g = fn() -> Int { return f()?; }; return g(); }",
+	} {
+		errs := errors.NewHandler()
+		Compile(src, "test.lum", errs)
+		if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "'?' passes a failure on to the caller") {
+			t.Errorf("expected '?' to be refused outside main:\n%s\ngot %v", src, errs.Diagnostics)
+		}
+	}
+}
+
+// TestTemplates checks that a text written in the program, given where a
+// Template is expected, keeps its parts and its values apart, and that a
+// String made elsewhere is refused there.
+func TestTemplates(t *testing.T) {
+	expectOutput(t, `
+		import std.ops.{Template};
+		fn pieces(t: Template) -> String {
+			return "${t.parts} ${t.values} ${t.text()}";
+		}
+	`, `
+		let name = "ada";
+		let n = 3;
+		println(pieces("hello ${name}, ${n} times"));
+		println(pieces("${name}${n}"));
+		println(pieces("nothing put in"));
+		println(pieces("""
+			over ${name}
+			lines
+			"""));
+	`, `["hello ", ", ", " times"] ["ada", "3"] hello ada, 3 times
+["", "", ""] ["ada", "3"] ada3
+["nothing put in"] [] nothing put in
+["over ", "\nlines"] ["ada"] over ada
+lines
+`)
+
+	errs := errors.NewHandler()
+	Compile(`
+		import std.ops.{Template};
+		fn pieces(t: Template) -> String { return t.text(); }
+		fn main() -> Int { let made = "a " + "b"; println(pieces(made)); return 0; }
+	`, "test.lum", errs)
+	if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "a Template is a text written in the program, and this is a String made elsewhere") {
+		t.Errorf("expected a String in a variable to be refused as a Template, got %v", errs.Diagnostics)
+	}
+}
+
+// TestTemplatesWhereverOneIsExpected checks that a text written in the
+// program becomes a Template wherever the type says so, without an import:
+// a variable, a return, a field, an item of an array, an optional, an
+// assignment; and that a String is refused in each of those places.
+func TestTemplatesWhereverOneIsExpected(t *testing.T) {
+	expectOutput(t, `
+		struct Job { name: String; command: Template; }
+		fn build(n: String) -> Template { return "make ${n}"; }
+		fn show(t: Template) -> String { return "${t.parts}|${t.values}"; }
+	`, `
+		let name = "a b";
+		let kept: Template = "keep ${name}";
+		let job = Job { name: "one", command: "run ${name} now" };
+		let all: [Template] = ["first", "second ${name}"];
+		let maybe: Template? = "maybe ${name}";
+		println(show(kept), show(build(name)), show(job.command));
+		println(show(all[0]), show(all[1]), show(maybe ?? kept));
+		kept = "again ${name}";
+		println(show(kept), kept.text());
+		let plain = "still a String ${name}";
+		println(plain.len());
+	`, `["keep ", ""]|["a b"] ["make ", ""]|["a b"] ["run ", " now"]|["a b"]
+["first"]|[] ["second ", ""]|["a b"] ["maybe ", ""]|["a b"]
+["again ", ""]|["a b"] again a b
+18
+`)
+
+	for _, src := range []string{
+		`fn main() -> Int { let s = "x"; let t: Template = s; return 0; }`,
+		`fn f(s: String) -> Template { return s; }` + "\nfn main() -> Int { return 0; }",
+		`struct Job { command: Template; }` + "\n" + `fn main() -> Int { let s = "x"; let j = Job { command: s }; return 0; }`,
+	} {
+		errs := errors.NewHandler()
+		Compile(src, "test.lum", errs)
+		if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "a Template is a text written in the program, and this is a String made elsewhere") {
+			t.Errorf("expected a String to be refused as a Template:\n%s\ngot %v", src, errs.Diagnostics)
+		}
+	}
+}
