@@ -160,7 +160,6 @@ Requirements on type parameters, traits with type parameters, methods with a bod
 | Tuples of more than six values, or of one | A struct |
 | Taking a tuple apart in a parameter (`fn(key, value)` for a function of a pair) or a struct apart at all | `let (key, value) = pair;` as the first line |
 | `?.` followed by an index: `items?[0]` | `at`, or a test against `null` |
-| `?` in `main`, to end the program with the failure | A `match` |
 | Types on a short function: `(n: Int) -> n * 2` | The long form, `fn(n: Int) -> Int { return n * 2; }`; a short one always takes its types from outside |
 | A short function where nothing is expected: `let f = x -> x + 1;` | `E2037`; give the variable a type, or use the long form |
 

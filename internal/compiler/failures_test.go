@@ -471,3 +471,50 @@ true true true
 		}
 	}
 }
+
+// TestTryInMain checks `?` in main, which has no caller: a failure ends
+// the program there, as a panic does, saying why.
+func TestTryInMain(t *testing.T) {
+	for _, c := range []struct{ name, decls, want string }{
+		{"a reason that is a text", `fn load() -> Result<Int, String> { return Result.Err("the config is missing"); }`, "the config is missing"},
+		{"a reason that describes itself", `
+			struct Problem { file: String; }
+			impl Problem { fn describe() -> String { return "cannot read " + self.file; } }
+			fn load() -> Result<Int, Problem> { return Result.Err(Problem { file: "app.json" }); }`, "cannot read app.json"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out, _, err := runProgram(t, c.decls+`
+fn main() -> Int {
+    defer println("cleaned up");
+    println("before");
+    let n = load()?;
+    println("not reached", n);
+    return 0;
+}
+`)
+			if out != "before\ncleaned up\n" {
+				t.Errorf("expected the program to stop at the '?', its defer run, got %q", out)
+			}
+			failure, ok := err.(*vm.RuntimeError)
+			if !ok || failure.Kind != vm.KindPanic || failure.Message != c.want {
+				t.Fatalf("expected the program to end with %q, got %v", c.want, err)
+			}
+			if frame := failure.Stack[0]; frame.Function != "main" || strings.TrimSpace(frame.SourceLine) != "let n = load()?;" {
+				t.Errorf("expected the failure where the '?' is, got %+v", frame)
+			}
+		})
+	}
+
+	// Anywhere else, a function that does not return a Result has a caller
+	// to hand the failure to, and must say so
+	for _, src := range []string{
+		"fn f() -> Result<Int, String> { return Result.Ok(1); }\nfn helper() -> Int { return f()?; }\nfn main() -> Int { return helper(); }",
+		"fn f() -> Result<Int, String> { return Result.Ok(1); }\nfn main() -> Int { let g = fn() -> Int { return f()?; }; return g(); }",
+	} {
+		errs := errors.NewHandler()
+		Compile(src, "test.lum", errs)
+		if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "'?' passes a failure on to the caller") {
+			t.Errorf("expected '?' to be refused outside main:\n%s\ngot %v", src, errs.Diagnostics)
+		}
+	}
+}

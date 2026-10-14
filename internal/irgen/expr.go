@@ -250,7 +250,9 @@ func (fc *FunctionCompiler) compileTry(expr *ast.UnaryExpr) *ir.Register {
 	leaveBlock := fc.builder.NewBlock()
 	goOnBlock := fc.builder.NewBlock()
 	failed := fc.builder.NewRegister()
-	isResult := fc.gen.typeInfo.Tries[expr] == types.TryResult
+	how := fc.gen.typeInfo.Tries[expr]
+	ends := how == types.TryEnd || how == types.TryEndDescribed
+	isResult := how == types.TryResult || ends
 	if isResult {
 		fn := fc.builder.CreateMov(ir.Constant{Val: TypeTestIntrinsic, Type: "FuncRef"})
 		desc := fc.builder.CreateMov(ir.Constant{Val: "{" + types.ResultEnum + ".Err}", Type: "String"})
@@ -262,8 +264,21 @@ func (fc *FunctionCompiler) compileTry(expr *ast.UnaryExpr) *ir.Register {
 	fc.builder.CreateBr(failed, leaveBlock, goOnBlock)
 
 	fc.builder.SetBlock(leaveBlock)
-	fc.runDefers(0)
-	fc.builder.CreateRet(value)
+	if ends {
+		// In main: the program stops here, as a panic stops it, the
+		// reason being the message. Defers run as they do for a panic
+		reason := fc.builder.NewRegister()
+		fc.builder.Emit(ir.OpGetField, reason, value, ir.Constant{Val: variantField(0), Type: "String"})
+		if how == types.TryEndDescribed {
+			reason = fc.builder.CreateCall(fc.builder.CreateGetMethod(reason, "describe"), reason)
+		}
+		fc.setPos(expr)
+		fc.builder.CreateCall(fc.builder.CreateMov(ir.Constant{Val: "panic", Type: "FuncRef"}), reason)
+		fc.builder.CreateRet(value)
+	} else {
+		fc.runDefers(0)
+		fc.builder.CreateRet(value)
+	}
 
 	fc.builder.SetBlock(goOnBlock)
 	if !isResult {

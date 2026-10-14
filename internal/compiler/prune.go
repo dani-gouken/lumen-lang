@@ -26,8 +26,9 @@ import (
 // after a dot anywhere in what is kept, whatever it is written after.
 
 // alwaysCalled are the methods the compiler calls without the program
-// writing their name: what a loop over a range that was kept stops at.
-var alwaysCalled = map[string]bool{"stop": true}
+// writing their name: what a loop over a range that was kept stops at,
+// and what says why main ended when a `?` there met a failure.
+var alwaysCalled = map[string]bool{"stop": true, "describe": true}
 
 // It is done twice. Before the program is checked, the functions of the
 // library that nothing can reach lose their bodies: they are still

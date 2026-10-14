@@ -10,6 +10,10 @@ import (
 const (
 	TryResult   = "result"
 	TryOptional = "optional"
+	// In main, which has no caller to hand a failure to: the program ends
+	// there, saying why. TryEndDescribed when the reason has describe()
+	TryEnd          = "end"
+	TryEndDescribed = "end, described"
 )
 
 // ResultEnum is the enum of the standard library that `value?` knows: a
@@ -93,6 +97,14 @@ func (c *Checker) checkTry(e *ast.UnaryExpr) Type {
 		outer := resultType(returns)
 		switch {
 		case isUnknown(returns):
+		case outer == nil && c.currentFn != nil && c.currentFn.Name == "main" && (returns.Equals(Int) || returns.Equals(Void)):
+			// main has no caller: a failure ends the program, as a panic
+			// does, with the reason as its message
+			c.info.Tries[e] = TryEnd
+			if ft, ok := c.methodType(reason, "describe", nil); ok && len(ft.Params) == 0 && ft.ReturnType.Equals(String) {
+				c.info.Tries[e] = TryEndDescribed
+			}
+			return value
 		case outer == nil:
 			c.errorfWithSuggestion(e.Token(), ErrBadTry,
 				fmt.Sprintf("Make the function return Result<..., %s>, or handle the failure here with a match or orElse", describe(reason)),

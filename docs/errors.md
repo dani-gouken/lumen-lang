@@ -67,7 +67,17 @@ fn order(text: String) -> Result<Order, Problem> {
 
 `count(text)?` is the number if there is one. If there is none, `order` returns right there, with the same failure. What comes after only runs with a value.
 
-The function has to return a `Result` whose reason is of the same type. When it is not, turn one into the other on the way: `io.readFile(path).mapErr(asProblem)?`. In `main`, which returns an `Int`, there is no caller to hand a failure to: that is where a `match` belongs.
+The function has to return a `Result` whose reason is of the same type. When it is not, turn one into the other on the way: `io.readFile(path).mapErr(asProblem)?`. In `main` there is no caller to hand a failure to, so `?` ends the program there, as a `panic` does: the `defer`s run, and the reason is the message, with what its `describe()` says when it has one. A script can then go straight on:
+
+```rust
+fn main() -> Int {
+    let config = io.readFile("app.json")?;      // [ERROR] R0001: cannot read app.json: no such file or directory
+    deploy(config)?;
+    return 0;
+}
+```
+
+Where a failure is to be looked at rather than end the program, a `match` is still the way. Inside a function written in `main`, `?` is the function's own, as anywhere else.
 
 The same operator works on an optional, in a function that may return `null`: `let user = find(id)?;` gives the user, or returns `null`.
 
