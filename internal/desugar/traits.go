@@ -170,7 +170,7 @@ func (d *Desugarer) shown(call *ast.CallExpr, args []ast.Expr) {
 		argType := d.typeInfo.Types[arg]
 		if value, optional := valueOf(argType); optional && d.shows(value) {
 			// A value that may be missing: value?.show() ?? "null"
-			holder := &ast.Ident{BaseNode: at, Name: d.generateTmpVar()}
+			holder := &ast.Ident{BaseNode: at, Name: ast.SafeHolderPrefix + d.generateTmpVar()}
 			shown := &ast.BinaryExpr{BaseNode: at, Left: args[i], Op: ast.SafeAccessOp, Right: d.call(holder, types.MethodShow, at)}
 			null := &ast.Literal{BaseNode: at, Value: "null", Kind: "string"}
 			args[i] = &ast.BinaryExpr{BaseNode: at, Left: shown, Op: "??", Right: null}
