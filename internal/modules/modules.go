@@ -22,7 +22,6 @@ package modules
 import (
 	"fmt"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
@@ -355,23 +354,59 @@ const (
 	TemplateName   = "Template"
 )
 
-var (
-	saysResult   = regexp.MustCompile(`\b(Result|Ok|Err)\b`)
-	saysTemplate = regexp.MustCompile(`\bTemplate\b`)
-)
-
 // importsResult gives a file the imports of Result and Template it did not
-// write, when it names them and has none of its own; the same for the
-// collections Dict, List and Set, and for the modules of the library it
-// names: dict.empty<Int>() is read as if the file began with
-// `import std.dict;`.
+// write, when it names them and has none of its own; the same, for a file
+// of the program, for the collections Dict, List and Set, the traits of
+// std.ops, and the modules of the library it names: dict.empty<Int>() is
+// read as if the file began with `import std.dict;`. The files of the
+// library write their imports.
 func (l *loader) importsResult(m *module, src string) {
-	l.importsImplicitly(m, src, ResultModule, ResultName, saysResult)
-	l.importsImplicitly(m, src, TemplateModule, TemplateName, saysTemplate)
-	for _, collection := range implicitTypes {
-		l.importsImplicitly(m, src, collection.module, collection.name, collection.says)
+	words, beforeDot := sourceWords(src)
+	l.importsImplicitly(m, words, ResultModule, ResultName, "Ok", "Err")
+	l.importsImplicitly(m, words, TemplateModule, TemplateName)
+	if l.packages[stdlib.Package] == "" || m.name == stdlib.Package || strings.HasPrefix(m.name, stdlib.Package+".") {
+		return
 	}
-	l.importsModules(m, src)
+	for _, implicit := range implicitTypes {
+		l.importsImplicitly(m, words, implicit.module, implicit.name)
+	}
+	l.importsModules(m, beforeDot)
+}
+
+// sourceWords lists the words of a source, comments and texts included,
+// and those of them written just before a dot and a name: dict in
+// dict.empty(). It goes through the text once, which a regular expression
+// for each name of the library would do a dozen times.
+func sourceWords(src string) (words, beforeDot map[string]bool) {
+	words, beforeDot = make(map[string]bool), make(map[string]bool)
+	isStart := func(c byte) bool { return c == '_' || (c|0x20 >= 'a' && c|0x20 <= 'z') }
+	isPart := func(c byte) bool { return isStart(c) || (c >= '0' && c <= '9') }
+	skipSpace := func(i int) int {
+		for i < len(src) && (src[i] == ' ' || src[i] == '\t' || src[i] == '\n' || src[i] == '\r') {
+			i++
+		}
+		return i
+	}
+	for i := 0; i < len(src); {
+		c := src[i]
+		if !isStart(c) || (i > 0 && isPart(src[i-1])) {
+			i++
+			continue
+		}
+		end := i
+		for end < len(src) && isPart(src[end]) {
+			end++
+		}
+		word := src[i:end]
+		words[word] = true
+		if dot := skipSpace(end); dot < len(src) && src[dot] == '.' {
+			if next := skipSpace(dot + 1); next < len(src) && isStart(src[next]) {
+				beforeDot[word] = true
+			}
+		}
+		i = end
+	}
+	return words, beforeDot
 }
 
 // declaresVariant reports whether a file has an enum with a variant of
@@ -389,43 +424,21 @@ func declaresVariant(prog *ast.Program, name string) bool {
 	return false
 }
 
-// implicitTypes are the types of the library a file can name without
-// importing them, besides Result and Template.
-var implicitTypes = []struct {
-	module, name string
-	says         *regexp.Regexp
-}{
-	{"std.dict", "Dict", regexp.MustCompile(`\bDict\b`)},
-	{"std.list", "List", regexp.MustCompile(`\bList\b`)},
-	{"std.set", "Set", regexp.MustCompile(`\bSet\b`)},
-	{"std.ops", "Equal", regexp.MustCompile(`\bEqual\b`)},
-	{"std.ops", "Ordered", regexp.MustCompile(`\bOrdered\b`)},
-	{"std.ops", "Show", regexp.MustCompile(`\bShow\b`)},
-	{"std.ops", "Add", regexp.MustCompile(`\bAdd\b`)},
-	{"std.ops", "Subtract", regexp.MustCompile(`\bSubtract\b`)},
-	{"std.ops", "Multiply", regexp.MustCompile(`\bMultiply\b`)},
-	{"std.ops", "Divide", regexp.MustCompile(`\bDivide\b`)},
-	{"std.ops", "Iterable", regexp.MustCompile(`\bIterable\b`)},
-	{"std.ops", "Indexed", regexp.MustCompile(`\bIndexed\b`)},
-	{"std.ops", "IndexedSet", regexp.MustCompile(`\bIndexedSet\b`)},
+// implicitTypes are the types of the library a file of the program can
+// name without importing them, besides Result and Template.
+var implicitTypes = []struct{ module, name string }{
+	{"std.dict", "Dict"}, {"std.list", "List"}, {"std.set", "Set"},
+	{"std.ops", "Equal"}, {"std.ops", "Ordered"}, {"std.ops", "Show"},
+	{"std.ops", "Add"}, {"std.ops", "Subtract"}, {"std.ops", "Multiply"}, {"std.ops", "Divide"},
+	{"std.ops", "Iterable"}, {"std.ops", "Indexed"}, {"std.ops", "IndexedSet"},
 }
-
-// namesModule finds, in a source, the names written before a dot.
-var namesModule = regexp.MustCompile(`\b([a-z][a-z0-9]*)\s*\.\s*[A-Za-z_]`)
 
 // importsModules gives a file the import of each module of the library it
 // writes the name of before a dot, dict.empty<Int>(), when nothing of the
 // file's own goes by that name. A variable of that name in a function is
 // no reason not to: it hides the module there, as it would an import
-// that was written. The files of the library write their imports.
-func (l *loader) importsModules(m *module, src string) {
-	if l.packages[stdlib.Package] == "" || strings.HasPrefix(m.name, stdlib.Package+".") || m.name == stdlib.Package {
-		return
-	}
-	library := make(map[string]bool)
-	for _, module := range stdlib.Modules() {
-		library[strings.TrimPrefix(module, stdlib.Package+".")] = true
-	}
+// that was written.
+func (l *loader) importsModules(m *module, beforeDot map[string]bool) {
 	taken := make(map[string]bool)
 	for _, imp := range m.prog.Imports {
 		if imp.Alias != "" {
@@ -445,24 +458,28 @@ func (l *loader) importsModules(m *module, src string) {
 	}
 
 	at := m.prog.BaseNode
-	for _, found := range namesModule.FindAllStringSubmatch(src, -1) {
-		name := found[1]
-		if !library[name] || taken[name] || m.values[name] != nil || m.types[name] != nil {
+	for _, module := range stdlib.Modules() {
+		name := strings.TrimPrefix(module, stdlib.Package+".")
+		if !beforeDot[name] || taken[name] || m.values[name] != nil || m.types[name] != nil {
 			continue
 		}
-		taken[name] = true
-		m.prog.Imports = append(m.prog.Imports, &ast.ImportDecl{
-			BaseNode: at,
-			Path:     stdlib.Package + "." + name,
-			Implicit: true,
-		})
+		m.prog.Imports = append(m.prog.Imports, &ast.ImportDecl{BaseNode: at, Path: module, Implicit: true})
 	}
 }
 
-func (l *loader) importsImplicitly(m *module, src, module, name string, says *regexp.Regexp) {
+// importsImplicitly gives a file the import of a name of a module of the
+// library when it writes that name, or one of the others that say it is
+// meant (Ok for Result), and has nothing of its own by that name.
+func (l *loader) importsImplicitly(m *module, words map[string]bool, module, name string, others ...string) {
 	first, _, _ := strings.Cut(module, ".")
-	if l.packages[first] == "" || m.name == module || m.types[name] != nil ||
-		!says.MatchString(src) || declaresVariant(m.prog, name) {
+	if l.packages[first] == "" || m.name == module || m.types[name] != nil || declaresVariant(m.prog, name) {
+		return
+	}
+	said := words[name]
+	for _, other := range others {
+		said = said || words[other]
+	}
+	if !said {
 		return
 	}
 	for _, imp := range m.prog.Imports {

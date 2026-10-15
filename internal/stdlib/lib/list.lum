@@ -6,7 +6,7 @@
 //     names.filter(n -> n.len() > 3).len()
 
 import std.arrays;
-import std.ops.{Iterable, Indexed, IndexedSet};
+import std.ops.{Iterable, Indexed, IndexedSet, Equal};
 
 pub struct List<T> {
     items: [T];

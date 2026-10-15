@@ -9,7 +9,7 @@
 // in the order they were first set.
 
 import std.arrays;
-import std.ops.{Iterable, Indexed, IndexedSet};
+import std.ops.{Iterable, Indexed, IndexedSet, Equal};
 
 // The keys and the values are two arrays, in the order the keys were set:
 // the value of keys[i] is values[i].
