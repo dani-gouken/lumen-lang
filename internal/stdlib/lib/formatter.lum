@@ -130,6 +130,9 @@ struct Token {
 
     // The comment that ends its line, or ""
     after: String = "";
+
+    // A keyword used as a name: for case in cases
+    name: Bool = false;
 }
 
 fn isDigit(c: String) -> Bool {
@@ -148,6 +151,11 @@ fn isReserved(word: String) -> Bool {
         case "impl" | "import" | "as" | "pub" | "extern" | "true" | "false" | "null": true;
         default: isBuiltinType(word);
     };
+}
+
+// Whether a token is a word that is not a name.
+fn reserved(token: Token) -> Bool {
+    return !token.name && isReserved(token.text);
 }
 
 fn isBuiltinType(word: String) -> Bool {
@@ -171,7 +179,90 @@ fn isLongSymbol(text: String) -> Bool {
 fn scan(source: String, report: Report) -> [Token] {
     let lexer = Lexer { source: source, length: source.len(), report: report };
     lexer.scan();
+    markNames(lexer.tokens);
     return lexer.tokens;
+}
+
+// Most keywords may also be names, told from the tokens around them as
+// the compiler tells them: one after `let`, `fn`, `for` or a dot is a
+// name, and so is one followed by what only ever follows a value.
+fn markNames(tokens: [Token]) {
+    for i, token in tokens {
+        if token.kind != Kind.Name || !isSoftKeyword(token.text) {
+            continue;
+        }
+
+        let before = i > 0 ? tokens[i - 1].text : "";
+        let after = i + 1 < tokens.len() ? tokens[i + 1].text : "";
+
+        if token.text == "in" {
+            // The keyword comes after the variable of a loop and nowhere
+            // else: for x in items, for (k, v) in pairs
+            let afterName = i > 0 && tokens[i - 1].kind == Kind.Name && !reserved(tokens[i - 1]);
+            token.name = !afterName && before != ")";
+            continue;
+        }
+
+        token.name = softKeywordIsName(token.text, before, after);
+    }
+}
+
+fn isSoftKeyword(word: String) -> Bool {
+    return match word {
+        case "case" | "match" | "in" | "as" | "defer" | "import": true;
+        case "pub" | "extern" | "struct" | "enum" | "trait" | "impl": true;
+        default: false;
+    };
+}
+
+fn followsValue(text: String) -> Bool {
+    return match text {
+        case "." | "?." | "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" | "^=": true;
+        case "++" | "--" | ";" | "," | ":" | ")" | "]" | "}" | "->" | "==" | "!=": true;
+        case "<=" | ">=" | "+" | "*" | "/" | "%" | "&&" | "||" | "?" | "??" | "|>": true;
+        case ".." | "..=" | "&" | "^": true;
+        default: false;
+    };
+}
+
+fn softKeywordIsName(word: String, before: String, after: String) -> Bool {
+    let declares = match before {
+        case "let" | "const" | "fn" | "for" | "." | "?.": true;
+        default: false;
+    };
+
+    if declares {
+        return true;
+    }
+
+    let starts = match before {
+        case "" | ";" | "{" | "}": true;
+        default: false;
+    };
+
+    if after == ";" && starts {
+        return false;
+    }
+
+    if followsValue(after) {
+        return true;
+    }
+
+    return match after {
+        case "in": true;
+
+        case "{": match before {
+            case "if" | "while" | "match" | "in": true;
+            default: false;
+        };
+
+        case "(" | "[": match word {
+            case "match" | "case" | "as" | "impl": false;
+            default: true;
+        };
+
+        default: false;
+    };
 }
 
 struct Lexer {
@@ -702,8 +793,10 @@ impl Parser {
     }
 
     // The text of the token at a position, "" where there is none.
+    // The text of a token, or "" for a keyword used as a name: what is
+    // compared with keywords and symbols
     fn textAt(at: Int) -> String {
-        if at < 0 || at >= self.tokens.len() {
+        if at < 0 || at >= self.tokens.len() || self.tokens[at].name {
             return "";
         }
 
@@ -711,12 +804,17 @@ impl Parser {
     }
 
     fn is(text: String) -> Bool {
-        return self.tokens[self.at].text == text;
+        let token = self.tokens[self.at];
+        return token.text == text && !token.name;
+    }
+
+    // The keyword or the symbol at the cursor, "" for a name
+    fn word() -> String {
+        return self.textAt(self.at);
     }
 
     fn isName() -> Bool {
-        let token = self.peek();
-        return token.kind == Kind.Name && !isReserved(token.text);
+        return reserved(self.peek()) == false && self.peek().kind == Kind.Name;
     }
 
     fn fail(message: String) {
@@ -872,7 +970,7 @@ impl Parser {
     // Whether a declaration starts here, rather than a statement of a
     // script: `fn name` declares a function, `fn(` makes one.
     fn atDeclaration() -> Bool {
-        return match self.peek().text {
+        return match self.word() {
             case "pub" | "import" | "const" | "extern" | "struct" | "enum" | "trait" | "impl": true;
             case "fn": self.ahead(1).kind == Kind.Name;
             default: false;
@@ -906,7 +1004,7 @@ impl Parser {
             parts.push(space());
         }
 
-        match self.peek().text {
+        match self.word() {
             case "import": {
                 parts.push(self.importDeclaration());
             }
@@ -1261,7 +1359,7 @@ impl Parser {
             return layout.concat(parts);
         }
 
-        if token.kind != Kind.Name || (isReserved(token.text) && !isBuiltinType(token.text)) {
+        if token.kind != Kind.Name || (reserved(token) && !isBuiltinType(token.text)) {
             self.fail("expected a type");
         }
 
@@ -1344,7 +1442,7 @@ impl Parser {
             return end;
         }
 
-        if token.kind != Kind.Name || (isReserved(token.text) && !isBuiltinType(token.text)) {
+        if token.kind != Kind.Name || (reserved(token) && !isBuiltinType(token.text)) {
             return -1;
         }
 
@@ -1412,7 +1510,7 @@ impl Parser {
     }
 
     fn statement() -> Doc {
-        match self.peek().text {
+        match self.word() {
             case "let" | "const": {
                 return self.variable();
             }
@@ -1866,7 +1964,7 @@ impl Parser {
             return ("", 0, 0);
         }
 
-        let level = match token.text {
+        let level = match self.word() {
             case "||": 1;
             case "&&": 2;
             case "==" | "!=": 3;
@@ -2113,7 +2211,7 @@ impl Parser {
             return self.take();
         }
 
-        match token.text {
+        match self.word() {
             case "true" | "false" | "null": {
                 return self.take();
             }
@@ -2206,7 +2304,7 @@ impl Parser {
         let first = self.ahead(1);
 
         return first.text == "}"
-            || (first.kind == Kind.Name && !isReserved(first.text) && self.ahead(2).text == ":");
+            || (first.kind == Kind.Name && !reserved(first) && self.ahead(2).text == ":");
     }
 
     // { name: value, other: value }: the fields of a struct literal. One
@@ -2393,7 +2491,7 @@ impl Parser {
             let doc = Doc.Nothing;
             alone = alone && rows.count == 0 && lead.comments.isEmpty();
 
-            match self.peek().text {
+            match self.word() {
                 case "let"
                     | "const"
                     | "return"

@@ -223,6 +223,32 @@ func TestStyle(t *testing.T) {
 		src  string
 		want string
 	}{
+		{"keywords used as names are names",
+			`fn f(case:Case,in:[Int])->Int{for case in cases{log(case.name);} let match=in[0];match.count+=1;if match{log(match);} match match{case 1:{log(1);} default:{}} return in.len()+match;}`,
+			lines(
+				"fn f(case: Case, in: [Int]) -> Int {",
+				"    for case in cases {",
+				"        log(case.name);",
+				"    }",
+				"",
+				"    let match = in[0];",
+				"    match.count += 1;",
+				"",
+				"    if match {",
+				"        log(match);",
+				"    }",
+				"",
+				"    match match {",
+				"        case 1: {",
+				"            log(1);",
+				"        }",
+				"",
+				"        default: {}",
+				"    }",
+				"",
+				"    return in.len() + match;",
+				"}",
+			)},
 		{"an if and a match before the value of an if are statements",
 			`fn f(n:Int)->Int{let v=if n>0{if n>9{log(n);} match n{case 1:{log(1);} default:{}} n*2}else{0};return v;}`,
 			lines(

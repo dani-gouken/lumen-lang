@@ -500,7 +500,7 @@ func TestControlFlowErrors(t *testing.T) {
 		{"return in a defer", `defer { return 1; }`, "E2039", "'return' inside a defer"},
 		{"break out of a defer", `while true { defer { break; } }`, "E2039", "'break' inside a defer"},
 		{"continue out of a defer", `while true { defer { if true { continue; } } }`, "E2039", "'continue' inside a defer"},
-		{"defer as a name", `let defer = 1;`, "E0001", "expected variable name"},
+		{"a defer with nothing to do", `defer;`, "E0001", "expected expression, found ';'"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

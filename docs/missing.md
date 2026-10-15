@@ -57,12 +57,7 @@ Adding a function written in Lumen means editing a file in `internal/stdlib/lib/
 
 The library is some 2,500 lines of Lumen. Most of it compiled as first written; these are the places where the language made the code longer or stranger than it should be, in the order of how often they came up.
 
-Most of this list has since been added, and the library and the examples rewritten with it: tuples, `?` to pass a failure on, `?.`, texts over several lines, what a test established reaching into a function expression, requirements on type parameters and equality a type defines for itself. Calling a function held in a field, `self.key(item)`, turned out to work all along. A `match` gives a value now, which took the `return` out of every case of some forty of them.
-
-| Missing | What it cost |
-|---------|--------------|
-| **`${` in a text that is not an insertion** | A regex replacement naming a group is `"\${year}"`: easy to forget, and the error is "undefined identifier 'year'" |
-| **Keywords as names** | `for case in cases` is a syntax error; so are `match`, `in`, `is` as names of variables |
+All of this list has since been added, and the library and the examples rewritten with it: tuples, `?` to pass a failure on, `?.`, texts over several lines, what a test established reaching into a function expression, requirements on type parameters and equality a type defines for itself. Calling a function held in a field, `self.key(item)`, turned out to work all along. A `match` gives a value now, which took the `return` out of every case of some forty of them. Most keywords can be names (`for case in cases`, `let match = ...`), and a name alone in `${}` that is not declared says that `\${` writes the characters.
 
 ### Getting packages — L
 

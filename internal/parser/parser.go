@@ -76,8 +76,10 @@ func SourceLines(src string) map[int]string {
 // Parse parses a whole source file. Syntax errors are reported to errs; the
 // returned program contains every declaration that parsed cleanly.
 func Parse(src, file string, errs *errors.Handler) *ast.Program {
+	toks := NewLexer(src, file).Tokenize()
+	softKeywordsAsNames(toks)
 	p := &Parser{
-		toks:        NewLexer(src, file).Tokenize(),
+		toks:        toks,
 		errs:        errs,
 		sourceLines: SourceLines(src),
 	}

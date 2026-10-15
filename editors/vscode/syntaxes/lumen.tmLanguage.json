@@ -98,15 +98,15 @@
       "patterns": [
         {
           "name": "keyword.control.lumen",
-          "match": "\\b(if|else|match|case|default|while|for|in|break|continue|defer|return)\\b"
+          "match": "\\b(if|else|default|while|for|break|continue|return)\\b|(?<![.\\w])\\b(?:match|case|in|defer)\\b(?!\\s*(?:[.,;:)\\]}?]|=(?!=)|[+*/%]=?|-=|\\+\\+|--|->|==|!=|&&|\\|\\|))"
         },
         {
           "name": "storage.type.lumen",
-          "match": "\\b(fn|let|const|struct|enum|trait|impl)\\b"
+          "match": "\\b(fn|let|const)\\b|(?<![.\\w])\\b(?:struct|enum|trait|impl)\\b(?!\\s*(?:[.,;:)\\]}?]|=(?!=)|[+*/%]=?|-=|\\+\\+|--|->|==|!=|&&|\\|\\|))"
         },
         {
           "name": "storage.modifier.lumen",
-          "match": "\\b(pub|extern)\\b"
+          "match": "(?<![.\\w])\\b(?:pub|extern)\\b(?!\\s*(?:[.,;:)\\]}?]|=(?!=)|[+*/%]=?|-=|\\+\\+|--|->|==|!=|&&|\\|\\|))"
         },
         {
           "name": "keyword.control.import.lumen",
@@ -114,7 +114,7 @@
         },
         {
           "name": "keyword.operator.word.lumen",
-          "match": "\\b(as|is)\\b"
+          "match": "(?<![.\\w])\\b(?:as|is)\\b(?!\\s*(?:[.,;:)\\]}?]|=(?!=)|[+*/%]=?|-=|\\+\\+|--|->|==|!=|&&|\\|\\|))"
         },
         {
           "name": "variable.language.self.lumen",

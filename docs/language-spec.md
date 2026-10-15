@@ -10,6 +10,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 ## 1. Lexical Structure
 - Source files: UTF-8 `.lum`, one file = one module (see [Modules & Imports](#6-modules--imports)).
 - Identifiers: `Letter {Letter | Digit | _}`, case-sensitive.
+- Soft keywords: `case`, `match`, `in`, `as`, `defer`, `import`, `pub`, `extern`, `struct`, `enum`, `trait`, `impl` are identifiers where the tokens around them say so, and keywords everywhere else. One is an identifier after `let`, `const`, `fn`, `for`, `.` or `?.`, and before a token that only follows a value (`.`, `?.`, an assignment, `++`, `--`, `;`, `,`, `:`, `)`, `]`, `}`, `->`, `in`, a binary operator other than `-`, `<` and `>`). It is one before `(` or `[` too, except `match`, `case`, `as` and `impl`, and before `{` after `if`, `while`, `match` or `in`. A statement that is the word alone (`import;`) keeps the keyword. `in` is the keyword only right after the variable of a loop (a name or `)`). The other keywords are reserved.
 - Keywords: `fn let const struct enum trait impl if else match case while for in break continue defer return true false null import as pub extern`, plus the type names `Int Float Bool String Any Void Self`.
 - Literals: ints (`123`), floats (`1.0`, `10e3`), strings (`"hi"`), bools, `null`. No char literal in v0. A leading `-` is the unary operator, so `-42` is the negation of `42`.
 - String literals stay on one line and support the escapes `\n \t \r \0 \\ \" \$`.
