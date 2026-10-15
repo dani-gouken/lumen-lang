@@ -232,6 +232,8 @@ struct Document {
     path: String;
     text: String;
     version: Int = 0;  // goes up with every change
+    edition: Int = 0;  // the editor's number for this text, which the
+                       // problems found in it are sent with
 }
 
 struct Server {
@@ -258,6 +260,7 @@ impl Server {
             uri: uri,
             path: pathOf(uri),
             text: params.find("textDocument.text")?.text() ?? "",
+            edition: params.find("textDocument.version")?.int() ?? 0,
         };
 
         self.documents.set(document.path, document);
@@ -281,6 +284,7 @@ impl Server {
 
         document.text = changes[changes.len() - 1].get("text")?.text() ?? document.text;
         document.version++;
+        document.edition = params.find("textDocument.version")?.int() ?? document.edition;
         compiler.open(document.path, document.text);
 
         // Checked once the typing pauses, not at every letter
@@ -304,10 +308,10 @@ impl Server {
 
         self.documents.remove(document.path);
         compiler.close(document.path);
-        self.publish(document.path, document.uri, []);
+        self.publish(document.path, document.uri, [], null);
 
         for file in self.flagged.getOr(document.path, []) {
-            self.publish(file, uriOf(file), []);
+            self.publish(file, uriOf(file), [], null);
         }
 
         self.flagged.remove(document.path);
@@ -337,24 +341,26 @@ impl Server {
 
         for file in self.flagged.getOr(document.path, []) {
             if !byFile.has(file) {
-                self.publish(file, uriOf(file), []);
+                self.publish(file, uriOf(file), [], null);
             }
         }
 
         for file in byFile.keys() {
-            let uri = uriOf(file);
-
             if file == document.path {
-                uri = document.uri;
+                // Said of the text as it was checked, which the editor
+                // may have changed since
+                self.publish(file, document.uri, byFile.getOr(file, []), document.edition);
+            } else {
+                self.publish(file, uriOf(file), byFile.getOr(file, []), null);
             }
-
-            self.publish(file, uri, byFile.getOr(file, []));
         }
 
         self.flagged.set(document.path, byFile.keys().filter(file -> file != document.path));
     }
 
-    fn publish(file: String, uri: String, problems: [Problem]) {
+    // Tells the editor what is wrong in a file; for an open one, with the
+    // editor's number for the text that was checked.
+    fn publish(file: String, uri: String, problems: [Problem], edition: Int?) {
         let list = json.array(problems, fn(problem: Problem) -> Json {
             let message = problem.message;
 
@@ -371,10 +377,13 @@ impl Server {
                 .done();
         });
 
-        notify(
-            "textDocument/publishDiagnostics",
-            json.object().text("uri", uri).set("diagnostics", list).done(),
-        );
+        let params = json.object().text("uri", uri).set("diagnostics", list);
+
+        if edition != null {
+            params = params.int("version", edition);
+        }
+
+        notify("textDocument/publishDiagnostics", params.done());
     }
 
     // --- Questions ---

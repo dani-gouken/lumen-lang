@@ -27,6 +27,8 @@ type editor struct {
 	// Answers, by the number of their question
 	answers map[int]chan map[string]any
 	stderr  strings.Builder
+	// The last number the editor gave the text of each file it sent
+	versions map[string]float64
 }
 
 func startEditor(t *testing.T, dir string) *editor {
@@ -125,6 +127,17 @@ func (e *editor) ask(method string, params any) map[string]any {
 
 func (e *editor) tell(method string, params any) {
 	e.t.Helper()
+	if fields, ok := params.(map[string]any); ok {
+		if document, ok := fields["textDocument"].(map[string]any); ok {
+			uri, _ := document["uri"].(string)
+			if version, ok := document["version"].(int); ok {
+				if e.versions == nil {
+					e.versions = make(map[string]float64)
+				}
+				e.versions[uri] = float64(version)
+			}
+		}
+	}
 	e.send(map[string]any{"method": method, "params": params})
 }
 
@@ -150,6 +163,11 @@ func (e *editor) diagnostics(uri string) []string {
 		}
 		params := message["params"].(map[string]any)
 		if params["uri"] != uri {
+			continue
+		}
+		// What was found in a text the editor has changed since: a
+		// check that started before the last change came in
+		if version, ok := params["version"].(float64); ok && version < e.versions[uri] {
 			continue
 		}
 		out := []string{}
