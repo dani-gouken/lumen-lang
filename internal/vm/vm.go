@@ -22,8 +22,7 @@ const (
 // CallFrame is where a caller was when it made a call: what to go back to
 // when the call returns.
 type CallFrame struct {
-	function *FunctionObj // The calling function
-	chunk    *Chunk       // Its bytecode
+	function *FunctionObj // The calling function, whose chunk is its bytecode
 	ip       int          // The instruction that made the call
 	base     int          // Where the caller's registers start on the stack
 	size     int          // How many it has

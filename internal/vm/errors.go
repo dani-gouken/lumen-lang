@@ -231,7 +231,7 @@ func (vm *VM) callStack() []StackFrame {
 	stack = append(stack, frameAt(vm.chunk, vm.ip, vm.currentFunction))
 	for i := vm.frameCount - 1; i >= 0; i-- {
 		frame := vm.frames[i]
-		stack = append(stack, frameAt(frame.chunk, frame.ip, frame.function))
+		stack = append(stack, frameAt(frame.function.chunk, frame.ip, frame.function))
 	}
 	return stack
 }

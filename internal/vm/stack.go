@@ -70,7 +70,6 @@ func (vm *VM) enter(fn *FunctionObj, args []Value) error {
 
 	vm.frames = append(vm.frames[:vm.frameCount], CallFrame{
 		function: vm.currentFunction,
-		chunk:    vm.chunk,
 		ip:       vm.ip,
 		base:     vm.base,
 		size:     len(vm.regs),
@@ -100,11 +99,11 @@ func (vm *VM) leave() {
 	vm.frameCount--
 	frame := &vm.frames[vm.frameCount]
 	vm.currentFunction = frame.function
-	vm.chunk = frame.chunk
+	vm.chunk = frame.function.chunk
 	vm.ip = frame.ip
 	vm.base = frame.base
 	vm.regs = vm.window(frame.base, frame.size)
-	frame.function, frame.chunk = nil, nil
+	frame.function = nil
 }
 
 // window is the registers of a call: size of them from base.

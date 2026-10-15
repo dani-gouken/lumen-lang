@@ -62,7 +62,7 @@ func (vm *VM) handle(base int, err error) bool {
 		vm.frameCount = h.depth
 		vm.frames = vm.frames[:h.depth]
 		vm.currentFunction = frame.function
-		vm.chunk = frame.chunk
+		vm.chunk = frame.function.chunk
 		vm.base = frame.base
 		vm.regs = vm.window(frame.base, frame.size)
 	}

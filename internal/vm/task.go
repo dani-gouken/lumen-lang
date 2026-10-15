@@ -104,7 +104,7 @@ func stackOf(c *execution) []StackFrame {
 	stack = append(stack, frameAt(c.chunk, c.ip, c.function))
 	for i := c.frameCount - 1; i >= 0; i-- {
 		frame := c.frames[i]
-		stack = append(stack, frameAt(frame.chunk, frame.ip, frame.function))
+		stack = append(stack, frameAt(frame.function.chunk, frame.ip, frame.function))
 	}
 	return stack
 }
