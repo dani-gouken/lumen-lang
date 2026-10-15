@@ -53,15 +53,31 @@ impl<V> Iterable<String> for Dict<V> {
     }
 }
 
+// `counts[word]` and `counts[word] = n` are these: what get and set do,
+// written here again rather than called, which would be a call more for
+// each in a loop that counts.
 impl<V> Indexed<String, V?> for Dict<V> {
     fn at(key: String) -> V? {
-        return self.get(key);
+        let at = find(self.keys, self.index, key);
+
+        if at < 0 {
+            return null;
+        }
+
+        return self.values[at];
     }
 }
 
 impl<V> IndexedSet<String, V> for Dict<V> {
     fn put(key: String, value: V) {
-        self.set(key, value);
+        let at = find(self.keys, self.index, key);
+
+        if at >= 0 {
+            self.values[at] = value;
+            return;
+        }
+
+        self.add(key, value);
     }
 }
 
@@ -83,6 +99,11 @@ impl<V> Dict<V> {
             return;
         }
 
+        self.add(key, value);
+    }
+
+    // Adds a key the dictionary does not have.
+    fn add(key: String, value: V) {
         self.keys.push(key);
         self.values.push(value);
         self.count++;

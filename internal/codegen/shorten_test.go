@@ -76,8 +76,10 @@ func TestCallsOfNamedFunctionsNeedNoFunctionValue(t *testing.T) {
 	}
 }
 
-// A function held in a variable, passed around or read more than once is
-// a value like any other, and is called as one.
+// A function held in a variable that is passed around is a value like any
+// other, made as one; where the variable is called, and holds nothing but
+// that function, the call is of the function by its number. A parameter
+// holds whatever the caller gave, and is called as a value.
 func TestCallsOfFunctionValuesStayCalls(t *testing.T) {
 	main := ir.NewBuilder("main")
 	// Read twice: called, and returned from a helper that calls it again
@@ -96,8 +98,8 @@ func TestCallsOfFunctionValuesStayCalls(t *testing.T) {
 	chunk := generate(t, main.Func, apply.Func, seven.Func)
 	expectInt(t, run(t, chunk), 14)
 	expectCount(t, chunk, "main", 1, vm.OpNEWFUNC)
-	expectCount(t, chunk, "main", 1, vm.OpCALL)
-	expectCount(t, chunk, "main", 1, vm.OpCALLK)
+	expectCount(t, chunk, "main", 0, vm.OpCALL)
+	expectCount(t, chunk, "main", 2, vm.OpCALLK)
 	expectCount(t, chunk, "apply", 1, vm.OpCALL)
 }
 
@@ -895,4 +897,37 @@ func TestHostFunctionsDoneByAnInstruction(t *testing.T) {
 	expectInt(t, run(t, chunk), 8)
 	expectCount(t, chunk, "main", 0, vm.OpTONUM)
 	expectCount(t, chunk, "main", 1, vm.OpCALLK)
+}
+
+// A function named in one block and called in another, as the put of
+// `xs[k] = v ?? 0` is named before the branches of ??, is called by its
+// number, and no value is made of it when nothing else reads it.
+func TestAFunctionNamedInAnotherBlockIsCalledByItsNumber(t *testing.T) {
+	pick := ir.NewBuilder("pick")
+	x := pick.AddParam()
+	named := pick.CreateMov(funcRef("double"))
+	yes, no, join := pick.NewBlock(), pick.NewBlock(), pick.NewBlock()
+	cond := pick.NewRegister()
+	pick.Emit(ir.OpLt, cond, x, pick.CreateMov(intConst(10)))
+	pick.CreateBr(cond, yes, no)
+	pick.SetBlock(yes)
+	value := pick.CreateMov(intConst(4))
+	pick.CreateJmp(join)
+	pick.SetBlock(no)
+	pick.Emit(ir.OpMov, value, pick.CreateMov(intConst(5)))
+	pick.CreateJmp(join)
+	pick.SetBlock(join)
+	pick.CreateRet(pick.CreateCall(named, value))
+
+	double := ir.NewBuilder("double")
+	n := double.AddParam()
+	double.CreateRet(double.CreateAdd(n, n))
+
+	entry := ir.NewBuilder("main")
+	entry.CreateRet(entry.CreateCall(entry.CreateMov(funcRef("pick")), entry.CreateMov(intConst(3))))
+
+	chunk := generate(t, entry.Func, pick.Func, double.Func)
+	expectInt(t, run(t, chunk), 8)
+	expectCount(t, chunk, "pick", 1, vm.OpCALLK)
+	expectCount(t, chunk, "pick", 0, vm.OpCALL, vm.OpNEWFUNC)
 }

@@ -211,11 +211,7 @@ func (vm *VM) registerBuiltins() {
 		if len(args) != 1 {
 			return NewNull(), fmt.Errorf("toString expects 1 argument, got %d", len(args))
 		}
-		text, err := vm.format(args[0])
-		if err != nil {
-			return NewNull(), err
-		}
-		return vm.newString(text)
+		return vm.textOf(args[0])
 	})
 
 	// __text intrinsic: an expression inside a string, "${value}"
@@ -223,11 +219,7 @@ func (vm *VM) registerBuiltins() {
 		if len(args) != 1 {
 			return NewNull(), fmt.Errorf("__text expects 1 argument, got %d", len(args))
 		}
-		text, err := vm.format(args[0])
-		if err != nil {
-			return NewNull(), err
-		}
-		return vm.newString(text)
+		return vm.textOf(args[0])
 	})
 
 	// __cast intrinsic: `value as Type`. Returns the value if it is what
@@ -449,7 +441,7 @@ func valuesEqual(a, b Value) bool {
 		}
 		switch ha.Type {
 		case ObjTypeString:
-			return (*StringObj)(unsafe.Pointer(ha)).data == (*StringObj)(unsafe.Pointer(hb)).data
+			return (*StringObj)(unsafe.Pointer(ha)).Data() == (*StringObj)(unsafe.Pointer(hb)).Data()
 		case ObjTypeObject:
 		default:
 			return false

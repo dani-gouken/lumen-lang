@@ -1,6 +1,10 @@
 package vm
 
-import "strings"
+import (
+	"strconv"
+	"strings"
+	"unsafe"
+)
 
 // ShowMethod is the method the compiler gives every type that implements
 // std.ops.Show, which calls its show. Programs cannot write the name. A
@@ -11,6 +15,31 @@ const ShowMethod = "__shown"
 // format writes a value as print and toString do, calling the show of the
 // values in it whose type implements Show. A show that fails stops the
 // printing with its failure.
+// textOf is the text of a value as a value: what toString and "${v}"
+// give. A text is its own, and a whole number is written straight into
+// the text object, which comes with its bytes: the commonest cases make
+// one object and no other allocation.
+func (vm *VM) textOf(v Value) (Value, error) {
+	switch {
+	case v.IsInt():
+		var digits [24]byte
+		written := strconv.AppendInt(digits[:0], v.AsInt(), 10)
+		// joined copies the bytes: the buffer is not kept
+		obj, _, err := vm.heap.AllocJoined(unsafe.String(&written[0], len(written)), "")
+		if err != nil {
+			return NewNull(), err
+		}
+		return valueOf(&obj.header), nil
+	case v.IsHeapPtr() && v.AsHeapPtr() != 0 && (*ObjHeader)(unsafe.Pointer(v.AsHeapPtr())).Type == ObjTypeString:
+		return v, nil
+	}
+	text, err := vm.format(v)
+	if err != nil {
+		return NewNull(), err
+	}
+	return vm.newString(text)
+}
+
 func (vm *VM) format(v Value) (string, error) {
 	f := formatter{room: maxFormatLength}
 	var failed error

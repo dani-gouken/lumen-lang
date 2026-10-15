@@ -677,6 +677,7 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 	if !f.long {
 		f.findSwitches()
 	}
+	f.foldUnneededNames(uses)
 	f.writeStraight(uses, isTemp)
 }
 
@@ -700,6 +701,54 @@ func (f *funcGen) builtinOf(call *ir.Instruction, once func(ir.Value) *usage) (v
 		return 0, nil, false
 	}
 	return op, u, true
+}
+
+// namedFunction reports whether a register holds a function named in the
+// program everywhere it is read: given it once, by its name, and never
+// anything else. It returns how to call that function directly.
+func (f *funcGen) namedFunction(v ir.Value, uses map[int]*usage) (vm.OpCode, uint16, bool) {
+	id, ok := regID(v)
+	if !ok {
+		return 0, 0, false
+	}
+	u := uses[id]
+	if u == nil || u.defs != 1 || u.defInstr == nil || u.defInstr.Op != ir.OpMov || len(u.defInstr.Operands) != 1 {
+		return 0, 0, false
+	}
+	c, ok := u.defInstr.Operands[0].(ir.Constant)
+	if !ok || c.Type != "FuncRef" {
+		return 0, 0, false
+	}
+	name, _ := c.Val.(string)
+	if index, known := f.g.protoIndex[name]; known && f.g.capturesNothing[name] {
+		return vm.OpCALLK, uint16(index), true
+	} else if !known && f.g.externs[name] {
+		return vm.OpCALLX, f.g.extern(name), true
+	}
+	return 0, 0, false
+}
+
+// foldUnneededNames leaves out what gives a register a function by its
+// name when nothing reads the register but direct calls of that function.
+func (f *funcGen) foldUnneededNames(uses map[int]*usage) {
+	called := map[int]int{}
+	for _, bb := range f.blocks {
+		for _, instr := range body(bb) {
+			if _, ok := f.direct[instr]; !ok || instr.Op != ir.OpCall || len(instr.Operands) == 0 {
+				continue
+			}
+			if id, ok := regID(instr.Operands[0]); ok {
+				called[id]++
+			}
+		}
+	}
+	for id, n := range called {
+		if u := uses[id]; u != nil && u.defs == 1 && u.reads == n && u.defInstr != nil {
+			if _, _, named := f.namedFunction(&ir.Register{ID: id}, uses); named {
+				f.folded[u.defInstr] = true
+			}
+		}
+	}
 }
 
 // direct is the operations that read what they work on before they write
@@ -939,6 +988,16 @@ func (f *funcGen) shortenCall(call *ir.Instruction, idx int, instrs []*ir.Instru
 				f.direct[call] = directCall{op: vm.OpCALLX, index: f.g.extern(name)}
 				f.folded[u.defInstr] = true
 			}
+		}
+	}
+
+	// The same for a function named in another block, as `xs[i] = f(y) ?? 0`
+	// names put before the branches of ??: a register given a function by
+	// its name once, wherever it is read, is that function. What gives it
+	// the function is left out when every read is a call (see shorten).
+	if _, isDirect := f.direct[call]; !isDirect {
+		if op, index, ok := f.namedFunction(call.Operands[0], uses); ok {
+			f.direct[call] = directCall{op: op, index: index}
 		}
 	}
 
