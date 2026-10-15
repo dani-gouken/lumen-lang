@@ -318,3 +318,14 @@ func TestResolveSuggestionInsertion(t *testing.T) {
 		})
 	}
 }
+
+// A variant written alone and misspelt is guessed like any name.
+func TestResolveSuggestionVariant(t *testing.T) {
+	src := "enum Shape { Circle(Float), Empty }\nfn main() -> Void {\n    let s = Circel(1.0);\n}\n"
+	errs := errors.NewHandler()
+	prog := parser.Parse(src, "test.lum", errs)
+	NewResolver(errs).Resolve(prog)
+	if len(errs.Diagnostics) != 1 || errs.Diagnostics[0].Suggestion != "Did you mean 'Circle'?" {
+		t.Errorf("expected a guess at Circle, got %v", errs.Diagnostics)
+	}
+}

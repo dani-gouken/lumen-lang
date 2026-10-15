@@ -44,6 +44,60 @@ func (c *Checker) enumOf(expr ast.Expr) (*ast.EnumDecl, *ast.Ident) {
 	return decl, ident
 }
 
+// variantToFind returns the `Enum.Variant` an expression is, or calls,
+// when its enum is still to be found (see ast.EnumToFind).
+func variantToFind(expr ast.Expr) *ast.MemberExpr {
+	if call, ok := expr.(*ast.CallExpr); ok {
+		expr = call.Func
+	}
+	member, ok := expr.(*ast.MemberExpr)
+	if !ok {
+		return nil
+	}
+	if ident, ok := member.Expr.(*ast.Ident); ok && ident.Name == ast.EnumToFind {
+		return member
+	}
+	return nil
+}
+
+// findEnum puts in place of ast.EnumToFind the enum a value of the type
+// given is, when it is one the variant may be of, and reports whether it
+// did.
+func (c *Checker) findEnum(member *ast.MemberExpr, t Type) bool {
+	marker, ok := member.Expr.(*ast.Ident)
+	if !ok || marker.Name != ast.EnumToFind || t == nil {
+		return false
+	}
+	decl, _ := c.enumOfType(withoutNullOrNil(t))
+	if decl == nil {
+		return false
+	}
+	for _, candidate := range marker.Candidates {
+		if candidate == decl.Name {
+			enum := &ast.Ident{BaseNode: marker.BaseNode, Name: decl.Name}
+			c.table.Defs[enum] = &resolve.Symbol{Name: decl.Name, Kind: resolve.SymbolEnum, Decl: decl}
+			member.Expr = enum
+			return true
+		}
+	}
+	return false
+}
+
+// reportAmbiguousVariant says that nothing tells which enum a variant
+// written alone is of.
+func (c *Checker) reportAmbiguousVariant(marker *ast.Ident, variant string) {
+	if variant == "" {
+		// The placeholder stands where the variant was written
+		variant = marker.Token().Literal
+	}
+	var written []string
+	for _, candidate := range marker.Candidates {
+		written = append(written, displayName(candidate)+"."+variant)
+	}
+	c.errorfWithSuggestion(marker.Token(), ErrAmbiguousVariant, "Write which: "+strings.Join(written, " or "),
+		"'%s' is a variant of more than one enum, and nothing here says which", variant)
+}
+
 // isVariantRef reports whether an expression is `Enum.Variant`.
 func (c *Checker) isVariantRef(expr ast.Expr) bool {
 	member, ok := expr.(*ast.MemberExpr)
@@ -404,6 +458,10 @@ func (c *Checker) checkVariantPattern(p *ast.VariantPattern, subject Type) (vari
 	member, ok := p.Target.(*ast.MemberExpr)
 	if !ok {
 		c.errorf(p.Token(), ErrInvalidPattern, "'%s' is not a variant of an enum", p.Target)
+		return fail()
+	}
+	if variantToFind(member) != nil && !c.findEnum(member, subject) {
+		c.reportAmbiguousVariant(member.Expr.(*ast.Ident), member.Name)
 		return fail()
 	}
 	decl, _ := c.enumOf(member.Expr)

@@ -102,7 +102,7 @@ func TestPatternTestsInTheEditor(t *testing.T) {
 	for _, c := range []struct{ old, new, code string }{
 		{"shape is Shape.Circle(radius) && radius > 1.0", "!(shape is Shape.Circle(radius))", "E1003"},
 		{"shape is Shape.At(place)", "shape is Shape.Square(place)", "E2029"},
-		{"shape is Shape.At(place)", "shape is At(place)", "E0001"},
+		{"shape is Shape.At(place)", "shape is Ta(place)", "E1001"},
 		{"println(place.sum());", "println(radius);", "E1001"},
 	} {
 		got := Check("main.lum", strings.Replace(patternTests, c.old, c.new, 1))

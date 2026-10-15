@@ -71,9 +71,9 @@ pub fn defaultUrl(name: String) -> String {
 // not there). Credential helpers and SSH keys work as they do for git.
 pub fn git(arguments: [String]) -> Result<String, String> {
     match os.command("git", arguments).env("GIT_TERMINAL_PROMPT", "0").run() {
-        case Result.Ok(output): {
+        case Ok(output): {
             if output.succeeded() {
-                return Result.Ok(output.out);
+                return Ok(output.out);
             }
 
             let said = output.err.trim();
@@ -82,11 +82,11 @@ pub fn git(arguments: [String]) -> Result<String, String> {
                 said = "status ${output.status}";
             }
 
-            return Result.Err("git ${arguments.join(" ")}: ${said}");
+            return Err("git ${arguments.join(" ")}: ${said}");
         }
 
-        case Result.Err(error): {
-            return Result.Err("git cannot be run, and packages are fetched with it: ${error.message}");
+        case Err(error): {
+            return Err("git cannot be run, and packages are fetched with it: ${error.message}");
         }
     }
 }
@@ -107,7 +107,7 @@ impl Sources {
         let folder = self.mirrorDir(url);
 
         if self.fresh.has(url) {
-            return Result.Ok(folder);
+            return Ok(folder);
         }
 
         if fs.isDir(folder) {
@@ -120,7 +120,7 @@ impl Sources {
         }
 
         self.fresh.set(url, true);
-        return Result.Ok(folder);
+        return Ok(folder);
     }
 
     // The mirror of a repository, fetched only if it does not have the
@@ -132,7 +132,7 @@ impl Sources {
         if fs.isDir(folder)
             && git(["-C", folder, "cat-file", "-e", "${reference}^{commit}"]).isOk()
         {
-            return Result.Ok(folder);
+            return Ok(folder);
         }
 
         return self.mirror(url);
@@ -147,7 +147,7 @@ impl Sources {
         let known = self.byName;
 
         if known != null {
-            return Result.Ok(known);
+            return Ok(known);
         }
 
         let found = dict.empty<Repository>();
@@ -161,7 +161,7 @@ impl Sources {
         }
 
         self.byName = found;
-        return Result.Ok(found);
+        return Ok(found);
     }
 
     fn nameIn(repository: Repository) -> Result<String, String> {
@@ -172,10 +172,10 @@ impl Sources {
         };
 
         if !manifest.isPackageName(described.name) {
-            return Result.Err("the repository ${repository.url()} does not give its package a \"name\" in ${manifest.FILE}, as in \"acme/textkit\"");
+            return Err("the repository ${repository.url()} does not give its package a \"name\" in ${manifest.FILE}, as in \"acme/textkit\"");
         }
 
-        return Result.Ok(described.name);
+        return Ok(described.name);
     }
 
     // What the default branch of a repository says.
@@ -193,7 +193,7 @@ impl Sources {
         let file = manifest.inside(self.local(url));
 
         if !io.exists(file) {
-            return Result.Err("the path repository ${url} has no ${manifest.FILE}");
+            return Err("the path repository ${url} has no ${manifest.FILE}");
         }
 
         return manifest.load(file);
@@ -232,7 +232,7 @@ impl Sources {
                     version: null,
                     source: source,
                 });
-            } else if semver.parse(ref.from("refs/tags/".len())) is Result.Ok(version) {
+            } else if semver.parse(ref.from("refs/tags/".len())) is Ok(version) {
                 found.push(Candidate {
                     name: name,
                     label: toString(version),
@@ -242,7 +242,7 @@ impl Sources {
             }
         }
 
-        return Result.Ok(found);
+        return Ok(found);
     }
 
     fn pathCandidate(name: String, url: String) -> Result<Candidate, String> {
@@ -250,7 +250,7 @@ impl Sources {
         let source = Source { kind: "path", url: url };
 
         if described.version == "" {
-            return Result.Ok(Candidate {
+            return Ok(Candidate {
                 name: name,
                 label: "dev-path",
                 version: null,
@@ -263,7 +263,7 @@ impl Sources {
             error -> "${url}: ${manifest.FILE}: \"version\" ${error.describe()}",
         )?;
 
-        return Result.Ok(Candidate {
+        return Ok(Candidate {
             name: name,
             label: toString(version),
             version: version,
@@ -300,18 +300,18 @@ impl Catalog for Sources {
             let folder = self.mirror(source.url)?;
 
             match git(["-C", folder, "show", "${source.reference}:${manifest.FILE}"]) {
-                case Result.Ok(text): manifest.parse(text).mapErr(
+                case Ok(text): manifest.parse(text).mapErr(
                     reason -> "${candidate.describe()}: ${manifest.FILE}: ${reason}",
                 )?;
 
                 // A repository without a lumen.json is a package that
                 // requires nothing, with its modules at its top
-                case Result.Err(_): Manifest { name: candidate.name };
+                case Err(_): Manifest { name: candidate.name };
             }
         };
 
         if described.name != "" && described.name != candidate.name {
-            return Result.Err("${candidate.describe()} calls itself ${described.name} in its ${manifest.FILE}");
+            return Err("${candidate.describe()} calls itself ${described.name} in its ${manifest.FILE}");
         }
 
         described.name = candidate.name;
@@ -320,6 +320,6 @@ impl Catalog for Sources {
             described.importName = manifest.defaultImport(candidate.name);
         }
 
-        return Result.Ok(described);
+        return Ok(described);
     }
 }

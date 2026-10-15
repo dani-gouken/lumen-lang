@@ -13,12 +13,6 @@
 import ledger;
 import ledger.{Ledger, Line};
 import money;
-import std.csv;
-import std.dict.{Dict};
-import std.io;
-import std.os;
-import std.path;
-import std.format;
 import std.format.{Align};
 
 const CURRENCY = "EUR";
@@ -29,7 +23,7 @@ fn lineOf(row: Dict<String>) -> Result<Line, String> {
     let quantity = (row.get("quantity") ?? "").parseInt();
 
     if quantity == null {
-        return Result.Err("${description}: no quantity");
+        return Err("${description}: no quantity");
     }
 
     let price = money.parse(row.get("price") ?? "", CURRENCY).mapErr(
@@ -38,7 +32,7 @@ fn lineOf(row: Dict<String>) -> Result<Line, String> {
 
     let rate = ledger.rate(row.get("tax") ?? "").mapErr(reason -> "${description}: ${reason}")?;
 
-    return Result.Ok(Line {
+    return Ok(Line {
         description: description,
         quantity: quantity,
         price: price,
@@ -80,11 +74,11 @@ fn main() -> Int {
     };
 
     let table = match io.readFile(file) {
-        case Result.Ok(text): csv.table(text).mapErr(error -> error.describe());
-        case Result.Err(error): Result.Err(error.describe());
+        case Ok(text): csv.table(text).mapErr(error -> error.describe());
+        case Err(error): Err(error.describe());
     };
 
-    if table is Result.Err(reason) {
+    if table is Err(reason) {
         io.printError("${file}: ${reason}\n");
         return 1;
     }
@@ -94,9 +88,9 @@ fn main() -> Int {
 
     for row in table.value()?.records() ?? [] {
         match lineOf(row).then(line -> invoice.add(line)) {
-            case Result.Ok(_): {}
+            case Ok(_): {}
 
-            case Result.Err(reason): {
+            case Err(reason): {
                 skipped.push(reason);
             }
         }

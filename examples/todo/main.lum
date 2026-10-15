@@ -13,13 +13,7 @@
 // is done with it: reading the command line can fail in many ways, and
 // carrying a command out in a few others, and the two are kept apart.
 
-import std.os;
-import std.io;
-import std.fs;
-import std.path;
-import std.time;
 import std.time.{Date};
-import std.format;
 import todo.task;
 import todo.task.{Task, Priority, State};
 import todo.store;
@@ -36,7 +30,7 @@ enum Command {
 // The command a line of arguments asks for, or why it is not one.
 fn parse(args: [String]) -> Result<Command, String> {
     if args.len() == 0 {
-        return Result.Ok(Command.List(false));
+        return Ok(Command.List(false));
     }
 
     let rest = args.drop(1);
@@ -47,7 +41,7 @@ fn parse(args: [String]) -> Result<Command, String> {
     match args[0] {
         case "add": {
             if words.len() == 0 {
-                return Result.Err("add what? Give the task a title");
+                return Err("add what? Give the task a title");
             }
 
             let priority = Priority.Normal;
@@ -61,7 +55,7 @@ fn parse(args: [String]) -> Result<Command, String> {
                         let named = task.priorityOf(value);
 
                         if named == null {
-                            return Result.Err("'${value}' is not a priority: use low, normal or high");
+                            return Err("'${value}' is not a priority: use low, normal or high");
                         }
 
                         priority = named;
@@ -71,17 +65,17 @@ fn parse(args: [String]) -> Result<Command, String> {
                         due = time.parse(value);
 
                         if due == null {
-                            return Result.Err("'${value}' is not a date: write it as 2026-10-20");
+                            return Err("'${value}' is not a date: write it as 2026-10-20");
                         }
                     }
 
                     default: {
-                        return Result.Err("add does not know the option ${name}");
+                        return Err("add does not know the option ${name}");
                     }
                 }
             }
 
-            return Result.Ok(Command.Add(words.join(" "), priority, due));
+            return Ok(Command.Add(words.join(" "), priority, due));
         }
 
         case "done": {
@@ -93,15 +87,15 @@ fn parse(args: [String]) -> Result<Command, String> {
         }
 
         case "list": {
-            return Result.Ok(Command.List(options.contains("--all")));
+            return Ok(Command.List(options.contains("--all")));
         }
 
         case "help": {
-            return Result.Ok(Command.Help);
+            return Ok(Command.Help);
         }
 
         default: {
-            return Result.Err("there is no command '${args[0]}'; try help");
+            return Err("there is no command '${args[0]}'; try help");
         }
     }
 }
@@ -110,16 +104,16 @@ fn idOf(words: [String], command: String) -> Result<Int, String> {
     let word = words.first();
 
     if word == null {
-        return Result.Err("${command} which? Give the number of the task");
+        return Err("${command} which? Give the number of the task");
     }
 
     let id = word.parseInt();
 
     if id == null {
-        return Result.Err("'${word}' is not the number of a task");
+        return Err("'${word}' is not the number of a task");
     }
 
-    return Result.Ok(id);
+    return Ok(id);
 }
 
 // Carries a command out. Gives the lines to show, or what went wrong.
@@ -142,11 +136,11 @@ fn run(command: Command, list: Store, today: Date) -> Result<[String], String> {
             let found = list.find(id);
 
             if found == null {
-                return Result.Err("there is no task ${id}");
+                return Err("there is no task ${id}");
             }
 
             if !found.isOpen() {
-                return Result.Ok(["task ${id} was already done"]);
+                return Ok(["task ${id} was already done"]);
             }
 
             found.state = State.Done(today);
@@ -155,18 +149,18 @@ fn run(command: Command, list: Store, today: Date) -> Result<[String], String> {
 
         case Command.Remove(id): {
             if !list.remove(id) {
-                return Result.Err("there is no task ${id}");
+                return Err("there is no task ${id}");
             }
 
             return saved(list, ["removed task ${id}"]);
         }
 
         case Command.List(all): {
-            return Result.Ok(listing(list, today, all));
+            return Ok(listing(list, today, all));
         }
 
         case Command.Help: {
-            return Result.Ok("""
+            return Ok("""
                 add <title> [--due=YYYY-MM-DD] [--priority=low|normal|high]
                 done <number>
                 remove <number>
@@ -237,7 +231,7 @@ fn listing(list: Store, today: Date, all: Bool) -> [String] {
 // One command from start to end. Returns the exit status.
 fn handle(args: [String], file: String, today: Date) -> Int {
     match answer(args, file, today) {
-        case Result.Ok(lines): {
+        case Ok(lines): {
             for line in lines {
                 println(line);
             }
@@ -245,7 +239,7 @@ fn handle(args: [String], file: String, today: Date) -> Int {
             return 0;
         }
 
-        case Result.Err(problem): {
+        case Err(problem): {
             println("todo: ${problem}");
             return 1;
         }

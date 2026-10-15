@@ -3,11 +3,6 @@
 // own, requirements on type parameters, fields with values of their own,
 // and methods handed around as values.
 
-import std.ops;
-import std.ops.{Equal, Ordered, Add, Show, Iterable, Indexed};
-import std.dict;
-import std.dict.{Dict};
-
 // --- A score: compared, added, shown ---
 
 struct Score {

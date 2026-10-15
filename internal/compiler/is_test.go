@@ -424,7 +424,7 @@ func TestPatternTestErrors(t *testing.T) {
 		code string
 		msg  string
 	}{
-		{"variant without its enum", "fn main() -> Int { let s = Shape.Empty; if s is Circle(r) { return 1; } return 0; }", "E0001", "'Circle' alone is a type, and a type holds no values to name"},
+		{"variant alone that no enum has", "fn main() -> Int { let s = Shape.Empty; if s is Circel(r) { return 1; } return 0; }", "E1001", "undefined identifier 'Circel'"},
 		{"a value after is", "fn main() -> Int { let n = 3; if n is 3 { return 1; } return 0; }", "E0001", "'is' takes a type or the pattern of a variant, found '3'"},
 		{"name in the else", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Circle(r) { return 1; } else { println(r); } return 0; }", "E1001", "undefined identifier 'r'"},
 		{"name after the if", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Circle(r) { } println(r); return 0; }", "E1001", "undefined identifier 'r'"},

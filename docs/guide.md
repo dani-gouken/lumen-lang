@@ -275,7 +275,7 @@ fn export(path: String) -> Result<Int, String> {
         println("export over");
     }
     let rows = read(path)?;          // leaves through both
-    return Result.Ok(write(rows));
+    return Ok(write(rows));
 }
 ```
 
@@ -493,18 +493,20 @@ enum Shape {
 }
 
 fn area(shape: Shape) -> Float {
-    match shape {
-        case Shape.Circle(r): { return 3.14 * r * r; }
-        case Shape.Rect(w, h): { return w * h; }
-        case Shape.Empty: { return 0.0; }
-    }
+    return match shape {
+        case Circle(r): 3.14 * r * r;
+        case Rect(w, h): w * h;
+        case Empty: 0.0;
+    };
 }
 
-let shapes = [Shape.Circle(1.0), Shape.Rect(2.0, 3.0), Shape.Empty];
+let shapes = [Circle(1.0), Rect(2.0, 3.0), Empty];
 for s in shapes { println(s, area(s)); }      // Circle(1) 3.14 ...
 ```
 
-A `match` names what a variant holds (`r`, `w`, `h`) for the length of its case. It has to handle every variant, or have a `default`: leave `Shape.Empty` out and the program does not compile. That is what makes an enum safer than a number or a text standing for a kind: add a variant, and the compiler finds every place that has to deal with it.
+A variant is written alone, `Circle(1.0)`, when an enum the file declares or imports by name has it; `Shape.Circle(1.0)` says the same and is always there. When two enums in scope have a variant of the same name, the one the value has to be is taken: a `Shape` where a `Shape` is expected, the type of the value a `match` or an `is` looks at. Where nothing says, the compiler asks for `Shape.Empty` or `Slot.Empty`. A variable or a function of that name hides the variant.
+
+A `match` names what a variant holds (`r`, `w`, `h`) for the length of its case. It has to handle every variant, or have a `default`: leave `Empty` out and the program does not compile. That is what makes an enum safer than a number or a text standing for a kind: add a variant, and the compiler finds every place that has to deal with it.
 
 Patterns can look inside values that are enums themselves, and match literals:
 
@@ -512,11 +514,11 @@ Patterns can look inside values that are enums themselves, and match literals:
 enum Expr { Num(Int), Add(Expr, Expr), Neg(Expr) }
 
 fn simplify(e: Expr) -> Expr {
-    match e {
-        case Expr.Add(Expr.Num(0), right): { return right; }    // 0 + x
-        case Expr.Neg(Expr.Neg(inner)): { return inner; }       // --x
-        default: { return e; }
-    }
+    return match e {
+        case Add(Num(0), right): right;    // 0 + x
+        case Neg(Neg(inner)): inner;       // --x
+        default: e;
+    };
 }
 ```
 
@@ -526,13 +528,13 @@ Enums can be generic, and have methods and traits like structs:
 enum Result<T, E> { Ok(T), Err(E) }
 
 fn divide(a: Int, b: Int) -> Result<Int, String> {
-    if b == 0 { return Result.Err("division by zero"); }
-    return Result.Ok(a / b);
+    if b == 0 { return Err("division by zero"); }
+    return Ok(a / b);
 }
 
 match divide(10, 0) {
-    case Result.Ok(n): { println(n); }
-    case Result.Err(message): { println("failed:", message); }
+    case Ok(n): { println(n); }
+    case Err(message): { println("failed:", message); }
 }
 ```
 
@@ -554,7 +556,7 @@ What follows `is` is what follows `case`: a variant, with a name, `_`, a literal
 
 Values of an enum are equal when they are the same variant holding equal values. More in [enums.md](enums.md).
 
-A value of an enum never changes once made, so it is also a value of the same enum with wider type arguments: a `Result<Lock, String>` is a `Result<Lock?, String>`, and `return Result.Ok(lock);` is fine in a function that returns the second. A struct's fields can be assigned, so a `Box<Int>` is not a `Box<Int?>`.
+A value of an enum never changes once made, so it is also a value of the same enum with wider type arguments: a `Result<Lock, String>` is a `Result<Lock?, String>`, and `return Ok(lock);` is fine in a function that returns the second. A struct's fields can be assigned, so a `Box<Int>` is not a `Box<Int?>`.
 
 ### Constants
 
@@ -931,8 +933,8 @@ A function whose failure is part of its job returns a `Result`: the value, or th
 import std.io;
 
 match io.readFile("notes.txt") {
-    case Result.Ok(text): { println(text); }
-    case Result.Err(error): { println(error.describe()); }
+    case Ok(text): { println(text); }
+    case Err(error): { println(error.describe()); }
 }
 ```
 
@@ -942,7 +944,7 @@ Most often the caller has nothing better to do with a failure than to hand it to
 fn order(row: Dict<String>) -> Result<Order, Flaw> {
     let number = whole(row, "order")?;          // an Int, or order() returns the Flaw here
     let quantity = whole(row, "quantity")?;
-    return Result.Ok(Order { number: number, quantity: quantity });
+    return Ok(Order { number: number, quantity: quantity });
 }
 ```
 
@@ -954,8 +956,8 @@ A failure that should never happen stops the program; `attempt` is for the few p
 import std.result.{attempt};
 
 match attempt(fn() -> Int { return job(); }) {
-    case Result.Ok(n): { println(n); }
-    case Result.Err(failure): { println("failed:", failure.describe()); }
+    case Ok(n): { println(n); }
+    case Err(failure): { println("failed:", failure.describe()); }
 }
 ```
 

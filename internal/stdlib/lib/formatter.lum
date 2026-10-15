@@ -1,8 +1,8 @@
 // The formatter of Lumen: the text of a program, written the one way.
 //
 //     match formatter.format(source) {
-//         case Result.Ok(tidy): { io.writeFile("main.lum", tidy); }
-//         case Result.Err(problem): { println(problem.describe()); }
+//         case Ok(tidy): { io.writeFile("main.lum", tidy); }
+//         case Err(problem): { println(problem.describe()); }
 //     }
 //
 // What it decides: four spaces for each level, lines of a hundred
@@ -60,15 +60,15 @@ pub fn format(source: String) -> Result<String, Problem> {
     });
 
     match made {
-        case Result.Ok(tidy): {
-            return Result.Ok(tidy);
+        case Ok(tidy): {
+            return Ok(tidy);
         }
 
-        case Result.Err(failure): {
+        case Err(failure): {
             let problem = report.problem
                 ?? Problem { line: 1, column: 1, message: "lumen fmt failed: ${failure.message}" };
 
-            return Result.Err(problem);
+            return Err(problem);
         }
     }
 }
@@ -2463,7 +2463,7 @@ impl Parser {
         let comments = self.tokens.drop(start).map(token -> token.before);
         let read = result.attempt(() -> self.statement());
 
-        if read is Result.Ok(doc)
+        if read is Ok(doc)
             && !self.is("}")
             && self.peek().kind != Kind.End
             && !CONTINUING.contains(self.peek().text)

@@ -42,7 +42,7 @@ impl Machine {
 
     fn step(steps: [Step]) -> Result<Bool, String> {
         if self.at >= steps.len() {
-            return Result.Ok(false);
+            return Ok(false);
         }
 
         let step = steps[self.at];
@@ -50,7 +50,7 @@ impl Machine {
         self.ran += 1;
 
         if step is Step.Halt {
-            return Result.Ok(false);
+            return Ok(false);
         } else if step is Step.Push(value) {
             self.stack.push(value);
         } else if step is Step.Jump(to) {
@@ -63,7 +63,7 @@ impl Machine {
             if self.pop() is Option.Some(value) {
                 self.printed.push(show(value));
             } else {
-                return Result.Err("nothing to print");
+                return Err("nothing to print");
             }
         } else if self.two() is Option.Some((left, right)) {
             if step is Step.Add && left is Value.Number(a) && right is Value.Number(b) {
@@ -74,13 +74,13 @@ impl Machine {
                 self.stack.push(right);
                 self.stack.push(left);
             } else {
-                return Result.Err("cannot add ${show(left)} and ${show(right)}");
+                return Err("cannot add ${show(left)} and ${show(right)}");
             }
         } else {
-            return Result.Err("two values are needed");
+            return Err("two values are needed");
         }
 
-        return Result.Ok(true);
+        return Ok(true);
     }
 }
 
@@ -104,11 +104,11 @@ fn run(steps: [Step]) -> Machine {
     let machine = Machine { stack: [], at: 0, printed: [], ran: 0 };
     let outcome = machine.step(steps);
 
-    while outcome is Result.Ok(true) && machine.ran < 100 {
+    while outcome is Ok(true) && machine.ran < 100 {
         outcome = machine.step(steps);
     }
 
-    if outcome is Result.Err(reason) {
+    if outcome is Err(reason) {
         machine.printed.push("failed: " + reason);
     }
 

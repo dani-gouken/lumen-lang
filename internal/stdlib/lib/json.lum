@@ -4,10 +4,10 @@
 // apart and the compiler checks that every kind is handled:
 //
 //     match json.parse(text) {
-//         case Result.Ok(document): {
+//         case Ok(document): {
 //             let name = document.get("name")?.text() ?? "nobody";
 //         }
-//         case Result.Err(error): { println(error.describe()); }
+//         case Err(error): { println(error.describe()); }
 //     }
 
 import std.dict;
@@ -50,7 +50,7 @@ pub fn parse(text: String) -> Result<Json, ParseError> {
         let parts = problem();
         let where = parts[0].split(":");
 
-        return Result.Err(ParseError {
+        return Err(ParseError {
             message: parts[1],
             line: where[0].parseInt() ?? 0,
             column: where[1].parseInt() ?? 0,
@@ -58,7 +58,7 @@ pub fn parse(text: String) -> Result<Json, ParseError> {
     }
 
     let reader = Reader { tokens: found, at: 0 };
-    return Result.Ok(reader.value());
+    return Ok(reader.value());
 }
 
 // Builds the tree from the tokens of a text the runtime has checked: the

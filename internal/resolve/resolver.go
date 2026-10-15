@@ -31,6 +31,10 @@ type Resolver struct {
 	// resolved
 	scriptVars map[string]bool
 	inScript   bool
+
+	// The variants of the program's enums, which a variant written alone
+	// and misspelt may have meant
+	variants []string
 }
 
 func NewResolver(errs *errors.Handler) *Resolver {
@@ -69,6 +73,13 @@ func (r *Resolver) resolveTopLevel(prog *ast.Program) {
 		r.declare(fn.Name, SymbolFunc, fn)
 	}
 
+	for _, decl := range prog.Decls {
+		if enum, ok := decl.(*ast.EnumDecl); ok && !strings.HasPrefix(enum.Name, stdlib.Package+".") {
+			for _, variant := range enum.Variants {
+				r.variants = append(r.variants, variant.Name)
+			}
+		}
+	}
 	for _, decl := range prog.Decls {
 		switch d := decl.(type) {
 		case *ast.FnDecl:
@@ -606,6 +617,11 @@ func (r *Resolver) visitFnExpr(e *ast.FnExpr) {
 }
 
 func (r *Resolver) resolveIdent(id *ast.Ident) {
+	if id.Name == ast.EnumToFind {
+		// The enum of a variant written alone, which the type checker
+		// finds
+		return
+	}
 	sym := r.current.Lookup(id.Name)
 	if sym == nil {
 		r.reportUndefined("undefined identifier", id.Name, id.Token())
@@ -757,8 +773,8 @@ func (r *Resolver) findSimilarName(target string) string {
 		curr = curr.Parent
 	}
 
-	// Check built-ins too
-	builtins := []string{"Int", "Float", "String", "Bool", "Void", "Any"}
+	// Check built-ins too, and the variants, which are written alone
+	builtins := append([]string{"Int", "Float", "String", "Bool", "Void", "Any"}, r.variants...)
 	for _, name := range builtins {
 		dist := levenshtein(target, name)
 		if dist < bestDist {

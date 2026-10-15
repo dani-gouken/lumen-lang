@@ -14,10 +14,7 @@
 // does what, and notes/checks.lum tests the two by calling the routes as
 // the server would.
 
-import std.os;
-import std.http;
 import std.http.{Request, Response};
-import std.time;
 import notes.api;
 import notes.book;
 import notes.checks;
@@ -44,11 +41,11 @@ fn main() -> Int {
     println("notes are served on http://localhost:${port}, stop with Ctrl+C");
 
     match http.serve(port, logged(app.handler())) {
-        case Result.Ok(_): {
+        case Ok(_): {
             return 0;
         }
 
-        case Result.Err(error): {
+        case Err(error): {
             println(error.describe());
             return 1;
         }

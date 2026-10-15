@@ -66,10 +66,10 @@ fn page(text: String) -> Result<Int, String> {
     let n = text.parseInt();
 
     if n == null {
-        return Result.Err("'${text}' is not a number of pages");
+        return Err("'${text}' is not a number of pages");
     }
 
-    return Result.Ok(n);
+    return Ok(n);
 }
 
 // Several functions made from one: each keeps what it was made with

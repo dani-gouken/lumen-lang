@@ -557,6 +557,11 @@ func (c *Checker) checkExprExpecting(expr ast.Expr, expected Type) Type {
 		}
 		return typ
 	}
+	if member := variantToFind(expr); member != nil {
+		// Empty, with Shape.Empty and Box.Empty in scope: the one of what
+		// is expected here
+		c.findEnum(member, expected)
+	}
 	if _, isCall := expr.(*ast.CallExpr); isCall || c.isVariantRef(expr) {
 		// A generic call may take the type arguments its own arguments
 		// leave open from here: let xs: [Int] = none();

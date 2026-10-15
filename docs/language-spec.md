@@ -48,7 +48,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 Full description: [enums.md](enums.md).
 
 - `enum Shape { Circle(Float), Rect(Float, Float), Empty }`: a type whose values are one of the variants, each with the values it holds. Variants may hold any types, the enum itself included. `enum Option<T> { Some(T), None }` is generic.
-- A value is written `Shape.Circle(2.0)`, `Shape.Empty`. A variant with values, not called, is the function that makes one.
+- A value is written `Shape.Circle(2.0)`, `Shape.Empty`, or the variant alone, `Circle(2.0)`, `Empty`, in expressions, patterns (`case Circle(r):`, `case Node(Leaf(a), _):`) and tests (`value is Empty`). A variant alone is of the enum among those the file declares or imports by name that has it, unless a variable, a parameter, a function, a constant or a type of that name is in scope. When several such enums have it, it is of the one expected: the declared type of a variable, a parameter or a return, the type of the value a `match` or an `is` tests, the type of the other items of an array literal, the other side of `==`. Otherwise it is `E2041`. A variant with values, not called, is the function that makes one.
 - Type arguments of a generic enum come from what is written (`Option<Int>.None`), from the values (`Option.Some(1)`), then from the type expected where the value goes. If none determines one, it is an error (`E2030`).
 - A value has no fields; it is taken apart by `match`, or by `value is Pattern` when one variant is asked for.
 - Two values are equal (`==`) when they are the same variant holding equal values.

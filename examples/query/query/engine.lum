@@ -16,12 +16,6 @@
 // columns (see bind): a name that no table has, or that two have, is an
 // error then, and a row is afterwards read by position.
 
-import std.arrays;
-import std.csv;
-import std.dict;
-import std.dict.{Dict};
-import std.io;
-import std.path;
 import query.tree.{Expr, Item, Source, Join, OrderKey, Select};
 import query.value.{Value, show, key, truth, fromBool, order, compare, arithmetic, parse};
 
@@ -39,23 +33,23 @@ pub fn load(folder: String, name: String) -> Result<Table, String> {
     let file = path.join([folder, name.lower() + ".csv"]);
 
     let text = match io.readFile(file) {
-        case Result.Ok(content): content;
+        case Ok(content): content;
 
-        case Result.Err(error): {
-            return Result.Err("there is no table ${name}: ${error.describe()}");
+        case Err(error): {
+            return Err("there is no table ${name}: ${error.describe()}");
         }
     };
 
     let lines = match csv.parse(text) {
-        case Result.Ok(parsed): parsed;
+        case Ok(parsed): parsed;
 
-        case Result.Err(error): {
-            return Result.Err("the table ${name} cannot be read: line ${error.line}");
+        case Err(error): {
+            return Err("the table ${name} cannot be read: line ${error.line}");
         }
     };
 
     if lines.isEmpty() {
-        return Result.Err("the table ${name} is empty: it has no line of column names");
+        return Err("the table ${name} is empty: it has no line of column names");
     }
 
     let columns: [String] = [];
@@ -80,7 +74,7 @@ pub fn load(folder: String, name: String) -> Result<Table, String> {
         let cells = lines[at];
 
         if cells.len() != columns.len() {
-            return Result.Err("line ${at + 1} of the table ${name} has ${cells.len()} values for ${columns.len()} columns");
+            return Err("line ${at + 1} of the table ${name} has ${cells.len()} values for ${columns.len()} columns");
         }
 
         let row: [Value] = [];
@@ -92,7 +86,7 @@ pub fn load(folder: String, name: String) -> Result<Table, String> {
         rows.push(row);
     }
 
-    return Result.Ok(Table { name: name, columns: columns, rows: rows });
+    return Ok(Table { name: name, columns: columns, rows: rows });
 }
 
 // --- Names ---
@@ -113,7 +107,7 @@ fn find(columns: [Column], table: String, name: String) -> Result<Int, String> {
     for at, column in columns {
         if column.name == wanted && (of == "" || column.table == of) {
             if found >= 0 {
-                return Result.Err("the name ${name} is of several tables: say which, as in ${columns[found].table}.${name}");
+                return Err("the name ${name} is of several tables: say which, as in ${columns[found].table}.${name}");
             }
 
             found = at;
@@ -122,13 +116,13 @@ fn find(columns: [Column], table: String, name: String) -> Result<Int, String> {
 
     if found < 0 {
         if table == "" {
-            return Result.Err("there is no column ${name}");
+            return Err("there is no column ${name}");
         }
 
-        return Result.Err("there is no column ${table}.${name}");
+        return Err("there is no column ${table}.${name}");
     }
 
-    return Result.Ok(found);
+    return Ok(found);
 }
 
 fn isAggregate(function: String) -> Bool {
@@ -159,7 +153,7 @@ fn bindAll(expressions: [Expr], columns: [Column], grouped: Bool) -> Result<[Exp
         out.push(bind(expression, columns, grouped)?);
     }
 
-    return Result.Ok(out);
+    return Ok(out);
 }
 
 // Finds every column an expression names: the expression that comes back
@@ -168,27 +162,27 @@ fn bindAll(expressions: [Expr], columns: [Column], grouped: Bool) -> Result<[Exp
 fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, String> {
     match expression {
         case Expr.Literal(value): {
-            return Result.Ok(expression);
+            return Ok(expression);
         }
 
         case Expr.Slot(at): {
-            return Result.Ok(expression);
+            return Ok(expression);
         }
 
         case Expr.Column(table, name): {
-            return Result.Ok(Expr.Slot(find(columns, table, name)?));
+            return Ok(Expr.Slot(find(columns, table, name)?));
         }
 
         case Expr.Negate(inner): {
-            return Result.Ok(Expr.Negate(bind(inner, columns, grouped)?));
+            return Ok(Expr.Negate(bind(inner, columns, grouped)?));
         }
 
         case Expr.Not(inner): {
-            return Result.Ok(Expr.Not(bind(inner, columns, grouped)?));
+            return Ok(Expr.Not(bind(inner, columns, grouped)?));
         }
 
         case Expr.Binary(operator, left, right): {
-            return Result.Ok(
+            return Ok(
                 Expr.Binary(
                     operator,
                     bind(left, columns, grouped)?,
@@ -198,7 +192,7 @@ fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, Stri
         }
 
         case Expr.Like(value, pattern, negated): {
-            return Result.Ok(
+            return Ok(
                 Expr.Like(
                     bind(value, columns, grouped)?,
                     bind(pattern, columns, grouped)?,
@@ -208,7 +202,7 @@ fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, Stri
         }
 
         case Expr.In(value, options, negated): {
-            return Result.Ok(
+            return Ok(
                 Expr.In(
                     bind(value, columns, grouped)?,
                     bindAll(options, columns, grouped)?,
@@ -218,7 +212,7 @@ fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, Stri
         }
 
         case Expr.Between(value, low, high, negated): {
-            return Result.Ok(
+            return Ok(
                 Expr.Between(
                     bind(value, columns, grouped)?,
                     bind(low, columns, grouped)?,
@@ -229,44 +223,44 @@ fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, Stri
         }
 
         case Expr.IsNull(inner, negated): {
-            return Result.Ok(Expr.IsNull(bind(inner, columns, grouped)?, negated));
+            return Ok(Expr.IsNull(bind(inner, columns, grouped)?, negated));
         }
 
         case Expr.Call(function, arguments, star): {
             let takes = arity(function);
 
             if takes == null {
-                return Result.Err("there is no function ${function}");
+                return Err("there is no function ${function}");
             }
 
             let (least, most) = takes;
 
             if star {
                 if function != "COUNT" {
-                    return Result.Err("${function}(*) means nothing: only COUNT(*) does");
+                    return Err("${function}(*) means nothing: only COUNT(*) does");
                 }
 
                 if !grouped {
-                    return Result.Err("COUNT(*) counts the rows of a group: it cannot be asked of one row");
+                    return Err("COUNT(*) counts the rows of a group: it cannot be asked of one row");
                 }
 
-                return Result.Ok(expression);
+                return Ok(expression);
             }
 
             if arguments.len() < least || arguments.len() > most {
-                return Result.Err("${function} does not take ${arguments.len()} values");
+                return Err("${function} does not take ${arguments.len()} values");
             }
 
             if isAggregate(function) {
                 if !grouped {
-                    return Result.Err("${function} is worked out for a group of rows: it cannot be asked of one row");
+                    return Err("${function} is worked out for a group of rows: it cannot be asked of one row");
                 }
 
                 // What it is given is worked out row by row
-                return Result.Ok(Expr.Call(function, bindAll(arguments, columns, false)?, false));
+                return Ok(Expr.Call(function, bindAll(arguments, columns, false)?, false));
             }
 
-            return Result.Ok(Expr.Call(function, bindAll(arguments, columns, grouped)?, false));
+            return Ok(Expr.Call(function, bindAll(arguments, columns, grouped)?, false));
         }
 
         case Expr.Case(branches, otherwise): {
@@ -277,10 +271,10 @@ fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, Stri
             }
 
             if otherwise == null {
-                return Result.Ok(Expr.Case(bound, null));
+                return Ok(Expr.Case(bound, null));
             }
 
-            return Result.Ok(Expr.Case(bound, bind(otherwise, columns, grouped)?));
+            return Ok(Expr.Case(bound, bind(otherwise, columns, grouped)?));
         }
     }
 }
@@ -1051,5 +1045,5 @@ pub fn answer(query: Select, folder: String) -> Result<Answer, String> {
     }
 
     let kept = entries.slice(from, to).map(entry -> entry.row);
-    return Result.Ok(Answer { names: names, rows: kept });
+    return Ok(Answer { names: names, rows: kept });
 }

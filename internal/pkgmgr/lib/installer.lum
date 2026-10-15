@@ -157,10 +157,10 @@ fn put(from: Sources, locked: Locked) -> Result<Void, String> {
         let folder = from.local(locked.source.url);
 
         if !fs.isDir(folder) {
-            return Result.Err("${locked.name} is to be found in ${locked.source.url}, which is not a folder");
+            return Err("${locked.name} is to be found in ${locked.source.url}, which is not a folder");
         }
 
-        return Result.Ok();
+        return Ok();
     }
 
     let mirror = from.mirrorWith(locked.source.url, locked.source.reference)?;
@@ -184,18 +184,18 @@ fn put(from: Sources, locked: Locked) -> Result<Void, String> {
     fs.makeDir(target).mapErr(error -> error.describe())?;
 
     match os.run("tar", ["-xf", archive, "-C", target]) {
-        case Result.Ok(output): {
+        case Ok(output): {
             if !output.succeeded() {
-                return Result.Err("tar could not unpack ${locked.name}: ${output.err.trim()}");
+                return Err("tar could not unpack ${locked.name}: ${output.err.trim()}");
             }
         }
 
-        case Result.Err(error): {
-            return Result.Err("tar cannot be run, and packages are unpacked with it: ${error.message}");
+        case Err(error): {
+            return Err("tar cannot be run, and packages are unpacked with it: ${error.message}");
         }
     }
 
-    return Result.Ok();
+    return Ok();
 }
 
 fn writeMap(project: String, packages: [Locked], dev: Bool) -> Result<Void, String> {
@@ -218,5 +218,5 @@ fn writeMap(project: String, packages: [Locked], dev: Bool) -> Result<Void, Stri
         error -> error.describe(),
     )?;
 
-    return Result.Ok();
+    return Ok();
 }

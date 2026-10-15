@@ -38,9 +38,9 @@ Every array: `len push pop at first last isEmpty contains indexOf find findIndex
 
 ## Failures
 
-- A function that can fail returns `Result<T, E>`: `return Result.Ok(value);`, `return Result.Err("why");`. With nothing to return: `Result<Void, E>` and `return Result.Ok();`.
+- A function that can fail returns `Result<T, E>`: `return Ok(value);`, `return Err("why");`. With nothing to return: `Result<Void, E>` and `return Ok();`.
 - `value?` gives the value, or returns the failure from the enclosing function. In `main` it ends the program with the reason (its `describe()` when it has one).
-- `match r { case Result.Ok(v): { ... } case Result.Err(e): { ... } }`; also `r.isOk() r.value() r.reason() r.orElse(x) r.map(f) r.expect("message")`.
+- `match r { case Ok(v): { ... } case Err(e): { ... } }`; also `r.isOk() r.value() r.reason() r.orElse(x) r.map(f) r.expect("message")`.
 - `panic("message")` stops the program; `attempt(fn() -> T { ... })` (`import std.result.{attempt};`) gives a `Result<T, Failure>` instead; `defer stmt;` runs when the block is left.
 - `?.` does not work on a Result: use `?` or a match.
 
@@ -59,8 +59,8 @@ fn main() -> Int {
         println("uncommitted changes on ${branch}");
     }
     match sh.attempt("composer pint-test") {                  // handle the failure yourself
-        case Result.Ok(_): { println("lint ok"); }
-        case Result.Err(failed): { println("lint failed:", failed.status, failed.err); }
+        case Ok(_): { println("lint ok"); }
+        case Err(failed): { println("lint failed:", failed.status, failed.err); }
     }
     sh.run("make deploy ENV=${env}");                         // a value stays one argument, never parsed by a shell
     return 0;

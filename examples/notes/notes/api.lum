@@ -8,9 +8,7 @@
 //     DELETE /notes/:id
 //     GET    /tags
 
-import std.http;
 import std.http.{Request, Response, Router};
-import std.json;
 import std.json.{Json};
 import notes.book;
 import notes.book.{Book, Note, Refusal};
@@ -32,22 +30,22 @@ pub fn routes(notes: Book) -> Router {
 
     app.post("/notes", fn(request: Request) -> Response {
         match request.json() {
-            case Result.Ok(document): {
+            case Ok(document): {
                 match notes.add(document) {
-                    case Result.Ok(note): {
+                    case Ok(note): {
                         return http.sendJson(201, note.toJson()).with(
                             "Location",
                             "/notes/${note.id}",
                         );
                     }
 
-                    case Result.Err(refusal): {
+                    case Err(refusal): {
                         return refused(refusal);
                     }
                 }
             }
 
-            case Result.Err(error): {
+            case Err(error): {
                 return problem(400, "the body is not JSON: ${error.describe()}");
             }
         }
@@ -65,7 +63,7 @@ pub fn routes(notes: Book) -> Router {
 
     app.put("/notes/:id", fn(request: Request) -> Response {
         match request.json() {
-            case Result.Ok(document): {
+            case Ok(document): {
                 let outcome = notes.replace(idOf(request), document);
 
                 if outcome == null {
@@ -73,12 +71,12 @@ pub fn routes(notes: Book) -> Router {
                 }
 
                 return match outcome {
-                    case Result.Ok(note): http.sendJson(200, note.toJson());
-                    case Result.Err(refusal): refused(refusal);
+                    case Ok(note): http.sendJson(200, note.toJson());
+                    case Err(refusal): refused(refusal);
                 };
             }
 
-            case Result.Err(error): {
+            case Err(error): {
                 return problem(400, "the body is not JSON: ${error.describe()}");
             }
         }

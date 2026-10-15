@@ -6,9 +6,6 @@
 //     let tax = line.share(20, 100);          // EUR 38.16
 //     println(line + tax);                    // EUR 228.96
 
-import std.ops.{Add, Ordered, Equal, Show};
-import std.format;
-
 pub struct Money {
     cents: Int;
     currency: String;
@@ -26,7 +23,7 @@ pub fn parse(text: String, currency: String) -> Result<Money, String> {
     let (units, fraction) = clean.cut(".") ?? (clean, "");
 
     if fraction.len() > 2 {
-        return Result.Err("\"${text}\" has more than two figures after the point");
+        return Err("\"${text}\" has more than two figures after the point");
     }
 
     let whole = units.parseInt();
@@ -37,10 +34,10 @@ pub fn parse(text: String, currency: String) -> Result<Money, String> {
         || !units.isDigits()
         || (fraction != "" && !fraction.isDigits())
     {
-        return Result.Err("\"${text}\" is not an amount");
+        return Err("\"${text}\" is not an amount");
     }
 
-    return Result.Ok(Money { cents: whole * 100 + part, currency: currency });
+    return Ok(Money { cents: whole * 100 + part, currency: currency });
 }
 
 impl Money {

@@ -53,8 +53,8 @@ The order is always the same: a new task starts when the one that made it next w
 let total = task.start(fn() -> Int { return count(file); });
 // ... something else ...
 match total.wait() {
-    case Result.Ok(n): { println(n); }
-    case Result.Err(failure): { println("counting failed:", failure.describe()); }
+    case Ok(n): { println(n); }
+    case Err(failure): { println("counting failed:", failure.describe()); }
 }
 ```
 

@@ -76,8 +76,8 @@ impl Error {
 // The whole content of a file, or why it cannot be read.
 //
 //     match io.readFile("notes.txt") {
-//         case Result.Ok(text): { ... }
-//         case Result.Err(error): {
+//         case Ok(text): { ... }
+//         case Err(error): {
 //             match error.kind {
 //                 case ErrorKind.NotFound: { ... }       // start with an empty one
 //                 default: { println(error.describe()); }
@@ -88,30 +88,30 @@ pub fn readFile(path: String) -> Result<String, Error> {
     let text = readText(path);
 
     if text == null {
-        return Result.Err(failure("read", path));
+        return Err(failure("read", path));
     }
 
-    return Result.Ok(text);
+    return Ok(text);
 }
 
 // Writes a text to a file, replacing what was in it. Gives how many
 // characters were written, or why it could not be done.
 pub fn writeFile(path: String, text: String) -> Result<Int, Error> {
     if writeText(path, text) {
-        return Result.Ok(text.len());
+        return Ok(text.len());
     }
 
-    return Result.Err(failure("write", path));
+    return Err(failure("write", path));
 }
 
 // Adds a text to the end of a file, creating it if needed. Gives how many
 // characters were added, or why it could not be done.
 pub fn appendFile(path: String, text: String) -> Result<Int, Error> {
     if appendText(path, text) {
-        return Result.Ok(text.len());
+        return Ok(text.len());
     }
 
-    return Result.Err(failure("append", path));
+    return Err(failure("append", path));
 }
 
 // The lines of a file, or why it cannot be read.

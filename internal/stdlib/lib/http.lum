@@ -3,8 +3,8 @@
 // Asking:
 //
 //     match http.get("https://example.com/api/users/1") {
-//         case Result.Ok(response): { println(response.status, response.body); }
-//         case Result.Err(error): { println(error.describe()); }
+//         case Ok(response): { println(response.status, response.body); }
+//         case Err(error): { println(error.describe()); }
 //     }
 //
 // A server that answers "not found" has answered: that is a Response,
@@ -183,11 +183,11 @@ impl Call {
         );
 
         if parts == null {
-            return Result.Err(noAnswer(self.url));
+            return Err(noAnswer(self.url));
         }
 
         // The status, the body, then the headers
-        return Result.Ok(Response {
+        return Ok(Response {
             status: parts[0].parseInt() ?? 0,
             headers: paired(parts, 2),
             body: parts[1],
@@ -277,10 +277,10 @@ pub fn listen(port: Int) -> Result<Server, Error> {
     let opened = open(port);
 
     if opened == null {
-        return Result.Err(noAnswer("port ${port}"));
+        return Err(noAnswer("port ${port}"));
     }
 
-    return Result.Ok(Server { id: opened[0], port: opened[1] });
+    return Ok(Server { id: opened[0], port: opened[1] });
 }
 
 impl Server {
@@ -358,11 +358,11 @@ fn answerOf(request: Request, handler: fn(Request) -> Response) -> Response {
     match result.attempt(fn() -> Response {
         return handler(request);
     }) {
-        case Result.Ok(response): {
+        case Ok(response): {
             return response;
         }
 
-        case Result.Err(failure): {
+        case Err(failure): {
             io.printError("${request.method.name()} ${request.path} failed: ${failure.describe()}\n");
             return respond(500, "the server failed");
         }

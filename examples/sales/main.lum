@@ -7,20 +7,10 @@
 // checked as it is turned into an Order; a row that fails is set aside
 // with its reason, and the report is made of the rest and says so.
 
-import std.csv;
 import std.csv.{Table};
-import std.json;
 import std.json.{Json};
-import std.io;
-import std.os;
-import std.path;
-import std.hash;
-import std.time;
 import std.time.{Date};
-import std.format;
 import std.format.{Align};
-import std.dict;
-import std.dict.{Dict};
 
 struct Order {
     number: Int;
@@ -61,10 +51,10 @@ fn whole(row: Dict<String>, column: String) -> Result<Int, Flaw> {
     let n = text.parseInt();
 
     if n == null {
-        return Result.Err(Flaw.NotANumber(column, text));
+        return Err(Flaw.NotANumber(column, text));
     }
 
-    return Result.Ok(n);
+    return Ok(n);
 }
 
 // The order a row describes, or the first thing wrong with it. Each `?`
@@ -75,30 +65,30 @@ fn order(row: Dict<String>) -> Result<Order, Flaw> {
     let quantity = whole(row, "quantity")?;
 
     if quantity <= 0 {
-        return Result.Err(Flaw.Nothing("quantity"));
+        return Err(Flaw.Nothing("quantity"));
     }
 
     let priceText = row.getOr("unit_price", "");
     let price = priceText.parseFloat();
 
     if price == null {
-        return Result.Err(Flaw.NotANumber("unit_price", priceText));
+        return Err(Flaw.NotANumber("unit_price", priceText));
     }
 
     let dateText = row.getOr("date", "");
     let date = time.parse(dateText);
 
     if date == null {
-        return Result.Err(Flaw.NotADate(dateText));
+        return Err(Flaw.NotADate(dateText));
     }
 
     let customer = row.getOr("customer", "").trim();
 
     if customer == "" {
-        return Result.Err(Flaw.Nothing("customer"));
+        return Err(Flaw.Nothing("customer"));
     }
 
-    return Result.Ok(Order {
+    return Ok(Order {
         number: number,
         date: date,
         customer: customer,
@@ -176,12 +166,12 @@ fn report(table: Table, source: String, output: String?) -> Int {
 
     for i, row in table.records() {
         match order(row) {
-            case Result.Ok(read): {
+            case Ok(read): {
                 orders.push(read);
             }
 
             // Row 1 of the file is the header
-            case Result.Err(flaw): {
+            case Err(flaw): {
                 flawed.push("row ${i + 2} (order ${row.getOr("order", "?")}): ${flaw.describe()}");
             }
         }
@@ -249,12 +239,12 @@ fn report(table: Table, source: String, output: String?) -> Int {
             + "\n";
 
         match io.writeFile(output, summary) {
-            case Result.Ok(_): {
+            case Ok(_): {
                 println("");
                 println("summary written to ${path.base(output)}, sha256 ${hash.sha256(summary).first(12)}");
             }
 
-            case Result.Err(error): {
+            case Err(error): {
                 println(error.describe());
                 return 1;
             }
@@ -280,11 +270,11 @@ fn main() -> Int {
     let output = args.at(1);
 
     match load(source) {
-        case Result.Ok(orders): {
+        case Ok(orders): {
             return report(orders, source, output);
         }
 
-        case Result.Err(problem): {
+        case Err(problem): {
             println(problem);
             return 1;
         }

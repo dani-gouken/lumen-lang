@@ -98,7 +98,7 @@ fn findProject(create: Bool) -> Result<Project, String> {
         let file = manifest.inside(dir);
 
         if io.exists(file) {
-            return Result.Ok(Project { dir: dir, manifest: manifest.load(file)? });
+            return Ok(Project { dir: dir, manifest: manifest.load(file)? });
         }
 
         let parent = path.dir(dir);
@@ -111,12 +111,12 @@ fn findProject(create: Bool) -> Result<Project, String> {
     }
 
     if !create {
-        return Result.Err("there is no ${manifest.FILE} in this folder or above it: lumen require vendor/name makes one");
+        return Err("there is no ${manifest.FILE} in this folder or above it: lumen require vendor/name makes one");
     }
 
     let here = fs.currentDir();
     say("Writing a new ${manifest.FILE}");
-    return Result.Ok(Project { dir: here, manifest: manifest.parse("{}")?, created: true });
+    return Ok(Project { dir: here, manifest: manifest.parse("{}")?, created: true });
 }
 
 fn requirementsOf(project: Manifest) -> [Requirement] {
@@ -139,7 +139,7 @@ fn update(project: Project, only: [String]) -> Result<Lock, String> {
             && !project.manifest.require.has(name)
             && !project.manifest.requireDev.has(name)
         {
-            return Result.Err("${name} is not a package of this project");
+            return Err("${name} is not a package of this project");
         }
     }
 
@@ -166,7 +166,7 @@ fn update(project: Project, only: [String]) -> Result<Lock, String> {
         error -> error.describe(),
     )?;
 
-    return Result.Ok(lock);
+    return Ok(lock);
 }
 
 // The choices as the lock has them: the packages require needs, then
@@ -290,7 +290,7 @@ fn updateCommand(project: Project, request: Request) -> Result<Void, String> {
 // done lumen.json is left as it was.
 fn require(project: Project, request: Request) -> Result<Void, String> {
     if request.names.isEmpty() {
-        return Result.Err("name the packages to require: lumen require vendor/name[:^1.2]");
+        return Err("name the packages to require: lumen require vendor/name[:^1.2]");
     }
 
     let original = manifest.text(project.manifest);
@@ -302,7 +302,7 @@ fn require(project: Project, request: Request) -> Result<Void, String> {
         let (name, wanted) = spec.cut(":") ?? (spec, "");
 
         if !manifest.isPackageName(name) {
-            return Result.Err("${name} is not a package name: write vendor/name, in lower case");
+            return Err("${name} is not a package name: write vendor/name, in lower case");
         }
 
         if wanted == "" {
@@ -323,11 +323,11 @@ fn require(project: Project, request: Request) -> Result<Void, String> {
     )?;
 
     match update(project, added) {
-        case Result.Ok(lock): {
+        case Ok(lock): {
             return installer.install(project.sources(), lock, request.dev);
         }
 
-        case Result.Err(reason): {
+        case Err(reason): {
             if project.created {
                 say("Installation failed, deleting ${manifest.FILE}.");
                 io.remove(project.file(manifest.FILE));
@@ -339,7 +339,7 @@ fn require(project: Project, request: Request) -> Result<Void, String> {
                 )?;
             }
 
-            return Result.Err(reason);
+            return Err(reason);
         }
     }
 }
@@ -359,31 +359,31 @@ fn newest(project: Project, name: String) -> Result<String, String> {
         let version = best.version;
 
         if version != null {
-            return Result.Ok(semver.caret(version));
+            return Ok(semver.caret(version));
         }
     }
 
     if all.find(candidate -> candidate.anyVersion) != null {
-        return Result.Ok("*");
+        return Ok("*");
     }
 
     let branch = all.find(candidate -> candidate.version == null);
 
     if branch != null {
-        return Result.Ok(branch.label);
+        return Ok(branch.label);
     }
 
-    return Result.Err("${name} has no version to require");
+    return Err("${name} has no version to require");
 }
 
 fn remove(project: Project, request: Request) -> Result<Void, String> {
     if request.names.isEmpty() {
-        return Result.Err("name the packages to remove: lumen remove vendor/name");
+        return Err("name the packages to remove: lumen remove vendor/name");
     }
 
     for name in request.names {
         if !project.manifest.require.has(name) && !project.manifest.requireDev.has(name) {
-            return Result.Err("${name} is not required by ${manifest.FILE}");
+            return Err("${name} is not required by ${manifest.FILE}");
         }
 
         manifest.setRequirement(project.manifest, "require", name, "");
@@ -406,10 +406,10 @@ fn lockOf(project: Project) -> Result<Lock, String> {
     let lock = lockfile.read(project.file(lockfile.FILE))?;
 
     if lock == null {
-        return Result.Err("there is no ${lockfile.FILE}: run lumen install");
+        return Err("there is no ${lockfile.FILE}: run lumen install");
     }
 
-    return Result.Ok(lock);
+    return Ok(lock);
 }
 
 fn printAll(lines: [String]) -> Result<Void, String> {
@@ -417,7 +417,7 @@ fn printAll(lines: [String]) -> Result<Void, String> {
         println(line);
     }
 
-    return Result.Ok();
+    return Ok();
 }
 
 fn show(project: Project, request: Request) -> Result<Void, String> {
@@ -425,7 +425,7 @@ fn show(project: Project, request: Request) -> Result<Void, String> {
 
     if lock.packages.isEmpty() && request.names.isEmpty() {
         say("No packages");
-        return Result.Ok();
+        return Ok();
     }
 
     let installed = installer.installed(project.dir);
@@ -436,7 +436,7 @@ fn why(project: Project, request: Request) -> Result<Void, String> {
     let name = request.names.first();
 
     if name == null {
-        return Result.Err("name the package: lumen why vendor/name");
+        return Err("name the package: lumen why vendor/name");
     }
 
     return printAll(inspect.why(lockOf(project)?, project.manifest, name)?);
@@ -450,7 +450,7 @@ fn outdated(project: Project) -> Result<Void, String> {
 
 fn parse(arguments: [String]) -> Result<Request, String> {
     if arguments.isEmpty() {
-        return Result.Err(usage);
+        return Err(usage);
     }
 
     let request = Request { command: arguments[0] };
@@ -467,7 +467,7 @@ fn parse(arguments: [String]) -> Result<Request, String> {
 
             default: {
                 if argument.startsWith("-") {
-                    return Result.Err("unknown option ${argument}\n${usage}");
+                    return Err("unknown option ${argument}\n${usage}");
                 }
 
                 request.names.push(argument);
@@ -475,7 +475,7 @@ fn parse(arguments: [String]) -> Result<Request, String> {
         }
     }
 
-    return Result.Ok(request);
+    return Ok(request);
 }
 
 fn run(arguments: [String]) -> Result<Void, String> {
@@ -490,17 +490,17 @@ fn run(arguments: [String]) -> Result<Void, String> {
         case "show": show(project, request);
         case "why": why(project, request);
         case "outdated": outdated(project);
-        default: Result.Err("unknown command ${request.command}\n${usage}");
+        default: Err("unknown command ${request.command}\n${usage}");
     };
 }
 
 fn main() -> Int {
     match run(os.args()) {
-        case Result.Ok(_): {
+        case Ok(_): {
             return 0;
         }
 
-        case Result.Err(reason): {
+        case Err(reason): {
             io.printError("\n${reason.trim()}\n");
             return 1;
         }

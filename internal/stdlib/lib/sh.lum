@@ -53,17 +53,17 @@ impl Failed {
 // stopping the script:
 //
 //     match sh.attempt("composer pint-test") {
-//         case Result.Ok(_): { println("✓ pint"); }
-//         case Result.Err(failed): { println("✗ pint, status", failed.status); }
+//         case Ok(_): { println("✓ pint"); }
+//         case Err(failed): { println("✗ pint, status", failed.status); }
 //     }
 pub fn attempt(command: Template) -> Result<Void, Failed> {
     let parts = attempted(command);
 
     if parts[3] == "" {
-        return Result.Ok();
+        return Ok();
     }
 
-    return Result.Err(Failed {
+    return Err(Failed {
         command: parts[1],
         status: parts[0].parseInt() ?? -1,
         err: parts[2],

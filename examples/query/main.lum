@@ -14,9 +14,6 @@
 // A table is the file <name>.csv of the folder. Its first line names the
 // columns and what they hold: id:int,name:text,price:real.
 
-import std.io;
-import std.os;
-import std.path;
 import query.parser;
 import query.engine;
 import query.value.{show};
@@ -25,7 +22,7 @@ import query.value.{show};
 fn rows(text: String, folder: String) -> Result<[String], String> {
     let answer = engine.answer(parser.parse(text)?, folder)?;
 
-    return Result.Ok(answer.rows.map(row -> row.map(show).join("|")));
+    return Ok(answer.rows.map(row -> row.map(show).join("|")));
 }
 
 // A few queries that show what there is.
@@ -50,13 +47,13 @@ fn main() -> Int {
             println("> " + text);
 
             match rows(text, folder) {
-                case Result.Ok(lines): {
+                case Ok(lines): {
                     for line in lines {
                         println(line);
                     }
                 }
 
-                case Result.Err(problem): {
+                case Err(problem): {
                     println("Error: " + problem);
                 }
             }
@@ -76,11 +73,11 @@ fn main() -> Int {
 
     if text.endsWith(".sql") {
         match io.readFile(text) {
-            case Result.Ok(content): {
+            case Ok(content): {
                 text = content;
             }
 
-            case Result.Err(error): {
+            case Err(error): {
                 io.printError("Error: ${error.describe()}\n");
                 return 2;
             }
@@ -88,7 +85,7 @@ fn main() -> Int {
     }
 
     match rows(text, arguments[0]) {
-        case Result.Ok(lines): {
+        case Ok(lines): {
             for line in lines {
                 println(line);
             }
@@ -96,7 +93,7 @@ fn main() -> Int {
             return 0;
         }
 
-        case Result.Err(problem): {
+        case Err(problem): {
             io.printError("Error: ${problem}\n");
             return 1;
         }

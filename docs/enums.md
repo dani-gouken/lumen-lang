@@ -46,12 +46,14 @@ enum Json { Null, Bool(Bool), String(String), Array([Json]) }
 ## Making Values
 
 ```rust
-let a = Shape.Circle(2.0);
-let b = Shape.Empty;                // no parentheses for a variant without values
-let shapes: [Shape] = [a, b, Shape.Rect(1.0, 2.0)];
+let a = Circle(2.0);
+let b = Empty;                      // no parentheses for a variant without values
+let shapes = [a, b, Shape.Rect(1.0, 2.0)];   // with its enum, the same
 ```
 
-The variant is always written with its enum: `Shape.Circle`, never `Circle` alone. From another module it is `geo.Shape.Circle`, or `Shape.Circle` after `import geo.{Shape};`.
+A variant can be written alone when an enum the file declares, or imports by name (`import geo.{Shape};`), has it. Written with its enum, `Shape.Circle`, it is always there; from a module imported whole it is `geo.Shape.Circle`.
+
+When two enums in scope have a variant of that name, the value says which: where a `Slot` is expected (a variable, an argument, what a function returns, the other items of an array), `Empty` is `Slot.Empty`, and in a `match` or after `is` it is a variant of the type of the value tested. Where nothing tells, the compiler says so (`E2041`) and offers both. A variable, a function, a constant or a type of the same name hides a variant: `let Empty = 3;` makes `Empty` the number.
 
 A variant with values, not called, is the function that makes one:
 
@@ -129,8 +131,8 @@ This is the point of an enum over a set of numbers or strings: add a variant, an
 The check looks inside patterns. These three cases are complete, because between them they take every `Option<Result<Int, String>>`:
 
 ```rust
-case Option.Some(Result.Ok(n)): { ... }
-case Option.Some(Result.Err(message)): { ... }
+case Option.Some(Ok(n)): { ... }
+case Option.Some(Err(message)): { ... }
 case Option.None: { ... }
 ```
 
@@ -208,9 +210,9 @@ A `match` asks which variant a value is. Often the question is smaller: is it *t
 
 ```rust
 if right is Value.Number(number) {
-    return Result.Ok(Value.Number(-number));
+    return Ok(Value.Number(-number));
 }
-return Result.Err(failed(operator, "Operand must be a number."));
+return Err(failed(operator, "Operand must be a number."));
 ```
 
 The pattern is whatever a `case` takes for a variant: a name, `_`, a literal or another pattern for each value, to any depth; no parentheses to take the variant whatever it holds; a tuple.
@@ -220,7 +222,7 @@ if shape is Shape.Empty { ... }
 if event is Event.Withdraw(amount) && amount > balance { ... }
 if e is Expr.Add(Expr.Num(0), right) { return right; }
 if (left, right) is (Value.Number(a), Value.Number(b)) { return a + b; }
-if stock.take(label, 1) is Result.Err(reason) { log(reason); }
+if stock.take(label, 1) is Err(reason) { log(reason); }
 ```
 
 **Where the names exist.** A name of the pattern is a variable of the code that runs only when the test held:
@@ -258,7 +260,7 @@ while queue.take() is Option.Some(job) {
 }
 ```
 
-**The value** is worked out once, before its names are read, and only when its turn in the condition comes: in `ready && load() is Result.Ok(text)`, nothing is loaded unless `ready`. A name keeps the value it was given, whatever the rest of the condition or the block does to the variable that was tested.
+**The value** is worked out once, before its names are read, and only when its turn in the condition comes: in `ready && load() is Ok(text)`, nothing is loaded unless `ready`. A name keeps the value it was given, whatever the rest of the condition or the block does to the variable that was tested.
 
 **What can be tested** is what a `match` with that case accepts. A value that may be null fits no pattern when it is, and is not null where the test held. An `Any`, a trait or a union is tested for the enum as well, and is of that enum in the block. A pattern the value can never fit is an error (`E2029`); one it always fits (the one variant of an enum, a tuple of names) is a warning (`E2023`), since nothing is being asked: `let (a, b) = pair;` names the values of a tuple.
 
@@ -284,7 +286,7 @@ The type arguments are worked out, in this order, from:
 let a: Option<Int> = Option.None;
 fn find() -> Option<String> { return Option.None; }
 if a == Option.None { ... }                    // the other side of a comparison
-let b: Option<Result<Int, String>> = Option.Some(Result.Ok(1));    // reaches inner values
+let b: Option<Result<Int, String>> = Option.Some(Ok(1));    // reaches inner values
 ```
 
 When none of these says what a type argument is, it is an error: `let x = Option.None;` gives `nothing here says what T of Option is`, and the fix is to write it.
@@ -294,8 +296,8 @@ In a pattern the type arguments are those of the value being matched; the names 
 ```rust
 fn first(r: Result<[Int], String>) -> Int {
     match r {
-        case Result.Ok(items): { return items[0]; }       // items: [Int]
-        case Result.Err(message): { return message.len(); }  // message: String
+        case Ok(items): { return items[0]; }       // items: [Int]
+        case Err(message): { return message.len(); }  // message: String
     }
 }
 ```
@@ -386,7 +388,6 @@ What tuples add is reading a value by its position, `pair.0`, and being printed 
 *   **Patterns on structs, arrays and optionals**: only enums are taken apart; a struct inside a variant is bound to a name and used as usual.
 *   **Names from a test that failed**: `if !(shape is Shape.Circle(r)) { return; }` does not leave `r` for what follows. The block of the `if` is where the names are.
 *   **Several patterns, ranges and literals after `is`**: `value is A.X | A.Y`, `n is 1..10`, `n is 3`. Write `||`, comparisons, `==`.
-*   **A variant by itself**: `Circle(2.0)` has to be written `Shape.Circle(2.0)`; there is no way to import the variants of an enum as bare names.
 
 ## How It Is Compiled
 

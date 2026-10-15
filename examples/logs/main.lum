@@ -7,18 +7,9 @@
 // reason it could not be: a log has lines nobody planned for, and one of
 // them must not cost the report.
 
-import std.regex;
 import std.regex.{Regex, Match};
-import std.io;
-import std.os;
-import std.path;
-import std.time;
 import std.time.{Date};
-import std.format;
 import std.format.{Align};
-import std.dict;
-import std.dict.{Dict};
-import std.set;
 
 // One request, as the server noted it.
 struct Hit {
@@ -107,14 +98,14 @@ impl Reader {
         let found = self.line.find(text);
 
         if found == null {
-            return Result.Err(BadLine { number: number, problem: Problem.Shape, text: text });
+            return Err(BadLine { number: number, problem: Problem.Shape, text: text });
         }
 
         let parts = found.groups;
         let at = time.parse(parts[2]);
 
         if at == null {
-            return Result.Err(BadLine {
+            return Err(BadLine {
                 number: number,
                 problem: Problem.Date(parts[2]),
                 text: text,
@@ -127,7 +118,7 @@ impl Reader {
             user = parts[1];
         }
 
-        return Result.Ok(Hit {
+        return Ok(Hit {
             client: parts[0],
             user: user,
             at: at,
@@ -156,11 +147,11 @@ fn load(text: String) -> Log {
         }
 
         match lines.read(i + 1, line) {
-            case Result.Ok(hit): {
+            case Ok(hit): {
                 log.hits.push(hit);
             }
 
-            case Result.Err(bad): {
+            case Err(bad): {
                 log.bad.push(bad);
             }
         }
@@ -289,12 +280,12 @@ fn main() -> Int {
     let file = os.args().first() ?? path.inside(path.dir(os.program()), "access.log");
 
     match io.readFile(file) {
-        case Result.Ok(text): {
+        case Ok(text): {
             report(load(text));
             return 0;
         }
 
-        case Result.Err(error): {
+        case Err(error): {
             io.printError(error.describe() + "\n");
             return 1;
         }

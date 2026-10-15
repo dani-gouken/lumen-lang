@@ -18,10 +18,10 @@ A complete program using both: [`examples/failures.lum`](../examples/failures.lu
 enum Problem { Empty, NotANumber(String) }
 
 fn count(text: String) -> Result<Int, Problem> {
-    if text == "" { return Result.Err(Problem.Empty); }
+    if text == "" { return Err(Problem.Empty); }
     let n = text.parseInt();
-    if n == null { return Result.Err(Problem.NotANumber(text)); }
-    return Result.Ok(n);
+    if n == null { return Err(Problem.NotANumber(text)); }
+    return Ok(n);
 }
 ```
 
@@ -29,9 +29,9 @@ The caller takes it apart with a `match`, which has to handle both:
 
 ```rust
 match count(input) {
-    case Result.Ok(n): { println("ordered", n); }
-    case Result.Err(Problem.Empty): { println("nothing was typed"); }
-    case Result.Err(Problem.NotANumber(text)): { println(text, "is not a number"); }
+    case Ok(n): { println("ordered", n); }
+    case Err(Problem.Empty): { println("nothing was typed"); }
+    case Err(Problem.NotANumber(text)): { println(text, "is not a number"); }
 }
 ```
 
@@ -61,7 +61,7 @@ Most functions that call something that can fail have nothing to do about the fa
 ```rust
 fn order(text: String) -> Result<Order, Problem> {
     let n = limited(count(text)?)?;
-    return Result.Ok(Order { count: n });
+    return Ok(Order { count: n });
 }
 ```
 
@@ -81,17 +81,17 @@ Where a failure is to be looked at rather than end the program, a `match` is sti
 
 The same operator works on an optional, in a function that may return `null`: `let user = find(id)?;` gives the user, or returns `null`.
 
-**Nothing to give back.** A function that does something and may fail, with nothing to say when it worked, returns a `Result<Void, E>`, and `Result.Ok()` when it went well:
+**Nothing to give back.** A function that does something and may fail, with nothing to say when it worked, returns a `Result<Void, E>`, and `Ok()` when it went well:
 
 ```rust
 fn save(order: Order) -> Result<Void, String> {
-    if full() { return Result.Err("the disk is full"); }
+    if full() { return Err("the disk is full"); }
     write(order);
-    return Result.Ok();
+    return Ok();
 }
 ```
 
-`save(order)?;` passes its failure on, and `case Result.Ok(_):` matches the success. `Result.Ok()` is refused where nothing says the value is `Void`.
+`save(order)?;` passes its failure on, and `case Ok(_):` matches the success. `Ok()` is refused where nothing says the value is `Void`.
 
 **The reason can be any type.** A text is the least useful: a program cannot act on it. An enum lets the caller tell the cases apart; a struct can carry whatever helps.
 
@@ -148,8 +148,8 @@ The `kind` is for the program, the rest for telling a person:
 
 ```rust
 match io.readFile("settings.conf") {
-    case Result.Ok(text): { load(text); }
-    case Result.Err(error): {
+    case Ok(text): { load(text); }
+    case Err(error): {
         match error.kind {
             case ErrorKind.NotFound: { useDefaults(); }
             default: { println(error.describe()); }     // cannot read settings.conf: permission denied
@@ -230,8 +230,8 @@ import std.result.{Kind, attempt};
 
 for i, job in jobs {
     match attempt(job) {
-        case Result.Ok(n): { println("job", i, "gave", n); }
-        case Result.Err(failure): { println("job", i, "failed:", failure.message); }
+        case Ok(n): { println("job", i, "gave", n); }
+        case Err(failure): { println("job", i, "failed:", failure.message); }
     }
 }
 ```
@@ -285,7 +285,7 @@ fn transfer(from: Account, to: Account, amount: Int) -> Result<Int, String> {
     }
     from.balance -= amount + fee;
     to.balance += amount;
-    return Result.Ok(from.balance);            // or here: unlocked
+    return Ok(from.balance);            // or here: unlocked
 }
 ```
 

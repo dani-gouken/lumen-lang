@@ -31,10 +31,10 @@ impl Machine {
         let top = self.stack.pop();
 
         if top == null {
-            return Result.Err("the stack is empty");
+            return Err("the stack is empty");
         }
 
-        return Result.Ok(top);
+        return Ok(top);
     }
 
     fn put(value: Int) {
@@ -90,17 +90,17 @@ impl Machine {
             }
         }
 
-        return Result.Ok(self.stack.len());
+        return Ok(self.stack.len());
     }
 
     fn run(program: [Op]) -> Result<Int, String> {
         for i, op in program {
             match self.step(op) {
-                case Result.Err(message): {
-                    return Result.Err("step ${i}: ${message}");
+                case Err(message): {
+                    return Err("step ${i}: ${message}");
                 }
 
-                case Result.Ok(depth): {}
+                case Ok(depth): {}
             }
         }
 
@@ -112,11 +112,11 @@ fn calculate(name: String, program: [Op]) {
     let machine = Machine {};
 
     match machine.run(program) {
-        case Result.Ok(value): {
+        case Ok(value): {
             println(name, "=", value, "left", machine.stack, "deepest", machine.deepest);
         }
 
-        case Result.Err(message): {
+        case Err(message): {
             println(name, "failed:", message, "left", machine.stack);
         }
     }

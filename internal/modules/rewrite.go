@@ -23,6 +23,10 @@ type rewriter struct {
 
 	locals     []map[string]bool
 	typeParams []map[string]bool
+
+	// The enums each name of a variant is a variant of, among those the
+	// module names without a dot; made when first needed
+	variants map[string][]*item
 }
 
 func (r *rewriter) rewrite() {
@@ -388,6 +392,10 @@ func (r *rewriter) pattern(pattern ast.Node) ast.Node {
 				r.types(p.TypeArgs)
 				return &ast.Type{BaseNode: p.BaseNode, Kind: ast.TypeBasic, Name: it.qualified, Generics: p.TypeArgs}
 			}
+			// case Empty: a variant of the one enum that has it
+			if target := r.variantRef(p); target != nil {
+				return &ast.VariantPattern{BaseNode: p.BaseNode, Target: target}
+			}
 		}
 		return r.expr(p)
 
@@ -412,6 +420,14 @@ func (r *rewriter) pattern(pattern ast.Node) ast.Node {
 		return p
 
 	case *ast.BindingPattern:
+		// Option.Some(Empty): a variant without values, where it is one,
+		// rather than a new name
+		if !p.Ignored() && !r.isLocal(p.Name) && r.value(p.Name) == nil {
+			ident := &ast.Ident{BaseNode: p.BaseNode, Name: p.Name}
+			if target := r.variantRef(ident); target != nil {
+				return &ast.VariantPattern{BaseNode: p.BaseNode, Target: target}
+			}
+		}
 		if !p.Ignored() {
 			r.declare(p.Name)
 		}
@@ -522,6 +538,10 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 			e.Name = it.qualified
 			return e
 		}
+		// Circle(2.0), Ok(n): a variant of the one enum that has it
+		if target := r.variantRef(e); target != nil {
+			return target
+		}
 		if _, isModule := r.m.aliases[e.Name]; isModule {
 			r.report(e.Token(), ErrNotAValue, "Use something the module declares: "+e.Name+".name",
 				"'%s' is a module and cannot be used as a value", e.Name)
@@ -557,6 +577,14 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 		r.typ(e.Type)
 	case *ast.TypeTestExpr:
 		e.Expr = r.expr(e.Expr)
+		// value is Empty: a variant, when the name is no type
+		if e.Type.Kind == ast.TypeBasic && len(e.Type.Generics) == 0 && !strings.Contains(e.Type.Name, ".") &&
+			!builtinTypeNames[e.Type.Name] && r.typeItem(e.Type.Name) == nil && !r.isTypeParam(e.Type.Name) {
+			ident := &ast.Ident{BaseNode: e.Type.BaseNode, Name: e.Type.Name}
+			if target := r.variantRef(ident); target != nil {
+				return &ast.PatternTestExpr{BaseNode: e.BaseNode, Expr: e.Expr, Pattern: &ast.VariantPattern{BaseNode: e.Type.BaseNode, Target: target}}
+			}
+		}
 		r.typ(e.Type)
 	case *ast.IndexExpr:
 		e.Expr = r.expr(e.Expr)
@@ -619,6 +647,69 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 		})
 	}
 	return expr
+}
+
+// builtinTypeNames are the types a test with `is` names that are no
+// variant, whatever the enums in scope have: value is Int.
+var builtinTypeNames = map[string]bool{"Int": true, "Float": true, "String": true, "Bool": true, "Any": true, "Void": true, "Self": true}
+
+// variantRef gives `Enum.Variant` for the name of a variant written alone,
+// Circle for Shape.Circle, when an enum the module names without a dot has
+// a variant of that name and nothing else goes by it: not a variable, a
+// function, a constant or a type. When several such enums have it, the
+// enum is ast.EnumToFind, for the type checker to choose by the type the
+// value has to be.
+func (r *rewriter) variantRef(e *ast.Ident) ast.Expr {
+	if len(e.TypeArgs) > 0 || r.isLocal(e.Name) || r.value(e.Name) != nil || r.typeItem(e.Name) != nil {
+		return nil
+	}
+	owners := r.variantOwners(e.Name)
+	if len(owners) == 0 {
+		return nil
+	}
+	enum := &ast.Ident{BaseNode: e.BaseNode, Name: owners[0].qualified}
+	if len(owners) > 1 {
+		enum.Name = ast.EnumToFind
+		for _, owner := range owners {
+			enum.Candidates = append(enum.Candidates, owner.qualified)
+		}
+	}
+	return &ast.MemberExpr{BaseNode: e.BaseNode, Expr: enum, Name: e.Name}
+}
+
+// variantOwners lists the enums a name of a variant is a variant of, among
+// those the module declares or imports by name.
+func (r *rewriter) variantOwners(name string) []*item {
+	if r.variants == nil {
+		r.variants = make(map[string][]*item)
+		add := func(it *item) {
+			if it.kind != "enum" || it.module == nil {
+				return
+			}
+			for _, decl := range it.module.prog.Decls {
+				enum, ok := decl.(*ast.EnumDecl)
+				if !ok || (enum.Name != it.name && enum.Name != it.qualified) {
+					continue
+				}
+				for _, variant := range enum.Variants {
+					r.variants[variant.Name] = append(r.variants[variant.Name], it)
+				}
+			}
+		}
+		for _, names := range []map[string]*item{r.m.types, r.m.importedTypes} {
+			// In the order of the names, for messages that come out the
+			// same on every run
+			var keys []string
+			for key := range names {
+				keys = append(keys, key)
+			}
+			sort.Strings(keys)
+			for _, key := range keys {
+				add(names[key])
+			}
+		}
+	}
+	return r.variants[name]
 }
 
 // moduleMember turns `module.name` into a reference to the declaration.

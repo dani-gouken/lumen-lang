@@ -42,17 +42,17 @@ pub fn parseWith(text: String, separator: String) -> Result<[[String]], ParseErr
         let where = parts[0].split(":");
 
         if where.len() < 2 {
-            return Result.Err(ParseError { message: parts[1], line: 0, column: 0 });
+            return Err(ParseError { message: parts[1], line: 0, column: 0 });
         }
 
-        return Result.Err(ParseError {
+        return Err(ParseError {
             message: parts[1],
             line: where[0].parseInt() ?? 0,
             column: where[1].parseInt() ?? 0,
         });
     }
 
-    return Result.Ok(found);
+    return Ok(found);
 }
 
 // Rows as text, quoting the values that need it.
@@ -77,14 +77,14 @@ pub fn table(text: String) -> Result<Table, ParseError> {
 
 fn asTable(all: [[String]]) -> Result<Table, ParseError> {
     if all.len() == 0 {
-        return Result.Err(ParseError { message: "there is no header row", line: 0, column: 0 });
+        return Err(ParseError { message: "there is no header row", line: 0, column: 0 });
     }
 
     let header = all[0];
 
     for i, row in all {
         if row.len() != header.len() {
-            return Result.Err(ParseError {
+            return Err(ParseError {
                 message: "expected ${header.len()} values, as in the header, found ${row.len()}",
                 line: i + 1,
                 column: 1,
@@ -92,7 +92,7 @@ fn asTable(all: [[String]]) -> Result<Table, ParseError> {
         }
     }
 
-    return Result.Ok(Table { header: header, rows: all.slice(1, all.len()) });
+    return Ok(Table { header: header, rows: all.slice(1, all.len()) });
 }
 
 impl Table {

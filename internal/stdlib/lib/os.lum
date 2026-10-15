@@ -60,8 +60,8 @@ impl Output {
 // Runs another program and waits for it to end.
 //
 //     match os.run("git", ["status", "--short"]) {
-//         case Result.Ok(output): { println(output.out); }
-//         case Result.Err(error): { println(error.describe()); }    // git is not installed
+//         case Ok(output): { println(output.out); }
+//         case Err(error): { println(error.describe()); }    // git is not installed
 //     }
 //
 // A program that ran and reports a failure is not an error here: look at
@@ -70,10 +70,10 @@ pub fn run(program: String, arguments: [String]) -> Result<Output, Error> {
     let parts = execute(program, arguments, "");
 
     if parts == null {
-        return Result.Err(io.failure("run", program));
+        return Err(io.failure("run", program));
     }
 
-    return Result.Ok(outputOf(parts));
+    return Ok(outputOf(parts));
 }
 
 // The same, with a text for the program to read as its input.
@@ -81,10 +81,10 @@ pub fn runWithInput(program: String, arguments: [String], input: String) -> Resu
     let parts = execute(program, arguments, input);
 
     if parts == null {
-        return Result.Err(io.failure("run", program));
+        return Err(io.failure("run", program));
     }
 
-    return Result.Ok(outputOf(parts));
+    return Ok(outputOf(parts));
 }
 
 // A program to run, told a part at a time where and how:
@@ -135,10 +135,10 @@ impl Command {
         );
 
         if parts == null {
-            return Result.Err(io.failure("run", self.program));
+            return Err(io.failure("run", self.program));
         }
 
-        return Result.Ok(outputOf(parts));
+        return Ok(outputOf(parts));
     }
 }
 

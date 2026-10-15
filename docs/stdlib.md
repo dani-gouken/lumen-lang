@@ -515,7 +515,7 @@ There is no separate `Option` type with `Some` and `None`: `T?` is that type, an
 
 For failures: returning one with its reason, and surviving one that would stop the program. The whole subject is in [errors.md](errors.md); this is the reference.
 
-**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none. A `Result<Void, E>` is for an action that has nothing to give back: `Result.Ok()` is its success. The name `Result` needs no import: every file has it, unless it declares a `Result` of its own. The rest of the module (`attempt`, `Failure`, `Kind`) is imported as usual.
+**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none. A `Result<Void, E>` is for an action that has nothing to give back: `Ok()` is its success. The name `Result` needs no import: every file has it, unless it declares a `Result` of its own. The rest of the module (`attempt`, `Failure`, `Kind`) is imported as usual.
 
 | Method | Gives |
 |--------|-------|
@@ -585,12 +585,12 @@ import std.strings;
 
 fn main() -> Int {
     match io.readFile("notes.txt") {
-        case Result.Ok(content): {
+        case Ok(content): {
             for i, line in content.lines() {
                 println(toString(i + 1).padLeft(4), line);
             }
         }
-        case Result.Err(error): {
+        case Err(error): {
             match error.kind {
                 case ErrorKind.NotFound: { println("no notes yet"); }
                 default: { io.printError(error.describe() + "\n"); return 1; }
@@ -725,10 +725,10 @@ An `Entry` has `name`, `path`, `kind` (`Kind.File` or `Kind.Folder`), `size` in 
 
 ```rust
 match fs.list("notes") {
-    case Result.Ok(entries): {
+    case Ok(entries): {
         for entry in entries { println(entry.name, format.bytes(entry.size)); }
     }
-    case Result.Err(error): { println(error.describe()); }     // cannot list notes: no such file or directory
+    case Err(error): { println(error.describe()); }     // cannot list notes: no such file or directory
 }
 ```
 
@@ -811,8 +811,8 @@ A status other than 0 from `run` or `output`, or a program that cannot be starte
 
 ```rust
 match sh.attempt("composer pint-test") {
-    case Result.Ok(_): { println("✓ pint"); }
-    case Result.Err(failed): { println("✗ pint, status", failed.status, "\n", failed.err); }
+    case Ok(_): { println("✓ pint"); }
+    case Err(failed): { println("✗ pint, status", failed.status, "\n", failed.err); }
 }
 sh.attempt("make deploy")?;      // in main: ends the program, saying why
 ```
@@ -1012,8 +1012,8 @@ These hashes are made to be fast: they are for telling contents apart and for si
 
 ```rust
 match http.get("https://example.com/api/users/1") {
-    case Result.Ok(response): { println(response.status, response.body); }
-    case Result.Err(error): { println(error.describe()); }
+    case Ok(response): { println(response.status, response.body); }
+    case Err(error): { println(error.describe()); }
 }
 
 let created = http.to(Method.Post, url).header("Authorization", token).json(document).timeout(5000).send();
@@ -1389,8 +1389,8 @@ The formatter of Lumen as a function: the one [`lumen fmt`](formatting.md) and t
 import std.formatter;
 
 match formatter.format(source) {
-    case Result.Ok(tidy): { io.writeFile("main.lum", tidy); }
-    case Result.Err(problem): { println(problem.describe()); }      // 12:5: expected ';', found 'let'
+    case Ok(tidy): { io.writeFile("main.lum", tidy); }
+    case Err(problem): { println(problem.describe()); }      // 12:5: expected ';', found 'let'
 }
 ```
 

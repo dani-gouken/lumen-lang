@@ -3,7 +3,6 @@
 // A test is a function whose name starts with `test`, in a file whose
 // name ends in _test.lum. It is reported by the words of its name.
 
-import std.test;
 import calc.lexer;
 import calc.parser;
 import calc.tree.{Env, Problem, newEnv};

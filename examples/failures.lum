@@ -11,9 +11,7 @@
 // Shows: Result, an error type of your own with a trace, panic, attempt,
 // std.io errors with their kind.
 
-import std.io;
 import std.io.{ErrorKind};
-import std.result;
 import std.result.{Kind, Location, attempt};
 
 // --- An error of our own, saying what and where ---
@@ -45,26 +43,26 @@ fn invalid(key: String, reason: Reason) -> ConfigError {
 
 fn number(key: String, text: String) -> Result<Int, ConfigError> {
     if text.isBlank() {
-        return Result.Err(invalid(key, Reason.Empty));
+        return Err(invalid(key, Reason.Empty));
     }
 
     let n = text.parseInt();
 
     if n == null {
-        return Result.Err(invalid(key, Reason.NotANumber(text)));
+        return Err(invalid(key, Reason.NotANumber(text)));
     }
 
-    return Result.Ok(n);
+    return Ok(n);
 }
 
 fn percent(key: String, text: String) -> Result<Int, ConfigError> {
     // A next step that can fail too; the first failure is the one that comes out
     return number(key, text).then(fn(n: Int) -> Result<Int, ConfigError> {
         if n < 1 || n > 100 {
-            return Result.Err(invalid(key, Reason.OutOfRange(n)));
+            return Err(invalid(key, Reason.OutOfRange(n)));
         }
 
-        return Result.Ok(n);
+        return Ok(n);
     });
 }
 
@@ -91,11 +89,11 @@ fn main() -> Int {
 
     for text in ["40", "", "lots", "250"] {
         match percent("volume", text) {
-            case Result.Ok(n): {
+            case Ok(n): {
                 println("volume set to ${n}");
             }
 
-            case Result.Err(error): {
+            case Err(error): {
                 println("refused: ${error.describe()}");
             }
         }
@@ -111,11 +109,11 @@ fn main() -> Int {
     println("-- files");
 
     match io.readFile("no-such-file.conf") {
-        case Result.Ok(text): {
+        case Ok(text): {
             println(text.len(), "characters");
         }
 
-        case Result.Err(problem): {
+        case Err(problem): {
             match problem.kind {
                 case ErrorKind.NotFound: {
                     println("no settings file; using the defaults");
@@ -156,12 +154,12 @@ fn main() -> Int {
     for i, job in jobs {
         // Without attempt, the second job would end the program
         match attempt(job) {
-            case Result.Ok(n): {
+            case Ok(n): {
                 println("job ${i} gave ${n}");
                 completed++;
             }
 
-            case Result.Err(failure): {
+            case Err(failure): {
                 match failure.kind {
                     case Kind.Panic: {
                         println("job ${i} gave up: ${failure.message}");

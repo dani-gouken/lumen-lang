@@ -32,10 +32,10 @@ pub fn parse(source: String) -> Result<Select, String> {
     parser.took(";");
 
     if parser.peek().kind != Kind.End {
-        return Result.Err("did not expect '${parser.peek().text}' after the query");
+        return Err("did not expect '${parser.peek().text}' after the query");
     }
 
-    return Result.Ok(select);
+    return Ok(select);
 }
 
 // The words that end a name: none of them can be the name given to a
@@ -84,21 +84,21 @@ impl Parser {
 
     fn need(text: String) -> Result<Bool, String> {
         if self.took(text) {
-            return Result.Ok(true);
+            return Ok(true);
         }
 
-        return Result.Err("expected ${text}, found '${self.peek().text}'");
+        return Err("expected ${text}, found '${self.peek().text}'");
     }
 
     fn name(what: String) -> Result<String, String> {
         let token = self.peek();
 
         if token.kind != Kind.Word || reserved(token.upper) {
-            return Result.Err("expected ${what}, found '${token.text}'");
+            return Err("expected ${what}, found '${token.text}'");
         }
 
         self.at++;
-        return Result.Ok(token.text);
+        return Ok(token.text);
     }
 
     fn select() -> Result<Select, String> {
@@ -134,7 +134,7 @@ impl Parser {
                 joins.push(Join { source: joined, on: self.expression()?, left: left });
             } else {
                 if left {
-                    return Result.Err("expected JOIN after LEFT");
+                    return Err("expected JOIN after LEFT");
                 }
 
                 more = false;
@@ -186,7 +186,7 @@ impl Parser {
             }
         }
 
-        return Result.Ok(Select {
+        return Ok(Select {
             distinct: distinct,
             everything: everything,
             items: items,
@@ -207,14 +207,14 @@ impl Parser {
 
         // Named by AS, by a name that follows, or by how it is written
         if self.took("AS") {
-            return Result.Ok(Item { value: value, name: self.name("a name")? });
+            return Ok(Item { value: value, name: self.name("a name")? });
         }
 
         let next = self.peek();
 
         if next.kind == Kind.Word && !reserved(next.upper) {
             self.at++;
-            return Result.Ok(Item { value: value, name: next.text });
+            return Ok(Item { value: value, name: next.text });
         }
 
         let name = match value {
@@ -222,7 +222,7 @@ impl Parser {
             default: "column" + toString(start);
         };
 
-        return Result.Ok(Item { value: value, name: name });
+        return Ok(Item { value: value, name: name });
     }
 
     fn source() -> Result<Source, String> {
@@ -232,10 +232,10 @@ impl Parser {
 
         if next.kind == Kind.Word && !reserved(next.upper) {
             self.at++;
-            return Result.Ok(Source { table: table, alias: next.text });
+            return Ok(Source { table: table, alias: next.text });
         }
 
-        return Result.Ok(Source { table: table, alias: table });
+        return Ok(Source { table: table, alias: table });
     }
 
     fn orderKey() -> Result<OrderKey, String> {
@@ -246,7 +246,7 @@ impl Parser {
             self.took("ASC");
         }
 
-        return Result.Ok(OrderKey { value: value, descending: descending });
+        return Ok(OrderKey { value: value, descending: descending });
     }
 
     fn count() -> Result<Int, String> {
@@ -254,11 +254,11 @@ impl Parser {
         let n = token.text.parseInt();
 
         if token.kind != Kind.Number || n == null {
-            return Result.Err("expected a whole number, found '${token.text}'");
+            return Err("expected a whole number, found '${token.text}'");
         }
 
         self.at++;
-        return Result.Ok(n);
+        return Ok(n);
     }
 
     // --- Expressions ---
@@ -270,7 +270,7 @@ impl Parser {
             left = Expr.Binary("OR", left, self.conjunction()?);
         }
 
-        return Result.Ok(left);
+        return Ok(left);
     }
 
     fn conjunction() -> Result<Expr, String> {
@@ -280,12 +280,12 @@ impl Parser {
             left = Expr.Binary("AND", left, self.negation()?);
         }
 
-        return Result.Ok(left);
+        return Ok(left);
     }
 
     fn negation() -> Result<Expr, String> {
         if self.took("NOT") {
-            return Result.Ok(Expr.Not(self.negation()?));
+            return Ok(Expr.Not(self.negation()?));
         }
 
         return self.comparison();
@@ -296,14 +296,14 @@ impl Parser {
 
         for operator in ["=", "!=", "<=", ">=", "<", ">"] {
             if self.took(operator) {
-                return Result.Ok(Expr.Binary(operator, left, self.sum()?));
+                return Ok(Expr.Binary(operator, left, self.sum()?));
             }
         }
 
         if self.took("IS") {
             let negated = self.took("NOT");
             self.need("NULL")?;
-            return Result.Ok(Expr.IsNull(left, negated));
+            return Ok(Expr.IsNull(left, negated));
         }
 
         let negated = self.took("NOT");
@@ -317,24 +317,24 @@ impl Parser {
             }
 
             self.need(")")?;
-            return Result.Ok(Expr.In(left, options, negated));
+            return Ok(Expr.In(left, options, negated));
         }
 
         if self.took("LIKE") {
-            return Result.Ok(Expr.Like(left, self.sum()?, negated));
+            return Ok(Expr.Like(left, self.sum()?, negated));
         }
 
         if self.took("BETWEEN") {
             let low = self.sum()?;
             self.need("AND")?;
-            return Result.Ok(Expr.Between(left, low, self.sum()?, negated));
+            return Ok(Expr.Between(left, low, self.sum()?, negated));
         }
 
         if negated {
-            return Result.Err("expected IN, LIKE or BETWEEN after NOT");
+            return Err("expected IN, LIKE or BETWEEN after NOT");
         }
 
-        return Result.Ok(left);
+        return Ok(left);
     }
 
     fn sum() -> Result<Expr, String> {
@@ -351,7 +351,7 @@ impl Parser {
             }
         }
 
-        return Result.Ok(left);
+        return Ok(left);
     }
 
     fn product() -> Result<Expr, String> {
@@ -370,7 +370,7 @@ impl Parser {
             }
         }
 
-        return Result.Ok(left);
+        return Ok(left);
     }
 
     fn joined() -> Result<Expr, String> {
@@ -380,12 +380,12 @@ impl Parser {
             left = Expr.Binary("||", left, self.unary()?);
         }
 
-        return Result.Ok(left);
+        return Ok(left);
     }
 
     fn unary() -> Result<Expr, String> {
         if self.took("-") {
-            return Result.Ok(Expr.Negate(self.unary()?));
+            return Ok(Expr.Negate(self.unary()?));
         }
 
         return self.primary();
@@ -398,31 +398,31 @@ impl Parser {
             self.at++;
 
             if token.text.contains(".") {
-                return Result.Ok(Expr.Literal(Value.Real(token.text.parseFloat() ?? 0.0)));
+                return Ok(Expr.Literal(Value.Real(token.text.parseFloat() ?? 0.0)));
             }
 
             let n = token.text.parseInt();
 
             if n == null {
-                return Result.Err("${token.text} is too large a number");
+                return Err("${token.text} is too large a number");
             }
 
-            return Result.Ok(Expr.Literal(Value.Int(n)));
+            return Ok(Expr.Literal(Value.Int(n)));
         }
 
         if token.kind == Kind.Text {
             self.at++;
-            return Result.Ok(Expr.Literal(Value.Text(token.text)));
+            return Ok(Expr.Literal(Value.Text(token.text)));
         }
 
         if self.took("(") {
             let inner = self.expression()?;
             self.need(")")?;
-            return Result.Ok(inner);
+            return Ok(inner);
         }
 
         if self.took("NULL") {
-            return Result.Ok(Expr.Literal(Value.Null));
+            return Ok(Expr.Literal(Value.Null));
         }
 
         if self.took("CASE") {
@@ -436,16 +436,16 @@ impl Parser {
         }
 
         if self.took(".") {
-            return Result.Ok(Expr.Column(name, self.name("the name of a column")?));
+            return Ok(Expr.Column(name, self.name("the name of a column")?));
         }
 
-        return Result.Ok(Expr.Column("", name));
+        return Ok(Expr.Column("", name));
     }
 
     fn call(function: String) -> Result<Expr, String> {
         if self.took("*") {
             self.need(")")?;
-            return Result.Ok(Expr.Call(function, [], true));
+            return Ok(Expr.Call(function, [], true));
         }
 
         let arguments: [Expr] = [];
@@ -460,7 +460,7 @@ impl Parser {
             self.need(")")?;
         }
 
-        return Result.Ok(Expr.Call(function, arguments, false));
+        return Ok(Expr.Call(function, arguments, false));
     }
 
     fn cases() -> Result<Expr, String> {
@@ -473,7 +473,7 @@ impl Parser {
         }
 
         if branches.isEmpty() {
-            return Result.Err("expected WHEN after CASE");
+            return Err("expected WHEN after CASE");
         }
 
         let otherwise: Expr? = null;
@@ -483,6 +483,6 @@ impl Parser {
         }
 
         self.need("END")?;
-        return Result.Ok(Expr.Case(branches, otherwise));
+        return Ok(Expr.Case(branches, otherwise));
     }
 }

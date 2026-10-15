@@ -63,22 +63,22 @@ pub fn compile(pattern: String) -> Result<Regex, PatternError> {
     let wrong = mistake(pattern);
 
     if wrong != null {
-        return Result.Err(PatternError { pattern: pattern, message: wrong });
+        return Err(PatternError { pattern: pattern, message: wrong });
     }
 
     let names = groupNames(pattern);
-    return Result.Ok(Regex { pattern: pattern, names: names.slice(1, names.len()) });
+    return Ok(Regex { pattern: pattern, names: names.slice(1, names.len()) });
 }
 
 // The same, for a pattern written in the program: one that is wrong is a
 // mistake to fix, so it stops the program.
 pub fn must(pattern: String) -> Regex {
     match compile(pattern) {
-        case Result.Ok(re): {
+        case Ok(re): {
             return re;
         }
 
-        case Result.Err(error): {
+        case Err(error): {
             panic(error.describe());
         }
     }

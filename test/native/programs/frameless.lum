@@ -42,11 +42,11 @@ fn mixed(n: Int) -> Float {
 
 fn report(name: String, job: fn() -> Int, whole: Bool) {
     match attempt(job) {
-        case Result.Ok(n): {
+        case Ok(n): {
             println(name, "gave", n);
         }
 
-        case Result.Err(failure): {
+        case Err(failure): {
             println(
                 name,
                 "failed:",

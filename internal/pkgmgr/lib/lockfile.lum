@@ -85,7 +85,7 @@ pub fn contentHash(project: Manifest) -> String {
 // The lock file of a project, or null when there is none yet.
 pub fn read(file: String) -> Result<Lock?, String> {
     if !io.exists(file) {
-        return Result.Ok(null);
+        return Ok(null);
     }
 
     let text = io.readFile(file).mapErr(error -> error.describe())?;
@@ -98,7 +98,7 @@ pub fn read(file: String) -> Result<Lock?, String> {
         }
     }
 
-    return Result.Ok(Lock { hash: document.get("content-hash")?.text() ?? "", packages: packages });
+    return Ok(Lock { hash: document.get("content-hash")?.text() ?? "", packages: packages });
 }
 
 fn lockedOf(item: Json, dev: Bool) -> Result<Locked, String> {
@@ -107,7 +107,7 @@ fn lockedOf(item: Json, dev: Bool) -> Result<Locked, String> {
     let source = item.get("source");
 
     if name == "" || version == "" || source == null {
-        return Result.Err("a package without a name, a version or a source: run lumen update to write the file again");
+        return Err("a package without a name, a version or a source: run lumen update to write the file again");
     }
 
     let require = dict.empty<String>();
@@ -116,7 +116,7 @@ fn lockedOf(item: Json, dev: Bool) -> Result<Locked, String> {
         require.set(required, wanted.text() ?? "*");
     }
 
-    return Result.Ok(Locked {
+    return Ok(Locked {
         name: name,
         version: version,
         source: Source {

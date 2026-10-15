@@ -17,8 +17,8 @@ enum Health { Up(Int), Down(String) }
 
 fn check(url: String) -> Health {
     match http.get(url) {
-        case Result.Ok(response): { return Health.Up(response.status); }
-        case Result.Err(error): { return Health.Down(error.describe()); }
+        case Ok(response): { return Health.Up(response.status); }
+        case Err(error): { return Health.Down(error.describe()); }
     }
 }
 
@@ -148,8 +148,8 @@ fn main() -> Int {
     let branch = sh.output("git rev-parse --abbrev-ref HEAD");
 
     match sh.attempt("composer pint-test") {
-        case Result.Ok(_): { println("✓ lint on ${branch}"); }
-        case Result.Err(failed): { println("✗ lint, status", failed.status); }
+        case Ok(_): { println("✓ lint on ${branch}"); }
+        case Err(failed): { println("✗ lint, status", failed.status); }
     }
     sh.run("git tag release-${branch} -m 'Released from ${branch}'");   // a value never splits
     return 0;

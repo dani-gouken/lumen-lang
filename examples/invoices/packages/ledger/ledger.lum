@@ -54,24 +54,24 @@ pub fn rate(text: String) -> Result<Int, String> {
     let tenths = tenth.parseInt();
 
     if units == null || tenths == null || tenth.len() != 1 || units < 0 || units > 100 {
-        return Result.Err("\"${text}\" is not a tax rate");
+        return Err("\"${text}\" is not a tax rate");
     }
 
-    return Result.Ok(units * 10 + tenths);
+    return Ok(units * 10 + tenths);
 }
 
 impl Ledger {
     pub fn add(line: Line) -> Result<Void, String> {
         if line.price.currency != self.currency {
-            return Result.Err("${line.description} is in ${line.price.currency}, the invoice in ${self.currency}");
+            return Err("${line.description} is in ${line.price.currency}, the invoice in ${self.currency}");
         }
 
         if line.quantity <= 0 {
-            return Result.Err("${line.description} has a quantity of ${line.quantity}");
+            return Err("${line.description} has a quantity of ${line.quantity}");
         }
 
         self.lines.push(line);
-        return Result.Ok();
+        return Ok();
     }
 
     pub fn subtotal() -> Money {

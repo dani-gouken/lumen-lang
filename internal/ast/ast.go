@@ -1068,7 +1068,18 @@ type Ident struct {
 	BaseNode
 	Name     string
 	TypeArgs []*Type
+
+	// Candidates are, for the Ident named EnumToFind, the enums a variant
+	// written alone may be of: which one is told by the type the value
+	// has to be.
+	Candidates []string
 }
+
+// EnumToFind stands for the enum of a variant written alone that more than
+// one enum has, `Empty` with Shape.Empty and Box.Empty in scope: module
+// loading writes it Enum.Variant with this for the enum, and the type
+// checker puts the enum the value is expected to be of in its place.
+const EnumToFind = "__enum"
 
 func (e *Ident) exprNode() {}
 func (e *Ident) String() string {

@@ -6,10 +6,10 @@
 // person.
 //
 //     match fs.list("notes") {
-//         case Result.Ok(entries): {
+//         case Ok(entries): {
 //             for entry in entries { println(entry.name, entry.size); }
 //         }
-//         case Result.Err(error): { println(error.describe()); }
+//         case Err(error): { println(error.describe()); }
 //     }
 
 import std.io;
@@ -47,10 +47,10 @@ pub fn info(path: String) -> Result<Entry, Error> {
     let entry = describe(path);
 
     if entry == null {
-        return Result.Err(io.failure("inspect", path));
+        return Err(io.failure("inspect", path));
     }
 
-    return Result.Ok(entry);
+    return Ok(entry);
 }
 
 // What a folder holds, sorted by name. Not what its folders hold.
@@ -58,7 +58,7 @@ pub fn list(folder: String) -> Result<[Entry], Error> {
     let found = names(folder);
 
     if found == null {
-        return Result.Err(io.failure("list", folder));
+        return Err(io.failure("list", folder));
     }
 
     let entries: [Entry] = [];
@@ -72,7 +72,7 @@ pub fn list(folder: String) -> Result<[Entry], Error> {
         }
     }
 
-    return Result.Ok(entries);
+    return Ok(entries);
 }
 
 // The path of every file under a folder, however deep, sorted.
@@ -80,10 +80,10 @@ pub fn walk(folder: String) -> Result<[String], Error> {
     let found = tree(folder);
 
     if found == null {
-        return Result.Err(io.failure("walk", folder));
+        return Err(io.failure("walk", folder));
     }
 
-    return Result.Ok(found);
+    return Ok(found);
 }
 
 // The files under a folder whose name fits a pattern: fs.find("src", "*.lum").
@@ -92,7 +92,7 @@ pub fn find(folder: String, pattern: String) -> Result<[String], Error> {
         return path.matches(pattern, path.base(file));
     };
 
-    return Result.Ok((walk(folder)?).filter(fits));
+    return Ok((walk(folder)?).filter(fits));
 }
 
 // Creates a folder, and those above it that are missing. One that is
@@ -129,21 +129,21 @@ pub fn makeTempDir(prefix: String) -> Result<String, Error> {
     let created = newTempDir(prefix);
 
     if created == null {
-        return Result.Err(io.failure("create", prefix));
+        return Err(io.failure("create", prefix));
     }
 
-    return Result.Ok(created);
+    return Ok(created);
 }
 
 fn done(worked: Bool, operation: String, target: String) -> Result<String, Error> {
     if worked {
-        return Result.Ok(target);
+        return Ok(target);
     }
 
     // One call further from the program than io.failure expects
     let error = io.failure(operation, target);
     error.stack = error.stack.slice(1, error.stack.len());
-    return Result.Err(error);
+    return Err(error);
 }
 
 fn describe(target: String) -> Entry? {

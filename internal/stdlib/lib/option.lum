@@ -95,10 +95,10 @@ pub fn expect<T>(value: T?, message: String) -> T {
 //     let user = users.get(name).okOr("no user ${name}")?;
 pub fn okOr<T, E>(value: T?, failure: E) -> Result<T, E> {
     if value == null {
-        return Result.Err(failure);
+        return Err(failure);
     }
 
-    return Result.Ok(value);
+    return Ok(value);
 }
 
 pub fn isSome<T>(value: T?) -> Bool {

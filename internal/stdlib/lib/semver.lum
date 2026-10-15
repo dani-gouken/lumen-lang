@@ -153,13 +153,13 @@ pub fn parse(text: String) -> Result<Version, ParseError> {
     let found = numbers(text.trim())?;
 
     if found.wild {
-        return Result.Err(ParseError {
+        return Err(ParseError {
             text: text,
             message: "has a wildcard where a version is expected",
         });
     }
 
-    return Result.Ok(found.version);
+    return Ok(found.version);
 }
 
 // What is read of a version in a constraint: its numbers, how many of
@@ -185,7 +185,7 @@ fn numbers(text: String) -> Result<Partial, ParseError> {
         rest = rest.substring(0, plus);
 
         if build == "" || !build.split(".").all(isIdentifier) {
-            return Result.Err(ParseError {
+            return Err(ParseError {
                 text: text,
                 message: "has an empty or malformed build part",
             });
@@ -200,7 +200,7 @@ fn numbers(text: String) -> Result<Partial, ParseError> {
         rest = rest.substring(0, dash);
 
         if !pre.all(isIdentifier) {
-            return Result.Err(ParseError {
+            return Err(ParseError {
                 text: text,
                 message: "has an empty or malformed pre-release part",
             });
@@ -210,7 +210,7 @@ fn numbers(text: String) -> Result<Partial, ParseError> {
     let parts = rest.split(".");
 
     if rest == "" || parts.len() > 3 {
-        return Result.Err(ParseError {
+        return Err(ParseError {
             text: text,
             message: "is not a version: write it as 1.2.3",
         });
@@ -223,7 +223,7 @@ fn numbers(text: String) -> Result<Partial, ParseError> {
     for i, part in parts {
         if part == "*" || part == "x" || part == "X" {
             if i != parts.len() - 1 || !pre.isEmpty() {
-                return Result.Err(ParseError {
+                return Err(ParseError {
                     text: text,
                     message: "has a wildcard that is not its last part",
                 });
@@ -236,7 +236,7 @@ fn numbers(text: String) -> Result<Partial, ParseError> {
         let n = part.parseInt();
 
         if n == null || n < 0 || part.startsWith("+") || part.startsWith("-") {
-            return Result.Err(ParseError {
+            return Err(ParseError {
                 text: text,
                 message: "has \"${part}\" where a number is expected",
             });
@@ -254,7 +254,7 @@ fn numbers(text: String) -> Result<Partial, ParseError> {
         build: build,
     };
 
-    return Result.Ok(Partial { version: version, written: written, wild: wild });
+    return Ok(Partial { version: version, written: written, wild: wild });
 }
 
 fn isIdentifier(part: String) -> Bool {
@@ -380,13 +380,13 @@ pub fn constraint(text: String) -> Result<Constraint, ParseError> {
         let words = alternative.replace(",", " ").split(" ").filter(word -> word != "");
 
         if words.isEmpty() {
-            return Result.Err(ParseError { text: text, message: "has an empty alternative" });
+            return Err(ParseError { text: text, message: "has an empty alternative" });
         }
 
         ranges.push(range(text, glueComparisons(words)).mapErr(error -> wrapped(text, error))?);
     }
 
-    return Result.Ok(Constraint { text: text.trim(), ranges: ranges });
+    return Ok(Constraint { text: text.trim(), ranges: ranges });
 }
 
 // An error about a part of a constraint, said of the whole.
@@ -432,7 +432,7 @@ fn range(text: String, words: [String]) -> Result<[Bound], ParseError> {
             Bound { comparison: Comparison.Below, version: following(high) }
         };
 
-        return Result.Ok([Bound { comparison: Comparison.AtLeast, version: low.version }, upper]);
+        return Ok([Bound { comparison: Comparison.AtLeast, version: low.version }, upper]);
     }
 
     let bounds: [Bound] = [];
@@ -441,7 +441,7 @@ fn range(text: String, words: [String]) -> Result<[Bound], ParseError> {
         bounds = bounds.concat(boundsOf(text, word)?);
     }
 
-    return Result.Ok(bounds);
+    return Ok(bounds);
 }
 
 // The version after all those a partial version stands for: 1.2 stands
@@ -463,7 +463,7 @@ fn boundsOf(text: String, word: String) -> Result<[Bound], ParseError> {
         ("==", Comparison.Exactly),
     ] {
         if word.startsWith(sign) {
-            return Result.Ok([
+            return Ok([
                 Bound { comparison: comparison, version: exact(text, word.from(2))? },
             ]);
         }
@@ -471,7 +471,7 @@ fn boundsOf(text: String, word: String) -> Result<[Bound], ParseError> {
 
     for (sign, comparison) in [(">", Comparison.Above), ("<", Comparison.Below)] {
         if word.startsWith(sign) {
-            return Result.Ok([
+            return Ok([
                 Bound { comparison: comparison, version: exact(text, word.from(1))? },
             ]);
         }
@@ -491,7 +491,7 @@ fn boundsOf(text: String, word: String) -> Result<[Bound], ParseError> {
             v.nextPatch()
         };
 
-        return Result.Ok([low, Bound { comparison: Comparison.Below, version: high }]);
+        return Ok([low, Bound { comparison: Comparison.Below, version: high }]);
     }
 
     if word.startsWith("~") {
@@ -505,7 +505,7 @@ fn boundsOf(text: String, word: String) -> Result<[Bound], ParseError> {
             partial.version.nextMajor()
         };
 
-        return Result.Ok([low, Bound { comparison: Comparison.Below, version: high }]);
+        return Ok([low, Bound { comparison: Comparison.Below, version: high }]);
     }
 
     let plain = if word.startsWith("=") { word.from(1) } else { word };
@@ -513,20 +513,20 @@ fn boundsOf(text: String, word: String) -> Result<[Bound], ParseError> {
 
     if partial.written == 0 {
         // * accepts everything
-        return Result.Ok([]);
+        return Ok([]);
     }
 
     if partial.wild || partial.written < 3 {
         // 1.2.* and 1.2 both stand for every 1.2.x
         let low = Bound { comparison: Comparison.AtLeast, version: partial.version };
 
-        return Result.Ok([
+        return Ok([
             low,
             Bound { comparison: Comparison.Below, version: following(partial) },
         ]);
     }
 
-    return Result.Ok([Bound { comparison: Comparison.Exactly, version: partial.version }]);
+    return Ok([Bound { comparison: Comparison.Exactly, version: partial.version }]);
 }
 
 // The version after a comparison: written out, with no wildcard. Missing
@@ -535,10 +535,10 @@ fn exact(text: String, word: String) -> Result<Version, ParseError> {
     let partial = numbers(word)?;
 
     if partial.wild {
-        return Result.Err(ParseError { text: text, message: "has a wildcard after a comparison" });
+        return Err(ParseError { text: text, message: "has a wildcard after a comparison" });
     }
 
-    return Result.Ok(partial.version);
+    return Ok(partial.version);
 }
 
 // The newest of the versions the constraint accepts, or null.

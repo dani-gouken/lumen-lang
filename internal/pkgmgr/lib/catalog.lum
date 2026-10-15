@@ -48,11 +48,11 @@ pub trait Catalog {
 // the branch main. A requirement that is not a constraint is an error.
 pub fn accepts(candidate: Candidate, wanted: String) -> Result<Bool, String> {
     if candidate.anyVersion {
-        return Result.Ok(true);
+        return Ok(true);
     }
 
     if wanted.startsWith("dev-") {
-        return Result.Ok(candidate.label == wanted);
+        return Ok(candidate.label == wanted);
     }
 
     let constraint = semver.constraint(wanted).mapErr(
@@ -62,23 +62,23 @@ pub fn accepts(candidate: Candidate, wanted: String) -> Result<Bool, String> {
     let version = candidate.version;
 
     if version == null {
-        return Result.Ok(false);
+        return Ok(false);
     }
 
-    return Result.Ok(constraint.allows(version));
+    return Ok(constraint.allows(version));
 }
 
 // Whether a requirement can be read at all, before anything is chosen.
 pub fn check(name: String, wanted: String) -> Result<Void, String> {
     if wanted.startsWith("dev-") && wanted.len() > 4 {
-        return Result.Ok();
+        return Ok();
     }
 
     if semver.constraint(wanted).isErr() {
-        return Result.Err("the requirement ${name} \"${wanted}\" is not a version constraint: write it as ^1.2, ~1.2.3, >=1.0 <2.0, 1.2.* or dev-main");
+        return Err("the requirement ${name} \"${wanted}\" is not a version constraint: write it as ^1.2, ~1.2.3, >=1.0 <2.0, 1.2.* or dev-main");
     }
 
-    return Result.Ok();
+    return Ok();
 }
 
 // Newer first: versions from the newest, then branches by name.

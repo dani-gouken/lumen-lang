@@ -1103,3 +1103,43 @@ func TestTheLibraryIsPrunedEarly(t *testing.T) {
 		t.Errorf("expected the methods the program does not call to be left out")
 	}
 }
+
+// A variant written alone is of an enum the file names without a dot:
+// one it declares, or imports by name. An enum reached through its module
+// keeps its variants behind it, and two enums with the same variant are
+// told apart by the type the value has to be.
+func TestVariantsAloneAcrossModules(t *testing.T) {
+	expectModulesOutput(t, sources{
+		"geo.lum": `
+			pub enum Shape { Circle(Float), Square(Float), Empty }
+			pub fn unit() -> Shape { return Square(1.0); }
+		`,
+		"store.lum": `pub enum Slot { Full(Int), Empty }`,
+		"main.lum": `
+			import geo.{Shape, unit};
+			import store;
+
+			fn size(s: Shape) -> Float {
+				return match s {
+					case Circle(r): r;
+					case Square(side): side;
+					case Empty: 0.0;
+				};
+			}
+
+			fn main() -> Int {
+				let slot: store.Slot = store.Slot.Empty;
+				println(size(Circle(2.0)), size(unit()), size(Empty), slot);
+				return 0;
+			}
+		`,
+	}, "2 1 0 Empty\n")
+
+	expectModulesError(t, sources{
+		"store.lum": `pub enum Slot { Full(Int), Empty }`,
+		"main.lum": `
+			import store;
+			fn main() -> Int { let s = Full(1); return 0; }
+		`,
+	}, "E1001", "main.lum", "undefined identifier 'Full'")
+}

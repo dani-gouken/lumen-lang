@@ -1,8 +1,6 @@
 // A task, and how it is written to and read from a file.
 
-import std.json;
 import std.json.{Json};
-import std.time;
 import std.time.{Date};
 
 pub enum Priority { Low, Normal, High }
@@ -117,13 +115,13 @@ pub fn fromJson(document: Json) -> Result<Task, String> {
     let id = document.get("id")?.int();
 
     if id == null {
-        return Result.Err("a task needs a whole number as its id");
+        return Err("a task needs a whole number as its id");
     }
 
     let title = document.get("title")?.text();
 
     if title == null {
-        return Result.Err("task ${id} has no title");
+        return Err("task ${id} has no title");
     }
 
     let priority = Priority.Normal;
@@ -133,7 +131,7 @@ pub fn fromJson(document: Json) -> Result<Task, String> {
         let known = priorityOf(named);
 
         if known == null {
-            return Result.Err("task ${id} has the priority '${named}', which is not low, normal or high");
+            return Err("task ${id} has the priority '${named}', which is not low, normal or high");
         }
 
         priority = known;
@@ -146,7 +144,7 @@ pub fn fromJson(document: Json) -> Result<Task, String> {
         due = time.parse(dueText);
 
         if due == null {
-            return Result.Err("task ${id} is due on '${dueText}', which is not a date");
+            return Err("task ${id} is due on '${dueText}', which is not a date");
         }
     }
 
@@ -157,11 +155,11 @@ pub fn fromJson(document: Json) -> Result<Task, String> {
         let when = time.parse(doneText);
 
         if when == null {
-            return Result.Err("task ${id} was done on '${doneText}', which is not a date");
+            return Err("task ${id} was done on '${doneText}', which is not a date");
         }
 
         state = State.Done(when);
     }
 
-    return Result.Ok(Task { id: id, title: title, priority: priority, due: due, state: state });
+    return Ok(Task { id: id, title: title, priority: priority, due: due, state: state });
 }

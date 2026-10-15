@@ -356,7 +356,7 @@ const (
 )
 
 var (
-	saysResult   = regexp.MustCompile(`\bResult\b`)
+	saysResult   = regexp.MustCompile(`\b(Result|Ok|Err)\b`)
 	saysTemplate = regexp.MustCompile(`\bTemplate\b`)
 )
 
@@ -372,6 +372,21 @@ func (l *loader) importsResult(m *module, src string) {
 		l.importsImplicitly(m, src, collection.module, collection.name, collection.says)
 	}
 	l.importsModules(m, src)
+}
+
+// declaresVariant reports whether a file has an enum with a variant of
+// that name: enum Expr { Add(Expr, Expr) } writes Add, and means no trait.
+func declaresVariant(prog *ast.Program, name string) bool {
+	for _, decl := range prog.Decls {
+		if enum, ok := decl.(*ast.EnumDecl); ok {
+			for _, variant := range enum.Variants {
+				if variant.Name == name {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // implicitTypes are the types of the library a file can name without
@@ -447,7 +462,7 @@ func (l *loader) importsModules(m *module, src string) {
 func (l *loader) importsImplicitly(m *module, src, module, name string, says *regexp.Regexp) {
 	first, _, _ := strings.Cut(module, ".")
 	if l.packages[first] == "" || m.name == module || m.types[name] != nil ||
-		!strings.Contains(src, name) || !says.MatchString(src) {
+		!says.MatchString(src) || declaresVariant(m.prog, name) {
 		return
 	}
 	for _, imp := range m.prog.Imports {

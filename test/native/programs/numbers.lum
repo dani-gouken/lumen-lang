@@ -96,11 +96,11 @@ fn main() -> Int {
 
     for job in jobs {
         match attempt(job) {
-            case Result.Ok(n): {
+            case Ok(n): {
                 println("gave", n);
             }
 
-            case Result.Err(failure): {
+            case Err(failure): {
                 println("failed:", failure.message);
             }
         }

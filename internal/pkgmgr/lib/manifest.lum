@@ -101,7 +101,7 @@ pub fn defaultImport(name: String) -> String {
 // Reads a lumen.json. A missing file is an empty project.
 pub fn load(file: String) -> Result<Manifest, String> {
     if !io.exists(file) {
-        return Result.Err("${file}: no such file");
+        return Err("${file}: no such file");
     }
 
     let text = io.readFile(file).mapErr(error -> error.describe())?;
@@ -114,7 +114,7 @@ pub fn parse(text: String) -> Result<Manifest, String> {
     let fields = document.fields();
 
     if fields == null {
-        return Result.Err("the file must hold an object: {}");
+        return Err("the file must hold an object: {}");
     }
 
     let manifest = Manifest { document: document };
@@ -131,23 +131,23 @@ pub fn parse(text: String) -> Result<Manifest, String> {
         manifest.importName = defaultImport(manifest.name);
     }
 
-    return Result.Ok(manifest);
+    return Ok(manifest);
 }
 
 fn textField(fields: Dict<Json>, key: String) -> Result<String, String> {
     let value = fields.get(key);
 
     if value == null {
-        return Result.Ok("");
+        return Ok("");
     }
 
     let text = value.text();
 
     if text == null {
-        return Result.Err("\"${key}\" must be a string");
+        return Err("\"${key}\" must be a string");
     }
 
-    return Result.Ok(text);
+    return Ok(text);
 }
 
 fn requirements(fields: Dict<Json>, key: String) -> Result<Dict<String>, String> {
@@ -155,30 +155,30 @@ fn requirements(fields: Dict<Json>, key: String) -> Result<Dict<String>, String>
     let value = fields.get(key);
 
     if value == null {
-        return Result.Ok(found);
+        return Ok(found);
     }
 
     let entries = value.fields();
 
     if entries == null {
-        return Result.Err("\"${key}\" must be an object of packages and versions, as in {\"acme/textkit\": \"^1.2\"}");
+        return Err("\"${key}\" must be an object of packages and versions, as in {\"acme/textkit\": \"^1.2\"}");
     }
 
     for (name, wanted) in entries.entries() {
         if !isPackageName(name) {
-            return Result.Err("\"${name}\" in \"${key}\" is not a package name: write vendor/name, in lower case");
+            return Err("\"${name}\" in \"${key}\" is not a package name: write vendor/name, in lower case");
         }
 
         let text = wanted.text();
 
         if text == null {
-            return Result.Err("the version of ${name} in \"${key}\" must be a string, as in \"^1.2\"");
+            return Err("the version of ${name} in \"${key}\" must be a string, as in \"^1.2\"");
         }
 
         found.set(name, text);
     }
 
-    return Result.Ok(found);
+    return Ok(found);
 }
 
 fn repositories(fields: Dict<Json>) -> Result<[Repository], String> {
@@ -186,13 +186,13 @@ fn repositories(fields: Dict<Json>) -> Result<[Repository], String> {
     let value = fields.get("repositories");
 
     if value == null {
-        return Result.Ok(found);
+        return Ok(found);
     }
 
     let items = value.items();
 
     if items == null {
-        return Result.Err("\"repositories\" must be an array, as in [{\"type\": \"git\", \"url\": \"...\"}]");
+        return Err("\"repositories\" must be an array, as in [{\"type\": \"git\", \"url\": \"...\"}]");
     }
 
     for i, item in items {
@@ -200,7 +200,7 @@ fn repositories(fields: Dict<Json>) -> Result<[Repository], String> {
         let url = item.get("url")?.text();
 
         if url == null || url == "" {
-            return Result.Err("repository ${i + 1} has no \"url\"");
+            return Err("repository ${i + 1} has no \"url\"");
         }
 
         match kind ?? "" {
@@ -213,12 +213,12 @@ fn repositories(fields: Dict<Json>) -> Result<[Repository], String> {
             }
 
             default: {
-                return Result.Err("repository ${i + 1} has a \"type\" that is not \"git\" or \"path\"");
+                return Err("repository ${i + 1} has a \"type\" that is not \"git\" or \"path\"");
             }
         }
     }
 
-    return Result.Ok(found);
+    return Ok(found);
 }
 
 // Sets or removes a requirement in the document, keeping every other key

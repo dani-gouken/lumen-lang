@@ -118,14 +118,14 @@ pub fn resolve(
             }
         }
 
-        return Result.Ok(choices);
+        return Ok(choices);
     }
 
     if solver.fatal != "" {
-        return Result.Err(solver.fatal);
+        return Err(solver.fatal);
     }
 
-    return Result.Err(solver.failure);
+    return Err(solver.failure);
 }
 
 impl Solver {
@@ -155,7 +155,7 @@ impl Solver {
 
         if chosen != null {
             match catalog.accepts(chosen.candidate, wanted.wanted) {
-                case Result.Ok(fits): {
+                case Ok(fits): {
                     if fits {
                         return self.solve(pending, at + 1);
                     }
@@ -164,7 +164,7 @@ impl Solver {
                     return Blame { versions: [wanted.name], requirements: [wanted] };
                 }
 
-                case Result.Err(reason): {
+                case Err(reason): {
                     self.fatal = reason;
                     return Blame {};
                 }
@@ -194,9 +194,9 @@ impl Solver {
             }
 
             let manifest = match self.catalog.manifest(candidate) {
-                case Result.Ok(found): found;
+                case Ok(found): found;
 
-                case Result.Err(reason): {
+                case Err(reason): {
                     self.fatal = reason;
                     return Blame {};
                 }
@@ -217,7 +217,7 @@ impl Solver {
             let next: [Requirement] = [];
 
             for (name, version) in manifest.require.entries() {
-                if catalog.check(name, version) is Result.Err(reason) {
+                if catalog.check(name, version) is Err(reason) {
                     self.fatal = "${candidate.describe()}: ${reason}";
                     return Blame {};
                 }
@@ -265,11 +265,11 @@ impl Solver {
 
             for want in wants {
                 match catalog.accepts(candidate, want.wanted) {
-                    case Result.Ok(yes): {
+                    case Ok(yes): {
                         fits = fits && yes;
                     }
 
-                    case Result.Err(reason): {
+                    case Err(reason): {
                         self.fatal = reason;
                         return null;
                     }
@@ -300,13 +300,13 @@ impl Solver {
         }
 
         match self.catalog.candidates(name) {
-            case Result.Ok(found): {
+            case Ok(found): {
                 let all = found.sorted(catalog.newestFirst);
                 self.known.set(name, all);
                 return all;
             }
 
-            case Result.Err(reason): {
+            case Err(reason): {
                 self.fatal = reason;
                 return null;
             }

@@ -540,7 +540,6 @@ func TestParseErrors(t *testing.T) {
 		{"is with a number", "fn f(n: Int) -> Bool {\n  return n is 3;\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant, found '3'", 2},
 		{"is with null", "fn f(n: Int?) -> Bool {\n  return n is null;\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant", 2},
 		{"is with a text", "fn f(s: String) -> Bool {\n  return s is \"a\";\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant", 2},
-		{"is with a variant without its enum", "fn f(s: Shape) -> Bool {\n  if s is Circle(r) { return true; }\n  return false;\n}", ErrUnexpectedToken, "'Circle' alone is a type, and a type holds no values to name", 2},
 		{"is with a call", "fn f(s: Shape) -> Bool {\n  return s is shapes.make().kind;\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant, and this is neither", 2},
 		{"is with an index", "fn f(s: Shape) -> Bool {\n  return s is all.shapes[0];\n}", ErrUnexpectedToken, "'is' takes a type or the pattern of a variant, and this is neither", 2},
 		{"is pattern with an operation", "fn f(s: S) -> Bool {\n  return s is S.A(x + 1);\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 2},
@@ -1938,5 +1937,22 @@ func TestParseImplForOptionals(t *testing.T) {
 	impl := prog.Decls[0].(*ast.ImplDecl)
 	if impl.StructName != ast.OptionalImpl || len(impl.TypeParams) != 1 || len(impl.Methods) != 1 {
 		t.Errorf("got impl %q with %v and %d methods", impl.StructName, impl.TypeParams, len(impl.Methods))
+	}
+}
+
+// A variant written alone, with its values, is a pattern: its enum is
+// found when the names of the program are known.
+func TestParseVariantAlone(t *testing.T) {
+	stmts := parseBody(t, "match s { case Circle(r): { } case Node(Leaf(a), _): { } default: { } }\nif s is Rect(w, h) { }")
+	match := stmts[0].(*ast.MatchStmt)
+	for i, want := range []string{"Circle(r)", "Node(Leaf(a), _)"} {
+		pattern, ok := match.Cases[i].Pattern.(*ast.VariantPattern)
+		if !ok || pattern.String() != want {
+			t.Errorf("case %d: expected the variant pattern %s, got %#v", i, want, match.Cases[i].Pattern)
+		}
+	}
+	test := stmts[1].(*ast.IfStmt).Cond.(*ast.PatternTestExpr)
+	if test.Pattern.String() != "Rect(w, h)" {
+		t.Errorf("expected the pattern Rect(w, h), got %s", test.Pattern)
 	}
 }

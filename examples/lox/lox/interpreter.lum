@@ -6,9 +6,6 @@
 // the statements it is in the same way, as what running a statement
 // gives: go on, or return this value.
 
-import std.dict;
-import std.dict.{Dict};
-import std.time;
 import lox.token.{Kind, Token};
 import lox.tree.{Expr, Stmt, Function, Literal};
 import lox.resolver.{GLOBAL};
@@ -167,7 +164,7 @@ impl Interpreter {
         self.distances = distances;
 
         for statement in statements {
-            if self.execute(statement) is Result.Err(error) {
+            if self.execute(statement) is Err(error) {
                 return error;
             }
         }
@@ -218,10 +215,10 @@ impl Interpreter {
 
             case Stmt.Return(keyword, value): {
                 if value == null {
-                    return Result.Ok(Flow.Return(Value.Nil));
+                    return Ok(Flow.Return(Value.Nil));
                 }
 
-                return Result.Ok(Flow.Return(self.evaluate(value)?));
+                return Ok(Flow.Return(self.evaluate(value)?));
             }
 
             case Stmt.Var(name, initializer): {
@@ -237,13 +234,13 @@ impl Interpreter {
             case Stmt.While(condition, body): {
                 while truthy(self.evaluate(condition)?) {
                     if self.execute(body)? is Flow.Return(value) {
-                        return Result.Ok(Flow.Return(value));
+                        return Ok(Flow.Return(value));
                     }
                 }
             }
         }
 
-        return Result.Ok(Flow.Next);
+        return Ok(Flow.Next);
     }
 
     // Runs statements in a scope, and comes back to the one it was in
@@ -258,11 +255,11 @@ impl Interpreter {
 
         for statement in statements {
             if self.execute(statement)? is Flow.Return(value) {
-                return Result.Ok(Flow.Return(value));
+                return Ok(Flow.Return(value));
             }
         }
 
-        return Result.Ok(Flow.Next);
+        return Ok(Flow.Next);
     }
 
     fn declareClass(
@@ -276,9 +273,9 @@ impl Interpreter {
             if self.evaluate(superclassExpr)? is Value.Class(parent) {
                 superclass = parent;
             } else if superclassExpr is Expr.Variable(parentName, _) {
-                return Result.Err(failed(parentName, "Superclass must be a class."));
+                return Err(failed(parentName, "Superclass must be a class."));
             } else {
-                return Result.Err(failed(name, "Superclass must be a class."));
+                return Err(failed(name, "Superclass must be a class."));
             }
         }
 
@@ -305,7 +302,7 @@ impl Interpreter {
 
         let class = Class { name: name.lexeme, superclass: superclass, methods: table };
         self.environment.values.set(name.lexeme, Value.Class(class));
-        return Result.Ok(Flow.Next);
+        return Ok(Flow.Next);
     }
 
     // --- Expressions ---
@@ -313,7 +310,7 @@ impl Interpreter {
     fn evaluate(expression: Expr) -> Result<Value, RuntimeError> {
         match expression {
             case Expr.Literal(literal): {
-                return Result.Ok(match literal {
+                return Ok(match literal {
                     case Literal.Nil: Value.Nil;
                     case Literal.Bool(truth): Value.Bool(truth);
                     case Literal.Number(number): Value.Number(number);
@@ -342,24 +339,24 @@ impl Interpreter {
                 } else if self.globals.values.has(name.lexeme) {
                     self.globals.values.set(name.lexeme, value);
                 } else {
-                    return Result.Err(failed(name, "Undefined variable '${name.lexeme}'."));
+                    return Err(failed(name, "Undefined variable '${name.lexeme}'."));
                 }
 
-                return Result.Ok(value);
+                return Ok(value);
             }
 
             case Expr.Unary(operator, rightExpr): {
                 let right = self.evaluate(rightExpr)?;
 
                 if operator.kind == Kind.Bang {
-                    return Result.Ok(Value.Bool(!truthy(right)));
+                    return Ok(Value.Bool(!truthy(right)));
                 }
 
                 if right is Value.Number(number) {
-                    return Result.Ok(Value.Number(-number));
+                    return Ok(Value.Number(-number));
                 }
 
-                return Result.Err(failed(operator, "Operand must be a number."));
+                return Err(failed(operator, "Operand must be a number."));
             }
 
             case Expr.Logical(leftExpr, operator, rightExpr): {
@@ -368,10 +365,10 @@ impl Interpreter {
                 // The right side is only worked out if the left has not decided
                 if operator.kind == Kind.Or {
                     if truthy(left) {
-                        return Result.Ok(left);
+                        return Ok(left);
                     }
                 } else if !truthy(left) {
-                    return Result.Ok(left);
+                    return Ok(left);
                 }
 
                 return self.evaluate(rightExpr);
@@ -399,17 +396,17 @@ impl Interpreter {
                     return property(instance, name);
                 }
 
-                return Result.Err(failed(name, "Only instances have properties."));
+                return Err(failed(name, "Only instances have properties."));
             }
 
             case Expr.Set(objectExpr, name, valueExpr): {
                 if self.evaluate(objectExpr)? is Value.Instance(instance) {
                     let value = self.evaluate(valueExpr)?;
                     instance.fields.set(name.lexeme, value);
-                    return Result.Ok(value);
+                    return Ok(value);
                 }
 
-                return Result.Err(failed(name, "Only instances have fields."));
+                return Err(failed(name, "Only instances have fields."));
             }
 
             case Expr.Super(keyword, methodName, number): {
@@ -424,12 +421,12 @@ impl Interpreter {
                         let method = findMethod(superclass, methodName.lexeme);
 
                         if method == null {
-                            return Result.Err(
+                            return Err(
                                 failed(methodName, "Undefined property '${methodName.lexeme}'."),
                             );
                         }
 
-                        return Result.Ok(Value.Function(bind(method, object)));
+                        return Ok(Value.Function(bind(method, object)));
                     }
 
                     default: {
@@ -444,16 +441,16 @@ impl Interpreter {
         let distance = self.distances[number];
 
         if distance != GLOBAL {
-            return Result.Ok(self.environment.at(distance, name.lexeme));
+            return Ok(self.environment.at(distance, name.lexeme));
         }
 
         let value = self.globals.values.get(name.lexeme);
 
         if value == null {
-            return Result.Err(failed(name, "Undefined variable '${name.lexeme}'."));
+            return Err(failed(name, "Undefined variable '${name.lexeme}'."));
         }
 
-        return Result.Ok(value);
+        return Ok(value);
     }
 
     // --- Calls ---
@@ -478,17 +475,17 @@ impl Interpreter {
                     self.invoke(bind(initializer, instance), arguments)?;
                 }
 
-                return Result.Ok(Value.Instance(instance));
+                return Ok(Value.Instance(instance));
             }
 
             case Value.Native(name): {
                 checkArity(0, arguments, paren)?;
                 // The only one there is: the seconds on the clock
-                return Result.Ok(Value.Number(time.ticks().toFloat() / 1000000.0));
+                return Ok(Value.Number(time.ticks().toFloat() / 1000000.0));
             }
 
             default: {
-                return Result.Err(failed(paren, "Can only call functions and classes."));
+                return Err(failed(paren, "Can only call functions and classes."));
             }
         }
     }
@@ -504,24 +501,22 @@ impl Interpreter {
 
         // An initializer gives the instance, whatever it returns
         if function.isInitializer {
-            return Result.Ok(function.closure.at(0, "this"));
+            return Ok(function.closure.at(0, "this"));
         }
 
         return match flow {
-            case Flow.Return(value): Result.Ok(value);
-            case Flow.Next: Result.Ok(Value.Nil);
+            case Flow.Return(value): Ok(value);
+            case Flow.Next: Ok(Value.Nil);
         };
     }
 }
 
 fn checkArity(expected: Int, arguments: [Value], paren: Token) -> Result<Int, RuntimeError> {
     if arguments.len() != expected {
-        return Result.Err(
-            failed(paren, "Expected ${expected} arguments but got ${arguments.len()}."),
-        );
+        return Err(failed(paren, "Expected ${expected} arguments but got ${arguments.len()}."));
     }
 
-    return Result.Ok(expected);
+    return Ok(expected);
 }
 
 fn findMethod(class: Class, name: String) -> Closure? {
@@ -550,29 +545,29 @@ fn property(instance: Instance, name: Token) -> Result<Value, RuntimeError> {
     let field = instance.fields.get(name.lexeme);
 
     if field != null {
-        return Result.Ok(field);
+        return Ok(field);
     }
 
     let method = findMethod(instance.class, name.lexeme);
 
     if method != null {
-        return Result.Ok(Value.Function(bind(method, instance)));
+        return Ok(Value.Function(bind(method, instance)));
     }
 
-    return Result.Err(failed(name, "Undefined property '${name.lexeme}'."));
+    return Err(failed(name, "Undefined property '${name.lexeme}'."));
 }
 
 fn binary(left: Value, operator: Token, right: Value) -> Result<Value, RuntimeError> {
     if operator.kind == Kind.EqualEqual {
-        return Result.Ok(Value.Bool(equal(left, right)));
+        return Ok(Value.Bool(equal(left, right)));
     }
 
     if operator.kind == Kind.BangEqual {
-        return Result.Ok(Value.Bool(!equal(left, right)));
+        return Ok(Value.Bool(!equal(left, right)));
     }
 
     if left is Value.Number(a) && right is Value.Number(b) {
-        return Result.Ok(match operator.kind {
+        return Ok(match operator.kind {
             case Kind.Plus: Value.Number(a + b);
             case Kind.Minus: Value.Number(a - b);
             case Kind.Star: Value.Number(a * b);
@@ -589,12 +584,12 @@ fn binary(left: Value, operator: Token, right: Value) -> Result<Value, RuntimeEr
     }
 
     if left is Value.Text(a) && right is Value.Text(b) && operator.kind == Kind.Plus {
-        return Result.Ok(Value.Text(a + b));
+        return Ok(Value.Text(a + b));
     }
 
     if operator.kind == Kind.Plus {
-        return Result.Err(failed(operator, "Operands must be two numbers or two strings."));
+        return Err(failed(operator, "Operands must be two numbers or two strings."));
     }
 
-    return Result.Err(failed(operator, "Operands must be numbers."));
+    return Err(failed(operator, "Operands must be numbers."));
 }

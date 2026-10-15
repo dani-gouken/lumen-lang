@@ -92,10 +92,10 @@ fn column(cells: [String], at: Int, name: String) -> Result<String, Flaw> {
     let text = (cells.at(at) ?? "").trim();
 
     if text == "" {
-        return Result.Err(Flaw.Missing(name));
+        return Err(Flaw.Missing(name));
     }
 
-    return Result.Ok(text);
+    return Ok(text);
 }
 
 fn whole(cells: [String], at: Int, name: String) -> Result<Int, Flaw> {
@@ -103,10 +103,10 @@ fn whole(cells: [String], at: Int, name: String) -> Result<Int, Flaw> {
     let n = text.parseInt();
 
     if n == null {
-        return Result.Err(Flaw.NotANumber(name, text));
+        return Err(Flaw.NotANumber(name, text));
     }
 
-    return Result.Ok(n);
+    return Ok(n);
 }
 
 fn item(line: String, suppliers: Dict<Supplier>) -> Result<Item, Flaw> {
@@ -117,7 +117,7 @@ fn item(line: String, suppliers: Dict<Supplier>) -> Result<Item, Flaw> {
     let price = priceText.parseFloat();
 
     if price == null {
-        return Result.Err(Flaw.NotANumber("price", priceText));
+        return Err(Flaw.NotANumber("price", priceText));
     }
 
     // The supplier may be left out; one that is named has to be known
@@ -128,11 +128,11 @@ fn item(line: String, suppliers: Dict<Supplier>) -> Result<Item, Flaw> {
         from = suppliers.get(code);
 
         if from == null {
-            return Result.Err(Flaw.UnknownSupplier(code));
+            return Err(Flaw.UnknownSupplier(code));
         }
     }
 
-    return Result.Ok(Item { name: name, quantity: quantity, price: price, supplier: from });
+    return Ok(Item { name: name, quantity: quantity, price: price, supplier: from });
 }
 
 // The items that could be read, and the lines that could not with why.
@@ -147,11 +147,11 @@ fn load() -> ([Item], [(Int, Flaw)]) {
         }
 
         match item(line, suppliers) {
-            case Result.Ok(read): {
+            case Ok(read): {
                 items.push(read);
             }
 
-            case Result.Err(flaw): {
+            case Err(flaw): {
                 flawed.push((i + 1, flaw));
             }
         }

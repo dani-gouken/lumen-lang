@@ -85,12 +85,12 @@ impl Account {
 
         if before < amount {
             self.lock.send(true);
-            return Result.Err(Refusal.Short(amount - before));
+            return Err(Refusal.Short(amount - before));
         }
 
         self.balance = before - amount;
         self.lock.send(true);
-        return Result.Ok(self.balance);
+        return Ok(self.balance);
     }
 
     fn withdrawCarelessly(amount: Int) -> Bool {
@@ -177,13 +177,13 @@ fn main() -> Int {
 
     for taker in takers {
         match taker.wait() {
-            case Result.Ok(Result.Ok(left)): {
+            case Ok(Ok(left)): {
                 taken++;
             }
 
-            case Result.Ok(Result.Err(Refusal.Short(by))): {}
+            case Ok(Err(Refusal.Short(by))): {}
 
-            case Result.Err(failure): {
+            case Err(failure): {
                 println("a withdrawal stopped:", failure.describe());
             }
         }
@@ -208,22 +208,22 @@ fn main() -> Int {
         });
 
         match inner.wait() {
-            case Result.Ok(n): {
+            case Ok(n): {
                 return "got ${n}";
             }
 
-            case Result.Err(failure): {
+            case Err(failure): {
                 panic("the inner task failed: ${failure.message}");
             }
         }
     });
 
     match relay.wait() {
-        case Result.Ok(text): {
+        case Ok(text): {
             println(text);
         }
 
-        case Result.Err(failure): {
+        case Err(failure): {
             println(failure.kind == Kind.Panic, failure.message);
         }
     }

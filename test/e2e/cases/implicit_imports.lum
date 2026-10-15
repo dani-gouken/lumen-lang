@@ -50,7 +50,7 @@ fn main() -> Int {
     let path = "scores/2026/october.txt";
     println(path.split("/").len());
 
-    let checked: Result<Int, String> = math.pi > 3.0 ? Result.Ok(4) : Result.Err("no");
+    let checked: Result<Int, String> = math.pi > 3.0 ? Ok(4) : Err("no");
     println(checked, json.int(totals.getOr("ada", 0)).stringify());
     return 0;
 }

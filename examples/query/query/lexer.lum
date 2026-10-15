@@ -81,7 +81,7 @@ pub fn tokens(source: String) -> Result<[Token], String> {
             }
 
             if !closed {
-                return Result.Err("a text that starts at ${start} is not closed");
+                return Err("a text that starts at ${start} is not closed");
             }
 
             out.push(Token { kind: Kind.Text, text: said, upper: said, at: start });
@@ -97,7 +97,7 @@ pub fn tokens(source: String) -> Result<[Token], String> {
             if two == "!=" || two == "<>" || two == "<=" || two == ">=" || two == "||" {
                 symbol = two;
             } else if !"(),.*+-/%=<>;".contains(c) {
-                return Result.Err("did not expect '${c}' at ${start}");
+                return Err("did not expect '${c}' at ${start}");
             }
 
             at += symbol.len();
@@ -111,5 +111,5 @@ pub fn tokens(source: String) -> Result<[Token], String> {
     }
 
     out.push(Token { kind: Kind.End, text: "the end", upper: "", at: length });
-    return Result.Ok(out);
+    return Ok(out);
 }

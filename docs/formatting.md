@@ -20,7 +20,7 @@ The aim is code with room in it: one thing on a line, and space around what is l
 ```rust
 fn load(text:String)->Log{let log=Log{hits:[],bad:[]};
     for i,line in text.lines(){if line.isBlank(){continue;}
-        match lines.read(i+1,line){case Result.Ok(hit):{log.hits.push(hit);}case Result.Err(bad):{log.bad.push(bad);}}}
+        match lines.read(i+1,line){case Ok(hit):{log.hits.push(hit);}case Err(bad):{log.bad.push(bad);}}}
     return log;}
 ```
 
@@ -36,11 +36,11 @@ fn load(text: String) -> Log {
         }
 
         match lines.read(i + 1, line) {
-            case Result.Ok(hit): {
+            case Ok(hit): {
                 log.hits.push(hit);
             }
 
-            case Result.Err(bad): {
+            case Err(bad): {
                 log.bad.push(bad);
             }
         }

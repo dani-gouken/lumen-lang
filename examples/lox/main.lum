@@ -16,9 +16,6 @@
 // A program that cannot be read ends with status 65, one that fails while
 // running with 70, as the interpreters of the book do.
 
-import std.io;
-import std.os;
-import std.path;
 import std.result.{Kind, attempt};
 import lox.token.{Reporter};
 import lox.scanner;
@@ -49,7 +46,7 @@ fn run(source: String, lox: Interpreter) -> Int {
     // A program that calls itself without end runs out of calls of the
     // interpreter's own: that is a failure of the program, said as one
     match attempt(() -> lox.run(program.statements, distances)) {
-        case Result.Ok(error): {
+        case Ok(error): {
             if error == null {
                 return 0;
             }
@@ -57,7 +54,7 @@ fn run(source: String, lox: Interpreter) -> Int {
             io.printError("${error.message}\n[line ${error.token.line}]\n");
         }
 
-        case Result.Err(failure): {
+        case Err(failure): {
             match failure.kind {
                 case Kind.Depth: {
                     io.printError("Stack overflow.\n[line ${lox.line}]\n");
@@ -106,11 +103,11 @@ fn main() -> Int {
     }
 
     match io.readFile(script) {
-        case Result.Ok(source): {
+        case Ok(source): {
             return run(source, lox);
         }
 
-        case Result.Err(error): {
+        case Err(error): {
             io.printError(error.describe() + "\n");
             return USAGE;
         }

@@ -10,7 +10,6 @@
 // It needs raylib where libraries are looked for: brew install raylib, or
 // the package of the system, or its folder in LUMEN_LIBRARY_PATH.
 
-import std.os;
 import raylib;
 import raylib.{Color, Rectangle, Vector2};
 

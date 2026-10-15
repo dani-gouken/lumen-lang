@@ -6,12 +6,8 @@
 // holds the workers that are free, the other carries what happens to
 // whoever writes the log.
 
-import std.task;
 import std.task.{Task, Channel};
-import std.result;
 import std.result.{Failure};
-import std.dict;
-import std.dict.{Dict};
 
 struct Target {
     name: String;
@@ -158,7 +154,7 @@ impl Build {
         let missing = self.unknown(wanted);
 
         if missing != null {
-            return Result.Err("there is no target '${missing}'");
+            return Err("there is no target '${missing}'");
         }
 
         for name in wanted {
@@ -198,7 +194,7 @@ impl Build {
             );
         }
 
-        return Result.Ok(outcomes);
+        return Ok(outcomes);
     }
 }
 
@@ -218,11 +214,11 @@ fn report(title: String, targets: [Target], wanted: [String], workers: Int) {
     println("${title} (${workers} workers)");
 
     match newBuild(targets, workers).run(wanted) {
-        case Result.Err(reason): {
+        case Err(reason): {
             println("  cannot build: ${reason}");
         }
 
-        case Result.Ok(outcomes): {
+        case Ok(outcomes): {
             let built = outcomes.values().count(outcome -> outcome.isBuilt());
             println("  ${built} of ${outcomes.len()} built");
         }

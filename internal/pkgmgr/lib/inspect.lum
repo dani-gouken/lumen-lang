@@ -44,10 +44,10 @@ pub fn dependents(lock: Lock, project: Manifest, name: String) -> [Dependent] {
 // lumen why vendor/name: who requires it, and with what constraint.
 pub fn why(lock: Lock, project: Manifest, name: String) -> Result<[String], String> {
     if lock.find(name) == null {
-        return Result.Err("${name} is not a package of this project");
+        return Err("${name} is not a package of this project");
     }
 
-    return Result.Ok(
+    return Ok(
         dependents(lock, project, name).map(
             dependent -> "${dependent.by} requires ${name} (${dependent.wanted})",
         ),
@@ -62,13 +62,13 @@ pub fn show(
     name: String?,
 ) -> Result<[String], String> {
     if name == null {
-        return Result.Ok(lock.packages.map(locked -> summary(locked, installed)));
+        return Ok(lock.packages.map(locked -> summary(locked, installed)));
     }
 
     let locked = lock.find(name);
 
     if locked == null {
-        return Result.Err("${name} is not a package of this project");
+        return Err("${name} is not a package of this project");
     }
 
     let source = locked.source;
@@ -100,7 +100,7 @@ pub fn show(
 
     let width = rows.map(row -> row[0].len()).largest() ?? 0;
 
-    return Result.Ok(
+    return Ok(
         rows.filter(row -> row[1] != "").map(row -> "${row[0].padRight(width)} : ${row[1]}"),
     );
 }
@@ -158,7 +158,7 @@ pub fn outdated(lock: Lock, project: Manifest, source: Catalog) -> Result<[Outda
         }
     }
 
-    return Result.Ok(found);
+    return Ok(found);
 }
 
 fn behindOf(
@@ -173,10 +173,10 @@ fn behindOf(
         let head = candidates.find(candidate -> candidate.label == locked.version);
 
         if head != null && head.source.reference != locked.source.reference {
-            return Result.Ok(Behind.Moved(head.source.reference.first(7)));
+            return Ok(Behind.Moved(head.source.reference.first(7)));
         }
 
-        return Result.Ok(null);
+        return Ok(null);
     }
 
     // Releases only, unless a pre-release is what is installed
@@ -188,7 +188,7 @@ fn behindOf(
     let newest = newestOf(releases);
 
     if newest == null || newest <= current {
-        return Result.Ok(null);
+        return Ok(null);
     }
 
     let fitting: [Candidate] = [];
@@ -208,10 +208,10 @@ fn behindOf(
     let reachable = newestOf(fitting);
 
     if reachable != null && reachable > current {
-        return Result.Ok(Behind.Update(toString(reachable)));
+        return Ok(Behind.Update(toString(reachable)));
     }
 
-    return Result.Ok(Behind.Major(toString(newest)));
+    return Ok(Behind.Major(toString(newest)));
 }
 
 fn newestOf(candidates: [Candidate]) -> Version? {

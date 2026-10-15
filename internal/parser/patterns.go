@@ -85,11 +85,21 @@ func (p *Parser) variantPattern(expr ast.Expr, top bool) ast.Node {
 			return &ast.VariantPattern{BaseNode: pathBase(e), Target: e}
 		}
 	case *ast.CallExpr:
-		target, ok := e.Func.(*ast.MemberExpr)
-		if !ok || !isPath(target) {
+		var pattern *ast.VariantPattern
+		switch target := e.Func.(type) {
+		case *ast.MemberExpr:
+			if isPath(target) {
+				pattern = &ast.VariantPattern{BaseNode: pathBase(target), Target: target, HasArgs: true}
+			}
+		case *ast.Ident:
+			// Circle(r): the variant alone, its enum found by its name
+			if len(target.TypeArgs) == 0 {
+				pattern = &ast.VariantPattern{BaseNode: target.BaseNode, Target: target, HasArgs: true}
+			}
+		}
+		if pattern == nil {
 			break
 		}
-		pattern := &ast.VariantPattern{BaseNode: pathBase(target), Target: target, HasArgs: true}
 		for _, arg := range e.Args {
 			pattern.Args = append(pattern.Args, p.subPattern(arg))
 		}
@@ -238,11 +248,7 @@ func (p *Parser) typeFollows() bool {
 	dotted := strings.Contains(parsed.Name, ".")
 	switch p.toks[end].Type {
 	case token.LPAREN:
-		if plain && !dotted {
-			p.failWith(ErrUnexpectedToken,
-				"Write the variant with its enum: value is Shape."+parsed.Name+"(...)",
-				"'%s' alone is a type, and a type holds no values to name", parsed.Name)
-		}
+		// value is Circle(r): a variant, its enum found by its name
 		return false
 	case token.DOT:
 		return false

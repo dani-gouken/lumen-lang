@@ -35,14 +35,14 @@ struct Tally {
 fn filesOf(target: String) -> Result<[String], String> {
     if !fs.isDir(target) {
         if !io.exists(target) {
-            return Result.Err("${target}: no such file or folder");
+            return Err("${target}: no such file or folder");
         }
 
-        return Result.Ok([target]);
+        return Ok([target]);
     }
 
     match fs.find(target, "*.lum") {
-        case Result.Ok(found): {
+        case Ok(found): {
             // What comes after the folder that was named: that one may
             // be hidden, it is what was asked for
             let folder = path.clean(target);
@@ -57,11 +57,11 @@ fn filesOf(target: String) -> Result<[String], String> {
                 return below.any(part -> part.startsWith("."));
             };
 
-            return Result.Ok(found.filter(file -> !hidden(file)));
+            return Ok(found.filter(file -> !hidden(file)));
         }
 
-        case Result.Err(error): {
-            return Result.Err(error.describe());
+        case Err(error): {
+            return Err(error.describe());
         }
     }
 }
@@ -70,9 +70,9 @@ fn filesOf(target: String) -> Result<[String], String> {
 // would change.
 fn tidy(file: String, check: Bool, tally: Tally) {
     let source = match io.readFile(file) {
-        case Result.Ok(text): text;
+        case Ok(text): text;
 
-        case Result.Err(error): {
+        case Err(error): {
             io.printError(error.describe() + "\n");
             tally.failed++;
             return;
@@ -80,12 +80,12 @@ fn tidy(file: String, check: Bool, tally: Tally) {
     };
 
     match formatter.format(source) {
-        case Result.Err(problem): {
+        case Err(problem): {
             io.printError("${file}:${problem.describe()}\n");
             tally.failed++;
         }
 
-        case Result.Ok(tidy): {
+        case Ok(tidy): {
             if tidy == source {
                 tally.kept++;
                 return;
@@ -108,12 +108,12 @@ fn filter() -> Int {
     let source = io.readLines().join("\n") + "\n";
 
     match formatter.format(source) {
-        case Result.Ok(tidy): {
+        case Ok(tidy): {
             print(tidy);
             return 0;
         }
 
-        case Result.Err(problem): {
+        case Err(problem): {
             io.printError("<input>:${problem.describe()}\n");
             return 1;
         }
@@ -147,13 +147,13 @@ fn main() -> Int {
 
     for target in targets {
         match filesOf(target) {
-            case Result.Ok(files): {
+            case Ok(files): {
                 for file in files {
                     tidy(file, check, tally);
                 }
             }
 
-            case Result.Err(reason): {
+            case Err(reason): {
                 io.printError("lumen fmt: ${reason}\n");
                 tally.failed++;
             }

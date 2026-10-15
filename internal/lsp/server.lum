@@ -616,7 +616,7 @@ impl Server {
         match result.attempt(fn() -> Json? {
             return self.answer(method, params);
         }) {
-            case Result.Ok(value): {
+            case Ok(value): {
                 if value == null {
                     refuse(id, -32601, "the server does not know '${method}'");
                 } else {
@@ -624,7 +624,7 @@ impl Server {
                 }
             }
 
-            case Result.Err(failure): {
+            case Err(failure): {
                 io.printError("lumen lsp: ${method} failed: ${failure.describe()}\n");
                 refuse(id, -32603, failure.message);
             }

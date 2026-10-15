@@ -1,7 +1,5 @@
 // Functions, recursion, loops and arrays.
 
-import std.arrays;
-
 fn fib(n: Int) -> Int {
     if n < 2 {
         return n;

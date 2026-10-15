@@ -83,18 +83,18 @@ impl<T> Task<T> {
         join(self.id);
 
         if self.outcome.values.len() > 0 {
-            return Result.Ok(self.outcome.values[0]);
+            return Ok(self.outcome.values[0]);
         }
 
         let known = self.outcome.failure;
 
         if known != null {
-            return Result.Err(known);
+            return Err(known);
         }
 
         let failure = result.failureOf(fault(self.id));
         self.outcome.failure = failure;
-        return Result.Err(failure);
+        return Err(failure);
     }
 
     // What the function returned. Stops the program with `message` if the
@@ -116,11 +116,11 @@ pub fn all<T>(tasks: [Task<T>]) -> Result<[T], Failure> {
 
     for one in tasks {
         match one.wait() {
-            case Result.Ok(value): {
+            case Ok(value): {
                 values.push(value);
             }
 
-            case Result.Err(failure): {
+            case Err(failure): {
                 if first == null {
                     first = failure;
                 }
@@ -129,10 +129,10 @@ pub fn all<T>(tasks: [Task<T>]) -> Result<[T], Failure> {
     }
 
     if first != null {
-        return Result.Err(first);
+        return Err(first);
     }
 
-    return Result.Ok(values);
+    return Ok(values);
 }
 
 // What a function makes of each item, all of them worked on at once:

@@ -1,13 +1,9 @@
 // The tests of the service. A route is a function from a request to an
 // answer, so it is tested by calling it: no server, no port.
 
-import std.test;
 import std.test.{Suite};
-import std.http;
 import std.http.{Request, Response, Method, Router};
-import std.json;
 import std.json.{Json};
-import std.dict;
 import notes.api;
 import notes.book;
 

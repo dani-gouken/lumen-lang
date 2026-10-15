@@ -48,6 +48,7 @@ const (
 	ErrBadRange          = "E2038" // A range that is not of whole numbers, or used as a value
 	ErrBadDefer          = "E2039" // A defer that tries to leave: return, '?', break or continue of an outer loop
 	ErrMatchValue        = "E2040" // A match that gives a value with a case that gives none
+	ErrAmbiguousVariant  = "E2041" // A variant written alone that several enums have, and nothing says which
 )
 
 type Checker struct {
@@ -981,6 +982,11 @@ func (c *Checker) checkExpr(expr ast.Expr) Type {
 	case *ast.Literal:
 		t = c.checkLiteral(e)
 	case *ast.Ident:
+		if e.Name == ast.EnumToFind {
+			c.reportAmbiguousVariant(e, "")
+			t = Unknown
+			break
+		}
 		t = c.checkIdent(e)
 	case *ast.BinaryExpr:
 		t = c.checkBinaryExpr(e)
@@ -1749,16 +1755,29 @@ func (c *Checker) checkArrayLiteralExpr(e *ast.ArrayLiteralExpr) Type {
 		return NewArray(Unknown)
 	}
 
-	// Check the first element to determine the array type
-	firstType := c.checkExpr(e.Elements[0])
-	if firstType == nil {
-		return NewArray(Unknown)
+	// The items in order, but for a variant written alone that several
+	// enums have: [Circle(1.0), Empty] is an array of what the others are
+	types := make([]Type, len(e.Elements))
+	var known Type
+	for i, elem := range e.Elements {
+		if variantToFind(elem) != nil {
+			continue
+		}
+		types[i] = c.checkExpr(elem)
+		if known == nil && types[i] != nil && !isUnknown(types[i]) {
+			known = types[i]
+		}
+	}
+	for i, elem := range e.Elements {
+		if variantToFind(elem) != nil {
+			types[i] = c.checkExprAs(elem, known)
+		}
 	}
 
-	// Check that all other elements have compatible types
-	types := []Type{firstType}
-	for i := 1; i < len(e.Elements); i++ {
-		types = append(types, c.checkExpr(e.Elements[i]))
+	// The first element determines the array type
+	firstType := types[0]
+	if firstType == nil {
+		return NewArray(Unknown)
 	}
 	if mixesNumbers(types) {
 		// [1, 2.5]: whole numbers among Floats are Floats

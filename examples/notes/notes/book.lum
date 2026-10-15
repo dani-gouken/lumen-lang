@@ -1,9 +1,7 @@
 // The notes themselves: what the service keeps, and the rules it keeps
 // them by. Nothing here knows about the web.
 
-import std.json;
 import std.json.{Json};
-import std.set;
 
 pub struct Note {
     id: Int;
@@ -85,7 +83,7 @@ impl Book {
         self.lastId++;
         note.id = self.lastId;
         self.notes.push(note);
-        return Result.Ok(note);
+        return Ok(note);
     }
 
     // Replaces what a note says. Null if there is no such note.
@@ -118,23 +116,23 @@ impl Book {
         let title = (document.get("title")?.text() ?? "").trim();
 
         if title == "" {
-            return Result.Err(Refusal.Missing("title"));
+            return Err(Refusal.Missing("title"));
         }
 
         if title.len() > 60 {
-            return Result.Err(Refusal.TooLong("title", 60));
+            return Err(Refusal.TooLong("title", 60));
         }
 
         let taken = self.notes.find(note -> note.title.lower() == title.lower());
 
         if taken != null && taken.id != replacing {
-            return Result.Err(Refusal.Duplicate(taken.title));
+            return Err(Refusal.Duplicate(taken.title));
         }
 
         let body = document.get("body")?.text() ?? "";
 
         if body.len() > 2000 {
-            return Result.Err(Refusal.TooLong("body", 2000));
+            return Err(Refusal.TooLong("body", 2000));
         }
 
         // Tags: texts only, tidied, without repeats
@@ -148,6 +146,6 @@ impl Book {
             }
         }
 
-        return Result.Ok(Note { id: 0, title: title, body: body, tags: tags.items() });
+        return Ok(Note { id: 0, title: title, body: body, tags: tags.items() });
     }
 }

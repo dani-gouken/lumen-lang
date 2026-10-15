@@ -7,9 +7,6 @@
 // finds the mistakes that can be seen without running: a variable read in
 // its own initializer, `return` outside a function, `this` outside a class.
 
-import std.arrays;
-import std.dict;
-import std.dict.{Dict};
 import lox.token.{Token, Reporter};
 import lox.tree.{Expr, Stmt, Function};
 import lox.parser.{Program};

@@ -52,7 +52,7 @@ impl Dock {
         }
 
         parcel.status = Status.Loaded(van);
-        return Result.Ok(cost);
+        return Ok(cost);
     }
 }
 
@@ -68,7 +68,7 @@ fn volume(size: Size) -> Int {
 fn price(parcel: Parcel) -> Result<Int, String> {
     let base = match parcel.grams {
         case 0: {
-            return Result.Err("parcel ${parcel.id} weighs nothing");
+            return Err("parcel ${parcel.id} weighs nothing");
         }
 
         case 1..100: 150;
@@ -76,7 +76,7 @@ fn price(parcel: Parcel) -> Result<Int, String> {
         case 2001..=30000: 1290;
 
         default: {
-            return Result.Err("parcel ${parcel.id} is too heavy");
+            return Err("parcel ${parcel.id} is too heavy");
         }
     };
 
@@ -87,7 +87,7 @@ fn price(parcel: Parcel) -> Result<Int, String> {
         case Zone.Abroad(_): 5;
     };
 
-    return Result.Ok(base * factor);
+    return Ok(base * factor);
 }
 
 fn van(parcel: Parcel) -> Int {
@@ -126,9 +126,9 @@ fn main() -> Int {
 
     for parcel in parcels {
         takings += match dock.load(parcel, van(parcel)) {
-            case Result.Ok(cost): cost;
+            case Ok(cost): cost;
 
-            case Result.Err(reason): {
+            case Err(reason): {
                 parcel.status = Status.Refused(reason);
                 continue;
             }
@@ -151,9 +151,9 @@ fn main() -> Int {
     let late = Parcel { id: 8, grams: 300, size: Size.Letter, zone: Zone.Local };
 
     match attempt(() -> dock.load(late, 9)) {
-        case Result.Ok(_): println("loaded?");
+        case Ok(_): println("loaded?");
 
-        case Result.Err(failure): println(
+        case Err(failure): println(
             "failed:",
             failure.message,
             "- dock busy:",

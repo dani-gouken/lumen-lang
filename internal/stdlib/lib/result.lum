@@ -9,8 +9,8 @@
 // none. Whoever calls it has to look, and the compiler checks that they do.
 //
 //     match io.readFile("notes.txt") {
-//         case Result.Ok(text): { println(text); }
-//         case Result.Err(reason): { println("cannot read it:", reason); }
+//         case Ok(text): { println(text); }
+//         case Err(reason): { println("cannot read it:", reason); }
 //     }
 //
 // A failure that should never happen, a mistake in the program, stops the
@@ -31,8 +31,8 @@ pub enum Result<T, E> {
 impl<T, E> Result<T, E> {
     pub fn isOk() -> Bool {
         return match self {
-            case Result.Ok(_): true;
-            case Result.Err(_): false;
+            case Ok(_): true;
+            case Err(_): false;
         };
     }
 
@@ -43,40 +43,40 @@ impl<T, E> Result<T, E> {
     // The value, or null if there is none.
     pub fn value() -> T? {
         return match self {
-            case Result.Ok(value): value;
-            case Result.Err(_): null;
+            case Ok(value): value;
+            case Err(_): null;
         };
     }
 
     // The reason, or null if there was a value.
     pub fn reason() -> E? {
         return match self {
-            case Result.Ok(_): null;
-            case Result.Err(reason): reason;
+            case Ok(_): null;
+            case Err(reason): reason;
         };
     }
 
     // The value, or `fallback` if there is none.
     pub fn orElse(fallback: T) -> T {
         return match self {
-            case Result.Ok(value): value;
-            case Result.Err(_): fallback;
+            case Ok(value): value;
+            case Err(_): fallback;
         };
     }
 
     // The value turned into another; a reason is passed on unchanged.
     pub fn map<U>(convert: fn(T) -> U) -> Result<U, E> {
         return match self {
-            case Result.Ok(value): Result.Ok(convert(value));
-            case Result.Err(reason): Result.Err(reason);
+            case Ok(value): Ok(convert(value));
+            case Err(reason): Err(reason);
         };
     }
 
     // The reason turned into another; a value is passed on unchanged.
     pub fn mapErr<F>(convert: fn(E) -> F) -> Result<T, F> {
         return match self {
-            case Result.Ok(value): Result.Ok(value);
-            case Result.Err(reason): Result.Err(convert(reason));
+            case Ok(value): Ok(value);
+            case Err(reason): Err(convert(reason));
         };
     }
 
@@ -84,8 +84,8 @@ impl<T, E> Result<T, E> {
     // the first reason met is the one that comes out.
     pub fn then<U>(step: fn(T) -> Result<U, E>) -> Result<U, E> {
         return match self {
-            case Result.Ok(value): step(value);
-            case Result.Err(reason): Result.Err(reason);
+            case Ok(value): step(value);
+            case Err(reason): Err(reason);
         };
     }
 
@@ -93,11 +93,11 @@ impl<T, E> Result<T, E> {
     // where a failure would be a mistake in the program.
     pub fn expect(message: String) -> T {
         match self {
-            case Result.Ok(value): {
+            case Ok(value): {
                 return value;
             }
 
-            case Result.Err(reason): {
+            case Err(reason): {
                 panic(message + ":", reason);
             }
         }
@@ -209,8 +209,8 @@ impl Failure {
 // would end the program, the program goes on and the failure is returned.
 //
 //     match attempt(fn() -> Int { return risky(); }) {
-//         case Result.Ok(n): { ... }
-//         case Result.Err(failure): { println(failure.describe()); }
+//         case Ok(n): { ... }
+//         case Err(failure): { println(failure.describe()); }
 //     }
 //
 // It is for boundaries: a loop that must outlive the jobs it runs, a tool
@@ -218,10 +218,10 @@ impl Failure {
 // Result by the function that meets it.
 pub fn attempt<T>(action: fn() -> T) -> Result<T, Failure> {
     if protect(action) {
-        return Result.Ok(outcome() as T);
+        return Ok(outcome() as T);
     }
 
-    return Result.Err(caught());
+    return Err(caught());
 }
 
 // Runs a function for what it does, not for a value. Null if it
