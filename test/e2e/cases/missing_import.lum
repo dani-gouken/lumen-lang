@@ -1,0 +1,12 @@
+// Names of the library used without their import: the suggestion is the import
+
+fn largest<T: Ordered>(items: [T]) -> T? {
+    return null;
+}
+
+fn main() -> Int {
+    let counts = dict.empty<Int>();
+    let names: Dict<String>? = null;
+    let count = 1;
+    return cuont;
+}

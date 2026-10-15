@@ -166,6 +166,83 @@ func TestOs(t *testing.T) {
 	)
 }
 
+// TestShell checks std.sh: what a program writes goes with the script's
+// output, a status other than 0 stops the script, and the command is named.
+func TestShell(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	expect(t, "import std.sh;\nimport std.result.{attempt};", `
+		println("before");
+		sh.run("sh -c 'echo written; echo hidden >&2'");
+		println("[${sh.output("printf '%s\\n' 'one two'")}]");
+		println(sh.status("sh -c 'exit 3'"), sh.status("true"));
+		let failed = attempt(fn() -> Bool { sh.run("sh -c 'exit 2'"); return true; });
+		println(failed.reason()?.message ?? "went on");
+		let quoted = attempt(fn() -> String { return sh.output(sh.command("false", ["a b", "it's", ""])); });
+		println(quoted.reason()?.message ?? "went on");
+	`,
+		"before",
+		"written",
+		"[one two]",
+		"3 0",
+		"std.sh.run: sh -c 'exit 2' ended with status 2",
+		`std.sh.output: false 'a b' 'it'\''s' '' ended with status 1`,
+	)
+	expect(t, "import std.sh;", `
+		match sh.attempt("sh -c 'echo working; echo first >&2; echo why it broke >&2; exit 3'") {
+			case Result.Ok(_): { println("went well"); }
+			case Result.Err(failed): {
+				println(failed.status, failed.command);
+				println(failed.err.split("\n"));
+				println(failed.describe());
+			}
+		}
+		println(sh.attempt("true").isOk());
+		let missing = sh.attempt("no-such-program-of-lumen x");
+		println(missing.reason()?.status, missing.reason()?.err, missing.reason()?.describe());
+	`,
+		"working",
+		"3 sh -c 'echo working; echo first >&2; echo why it broke >&2; exit 3'",
+		`["first", "why it broke"]`,
+		"sh -c 'echo working; echo first >&2; echo why it broke >&2; exit 3' ended with status 3",
+		"true",
+		"-1  there is no program called 'no-such-program-of-lumen'",
+	)
+	for _, call := range []string{`sh.run("no-such-program-of-lumen")`, `sh.status("no-such-program-of-lumen x")`} {
+		expectFailure(t, "import std.sh;", call+";", "there is no program called 'no-such-program-of-lumen'")
+	}
+	expectFailure(t, "import std.sh;", `sh.run("echo 'open");`, "std.sh.run: the command has a ' that is not closed")
+	expectFailure(t, "import std.sh;", `sh.run("  ");`, "std.sh.run: the command is empty")
+}
+
+// TestShellCommandsTakeValuesWhole checks that what ${...} puts in a
+// command is one argument, whatever it holds, and that the words written
+// in the program are split as a shell would split them.
+func TestShellCommandsTakeValuesWhole(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		return
+	}
+	expect(t, "import std.sh;", `
+		let file = "my notes; rm -rf ~";
+		let empty = "";
+		let n = 3;
+		sh.run("printf [%s]\\n ${file} --n=${n} ${empty} 'two words' \"x y\" '' \"it's here\"");
+		sh.run(sh.command("printf", ["<%s>\\n", "a b", "", "\$HOME"]));
+	`,
+		"[my notes; rm -rf ~]",
+		"[--n=3]",
+		"[]",
+		"[two words]",
+		"[x y]",
+		"[]",
+		"[it's here]",
+		"<a b>",
+		"<>",
+		"<$HOME>",
+	)
+}
+
 // TestExit checks that os.exit ends the program at once, whatever is
 // around the call, and hands its status to whoever ran the program.
 func TestExit(t *testing.T) {

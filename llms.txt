@@ -1,0 +1,87 @@
+# Lumen
+
+> Lumen is a small statically typed language with a standard library built
+> into one binary, `lumen`. It is meant for scripts and tools that should not
+> break: mistakes are found before the program runs, failures are values, and
+> a command that fails stops a script saying why. This file is a compact
+> reference for writing Lumen correctly; the full documents are in docs/.
+
+## Running and checking
+
+- `lumen run file.lum`, or `lumen file.lum`, or `./file` when its first line is `#!/usr/bin/env lumen`. Arguments after the file are `os.args()`.
+- `lumen check --json file.lum` compiles without running and prints `{"ok", "files", "diagnostics": [{"severity", "code", "message", "file", "line", "column", "suggestion"}]}`; exit status 1 when there are errors. Use it after writing code: every message has a code and usually a suggestion that says the fix.
+- `lumen test` runs `fn testSomething()` in files `*_test.lum`; `lumen fmt` formats in place.
+
+## Syntax, the parts that differ from TypeScript and Rust
+
+- Every program has `fn main() -> Int { ...; return 0; }`; the Int is the exit status. Statements end with `;`.
+- `let x = 1;` declares (types are inferred); `let xs: [String] = [];` states one. Reassignment needs no keyword. `i++;` is a statement only.
+- Types: `Int` (48 bits; overflow stops the program), `Float`, `String`, `Bool`, `Void`, `Any`, `[T]`, `T?` (may be null), `(A, B)`, `fn(A) -> B`, `Dict<V>`, `Result<T, E>`.
+- Struct fields end with `;`: `struct Point { x: Int; y: Int; }`. Literal: `Point { x: 1, y: 2 }`. Methods: `impl Point { fn moved(dx: Int) -> Point { return Point { x: self.x + dx, y: self.y }; } }`; `self` is implicit. Structs are references.
+- Enums hold values by position: `enum Shape { Circle(Float), Rect(Float, Float), Empty }`; a value is always written with its enum: `Shape.Circle(1.0)`.
+- `match x { case 0: { ... } case 1 | 2: { ... } case 3..10: { ... } default: { ... } }`. Each case is `case pattern: { block }`, or `case pattern: expression;` where the match gives a value. A match on an enum must cover every variant or have `default`. `case Shape.Rect(w, h) if w == h:` adds a condition. There is no `=>`.
+- `if value is Shape.Circle(r) { ... }` tests one variant and names what it holds.
+- No `?:` operator: `let label = if ok { "yes" } else { "no" };`. A block's last expression without `;` is its value.
+- Loops: `for item in items`, `for i, item in items`, `for i in 0..10` (10 left out), `0..=10`, `while cond`. Loop variables are read-only; write `items[i] = ...`.
+- Functions: `fn add(a: Int, b: Int) -> Int { return a + b; }`, generic `fn first<T>(items: [T]) -> T?`, bounded `<T: Ordered>` after `import std.ops.{Ordered};` (the traits of std.ops: Equal, Ordered, Add, Subtract, Multiply, Divide, Iterable, Indexed, IndexedSet, Show). `return` is required in a function with a block body.
+- Lambdas: `xs.map(x -> x * 2)`, `(a, b) -> a + b`, `() -> run()`, `x -> { ...; }`; the long form `fn(x: Int) -> Int { return x * 2; }` is needed where nothing says the types (`let f = ...`).
+- `value |> f(a)` is `f(value, a)`.
+- Text: `"total ${n} items"`, `"""` for several lines (indentation of the closing `"""` is removed). A character is a String of length 1.
+- Null: `x ?? fallback`, `user?.name`, `if x != null { /* x is not null here */ }`. There is no `x!`.
+- Constants: `const LIMIT = 100;` at the top level only. There are no global variables.
+- Modules: a file is a module. `import std.sh;` then `sh.run(...)`; `import util.text.{shout};`. Only `pub` names are visible from another file.
+- Comments: `//` and `/* */`.
+
+## Methods of the builtin types (no import)
+
+Every array: `len push pop at first last isEmpty contains indexOf find findIndex any all count map filter fold each flatMap sorted sortedBy maxBy minBy reversed take drop slice concat chunks zip groupBy countBy uniqueBy partition sumOf copy without inserted insertAt removeAt swap clear`. `[Int]` also: `sum smallest largest sortedNumbers`. `[String]` also: `join unique sortedTexts`. Texts: `len trim trimStart trimEnd lower upper capitalize split lines words chars contains startsWith endsWith indexOf lastIndexOf substring first last replace repeat padLeft padRight reverse cut count isEmpty isBlank isDigits parseInt parseFloat`. `Int`: `abs min max clamp pow sqrt sign gcd isEven isOdd toFloat toString`. `Float`: `abs min max sqrt pow round floor ceil trunc exp log sin cos tan`. `sorted((a, b) -> a < b)` takes the order; `[Int].sortedNumbers()`, `[String].sortedTexts()` and `sortedBy(x -> rank)` need none; `padLeft(width)` pads with spaces. `sorted`, `reversed`, `take` and the like return new arrays; `push`, `pop`, `insertAt`, `removeAt`, `clear` change the array. Anything else: `impl<T> [T] { fn second() -> T? { return self.at(1); } }`, `impl String { ... }`. `toString(v)` makes any value a text.
+
+## Failures
+
+- A function that can fail returns `Result<T, E>`: `return Result.Ok(value);`, `return Result.Err("why");`. With nothing to return: `Result<Void, E>` and `return Result.Ok();`.
+- `value?` gives the value, or returns the failure from the enclosing function. In `main` it ends the program with the reason (its `describe()` when it has one).
+- `match r { case Result.Ok(v): { ... } case Result.Err(e): { ... } }`; also `r.isOk() r.value() r.reason() r.orElse(x) r.map(f) r.expect("message")`.
+- `panic("message")` stops the program; `attempt(fn() -> T { ... })` (`import std.result.{attempt};`) gives a `Result<T, Failure>` instead; `defer stmt;` runs when the block is left.
+- `?.` does not work on a Result: use `?` or a match.
+
+## Scripts: std.sh
+
+```lumen
+#!/usr/bin/env lumen
+import std.io;
+import std.sh;
+
+fn main() -> Int {
+    let env = io.env("DEPLOY_ENV") ?? "staging";
+    sh.run("composer install --no-interaction");          // output live; failure stops the script
+    let branch = sh.output("git rev-parse --abbrev-ref HEAD");
+    if sh.status("git diff --quiet") != 0 {
+        println("uncommitted changes on ${branch}");
+    }
+    match sh.attempt("composer pint-test") {                  // handle the failure yourself
+        case Result.Ok(_): { println("lint ok"); }
+        case Result.Err(failed): { println("lint failed:", failed.status, failed.err); }
+    }
+    sh.run("make deploy ENV=${env}");                         // a value stays one argument, never parsed by a shell
+    return 0;
+}
+```
+
+- A command is written as typed and split on spaces; `'...'` and `"..."` group words. Each `${value}` stays inside its word whatever it holds. Commands are of type `Template` (no import): `let c: Template = "make ${target}";`, `fn deploy() -> Template { return "..."; }` and struct fields of that type all work. A `String` built elsewhere is refused as a command; for a list use `sh.command("git", ["add"] + files)`.
+- No pipes or globs: `sh.run("sh -c 'cat *.log | grep ERROR'")` when a shell is really wanted.
+- `std.os.run(program, args)` captures everything and never stops: `Result<Output, Error>` with `status`, `out`, `err`.
+
+## Standard library modules (import std.NAME)
+
+io (readFile, writeFile, readLine, env), fs (folders), path, os (args, exit, run), sh, json (`json.parse(text)` gives `Result<Json, ParseError>`; then methods of the value: `data.find("a.b")`, `data.get(key)`, `data.text()`, `data.int()`, `data.stringify()`, `data.pretty()`), http (get, post, to(...).header().send(), router, serve), csv, regex, time (now, sleep, stopwatch, dates), format (duration, bytes, table), dict (`import std.dict.{Dict};`, `dict.empty<Int>()`, `get set has keys`), set, list, random, encoding (base64, hex, url), hash (sha256, hmacSha256), task (run, map, channel), test (equal, ...), reflect, ops (traits, Range, Template). Full reference: docs/stdlib.md.
+
+## Common mistakes
+
+- A trait, type or function of a module used without its import (`Ordered`, `Dict`, `attempt`): `lumen check` names the import to add.
+- Writing `x.length` or `len(x)`: it is `x.len()`. There is no `sort()`: `sorted(...)`, `sortedNumbers()`, `sortedTexts()` or `sortedBy(...)` return a new array, as `reversed()` does.
+- Writing `case X =>` or `case X { }`: it is `case X: { }`.
+- Writing `struct P { x: Int, y: Int }` with commas: fields end with `;`.
+- Writing `Circle(1.0)` instead of `Shape.Circle(1.0)`.
+- Forgetting that `let f = x -> x + 1;` needs the long form or a declared type.
+- Using `cond ? a : b`: use `if cond { a } else { b }`.
+- Building a command as a `String` (`let cmd = "rm ${f}"; sh.run(cmd);`) is refused: declare it `let cmd: Template = "rm ${f}";`.

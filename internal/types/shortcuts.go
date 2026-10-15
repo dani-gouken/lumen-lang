@@ -10,6 +10,10 @@ import (
 const (
 	TryResult   = "result"
 	TryOptional = "optional"
+	// In main, which has no caller to hand a failure to: the program ends
+	// there, saying why. TryEndDescribed when the reason has describe()
+	TryEnd          = "end"
+	TryEndDescribed = "end, described"
 )
 
 // ResultEnum is the enum of the standard library that `value?` knows: a
@@ -93,6 +97,14 @@ func (c *Checker) checkTry(e *ast.UnaryExpr) Type {
 		outer := resultType(returns)
 		switch {
 		case isUnknown(returns):
+		case outer == nil && c.currentFn != nil && c.currentFn.Name == "main" && (returns.Equals(Int) || returns.Equals(Void)):
+			// main has no caller: a failure ends the program, as a panic
+			// does, with the reason as its message
+			c.info.Tries[e] = TryEnd
+			if ft, ok := c.methodType(reason, "describe", nil); ok && len(ft.Params) == 0 && ft.ReturnType.Equals(String) {
+				c.info.Tries[e] = TryEndDescribed
+			}
+			return value
 		case outer == nil:
 			c.errorfWithSuggestion(e.Token(), ErrBadTry,
 				fmt.Sprintf("Make the function return Result<..., %s>, or handle the failure here with a match or orElse", describe(reason)),
@@ -130,4 +142,93 @@ func (c *Checker) checkTry(e *ast.UnaryExpr) Type {
 	c.errorfWithSuggestion(e.Token(), ErrBadTry, "Remove the '?'",
 		"'?' is for a Result or a value that may be null, and this is a %s", describe(operand))
 	return operand
+}
+
+// TemplateStruct is the struct of the standard library that a text written
+// in the program becomes where one is expected: its parts and its values
+// kept apart (see templateOf).
+const TemplateStruct = "std.ops.Template"
+
+// refusedAsTemplate reports a String given where a Template is expected,
+// saying why, and whether it did: the text was made elsewhere, and nothing
+// says any more which of it was written and which was put in.
+func (c *Checker) refusedAsTemplate(expr ast.Expr, expected, actual Type, code string) bool {
+	st, ok := withoutNull(expected).(*StructType)
+	if !ok || st.Name != TemplateStruct || !withoutNull(actual).Equals(String) {
+		return false
+	}
+	c.errorfWithSuggestion(expr.Token(), code,
+		"Write the text here, with ${...} for what changes: what is written in the program and what is put in it are then told apart",
+		"a Template is a text written in the program, and this is a String made elsewhere")
+	return true
+}
+
+// asTemplate replaces a text written in the program, where a Template is
+// expected, with the Template it stands for: its parts and its values
+// apart. It is called wherever a value meets the type it must have: an
+// argument, a variable or a field declared with it, a return, an item of
+// an array. It reports whether it replaced the expression.
+func asTemplate(expr *ast.Expr, expected Type) bool {
+	if *expr == nil {
+		return false
+	}
+	template := templateOf(*expr, expected)
+	if template == nil {
+		return false
+	}
+	*expr = template
+	return true
+}
+
+// templateOf gives, for a text written in the program, with or without
+// ${...} in it, given where a Template is expected, the Template it
+// stands for; nil for anything else. The lexer writes "a ${x} b" as
+// "a " + __text(x) + " b", which is taken apart again here.
+func templateOf(arg ast.Expr, expected Type) ast.Expr {
+	if st, ok := withoutNull(expected).(*StructType); !ok || st.Name != TemplateStruct {
+		return nil
+	}
+	var pieces []ast.Expr
+	var walk func(e ast.Expr) bool
+	walk = func(e ast.Expr) bool {
+		switch e := e.(type) {
+		case *ast.BinaryExpr:
+			return e.Op == "+" && walk(e.Left) && walk(e.Right)
+		case *ast.Literal:
+			pieces = append(pieces, e)
+			return e.Kind == "string"
+		case *ast.CallExpr:
+			pieces = append(pieces, e)
+			return isInterpolation(e)
+		}
+		return false
+	}
+	if !walk(arg) {
+		return nil
+	}
+
+	text := func(value string) *ast.Literal {
+		tok := arg.Token()
+		tok.Literal = value
+		return &ast.Literal{BaseNode: ast.BaseNode{Pos: arg.Position(), Tok: tok}, Kind: "string", Value: value}
+	}
+	parts := []ast.Expr{}
+	values := []ast.Expr{}
+	current := ""
+	for _, piece := range pieces {
+		if lit, ok := piece.(*ast.Literal); ok {
+			current += lit.Value
+			continue
+		}
+		parts = append(parts, text(current))
+		values = append(values, piece)
+		current = ""
+	}
+	parts = append(parts, text(current))
+
+	at := ast.BaseNode{Pos: arg.Position(), Tok: arg.Token()}
+	return &ast.StructInitExpr{BaseNode: at, Name: TemplateStruct, Fields: map[string]ast.Expr{
+		"parts":  &ast.ArrayLiteralExpr{BaseNode: at, Elements: parts},
+		"values": &ast.ArrayLiteralExpr{BaseNode: at, Elements: values},
+	}}
 }

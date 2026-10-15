@@ -1,0 +1,91 @@
+// Running other programs the way a script does: what they write shows as
+// they write it, and one that fails stops the script.
+//
+//     sh.run("composer install --no-interaction");
+//     let branch = sh.output("git rev-parse --abbrev-ref HEAD");
+//     sh.run("git log -n ${count} -- ${file}");
+//
+// A command is written as it would be typed, and split into words where
+// there is space; '...' or "..." keep words together. What ${...} puts in
+// stays in the word it is written in, whatever it holds: a file called
+// "my notes; rm -rf ~" is one argument, and no shell ever reads it. A
+// command made of a list while the script runs is sh.command.
+//
+// A program ending with a status other than 0, or one that cannot be
+// started, stops the program here, naming the command and the status, as
+// `set -e` would in a shell, but saying why. Where a failure is expected,
+// sh.status gives the status instead, and sh.attempt what went wrong.
+//
+// For std.os.run, which keeps everything a program writes and never
+// stops, see std.os.
+
+import std.ops.{Template};
+
+// Runs a program and waits for it. What it writes, and what it writes as
+// errors, goes where the script's does; it reads what the script would.
+pub extern fn run(command: Template);
+
+// Runs a program and gives what it wrote, without the line break at the
+// end. What it writes as errors still shows.
+pub extern fn output(command: Template) -> String;
+
+// Runs a program as run does, and gives its status: 0 says it went well.
+// It stops the program only if the program cannot be started.
+//
+//     if sh.status("git diff --quiet") != 0 { println("there are changes"); }
+pub extern fn status(command: Template) -> Int;
+
+// A program that failed: what attempt gives instead of stopping the script.
+pub struct Failed {
+    command: String;  // as it would be typed
+    status: Int;      // what it ended with; -1 if it could not be started, or was stopped
+    err: String;      // the last lines it wrote as errors, which were shown as well
+    message: String;  // what went wrong, as run would have said it
+}
+
+impl Failed {
+    pub fn describe() -> String {
+        return self.message;
+    }
+}
+
+// Runs a program as run does, and gives what went wrong instead of
+// stopping the script:
+//
+//     match sh.attempt("composer pint-test") {
+//         case Result.Ok(_): { println("✓ pint"); }
+//         case Result.Err(failed): { println("✗ pint, status", failed.status); }
+//     }
+pub fn attempt(command: Template) -> Result<Void, Failed> {
+    let parts = attempted(command);
+
+    if parts[3] == "" {
+        return Result.Ok();
+    }
+
+    return Result.Err(Failed {
+        command: parts[1],
+        status: parts[0].parseInt() ?? -1,
+        err: parts[2],
+        message: parts[3],
+    });
+}
+
+// A command made of a program and its arguments, each of them one word
+// whatever it holds: for a list of arguments made while the script runs.
+//
+//     sh.run(sh.command("git", ["add"] + files));
+pub fn command(program: String, arguments: [String]) -> Template {
+    let parts = [""];
+    let values = [program];
+
+    for argument in arguments {
+        parts.push(" ");
+        values.push(argument);
+    }
+
+    parts.push("");
+    return Template { parts: parts, values: values };
+}
+
+extern fn attempted(command: Template) -> [String];

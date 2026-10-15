@@ -14,7 +14,7 @@ Focus: a small, statically checked core that compiles cleanly to the luvm regist
 - Literals: ints (`123`), floats (`1.0`, `10e3`), strings (`"hi"`), bools, `null`. No char literal in v0. A leading `-` is the unary operator, so `-42` is the negation of `42`.
 - String literals stay on one line and support the escapes `\n \t \r \0 \\ \" \$`.
 - **Interpolation.** `${expr}` inside a string literal is replaced by the text of the expression's value, as `toString` gives it: `"total: ${n} items"`. The expression is any expression, including strings with interpolation of their own, and must close on the same line. The literal is then an expression of type `String`, equal to the concatenation of its parts; the expressions are evaluated left to right, each time the string is. `$` not followed by `{` and `{` not preceded by `$` are ordinary characters; `\$` writes a dollar sign that does not start an interpolation.
-- Comments: `// line`, `/* block */` (non-nested).
+- Comments: `// line`, `/* block */` (non-nested). A first line that starts with `#!` is a comment too, for scripts: `#!/usr/bin/env lumen`.
 
 ## 2. Types
 

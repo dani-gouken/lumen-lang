@@ -1,0 +1,8 @@
+[ERROR] E1001: undefined type 'Ordered'
+Suggestion: 'Ordered' is in std.ops: import std.ops.{Ordered};
+[ERROR] E1001: undefined identifier 'dict'
+Suggestion: 'dict' is a module of the library: import std.dict;
+[ERROR] E1001: undefined type 'Dict'
+Suggestion: 'Dict' is in std.dict: import std.dict.{Dict};
+[ERROR] E1001: undefined identifier 'cuont'
+Suggestion: Did you mean 'count'?

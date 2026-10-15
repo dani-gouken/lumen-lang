@@ -2,9 +2,12 @@ package resolve
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/stdlib"
+	"github.com/dani-gouken/lumen/internal/token"
 )
 
 // Error codes for name resolution
@@ -216,25 +219,13 @@ func (r *Resolver) visitImplDecl(d *ast.ImplDecl) {
 	if sym := r.current.Lookup(d.StructName); sym == nil {
 		// Check if it's a built-in type (e.g. impl MyTrait for Int)
 		if !isBuiltinType(d.StructName) {
-			suggestion := r.findSimilarName(d.StructName)
-			msg := fmt.Sprintf("undefined type '%s'", d.StructName)
-			if suggestion != "" {
-				r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, fmt.Sprintf("Did you mean '%s'?", suggestion), d.Token(), r.sourceLines)
-			} else {
-				r.errs.ReportErrorFromToken(ErrUndefined, msg, d.Token(), r.sourceLines)
-			}
+			r.reportUndefined("undefined type", d.StructName, d.Token())
 		}
 	}
 
 	if d.TraitName != "" {
 		if sym := r.current.Lookup(d.TraitName); sym == nil {
-			suggestion := r.findSimilarName(d.TraitName)
-			msg := fmt.Sprintf("undefined trait '%s'", d.TraitName)
-			if suggestion != "" {
-				r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, fmt.Sprintf("Did you mean '%s'?", suggestion), d.Token(), r.sourceLines)
-			} else {
-				r.errs.ReportErrorFromToken(ErrUndefined, msg, d.Token(), r.sourceLines)
-			}
+			r.reportUndefined("undefined trait", d.TraitName, d.Token())
 		}
 	}
 
@@ -600,13 +591,7 @@ func (r *Resolver) visitFnExpr(e *ast.FnExpr) {
 func (r *Resolver) resolveIdent(id *ast.Ident) {
 	sym := r.current.Lookup(id.Name)
 	if sym == nil {
-		suggestion := r.findSimilarName(id.Name)
-		msg := fmt.Sprintf("undefined identifier '%s'", id.Name)
-		if suggestion != "" {
-			r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, fmt.Sprintf("Did you mean '%s'?", suggestion), id.Token(), r.sourceLines)
-		} else {
-			r.errs.ReportErrorFromToken(ErrUndefined, msg, id.Token(), r.sourceLines)
-		}
+		r.reportUndefined("undefined identifier", id.Name, id.Token())
 		return
 	}
 	r.table.Defs[id] = sym
@@ -623,13 +608,7 @@ func (r *Resolver) visitType(t *ast.Type) {
 		if sym == nil {
 			// Is it a built-in type?
 			if !isBuiltinType(t.Name) {
-				suggestion := r.findSimilarName(t.Name)
-				msg := fmt.Sprintf("undefined type '%s'", t.Name)
-				if suggestion != "" {
-					r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, fmt.Sprintf("Did you mean '%s'?", suggestion), t.Token(), r.sourceLines)
-				} else {
-					r.errs.ReportErrorFromToken(ErrUndefined, msg, t.Token(), r.sourceLines)
-				}
+				r.reportUndefined("undefined type", t.Name, t.Token())
 			}
 		}
 		for _, g := range t.Generics {
@@ -671,6 +650,53 @@ func isBuiltinType(name string) bool {
 }
 
 // findSimilarName finds a similar name in scope using Levenshtein distance.
+// reportUndefined says that a name is not declared, with what usually
+// fixes it: the import that brings it, when the standard library offers
+// it, or a name in scope spelt nearly the same.
+func (r *Resolver) reportUndefined(what, name string, tok token.Token) {
+	msg := fmt.Sprintf("%s '%s'", what, name)
+	suggestion := ""
+	similar := r.findSimilarName(name)
+	// A name the library offers exactly is a surer guess than one spelt
+	// nearly the same, except for a value: a misspelt variable is likelier
+	// than a function of the library called without its module
+	if what == "undefined identifier" && isLibraryModule(name) {
+		suggestion = fmt.Sprintf("'%s' is a module of the library: import %s.%s;", name, stdlib.Package, name)
+	} else if modules := stdlib.Declaring(name); len(modules) > 0 && (what != "undefined identifier" || similar == "") {
+		suggestion = importSuggestion(name, modules)
+	} else if similar != "" {
+		suggestion = fmt.Sprintf("Did you mean '%s'?", similar)
+	}
+	if suggestion != "" {
+		r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, suggestion, tok, r.sourceLines)
+	} else {
+		r.errs.ReportErrorFromToken(ErrUndefined, msg, tok, r.sourceLines)
+	}
+}
+
+// isLibraryModule reports whether a name is that of a module of the
+// library, used without importing it: dict.empty<Int>().
+func isLibraryModule(name string) bool {
+	for _, module := range stdlib.Modules() {
+		if module == stdlib.Package+"."+name {
+			return true
+		}
+	}
+	return false
+}
+
+// importSuggestion names the import that brings a name of the library.
+func importSuggestion(name string, modules []string) string {
+	imports := make([]string, len(modules))
+	for i, module := range modules {
+		imports[i] = fmt.Sprintf("import %s.{%s};", module, name)
+	}
+	if len(imports) == 1 {
+		return fmt.Sprintf("'%s' is in %s: %s", name, modules[0], imports[0])
+	}
+	return fmt.Sprintf("'%s' is in %s: %s", name, strings.Join(modules, ", "), strings.Join(imports, " or "))
+}
+
 func (r *Resolver) findSimilarName(target string) string {
 	bestDist := 1000
 	bestName := ""
@@ -727,6 +753,12 @@ func ClosestName(target string, candidates []string) string {
 		return bestName
 	}
 	return ""
+}
+
+// Distance is how many characters must be inserted, removed or replaced
+// to turn one name into the other.
+func Distance(a, b string) int {
+	return levenshtein(a, b)
 }
 
 // levenshtein computes the Levenshtein distance between two strings.

@@ -33,6 +33,7 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.path`](#stdpath) | Paths taken apart and put together |
 | [`std.fs`](#stdfs) | Folders: listing, walking, creating, copying |
 | [`std.os`](#stdos) | Program arguments, exit, running other programs |
+| [`std.sh`](#stdsh) | Running other programs the way a script does |
 | [`std.format`](#stdformat) | Numbers, sizes, durations and tables written for people |
 | [`std.json`](#stdjson) | Reading, searching and writing JSON |
 | [`std.regex`](#stdregex) | Regular expressions |
@@ -509,7 +510,7 @@ There is no separate `Option` type with `Some` and `None`: `T?` is that type, an
 
 For failures: returning one with its reason, and surviving one that would stop the program. The whole subject is in [errors.md](errors.md); this is the reference.
 
-**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none. The name `Result` needs no import: every file has it, unless it declares a `Result` of its own. The rest of the module (`attempt`, `Failure`, `Kind`) is imported as usual.
+**`Result<T, E>`**: `enum Result<T, E> { Ok(T), Err(E) }`, the value a function produced or the reason there is none. A `Result<Void, E>` is for an action that has nothing to give back: `Result.Ok()` is its success. The name `Result` needs no import: every file has it, unless it declares a `Result` of its own. The rest of the module (`attempt`, `Failure`, `Kind`) is imported as usual.
 
 | Method | Gives |
 |--------|-------|
@@ -748,6 +749,58 @@ An `Output` has `status`, `out`, `err`, and `succeeded()`, `lines()`. A program 
 lumen run todo.lum add "Buy milk" --due=2026-10-20
 lumen run --heap-mb=64 report.lum -- --heap-mb=this-one-is-mine
 lumen run . list                 # a project: name its folder, then the arguments
+```
+
+---
+
+## `std.sh`
+
+Running other programs the way a script does: what they write shows as they write it, and one that fails stops the script, saying which command and with what status. `std.os.run` is for the other cases: it keeps everything a program writes, and a status other than 0 is for the program to look at.
+
+| Function | Result |
+|----------|--------|
+| `run(command)` | Runs a program and waits for it. What it writes, and writes as errors, goes where the script's does; it reads what the script would |
+| `output(command) -> String` | What the program wrote, without the line break at the end. What it writes as errors still shows |
+| `status(command) -> Int` | Runs it as `run` does and gives its status, 0 or not |
+| `attempt(command) -> Result<Void, Failed>` | Runs it as `run` does and, instead of stopping the script, gives what went wrong |
+| `command(program, arguments) -> Template` | A command made of a list, each item one argument: for arguments the script works out as it runs |
+
+```rust
+#!/usr/bin/env lumen
+import std.sh;
+
+fn main() -> Int {
+    sh.run("composer install --no-interaction");
+    let branch = sh.output("git rev-parse --abbrev-ref HEAD");
+
+    if sh.status("git diff --quiet") != 0 {
+        println("${branch} has changes that are not committed");
+    }
+    sh.run("git log -n ${count} -- ${file}");
+    sh.run(sh.command("git", ["add"] + files));
+    return 0;
+}
+```
+
+**A command is written as it would be typed**, and split into words where there is space; `'...'` and `"..."` keep a word together. **What `${...}` puts in stays in its word, whatever it holds**: with `file` being `my notes; rm -rf ~`, `sh.run("rm ${file}")` removes the file of that name and nothing else. No shell ever reads a command, so nothing in a value can become another command, a pipe or a `*`. A command is a [`Template`](#templates): only a text written in the program is one, and a `String` made elsewhere is refused, where it could otherwise have been taken apart as words.
+
+For what only a shell does, pipes or `*`, run one and say so: `sh.run("sh -c 'cat *.log | grep ERROR'")`.
+
+A status other than 0 from `run` or `output`, or a program that cannot be started, stops the program where the call is, as `set -e` would in a shell, but saying why:
+
+```
+[ERROR] R0007: std.sh.run: docker compose exec -T fpm composer pint-test ended with status 1
+  --> check.lum:5:7 in function 'main'
+```
+
+`status` stops only for a program that cannot be started; `attempt` stops for nothing. A `Failed` has `command` (as it would be typed), `status` (`-1` for a program that could not be started), `err` (the last lines it wrote as errors, which were shown as well) and `describe()`, which says it as `run` would have:
+
+```rust
+match sh.attempt("composer pint-test") {
+    case Result.Ok(_): { println("✓ pint"); }
+    case Result.Err(failed): { println("✗ pint, status", failed.status, "\n", failed.err); }
+}
+sh.attempt("make deploy")?;      // in main: ends the program, saying why
 ```
 
 ---
@@ -1007,6 +1060,30 @@ impl Ordered for Version {
 let newest = ops.largest(versions);
 if newest != null && newest > installed { ... }
 ```
+
+### Templates
+
+A `Template` is a text written with `${...}` in it, kept in its pieces: `parts`, what was written around the values (one more than there are values), and `values`, what each `${...}` gave, as text. `text()` puts them together. A function whose parameter is a `Template` gets those, where one taking a `String` would get the text:
+
+```rust
+fn shout(t: Template) -> String { ... }
+shout("hello ${name}, ${count} times");   // parts ["hello ", ", ", " times"], values [name, count]
+```
+
+The function can then tell what the program wrote from what was put in it, which is how [`std.sh`](#stdsh) makes each value one argument of a command, and how a query or a page could escape what is put in them.
+
+A text written in the program becomes a `Template` wherever that is the type it must have: an argument, a variable or a field declared `Template`, a `return` from a function that returns one, an item of a `[Template]`. So a command can be kept, built by a function or carried in a struct:
+
+```rust
+struct Job { name: String; command: Template; }
+
+fn deploy(target: String) -> Template { return "make deploy ENV=${target}"; }
+
+let jobs = [Job { name: "lint", command: "composer pint-test" }, Job { name: "deploy", command: deploy(env) }];
+for job in jobs { sh.run(job.command); }
+```
+
+Like `Result`, the name `Template` needs no import. A `String` made elsewhere is refused where a `Template` is expected, since nothing would then say which of it was written and which was put in. Everywhere else, `"${...}"` is a `String` as always, and `t.text()` turns a `Template` into one.
 
 ---
 
