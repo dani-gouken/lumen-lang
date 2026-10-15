@@ -140,7 +140,7 @@ func TestShowIsHowAValueReads(t *testing.T) {
 12.05 low high by 3
 [12.05] [high by 2] [7] [text] [true] [2.5]
 <12.05> <low> <1> 12.05 + 0.05 a-b 123
-[{cents: 1205}] {n: 1} {n: 2}
+[12.05] {n: 1} {n: 2}
 `)
 }
 
@@ -748,7 +748,7 @@ func TestTraitsAcrossModules(t *testing.T) {
 	}, `19.55 Dune Dune true
 Dune 12.50 costs 12.50 true
 Emma 7.05 costs 7.05 false
-[{cents: 100}, {cents: 300}] 2.00 0.00
+[1.00, 3.00] 2.00 0.00
 `)
 }
 
@@ -790,4 +790,72 @@ func TestMethodsOfBuiltinTypesNeedNoImport(t *testing.T) {
 	if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "arrays") {
 		t.Errorf("expected the module to be unknown without its import, got %v", errs.Diagnostics)
 	}
+}
+
+// A value whose type implements Show is written by its show wherever it
+// is: alone, in an array, in a field, in what an enum or a tuple holds, in
+// a text. A show that fails stops the printing, and nothing of the line is
+// written.
+func TestShowReachesValuesInsideOthers(t *testing.T) {
+	expectOutput(t, `
+		import std.ops.{Show};
+		import std.result.{attempt};
+		import std.dict;
+		import std.dict.{Dict};
+
+		struct Money { cents: Int; }
+		impl Show for Money {
+			fn show() -> String { return "${self.cents / 100}.${self.cents % 100}"; }
+		}
+
+		enum Payment { Card(Money), Cash(Money), Free }
+		impl Show for Payment {
+			fn show() -> String {
+				return match self {
+					case Payment.Card(m): "card ${m}";
+					case Payment.Cash(m): "cash ${m}";
+					case Payment.Free: "free";
+				};
+			}
+		}
+
+		struct Order { id: Int; total: Money; paid: [Payment]; }
+		struct Box<T> { item: T; }
+		impl<T> Show for Box<T> { fn show() -> String { return "box"; } }
+
+		enum Tree { Leaf(Money), Node(Tree, Tree) }
+
+		struct Fussy { n: Int; }
+		impl Show for Fussy {
+			fn show() -> String {
+				if self.n == 0 { panic("nothing to show"); }
+				return "fussy ${self.n}";
+			}
+		}
+	`, `
+		let ten = Money { cents: 1050 };
+		let order = Order { id: 7, total: ten, paid: [Payment.Card(ten), Payment.Free] };
+		let none: Money? = null;
+
+		println([ten, Money { cents: 25 }], [[ten]], [none, ten]);
+		println(order);
+		println(Tree.Node(Tree.Leaf(ten), Tree.Leaf(Money { cents: 199 })), (ten, "ten"));
+		println([Box<Int> { item: 1 }], "in a text: ${[ten]}", toString(order.paid));
+
+		let prices = dict.empty<Money>();
+		prices.set("tea", Money { cents: 350 });
+		println(prices.values(), prices.entries());
+
+		let failed = attempt(fn() -> Int {
+			println("before", [Fussy { n: 1 }, Fussy { n: 0 }]);
+			return 0;
+		});
+		println(failed.reason()?.message ?? "went on", [Fussy { n: 2 }]);
+	`, `[10.50, 0.25] [[10.50]] [null, 10.50]
+{id: 7, paid: [card 10.50, free], total: 10.50}
+Node(Leaf(10.50), Leaf(1.99)) (10.50, "ten")
+[box] in a text: [10.50] [card 10.50, free]
+[3.50] [("tea", 3.50)]
+nothing to show [fussy 2]
+`)
 }

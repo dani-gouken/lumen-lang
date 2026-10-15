@@ -138,6 +138,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	}
 	declareTuples(prog)
 	giveDefaultMethods(prog)
+	giveShowMethods(prog)
 	checkSupported(prog, errs, lines)
 	checkExterns(prog, opts.Hosted, errs, lines)
 	foreign := foreignFunctions(prog, errs, lines)
@@ -273,6 +274,27 @@ func giveDefaultMethods(prog *ast.Program) {
 			given.Pub = true
 			impl.Methods = append(impl.Methods, given)
 		}
+	}
+}
+
+// giveShowMethods gives each type that implements std.ops.Show a method
+// the virtual machine calls to write a value of it found inside another:
+// println([v]) writes what v.show() says, as println(v) does. Programs
+// cannot name the method; the editor, which does not run programs, is
+// not shown it.
+func giveShowMethods(prog *ast.Program) {
+	var template *ast.FnDecl
+	for _, decl := range prog.Decls {
+		impl, ok := decl.(*ast.ImplDecl)
+		if !ok || impl.TraitName != types.TraitShow {
+			continue
+		}
+		if template == nil {
+			src := "impl T { pub fn " + vm.ShowMethod + "() -> String { return self." + types.MethodShow + "(); } }"
+			parsed := parser.Parse(src, "<show>", errors.NewHandler())
+			template = parsed.Decls[0].(*ast.ImplDecl).Methods[0]
+		}
+		impl.Methods = append(impl.Methods, (&ast.Cloner{}).Fn(template))
 	}
 }
 

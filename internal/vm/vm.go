@@ -161,26 +161,29 @@ func (vm *VM) SetOutput(w io.Writer) {
 
 // registerBuiltins registers built-in external functions.
 func (vm *VM) registerBuiltins() {
-	write := func(args []Value, end string) {
+	// The values are all written before anything is: a show that fails
+	// stops the program without half a line
+	write := func(args []Value, end string) error {
+		parts := make([]string, len(args))
 		for i, arg := range args {
-			if i > 0 {
-				fmt.Fprint(vm.out, " ")
+			text, err := vm.format(arg)
+			if err != nil {
+				return err
 			}
-			fmt.Fprint(vm.out, FormatValue(arg))
+			parts[i] = text
 		}
-		fmt.Fprint(vm.out, end)
+		fmt.Fprint(vm.out, strings.Join(parts, " ")+end)
+		return nil
 	}
 
 	// print function
 	vm.RegisterTypedExtern("print", "fn(...any)->void", func(vm *VM, args []Value) (Value, error) {
-		write(args, "")
-		return NewNull(), nil
+		return NewNull(), write(args, "")
 	})
 
 	// println function
 	vm.RegisterTypedExtern("println", "fn(...any)->void", func(vm *VM, args []Value) (Value, error) {
-		write(args, "\n")
-		return NewNull(), nil
+		return NewNull(), write(args, "\n")
 	})
 
 	// panic function: stops the program. The message is written like the
@@ -199,7 +202,11 @@ func (vm *VM) registerBuiltins() {
 		if len(args) != 1 {
 			return NewNull(), fmt.Errorf("toString expects 1 argument, got %d", len(args))
 		}
-		return vm.newString(FormatValue(args[0]))
+		text, err := vm.format(args[0])
+		if err != nil {
+			return NewNull(), err
+		}
+		return vm.newString(text)
 	})
 
 	// __text intrinsic: an expression inside a string, "${value}"
@@ -207,7 +214,11 @@ func (vm *VM) registerBuiltins() {
 		if len(args) != 1 {
 			return NewNull(), fmt.Errorf("__text expects 1 argument, got %d", len(args))
 		}
-		return vm.newString(FormatValue(args[0]))
+		text, err := vm.format(args[0])
+		if err != nil {
+			return NewNull(), err
+		}
+		return vm.newString(text)
 	})
 
 	// __cast intrinsic: `value as Type`. Returns the value if it is what

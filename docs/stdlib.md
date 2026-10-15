@@ -1065,7 +1065,7 @@ The traits that give a struct or an enum the syntax of the builtin types, and wh
 | `Equal` | `equals(other: Self) -> Bool` | `==`, `!=` |
 | `Ordered` | `compare(other: Self) -> Int` | `<`, `<=`, `>`, `>=`; `isBefore`, `isAfter` |
 | `Add`, `Subtract`, `Multiply`, `Divide` | `plus`, `minus`, `times`, `dividedBy` | `+ - * /`, `+=` ... |
-| `Show` | `show() -> String` | What `println`, `toString` and `"${...}"` write |
+| `Show` | `show() -> String` | What `println`, `toString` and `"${...}"` write, for the value alone and wherever it is held: in an array, a field, an enum, a tuple |
 | `Iterable<T>` | `iterate() -> [T]` | `for item in value` |
 | `Indexed<K, V>`, `IndexedSet<K, V>` | `at(key) -> V`, `put(key, value)` | `value[key]`, `value[key] = v;` |
 

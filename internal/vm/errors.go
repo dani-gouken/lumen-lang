@@ -231,6 +231,11 @@ func (vm *VM) callStack() []StackFrame {
 	stack = append(stack, frameAt(vm.chunk, vm.ip, vm.currentFunction))
 	for i := vm.frameCount - 1; i >= 0; i-- {
 		frame := vm.frames[i]
+		if strings.HasSuffix(frame.function.proto.Name, "."+ShowMethod) {
+			// The call the machine made to print a value: the show it calls
+			// and the print that asked for it are what the program wrote
+			continue
+		}
 		stack = append(stack, frameAt(frame.function.chunk, frame.ip, frame.function))
 	}
 	return stack

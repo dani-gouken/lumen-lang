@@ -118,7 +118,8 @@ func (g *Generator) Generate() *vm.Chunk {
 // or to make a value of it (a closure, the function a task runs), or as a
 // method found on a value when the program runs (OpGetMethod): a call of
 // `area` on a value of some type may reach the method `area` of any type,
-// and all of them are kept. Nothing else finds a function by its name.
+// and all of them are kept. The machine finds one more by its name, to
+// print a value of a type that implements Show (vm.ShowMethod).
 //
 // Without a main there is nowhere to start from; everything is kept, and
 // the missing entry point is reported.
@@ -148,6 +149,11 @@ func (g *Generator) reachableFunctions() []*ir.Function {
 			reached[target] = true
 			work = append(work, target)
 		}
+	}
+	// The machine itself calls how a value of a type that implements Show
+	// is written, when it prints one held by another value
+	for _, target := range methods[vm.ShowMethod] {
+		reach(target)
 	}
 	for len(work) > 0 {
 		fn := work[len(work)-1]

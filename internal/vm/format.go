@@ -27,6 +27,10 @@ const maxFormatLength = 1 << 20
 // formatter writes a value, keeping count of the room left.
 type formatter struct {
 	room int
+
+	// show writes a value of a type that says how it is written
+	// (std.ops.Show), if it is one; nil writes every value the same way
+	show func(obj *ObjectObj, v Value) (string, bool)
 }
 
 // elided is written in place of what there is no room left for.
@@ -71,6 +75,11 @@ func (f *formatter) formatValue(v Value, depth int) string {
 			return "{...}"
 		}
 		obj := (*ObjectObj)(ptr)
+		if f.show != nil {
+			if text, ok := f.show(obj, v); ok {
+				return text
+			}
+		}
 		if obj.shape.variant {
 			// Written as it is made, without the enum's name: Rect(3, 4)
 			name := obj.shape.typeName[strings.LastIndex(obj.shape.typeName, ".")+1:]
