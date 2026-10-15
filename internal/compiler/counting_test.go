@@ -274,3 +274,98 @@ failed at 2, at test.lum:164:17 in function 'lambda_6'
 failed at 5, at test.lum:164:17 in function 'lambda_6'
 caught 26
 `
+
+// A loop that includes its end ends at the largest Int, instead of failing
+// to count past it, whether it counts with its variable or with a number
+// of its own, and with continue, break and a position.
+func TestLoopsThatEndAtTheLargestInt(t *testing.T) {
+	out, _, err := runProgram(t, endsProgram)
+	if err != nil {
+		t.Fatalf("the program failed: %v", err)
+	}
+	if out != endsPrinted {
+		t.Errorf("printed\n%s\nexpected\n%s", out, endsPrinted)
+	}
+}
+
+const endsProgram = `import std.arrays;
+
+fn main() -> Int {
+    let top = 140737488355327;
+
+    // Counting with the variable, up to the largest Int
+    let seen: [Int] = [];
+
+    for i in (top - 2)..=top {
+        seen.push(i - top);
+    }
+
+    println(seen);
+
+    // With a counter of its own, the variable kept by functions
+    let kept: [fn() -> Int] = [];
+
+    for i in (top - 1)..=top {
+        kept.push(() -> top - i);
+    }
+
+    println(kept.map(f -> f()));
+
+    // continue on the last number, and with a position
+    let sum = 0;
+
+    for i in (top - 3)..=top {
+        if i == top {
+            continue;
+        }
+
+        sum += top - i;
+    }
+
+    for n, i in (top - 1)..=top {
+        print("${n}:${top - i} ");
+    }
+
+    println("");
+    println("sum", sum);
+
+    // One number, none, and leaving early
+    for i in top..=top {
+        println("only", i == top);
+    }
+
+    for i in top..=(top - 1) {
+        println("never", i);
+    }
+
+    for i in 1..=top {
+        if i > 3 {
+            break;
+        }
+
+        print(i, "");
+    }
+
+    println("");
+
+    // At the smallest Int too, counting down is not what a range does
+    let bottom = -140737488355328;
+    let low: [Int] = [];
+
+    for i in bottom..=(bottom + 2) {
+        low.push(i - bottom);
+    }
+
+    println(low);
+    return 0;
+}
+`
+
+const endsPrinted = `[-2, -1, 0]
+[1, 0]
+0:1 1:0 
+sum 6
+only true
+1 2 3 
+[0, 1, 2]
+`

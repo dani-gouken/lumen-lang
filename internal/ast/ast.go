@@ -555,16 +555,22 @@ type WhileStmt struct {
 
 	// Update, when the desugarer gives one, is run after each iteration,
 	// one ended by `continue` included, before the condition is asked
-	// again: what a loop over numbers counts with. Source has no form of it.
+	// again: what a loop over numbers counts with. It may `break`. Source
+	// has no form of it, nor of a loop without Cond, which runs until it
+	// is left.
 	Update Stmt
 }
 
 func (s *WhileStmt) stmtNode() {}
 func (s *WhileStmt) String() string {
-	if s.Update != nil {
-		return fmt.Sprintf("while %s %s update %s", s.Cond.String(), s.Body.String(), s.Update.String())
+	text := "while " + s.Body.String()
+	if s.Cond != nil {
+		text = fmt.Sprintf("while %s %s", s.Cond.String(), s.Body.String())
 	}
-	return fmt.Sprintf("while %s %s", s.Cond.String(), s.Body.String())
+	if s.Update != nil {
+		text += " update " + s.Update.String()
+	}
+	return text
 }
 
 type ForStmt struct {

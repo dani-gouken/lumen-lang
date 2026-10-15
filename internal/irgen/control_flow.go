@@ -81,25 +81,35 @@ func (fc *FunctionCompiler) compileCondition(cond ast.Expr, holds, fails *ir.Bas
 	fc.builder.CreateBr(fc.compileExpr(cond), holds, fails)
 }
 
-// compileWhileStmt compiles a while loop
+// compileWhileStmt compiles a while loop. One the desugarer made may have
+// no condition, and run until it is left; and it may have an update, run
+// after each iteration and after `continue`, which may `break`.
 func (fc *FunctionCompiler) compileWhileStmt(stmt *ast.WhileStmt) {
-	// Create basic blocks
-	condBlock := fc.builder.NewBlock()
+	// Create basic blocks, the condition's first: the order they are made
+	// in is the order they are laid out in
+	var condBlock *ir.BasicBlock
+	if stmt.Cond != nil {
+		condBlock = fc.builder.NewBlock()
+	}
 	bodyBlock := fc.builder.NewBlock()
 	exitBlock := fc.builder.NewBlock()
 
-	// Jump to condition
-	fc.builder.CreateJmp(condBlock)
-
-	// Condition block
-	fc.builder.SetBlock(condBlock)
-	made := len(fc.builder.Func.Blocks)
-	fc.compileCondition(stmt.Cond, bodyBlock, exitBlock)
-	fc.builder.PlaceBefore(bodyBlock, made)
+	// Where each iteration starts: the condition, if there is one
+	top := bodyBlock
+	if stmt.Cond != nil {
+		top = condBlock
+		fc.builder.CreateJmp(top)
+		fc.builder.SetBlock(top)
+		made := len(fc.builder.Func.Blocks)
+		fc.compileCondition(stmt.Cond, bodyBlock, exitBlock)
+		fc.builder.PlaceBefore(bodyBlock, made)
+	} else {
+		fc.builder.CreateJmp(bodyBlock)
+	}
 
 	// An iteration goes on at the update, if there is one, `continue`
 	// included
-	next := condBlock
+	next := top
 	var updateBlock *ir.BasicBlock
 	if stmt.Update != nil {
 		updateBlock = fc.builder.NewBlock()
@@ -117,16 +127,19 @@ func (fc *FunctionCompiler) compileWhileStmt(stmt *ast.WhileStmt) {
 		fc.builder.CreateJmp(next)
 	}
 
-	// Pop loop context
-	fc.loopStack = fc.loopStack[:len(fc.loopStack)-1]
-
-	// The update comes after the body, which falls into it
+	// The update comes after the body, which falls into it. The loop is
+	// still the one a `break` in it leaves
 	if updateBlock != nil {
 		fc.builder.PlaceLast(updateBlock)
 		fc.builder.SetBlock(updateBlock)
 		fc.compileStmt(stmt.Update)
-		fc.builder.CreateJmp(condBlock)
+		if !fc.blockEndsWithTerminator() {
+			fc.builder.CreateJmp(top)
+		}
 	}
+
+	// Pop loop context
+	fc.loopStack = fc.loopStack[:len(fc.loopStack)-1]
 
 	// Exit block
 	// What follows the loop comes after the loop: it was made first, to

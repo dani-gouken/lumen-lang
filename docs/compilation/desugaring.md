@@ -169,12 +169,27 @@ source has no form of it): it runs after the body and after a `continue`,
 before the condition is asked again. A turn of `for i in 0..n { total += i; }`
 is four instructions: the test, the sum, the increment, the jump back.
 
-Otherwise, and with a position (`for n, i in low..high`), the loop keeps a
-counter of its own and copies it into `i` at the start of each iteration, as
-for arrays: each iteration then has an `i` of its own for the functions made
-in it to keep. The check looks at names only, so a variable of the same name
-inside the body counts too: a loop is never wrongly made to count with `i`,
-and may keep a counter it did not need.
+A range that includes its end, `low..=high`, tests for the last number
+before counting past it, so that a loop can end at the largest Int; the
+first test is made once, before the loop, which has no condition of its own
+(`WhileStmt.Cond` is nil) and is left by the `break` of its update:
+
+```rust
+{
+    let i = low;
+    let __len_N = high;
+    if i <= __len_N {
+        while { body } update { if i == __len_N { break; } i = i + 1; }
+    }
+}
+```
+
+Otherwise, and with a position (`for n, i in low..high`), the loop counts
+with a number of its own, `__iter_N`, the same way, and the body starts with
+`let i = __iter_N;`: each iteration has an `i` of its own for the functions
+made in it to keep. The check looks at names only, so a variable of the same
+name inside the body counts too: a loop is never wrongly made to count with
+`i`, and may keep a counter it did not need.
 
 **Implementation Details**:
 - Generate unique variable names for iterator and length (`__iter_N`, `__len_N`)

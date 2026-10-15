@@ -23,11 +23,30 @@ func TestALoopOverNumbersCountsWithItsVariable(t *testing.T) {
 	}
 }
 
-func TestAnInclusiveLoopCountsWithItsVariable(t *testing.T) {
+// A loop that includes its end tests for the last number before it counts
+// past it: it can end at the largest Int
+func TestAnInclusiveLoopStopsAtItsEndBeforeCountingPastIt(t *testing.T) {
 	out := desugarBody(t, `for i in 1..=5 { print(i); }`)
 
-	if strings.Contains(out, "__iter_") || !strings.Contains(out, "while (i <= __len_") {
-		t.Errorf("expected i to be counted up to the end included, got: %s", out)
+	if strings.Contains(out, "__iter_") {
+		t.Errorf("expected i to be the counter, got: %s", out)
+	}
+	if !before(out, "if (i <= __len_0) { while {", "print(i);") {
+		t.Errorf("expected the first number to be tested once, before the loop, got: %s", out)
+	}
+	if !strings.Contains(out, "update { if (i == __len_0) { break; } (i = (i + 1)); }") {
+		t.Errorf("expected the loop to end at the last number before adding one, got: %s", out)
+	}
+}
+
+func TestAnInclusiveLoopWithACounterStopsTheSameWay(t *testing.T) {
+	out := desugarBody(t, `for i in 1..=5 { let f = () -> i; print(f()); }`)
+
+	if !strings.Contains(out, "update { if (__iter_0 == __len_1) { break; } (__iter_0 = (__iter_0 + 1)); }") {
+		t.Errorf("expected the counter to stop at the last number, got: %s", out)
+	}
+	if !before(out, "let i: Int = __iter_0;", "let f = ") {
+		t.Errorf("expected an i for each iteration, got: %s", out)
 	}
 }
 
@@ -41,7 +60,9 @@ func TestALoopKeepsACounterWhenItsVariableCouldBeToldApart(t *testing.T) {
 	for name, body := range cases {
 		t.Run(name, func(t *testing.T) {
 			out := desugarBody(t, body)
-			if !strings.Contains(out, "__iter_") || strings.Contains(out, "update") {
+			// The counter is copied into an i of the iteration, and
+			// counts after the body
+			if !before(out, "let i: Int = __iter_0;", "update (__iter_0 = (__iter_0 + 1));") {
 				t.Errorf("expected a counter of its own, got: %s", out)
 			}
 		})

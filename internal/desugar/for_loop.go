@@ -240,109 +240,86 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 // becomes
 //
 //	{
-//	  let __iter_N: Int = low;
-//	  let __len_N: Int = high;
-//	  while __iter_N < __len_N {       // <= for low..=high
-//	    let i: Int = __iter_N;
-//	    __iter_N = __iter_N + 1;
-//	    body
-//	  }
-//	}
-//
-// Both ends are worked out once, before the first iteration. With a
-// position, `for n, i in low..high`, n is how far i is from where it began.
-//
-// A body that leaves i as it is, and lets no function keep it, cannot tell
-// i from the number the loop counts with: the loop then counts with i
-// itself, and adds one after each iteration, `continue` or not:
-//
-//	{
 //	  let i: Int = low;
 //	  let __len_N: Int = high;
 //	  while i < __len_N { body } update { i = i + 1; }
 //	}
+//
+// The update runs after each iteration, one ended by `continue` included.
+// Both ends are worked out once, before the first iteration.
+//
+// A loop that includes its end tests for the last number before counting
+// past it, so that it can end at the largest Int:
+//
+//	{
+//	  let i: Int = low;
+//	  let __len_N: Int = high;
+//	  if i <= __len_N {
+//	    while { body } update { if i == __len_N { break; } i = i + 1; }
+//	  }
+//	}
+//
+// The loop counts with i itself when the body cannot tell the two apart:
+// when no function made in it, and no deferred statement, reads i. Other
+// loops count with a number of their own, __iter_N, and the body starts
+// with `let i: Int = __iter_N;`, an i for each iteration. So does a loop
+// with a position, `for n, i in low..high`, where n is how far i is from
+// where it began.
 func (d *Desugarer) desugarRangeLoop(forStmt *ast.ForStmt, numbers *ast.RangeExpr) ast.Stmt {
 	pos := forStmt.Position()
 	at := ast.BaseNode{Pos: pos}
 	intType := func() *ast.Type { return &ast.Type{BaseNode: at, Kind: ast.TypeBasic, Name: "Int"} }
-
-	if forStmt.Index == nil {
-		body := d.desugarBlockStmt(forStmt.Body)
-		if !changesOrKeeps(body, forStmt.Var) {
-			return d.countWith(forStmt, numbers, body)
-		}
+	assign := func(name string, value ast.Expr) ast.Stmt {
+		return &ast.ExprStmt{BaseNode: at, Expr: &ast.BinaryExpr{BaseNode: at, Left: d.createIdent(name, pos), Op: "=", Right: value}}
 	}
 
-	iterVar, endVar := d.generateIterVar(), d.generateLenVar()
-	iter := func() ast.Expr { return d.createIdent(iterVar, pos) }
+	body := d.desugarBlockStmt(forStmt.Body)
+	counter := forStmt.Var
+	ownCounter := forStmt.Index != nil || changesOrKeeps(body, forStmt.Var)
+	if ownCounter {
+		counter = d.generateIterVar()
+	}
+	endVar := d.generateLenVar()
+	count := func() ast.Expr { return d.createIdent(counter, pos) }
+	end := func() ast.Expr { return d.createIdent(endVar, pos) }
 
 	stmts := []ast.Stmt{
-		&ast.LetStmt{BaseNode: at, Name: iterVar, Type: intType(), Value: d.desugarExpr(numbers.Low)},
+		&ast.LetStmt{BaseNode: at, Name: counter, Type: intType(), Value: d.desugarExpr(numbers.Low)},
 		&ast.LetStmt{BaseNode: at, Name: endVar, Type: intType(), Value: d.desugarExpr(numbers.High)},
 	}
-
-	body := []ast.Stmt{&ast.LetStmt{BaseNode: at, Name: forStmt.Var, Type: intType(), Value: iter()}}
-	if forStmt.Index != nil {
-		startVar := d.generateTmpVar()
-		stmts = append(stmts, &ast.LetStmt{BaseNode: at, Name: startVar, Type: intType(), Value: iter()})
-		body = append(body, &ast.LetStmt{
-			BaseNode: forStmt.Index.BaseNode,
-			Name:     forStmt.Index.Name,
-			Type:     intType(),
-			Value:    d.createBinaryExpr(iter(), "-", d.createIdent(startVar, pos), pos),
-		})
+	if ownCounter {
+		head := []ast.Stmt{&ast.LetStmt{BaseNode: at, Name: forStmt.Var, Type: intType(), Value: count()}}
+		if forStmt.Index != nil {
+			startVar := d.generateTmpVar()
+			stmts = append(stmts, &ast.LetStmt{BaseNode: at, Name: startVar, Type: intType(), Value: count()})
+			head = append(head, &ast.LetStmt{
+				BaseNode: forStmt.Index.BaseNode,
+				Name:     forStmt.Index.Name,
+				Type:     intType(),
+				Value:    d.createBinaryExpr(count(), "-", d.createIdent(startVar, pos), pos),
+			})
+		}
+		body = &ast.BlockStmt{BaseNode: body.BaseNode, Stmts: append(head, body.Stmts...)}
 	}
-	// The increment comes before the body so that `continue` cannot skip it
-	body = append(body, &ast.ExprStmt{BaseNode: at, Expr: &ast.BinaryExpr{
-		BaseNode: at,
-		Left:     iter(),
-		Op:       "=",
-		Right:    d.createBinaryExpr(iter(), "+", d.createIntLiteral("1", pos), pos),
-	}})
-	body = append(body, d.desugarBlockStmt(forStmt.Body).Stmts...)
+	step := assign(counter, d.createBinaryExpr(count(), "+", d.createIntLiteral("1", pos), pos))
 
-	before := "<"
 	if numbers.Inclusive {
-		before = "<="
+		last := &ast.IfStmt{
+			BaseNode: at,
+			Cond:     d.createBinaryExpr(count(), "==", end(), pos),
+			Then:     &ast.BlockStmt{BaseNode: at, Stmts: []ast.Stmt{&ast.BreakStmt{BaseNode: at}}},
+		}
+		loop := &ast.WhileStmt{BaseNode: at, Body: body, Update: &ast.BlockStmt{BaseNode: at, Stmts: []ast.Stmt{last, step}}}
+		stmts = append(stmts, &ast.IfStmt{
+			BaseNode: at,
+			Cond:     d.createBinaryExpr(count(), "<=", end(), pos),
+			Then:     &ast.BlockStmt{BaseNode: at, Stmts: []ast.Stmt{loop}},
+		})
+	} else {
+		stmts = append(stmts, &ast.WhileStmt{BaseNode: at, Cond: d.createBinaryExpr(count(), "<", end(), pos), Body: body, Update: step})
 	}
-	stmts = append(stmts, &ast.WhileStmt{
-		BaseNode: at,
-		Cond:     d.createBinaryExpr(iter(), before, d.createIdent(endVar, pos), pos),
-		Body:     &ast.BlockStmt{BaseNode: at, Stmts: body},
-	})
 
 	block := d.wrapInBlock(stmts, pos)
-	d.info.Mapping[forStmt] = block
-	return block
-}
-
-// countWith is a loop over numbers that counts with its variable.
-func (d *Desugarer) countWith(forStmt *ast.ForStmt, numbers *ast.RangeExpr, body *ast.BlockStmt) ast.Stmt {
-	pos := forStmt.Position()
-	at := ast.BaseNode{Pos: pos}
-	intType := func() *ast.Type { return &ast.Type{BaseNode: at, Kind: ast.TypeBasic, Name: "Int"} }
-	endVar := d.generateLenVar()
-	variable := func() ast.Expr { return d.createIdent(forStmt.Var, pos) }
-
-	before := "<"
-	if numbers.Inclusive {
-		before = "<="
-	}
-	block := d.wrapInBlock([]ast.Stmt{
-		&ast.LetStmt{BaseNode: at, Name: forStmt.Var, Type: intType(), Value: d.desugarExpr(numbers.Low)},
-		&ast.LetStmt{BaseNode: at, Name: endVar, Type: intType(), Value: d.desugarExpr(numbers.High)},
-		&ast.WhileStmt{
-			BaseNode: at,
-			Cond:     d.createBinaryExpr(variable(), before, d.createIdent(endVar, pos), pos),
-			Body:     body,
-			Update: &ast.ExprStmt{BaseNode: at, Expr: &ast.BinaryExpr{
-				BaseNode: at,
-				Left:     variable(),
-				Op:       "=",
-				Right:    d.createBinaryExpr(variable(), "+", d.createIntLiteral("1", pos), pos),
-			}},
-		},
-	}, pos)
 	d.info.Mapping[forStmt] = block
 	return block
 }
