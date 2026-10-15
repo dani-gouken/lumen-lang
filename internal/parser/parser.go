@@ -49,6 +49,10 @@ type Parser struct {
 	// How many names were made up so far, for those to differ
 	made int
 
+	// The expression about to be read is what is between the brackets
+	// of an index, where a range may leave out its end: items[1..]
+	openRange bool
+
 	// The statements that follow the one just parsed, when it is short for
 	// several (`let (a, b) = pair;`)
 	pendingStmts []ast.Stmt
@@ -1518,6 +1522,8 @@ func (p *Parser) pipeInto(value, target ast.Expr, pipe token.Token) ast.Expr {
 }
 
 func (p *Parser) parseExpr() ast.Expr {
+	open := p.openRange
+	p.openRange = false
 	left := p.parseBinary(1)
 
 	// low..high and low..=high: looser than every operator, so that
@@ -1525,6 +1531,14 @@ func (p *Parser) parseExpr() ast.Expr {
 	if tok := p.cur(); tok.Type == token.DOTDOT || tok.Type == token.DOTDOT_EQ {
 		p.next()
 		p.keptRanges++
+		if open && tok.Type == token.DOTDOT && p.at(token.RBRACKET) {
+			// items[1..]: up to the end
+			return &ast.RangeExpr{BaseNode: base(tok), Low: left, High: p.rangeEnd(p.cur()), Inclusive: false}
+		}
+		if p.at(token.RBRACKET) || p.at(token.RPAREN) || p.at(token.SEMICOLON) || p.at(token.COMMA) {
+			p.failWith(ErrUnexpectedToken, "Only a range between the brackets of an index may leave out its end: items[1..]",
+				"a range needs its end here, found %s", describe(p.cur()))
+		}
 		return &ast.RangeExpr{BaseNode: base(tok), Low: left, High: p.parseBinary(1), Inclusive: tok.Type == token.DOTDOT_EQ}
 	}
 
@@ -1745,7 +1759,7 @@ func (p *Parser) parsePostfixOp(expr ast.Expr) (ast.Expr, bool) {
 		return call, true
 	case token.LBRACKET:
 		p.next()
-		index := p.parseNestedExpr()
+		index := p.parseIndex()
 		p.expect(token.RBRACKET, "']'")
 		return &ast.IndexExpr{BaseNode: base(tok), Expr: expr, Index: index}, true
 	case token.DOT:
@@ -1776,6 +1790,41 @@ func (p *Parser) parsePostfixOp(expr ast.Expr) (ast.Expr, bool) {
 	}
 	return expr, false
 }
+
+// parseIndex parses what is between the brackets of an index: a value,
+// or a range, which may leave out where it starts or where it ends.
+//
+//	items[2]        an item
+//	items[1..3]     the items at 1 and 2
+//	items[1..]      from 1 to the end
+//	items[..2]      the first two
+func (p *Parser) parseIndex() ast.Expr {
+	if tok := p.cur(); tok.Type == token.DOTDOT || tok.Type == token.DOTDOT_EQ {
+		p.next()
+		p.keptRanges++
+		low := &ast.Literal{BaseNode: base(tok), Kind: "int", Value: "0"}
+		low.Tok.Type, low.Tok.Literal = token.INT, "0"
+		saved, savedOr := p.noStructLit, p.noBitOr
+		p.noStructLit, p.noBitOr = false, false
+		high := p.parseBinary(1)
+		p.noStructLit, p.noBitOr = saved, savedOr
+		return &ast.RangeExpr{BaseNode: base(tok), Low: low, High: high, Inclusive: tok.Type == token.DOTDOT_EQ}
+	}
+	p.openRange = true
+	return p.parseNestedExpr()
+}
+
+// rangeEnd is the end of a range that leaves it out, items[1..]: the
+// largest Int, past the end of any array or text.
+func (p *Parser) rangeEnd(at token.Token) ast.Expr {
+	end := &ast.Literal{BaseNode: base(at), Kind: "int", Value: RangeEnd}
+	end.Tok.Type, end.Tok.Literal = token.INT, RangeEnd
+	return end
+}
+
+// RangeEnd is the end given to a range written without one, items[1..]:
+// the largest Int there is.
+const RangeEnd = "140737488355327"
 
 func (p *Parser) parseExprList(end token.TokenType) []ast.Expr {
 	var list []ast.Expr

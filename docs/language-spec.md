@@ -101,6 +101,7 @@ Full description: [enums.md](enums.md).
   - Equality: any type → `Bool`.
   - Null-coalescing `a ?? b`: `a: T?`, `b: T|T?`, result `T`.
 - Member/index: `user.name`, `items[0]` (`Int` index; OOB is runtime error). Indexing a string yields a one-character string.
+- Slice: a range as the index of an array or a string gives a new array or string of the items or characters at the positions the range goes through: `items[1..3]`, `items[1..=3]`, `items[(0..9).step(3)]`, or any value of type `Range`. Between the brackets a range may leave out its start (`items[..2]`, from 0) or its end (`items[1..]`, to the end). Positions outside the collection are left out rather than failing. A slice is not assignable (`E2006`). A range without its end anywhere else is a syntax error.
 - Length: `items.len()` and `text.len()` (or `items.len()`, `text.len()`) give the number of elements of an array and of characters of a string. `items.length` is an error (`E2033`) that says what to write.
 - Methods on builtin types: `impl String { ... }`, `impl Int`, `impl Float`, `impl Bool` give the type methods; `impl<T> [T] { ... }` gives them to every array, `T` being the type of its items, and `impl [Name] { ... }` to the arrays of one named type, which are looked at first. `self` is the value. The call is decided when the program is compiled; through a trait (`impl Trait for String`, `impl<T> Trait for [T]`) it is found when the program runs. `std.arrays`, `std.strings` and `std.math` declare such methods for everything they do to an array, a text or a number. These three modules are part of every program that calls one of their methods, without an import; the functions the methods are made of are private to them. A call of such a method is compiled as a call of that function, for the types it is used with.
 - Safe access `a?.b`, `a?.m(args)`: `a: T?`; null when `a` is null, otherwise the rest of the postfix chain applied to `a` as a `T` (`a?.b.c` reads `c` only when `a` is not null). The result is optional. An error (`E2035`) when `a` cannot be null.
@@ -329,6 +330,7 @@ known defects are inventoried in [missing.md](missing.md).
 | `Int`, `Float`, `Bool`, `String`, `null` | Supported | Ints are 48-bit signed; overflow is a runtime error |
 | Arithmetic, comparison, `!`, unary `-` | Supported | An Int with a Float is a Float; strings compare by content |
 | String concatenation, indexing | Supported | Length is `text.len()`; for an array, `items.len()` |
+| Slices: `items[1..3]`, `items[1..]`, `items[..2]` | Supported | Arrays and strings; any `Range` as the index |
 | String interpolation: `"total: ${n}"` | Supported | Any expression; `\$` for a literal dollar before a brace |
 | `let`, `const`, assignment, `+=` and `++`, block scopes | Supported | `++`/`--` are statements |
 | `if`/`else`, `while`, `for in`, `break`, `continue` | Supported | `for in` over arrays and strings, optionally with the index |

@@ -252,6 +252,11 @@ func (vm *VM) registerBuiltins() {
 		return NewBool(typ.mismatch(args[0]) == ""), nil
 	})
 
+	// __slice: items[1..3], the part of an array or a text a range takes
+	vm.RegisterTypedExtern("__slice", "fn(any,int,int,bool,int)->any", func(vm *VM, args []Value) (Value, error) {
+		return vm.slice(args)
+	})
+
 	// push function: appends a value to an array
 	vm.RegisterTypedExtern("__push", "fn(any,any)->void", func(vm *VM, args []Value) (Value, error) {
 		if len(args) != 2 {

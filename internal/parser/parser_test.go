@@ -1860,3 +1860,48 @@ func TestParseImplForArrays(t *testing.T) {
 		}
 	}
 }
+
+// Between the brackets of an index a range may leave out where it starts,
+// which is then 0, or where it ends, which is then the largest Int.
+func TestParseIndexRanges(t *testing.T) {
+	tests := []struct {
+		src  string
+		want string
+	}{
+		{"a[1..3]", "a[(1..3)]"},
+		{"a[1..=3]", "a[(1..=3)]"},
+		{"a[1..]", "a[(1.." + RangeEnd + ")]"},
+		{"a[..2]", "a[(0..2)]"},
+		{"a[..=2]", "a[(0..=2)]"},
+		{"a[n - 1..]", "a[((n - 1).." + RangeEnd + ")]"},
+		{"a[..n + 1]", "a[(0..(n + 1))]"},
+		{"a[i..][..2]", "a[(i.." + RangeEnd + ")][(0..2)]"},
+		{"a[f(b[1..])..]", "a[(f(b[(1.." + RangeEnd + ")]).." + RangeEnd + ")]"},
+		{"a[(b ? 1 : 2)..]", "a[((if b 1 else 2).." + RangeEnd + ")]"},
+		{"a[r]", "a[r]"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			if got := parseExprString(t, tt.src); got != tt.want {
+				t.Errorf("expected %s, got %s", tt.want, got)
+			}
+		})
+	}
+}
+
+// Anywhere else, a range without its end is a mistake that says where
+// one can be left out.
+func TestParseRangeWithoutEnd(t *testing.T) {
+	for _, src := range []string{"let r = [1..];", "f(1..);", "let r = 1..;", "let p = (1.., 2);", "let a = [1..=];"} {
+		t.Run(src, func(t *testing.T) {
+			errs := errors.NewHandler()
+			Parse("fn main() -> Void {\n"+src+"\n}", "test.lum", errs)
+			if !errs.HasErrors() {
+				t.Fatal("expected an error")
+			}
+			if d := errs.Diagnostics[0]; !strings.Contains(d.Message, "a range needs its end here") || !strings.Contains(d.Suggestion, "items[1..]") {
+				t.Errorf("got %s (%s)", d.Message, d.Suggestion)
+			}
+		})
+	}
+}

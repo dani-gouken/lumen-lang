@@ -137,6 +137,7 @@ An `Int` holds 48 bits, from -140737488355328 to 140737488355327. Arithmetic tha
 let s = "foo" + "bar";      // concatenation
 s.len()              // 6
 s[0]                        // "f" (a one-character string)
+s[1..3]                     // "oo": characters, like the parts of an array
 s == "foobar"               // compared by content
 "a" < "b"                   // ordered
 toString(42) + "!"          // convert other values first
@@ -401,6 +402,19 @@ xs[0] = 11;                 // replace an element
 xs.push(40);               // grow
 xs.len()                    // 4
 ```
+
+A range between the brackets takes a part of the array, as a new array. It may leave out where it starts or where it ends:
+
+```rust
+let xs = [10, 20, 30, 40, 50];
+xs[1..3]                    // [20, 30]: from 1, up to 3 left out
+xs[1..=3]                   // [20, 30, 40]
+xs[2..]                     // [30, 40, 50]: to the end
+xs[..2]                     // [10, 20]: the first two
+xs[(0..5).step(2)]          // [10, 30, 50]: a range kept as a value works too
+```
+
+Positions outside the array are left out, so `xs[3..10]` is the last two and `xs[9..]` is empty. Texts are taken apart the same way, by characters: `"déjà vu"[..4]` is `"déjà"`. A part cannot be assigned to: `xs[0..2] = ...` is an error.
 
 What is done to an array is a method of it: see [Methods on arrays, texts and numbers](#methods-on-arrays-texts-and-numbers), and [`std.arrays`](stdlib.md#stdarrays) for all of them.
 

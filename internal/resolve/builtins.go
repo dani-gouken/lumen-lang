@@ -11,6 +11,10 @@ const LengthFunction = "__len"
 // The method `push` of arrays is written with it.
 const PushFunction = "__push"
 
+// SliceFunction is the builtin that takes a part of an array or of a
+// text: what items[1..3] is made of, with what the range is made of.
+const SliceFunction = "__slice"
+
 // ConstantPrefix starts the name of the function that makes the value of
 // a constant that is a struct, an array or a value of an enum. No program
 // writes such a function: the compiler does, one for each of those
@@ -67,6 +71,19 @@ func Builtins() []*ast.FnDecl {
 				{Name: "value", Type: basic("Any")},
 			},
 			ReturnType: basic("Void"),
+		},
+		// The items of an array, or the characters of a text, at the
+		// positions a range goes through: items[1..3]
+		{
+			Name: SliceFunction,
+			Params: []*ast.Param{
+				{Name: "collection", Type: basic("Any")},
+				{Name: "from", Type: basic("Int")},
+				{Name: "to", Type: basic("Int")},
+				{Name: "inclusive", Type: basic("Bool")},
+				{Name: "by", Type: basic("Int")},
+			},
+			ReturnType: basic("Any"),
 		},
 	}
 }

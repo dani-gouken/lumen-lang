@@ -522,6 +522,12 @@ func (c *Checker) checkAssignment(e *ast.BinaryExpr) Type {
 	} else {
 		c.checkNotInConst(e.Left)
 		left = c.declaredTargetType(e.Left)
+		if index, ok := e.Left.(*ast.IndexExpr); ok && IsRange(c.info.Types[index.Index]) {
+			c.errorfWithSuggestion(e.Token(), ErrInvalidOperation,
+				"Assign the items one at a time, or make the whole anew: items = items[..1].concat(more).concat(items[3..])",
+				"a part of an array or a text cannot be assigned to")
+			left = nil
+		}
 		if member, ok := e.Left.(*ast.MemberExpr); ok {
 			if _, byPosition := ast.TupleIndex(member.Name); byPosition && left != nil && !isUnknown(left) {
 				c.errorfWithSuggestion(e.Token(), ErrAssignToConst,
@@ -1632,6 +1638,17 @@ func (c *Checker) checkIndexExpr(e *ast.IndexExpr) Type {
 	}
 
 	index := c.checkExpr(e.Index)
+	if IsRange(index) {
+		// items[1..3]: the items at those positions, of the same type
+		switch t := recv.(type) {
+		case *ArrayType:
+			return t
+		case *PrimitiveType:
+			if t.Equals(String) || isUnknown(t) {
+				return t
+			}
+		}
+	}
 	if index != nil && !index.Equals(Int) && !isUnknown(index) {
 		c.errorfWithSuggestion(e.Index.Token(), ErrTypeMismatch, "Use an Int as index", "index must be int, got %s", index)
 	}
@@ -1664,6 +1681,16 @@ func (c *Checker) checkIndexExpr(e *ast.IndexExpr) Type {
 	}
 	c.errorf(e.Token(), ErrInvalidOperation, "type %s cannot be indexed", recv)
 	return Unknown
+}
+
+// RangeStruct is the struct a range kept as a value is.
+const RangeStruct = "std.ops.Range"
+
+// IsRange reports whether a type is that of a range kept as a value,
+// 1..3, which between the brackets of an array or a text takes a part of it.
+func IsRange(t Type) bool {
+	st, ok := t.(*StructType)
+	return ok && st.Name == RangeStruct
 }
 
 // checkFnExpr types an anonymous function and checks its body.

@@ -639,6 +639,17 @@ func (fc *FunctionCompiler) compileIndexExpr(expr *ast.IndexExpr) *ir.Register {
 	index := fc.compileExpr(expr.Index)
 	fc.setPos(expr)
 
+	if types.IsRange(fc.gen.typeInfo.Types[expr.Index]) {
+		// items[1..3]: a part of the array or the text, made by the
+		// builtin from what the range is made of
+		args := []ir.Value{arr}
+		for _, field := range []string{"from", "to", "inclusive", "by"} {
+			args = append(args, fc.builder.CreateGetField(index, field))
+		}
+		fn := fc.builder.CreateMov(ir.Constant{Val: resolve.SliceFunction, Type: "FuncRef"})
+		return fc.builder.CreateCall(fn, args...)
+	}
+
 	dest := fc.builder.NewRegister()
 	fc.builder.Emit(ir.OpGetIndex, dest, arr, index)
 	return dest

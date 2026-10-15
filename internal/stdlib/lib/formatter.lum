@@ -1720,12 +1720,47 @@ impl Parser {
         return target;
     }
 
+    // What is between the brackets of an index: a value, or a range that
+    // may leave out where it starts or where it ends, items[1..], items[..2].
+    fn index() -> Doc {
+        if self.is("..") || self.is("..=") {
+            let dots = self.take();
+            let high = self.nestedBinary();
+            self.shape = Shape.Plain;
+            self.chained = false;
+            return layout.concat([dots, high]);
+        }
+
+        return self.nested();
+    }
+
+    // An expression without a range or a choice at its top, inside
+    // delimiters.
+    fn nestedBinary() -> Doc {
+        let plain = self.plain;
+        let patterns = self.patterns;
+        self.plain = false;
+        self.patterns = false;
+        let doc = self.binary(1);
+        self.plain = plain;
+        self.patterns = patterns;
+        return doc;
+    }
+
     fn expression() -> Doc {
         let low = self.binary(1);
 
         // low..high: looser than every operator
         if self.is("..") || self.is("..=") {
             let dots = self.take();
+
+            if self.is("]") {
+                // items[1..]: to the end
+                self.shape = Shape.Plain;
+                self.chained = false;
+                return layout.concat([low, dots]);
+            }
+
             let high = self.binary(1);
             self.shape = Shape.Plain;
             self.chained = false;
@@ -1953,7 +1988,7 @@ impl Parser {
             if token.text == "(" {
                 piece = self.arguments();
             } else if token.text == "[" {
-                piece = layout.concat([self.take(), self.nested(), self.expect("]")]);
+                piece = layout.concat([self.take(), self.index(), self.expect("]")]);
             } else if token.text == "?" && !self.choiceAhead() {
                 piece = self.take();
 
