@@ -10,6 +10,7 @@ import (
 	"unsafe"
 
 	"os/signal"
+	"runtime/pprof"
 	"time"
 
 	"github.com/dani-gouken/lumen/internal/asm"
@@ -34,10 +35,36 @@ var (
 	maxDepth = 0
 )
 
+// Where --cpuprofile writes what the processor was doing, for go tool pprof
+var cpuProfile = ""
+
+// startProfile begins recording for --cpuprofile, if it was given.
+func startProfile() {
+	if cpuProfile == "" {
+		return
+	}
+	file, err := os.Create(cpuProfile)
+	if err != nil {
+		fatal(err)
+	}
+	if err := pprof.StartCPUProfile(file); err != nil {
+		fatal(err)
+	}
+}
+
+// exit ends the process, with the profile written out first: os.Exit
+// does not wait for anything.
+func exit(code int) {
+	if cpuProfile != "" {
+		pprof.StopCPUProfile()
+	}
+	os.Exit(code)
+}
+
 // fatal prints an error and ends the process.
 func fatal(err error) {
 	fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-	os.Exit(1)
+	exit(1)
 }
 
 // sourceFile returns the .lum file a command should compile. arg is what
@@ -61,7 +88,7 @@ func sourceFile(arg, usage string) string {
 	if cfg == nil {
 		if arg == "" {
 			fmt.Println(usage)
-			os.Exit(1)
+			exit(1)
 		}
 		fatal(fmt.Errorf("%s is a folder without a %s; name a .lum file, or add a project file with an \"entry\"", arg, project.FileName))
 	}
@@ -114,7 +141,7 @@ func parseOptions(args []string) []string {
 		if arg == "--" && afterFile {
 			return append(rest, args[i+1:]...)
 		}
-		isOurs := name == "--heap-mb" || name == "--max-depth" || arg == "--strip"
+		isOurs := name == "--heap-mb" || name == "--max-depth" || name == "--cpuprofile" || arg == "--strip"
 		// fmt and test have options of their own, which they read themselves
 		ofTool := len(rest) >= 2 && (rest[1] == "fmt" || rest[1] == "test")
 		if !strings.HasPrefix(arg, "--") || ((afterFile || ofTool) && !isOurs) {
@@ -125,11 +152,19 @@ func parseOptions(args []string) []string {
 			strip = true
 			continue
 		}
+		if name == "--cpuprofile" {
+			if !isOption || value == "" {
+				fmt.Fprintf(os.Stderr, "Error: option --cpuprofile needs a file, as in --cpuprofile=cpu.prof\n")
+				exit(1)
+			}
+			cpuProfile = value
+			continue
+		}
 
 		n, err := strconv.Atoi(value)
 		if !isOption || err != nil || n <= 0 {
 			fmt.Fprintf(os.Stderr, "Error: option %s needs a positive number, as in %s=64\n", name, name)
-			os.Exit(1)
+			exit(1)
 		}
 		switch name {
 		case "--heap-mb":
@@ -138,7 +173,7 @@ func parseOptions(args []string) []string {
 			maxDepth = n
 		default:
 			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n", name)
-			os.Exit(1)
+			exit(1)
 		}
 	}
 	return rest
@@ -175,6 +210,8 @@ func init() {
 
 func main() {
 	os.Args = parseOptions(os.Args)
+	startProfile()
+	defer pprof.StopCPUProfile()
 	if len(os.Args) < 2 {
 		printHelp()
 		return
@@ -196,7 +233,7 @@ func main() {
 			cmdBuild(sourceFile(os.Args[2], usage), os.Args[3])
 		default:
 			fmt.Println(usage)
-			os.Exit(1)
+			exit(1)
 		}
 
 	case "ir":
@@ -217,28 +254,28 @@ func main() {
 	case "asm":
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: lumen asm <input.lasm> <output.lc>")
-			os.Exit(1)
+			exit(1)
 		}
 		cmdAssemble(os.Args[2], os.Args[3])
 
 	case "disasm":
 		if len(os.Args) < 4 {
 			fmt.Println("Usage: lumen disasm <input.lc> <output.lasm>")
-			os.Exit(1)
+			exit(1)
 		}
 		cmdDisassemble(os.Args[2], os.Args[3])
 
 	case "exec":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: lumen exec <file.lc>")
-			os.Exit(1)
+			exit(1)
 		}
 		cmdExecute(os.Args[2])
 
 	case "runasm":
 		if len(os.Args) < 3 {
 			fmt.Println("Usage: lumen runasm <file.lasm>")
-			os.Exit(1)
+			exit(1)
 		}
 		cmdRunAsm(os.Args[2])
 
@@ -248,7 +285,7 @@ func main() {
 	default:
 		fmt.Printf("Unknown command: %s\n", command)
 		printHelp()
-		os.Exit(1)
+		exit(1)
 	}
 }
 
@@ -273,6 +310,7 @@ func printHelp() {
 	fmt.Println("Options for commands that execute a program:")
 	fmt.Println("  --heap-mb=N                Memory the program may use, in MB (default 256)")
 	fmt.Println("  --max-depth=N              How deep calls may nest (default 10000)")
+	fmt.Println("  --cpuprofile=FILE          Write where the time went, for go tool pprof")
 	fmt.Println()
 	fmt.Println("Option for build:")
 	fmt.Println("  --strip                    Leave out what errors use to name the source line:")
@@ -296,14 +334,14 @@ func compileSource(inputFile string) *compiler.Result {
 	result, err := compiler.CompileFileOptions(inputFile, projectOptions(inputFile), errs)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	for _, d := range errs.Diagnostics {
 		fmt.Fprintln(os.Stderr, d.String())
 	}
 	if errs.HasErrors() {
-		os.Exit(1)
+		exit(1)
 	}
 	return result
 }
@@ -314,11 +352,11 @@ func compileSource(inputFile string) *compiler.Result {
 // it was.
 func leaveIfAsked(err error) {
 	if status, asked := vm.ExitCode(err); asked {
-		os.Exit(status & 0xFF)
+		exit(status & 0xFF)
 	}
 	if vm.IsInterrupted(err) {
 		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
-		os.Exit(interruptedStatus)
+		exit(interruptedStatus)
 	}
 }
 
@@ -351,7 +389,7 @@ func stopOnInterrupt(machine *vm.VM) {
 		case <-signals:
 		case <-time.After(2 * time.Second):
 		}
-		os.Exit(interruptedStatus)
+		exit(interruptedStatus)
 	}()
 }
 
@@ -385,10 +423,10 @@ func cmdRun(inputFile string) {
 	if err != nil {
 		leaveIfAsked(err)
 		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
-		os.Exit(1)
+		exit(1)
 	}
 	if result.IsInt() {
-		os.Exit(int(result.AsInt() & 0xFF))
+		exit(int(result.AsInt() & 0xFF))
 	}
 }
 
@@ -417,7 +455,7 @@ func cmdRepl() {
 		guardMemory(m)
 		return m
 	}
-	os.Exit(repl.Run(opts))
+	exit(repl.Run(opts))
 }
 
 // runTool runs a Lumen program kept in the binary, with what follows the
@@ -453,12 +491,12 @@ func runTool(source, file string) int {
 // means the editor went away without a word.
 func cmdLsp() {
 	runTool(lsp.Source, lsp.File)
-	os.Exit(1)
+	exit(1)
 }
 
 // cmdFmt runs the formatter: a Lumen program too.
 func cmdFmt() {
-	os.Exit(runTool(formatter.Source, formatter.File))
+	exit(runTool(formatter.Source, formatter.File))
 }
 
 // cmdTest runs the tests of the files and folders named, or of the
@@ -475,7 +513,7 @@ func cmdTest(args []string) {
 			filter = value
 		} else if strings.HasPrefix(arg, "--") {
 			fmt.Fprintf(os.Stderr, "Error: unknown option %s\n%s\n", arg, usage)
-			os.Exit(2)
+			exit(2)
 		} else {
 			paths = append(paths, arg)
 		}
@@ -541,7 +579,7 @@ func cmdTest(args []string) {
 		fmt.Println(summary)
 	}
 	if failed > 0 || broken > 0 {
-		os.Exit(1)
+		exit(1)
 	}
 }
 
@@ -604,14 +642,14 @@ func cmdBuild(inputFile, outputFile string) {
 		bytecode, err := vm.SerializeChunk(chunk)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Serialization error: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 		output = bytecode
 	}
 
 	if err := os.WriteFile(outputFile, output, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 	fmt.Printf("Compiled %s -> %s\n", inputFile, outputFile)
 }
@@ -626,27 +664,27 @@ func cmdAssemble(inputFile, outputFile string) {
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Assemble to chunk with debug info
 	chunk, err := asm.AssembleFromFile(string(data), inputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Assembly error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Serialize to bytecode
 	bytecode, err := vm.SerializeChunk(chunk)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Serialization error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Write output file
 	if err := os.WriteFile(outputFile, bytecode, 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	fmt.Printf("Assembled %s -> %s (%d bytes)\n", inputFile, outputFile, len(bytecode))
@@ -657,14 +695,14 @@ func cmdDisassemble(inputFile, outputFile string) {
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Deserialize to chunk
 	chunk, err := vm.DeserializeChunk(data)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Disassemble to text
@@ -673,7 +711,7 @@ func cmdDisassemble(inputFile, outputFile string) {
 	// Write output file
 	if err := os.WriteFile(outputFile, []byte(asmText), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	fmt.Printf("Disassembled %s -> %s\n", inputFile, outputFile)
@@ -685,14 +723,14 @@ func cmdExecute(inputFile string) {
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Deserialize to chunk
 	chunk, err := vm.DeserializeChunk(data)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Create VM and execute
@@ -701,7 +739,7 @@ func cmdExecute(inputFile string) {
 	if err != nil {
 		leaveIfAsked(err)
 		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	fmt.Printf("Result: %s\n", formatValue(result))
@@ -713,14 +751,14 @@ func cmdRunAsm(inputFile string) {
 	data, err := os.ReadFile(inputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Assemble to chunk
 	chunk, err := asm.AssembleFromFile(string(data), inputFile)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Assembly error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	// Create VM and execute directly
@@ -729,7 +767,7 @@ func cmdRunAsm(inputFile string) {
 	if err != nil {
 		leaveIfAsked(err)
 		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	fmt.Printf("Result: %s\n", formatValue(result))
@@ -769,26 +807,26 @@ func cmdDebug(inputFile string) {
 		data, err := os.ReadFile(inputFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 
 		chunk, err = vm.DeserializeChunk(data)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 	} else {
 		// Assume .lasm file
 		data, err := os.ReadFile(inputFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 
 		chunk, err = asm.AssembleFromFile(string(data), inputFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Assembly error: %v\n", err)
-			os.Exit(1)
+			exit(1)
 		}
 	}
 
@@ -873,7 +911,7 @@ func cmdDebug(inputFile string) {
 	if err != nil {
 		leaveIfAsked(err)
 		fmt.Fprintf(os.Stderr, "\nError: %v\n", err)
-		os.Exit(1)
+		exit(1)
 	}
 
 	fmt.Printf("\nExecution complete: %s (%d instructions)\n", formatValue(result), instrCount)
@@ -985,7 +1023,7 @@ func handleDebugCommand(input string, currentIP int, snapshot interface{}, bpm *
 
 	case "q", "quit", "exit":
 		fmt.Println("Exiting.")
-		os.Exit(0)
+		exit(0)
 		return false
 
 	default:

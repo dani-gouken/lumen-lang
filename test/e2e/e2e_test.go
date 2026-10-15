@@ -366,6 +366,102 @@ func TestMachineLimits(t *testing.T) {
 	}
 }
 
+// TestCPUProfile covers --cpuprofile: the profile is written however the
+// program ends, and only lumen's own options are taken for it.
+func TestCPUProfile(t *testing.T) {
+	dir := t.TempDir()
+	programs := map[string]string{
+		"busy.lum": `fn spin(n: Int) -> Int {
+    let total = 0;
+    for i in 0..n {
+        total = (total + i * 7) % 1000003;
+    }
+    return total;
+}
+
+fn main() -> Int {
+    println(spin(300000));
+    return 0;
+}
+`,
+		"code.lum": `fn main() -> Int {
+    println("leaving with 3");
+    return 3;
+}
+`,
+		"fails.lum": `fn main() -> Int {
+    let items = [1, 2, 3];
+    println(items[7]);
+    return 0;
+}
+`,
+		"args.lum": `import std.os;
+
+fn main() -> Int {
+    println(os.args());
+    return 0;
+}
+`,
+	}
+	write(t, dir, programs)
+
+	// A profile is a gzipped protocol buffer: what go tool pprof reads
+	profiled := func(name string) bool {
+		data, err := os.ReadFile(filepath.Join(dir, name))
+		return err == nil && len(data) > 2 && data[0] == 0x1f && data[1] == 0x8b
+	}
+
+	for _, c := range []struct {
+		args   []string
+		stdout string
+		exit   int
+		output string
+	}{
+		{[]string{"run", "--cpuprofile=" + filepath.Join(dir, "busy.prof"), filepath.Join(dir, "busy.lum")}, "", 0, "busy.prof"},
+		// The option may follow the file, like the others
+		{[]string{"run", filepath.Join(dir, "code.lum"), "--cpuprofile=" + filepath.Join(dir, "code.prof")}, "leaving with 3\n", 3, "code.prof"},
+		// A failure ends the process early, and the profile is still written
+		{[]string{"run", "--cpuprofile=" + filepath.Join(dir, "fails.prof"), filepath.Join(dir, "fails.lum")}, "", 1, "fails.prof"},
+	} {
+		res := runLumen(t, c.args...)
+		if res.exit != c.exit {
+			t.Errorf("%v: expected exit %d, got %d:\n%s", c.args, c.exit, res.exit, res.stderr)
+		}
+		if c.stdout != "" && res.stdout != c.stdout {
+			t.Errorf("%v: expected %q, got %q", c.args, c.stdout, res.stdout)
+		}
+		if !profiled(c.output) {
+			t.Errorf("%v: expected a profile in %s", c.args, c.output)
+		}
+	}
+
+	// Bytecode is profiled the same way
+	bytecode := filepath.Join(dir, "busy.lc")
+	if res := runLumen(t, "build", filepath.Join(dir, "busy.lum"), bytecode); res.exit != 0 {
+		t.Fatalf("build failed:\n%s", res.stderr)
+	}
+	if res := runLumen(t, "exec", bytecode, "--cpuprofile="+filepath.Join(dir, "exec.prof")); res.exit != 0 || !profiled("exec.prof") {
+		t.Errorf("expected exec to write a profile, got exit %d:\n%s", res.exit, res.stderr)
+	}
+
+	// After "--" it is the program's, like any other argument
+	res := runLumen(t, "run", filepath.Join(dir, "args.lum"), "--", "--cpuprofile="+filepath.Join(dir, "never.prof"))
+	if res.exit != 0 || !strings.Contains(res.stdout, "--cpuprofile=") || profiled("never.prof") {
+		t.Errorf("expected the program to be given the option, got exit %d, %q:\n%s", res.exit, res.stdout, res.stderr)
+	}
+
+	for _, bad := range [][]string{
+		{"run", "--cpuprofile", filepath.Join(dir, "busy.lum")},
+		{"run", "--cpuprofile=", filepath.Join(dir, "busy.lum")},
+		{"run", "--cpuprofile=" + filepath.Join(dir, "no", "such", "folder.prof"), filepath.Join(dir, "busy.lum")},
+	} {
+		res := runLumen(t, bad...)
+		if res.exit != 1 || !strings.Contains(res.stderr, "Error:") || res.stdout != "" {
+			t.Errorf("%v: expected an option error, got exit %d, %q, %q", bad, res.exit, res.stdout, res.stderr)
+		}
+	}
+}
+
 func TestMissingFile(t *testing.T) {
 	res := runLumen(t, "run", "does/not/exist.lum")
 	if res.exit != 1 || !strings.Contains(res.stderr, "cannot read does/not/exist.lum") {

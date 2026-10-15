@@ -54,6 +54,13 @@ lumen run --heap-mb=1024 big.lum
 lumen exec program.lc --max-depth=100000
 ```
 
+`--cpuprofile=FILE` writes where the time went while the program ran, however it ends, for `go tool pprof`:
+
+```bash
+lumen run --cpuprofile=cpu.prof slow.lum
+go tool pprof -top lumen cpu.prof
+```
+
 `run`, `build`, `ir` and `lumdbg` also take the folder of a [project](#projects), or no file at all inside one.
 
 A `.lasm` file produced by `build` is a listing for reading. It is not accepted back by `lumen asm`, because the disassembler prints long jumps in an annotated form.
