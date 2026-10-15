@@ -1806,3 +1806,69 @@ found 7
 		}
 	}
 }
+
+// An array is changed in place and through every name it has, so it is
+// only ever seen with its own element type: an [Int] taken for an [Int?]
+// could be given a null, which the [Int] would then hold.
+func TestArraysKeepTheirElementType(t *testing.T) {
+	decls := `
+		import std.result.{Result};
+
+		trait Shape { fn area() -> Int; }
+		struct Square { side: Int; }
+		impl Shape for Square { fn area() -> Int { return self.side * self.side; } }
+		struct Bag { squares: [Square]; }
+
+		fn optionals(items: [Int?]) { items.push(null); }
+		fn shapes(items: [Shape]) -> Int { return items.len(); }
+		fn squares() -> [Square] { return [Square { side: 1 }]; }
+	`
+	refused := []struct{ name, body, suggestion string }{
+		{"a variable", `let a: [Int] = [1]; let b: [Int?] = a;`, "items.map(item -> item as int?)"},
+		{"an argument", `let a: [Int] = [1]; optionals(a);`, "could then be given values of type int?, which it cannot hold"},
+		{"an argument of a trait", `let a = [Square { side: 2 }]; shapes(a);`, "fn f<T: Shape>(items: [T])"},
+		{"a field", `let bag = Bag { squares: [] }; let all: [Shape] = bag.squares;`, "Take any array of them"},
+		{"a return", `let f = fn() -> [Shape] { return squares(); };`, ""},
+		{"an assignment", `let b: [Int?] = [null]; let a: [Int] = [1]; b = a;`, ""},
+		{"nested", `let a: [[Int]] = [[1]]; let b: [[Int?]] = a;`, ""},
+		{"inside an enum", `let r: Result<[Int], String> = Result.Ok([1]); let w: Result<[Int?], String> = r;`, ""},
+		{"a function's result", `let f: fn() -> [Shape] = squares;`, ""},
+	}
+	for _, tt := range refused {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := errors.NewHandler()
+			Compile(decls+"\nfn main() -> Int {\n"+tt.body+"\nreturn 0;\n}\n", "test.lum", errs)
+			if !errs.HasErrors() {
+				t.Fatal("expected the array to be refused")
+			}
+			if d := errs.Diagnostics[0]; !strings.Contains(d.Suggestion, tt.suggestion) {
+				t.Errorf("expected a suggestion containing %q, got %q (%s)", tt.suggestion, d.Suggestion, d.Message)
+			}
+		})
+	}
+
+	// What is fine: a literal made for the wider type, a function that
+	// takes any array of a trait, a new array, a cast that checks
+	expectOutput(t, decls+`
+		fn total<T: Shape>(items: [T]) -> Int {
+			return items.fold(0, (sum, item) -> sum + item.area());
+		}
+	`, `
+		let maybe: [Int?] = [1, null, 3];
+		let some: [Shape] = [Square { side: 2 }, Square { side: 3 }];
+		let mine = [Square { side: 4 }];
+		println(maybe, shapes(some), total(some), total(mine), total(squares()));
+
+		let widened: [Shape] = mine.map(square -> square as Shape);
+		widened.push(Square { side: 1 });
+		println(shapes(widened), mine.len());
+
+		let anything: [Any] = [1, 2];
+		let ints = anything as [Int];
+		let wider = [1, 2] as [Int?];
+		println(ints[0] + ints[1], wider);
+	`, `[1, null, 3] 2 13 16 1
+2 1
+3 [1, 2]
+`)
+}

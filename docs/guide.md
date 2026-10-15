@@ -403,6 +403,14 @@ xs.len()                    // 4
 
 What is done to an array is a method of it: see [Methods on arrays, texts and numbers](#methods-on-arrays-texts-and-numbers), and [`std.arrays`](stdlib.md#stdarrays) for all of them.
 
+An array keeps the element type it was made with. Since it is changed in place, through every name it has, an `[Int]` is never taken for an `[Int?]`, which could be given a `null`, nor an array of `Square` for an array of the trait `Shape`, which could be given a `Circle`. A function that only reads takes any array of a trait with a type parameter, and a new array of the wider type is a `map` away:
+
+```rust
+fn total<T: Shape>(items: [T]) -> Int { ... }      // [Square], [Circle] and [Shape] alike
+let shapes: [Shape] = squares.map(s -> s as Shape);  // a new array, which may hold any Shape
+let maybe: [Int?] = [1, 2];                          // a literal is made with the type it is for
+```
+
 All elements have the same type. Reading or writing an index that does not exist is a runtime error; `xs[i] = v` replaces an element and never grows the array, `push` does. `xs.pop()`, `xs.removeAt(i)`, `xs.insertAt(i, v)` and `xs.clear()` take items out of the array itself, or put one in the middle: see [`std.arrays`](stdlib.md#stdarrays).
 
 ### Structs, traits and methods

@@ -482,7 +482,7 @@ func (c *Checker) checkArgs(e *ast.CallExpr, ft *FunctionType) Type {
 			if c.refusedAsTemplate(arg, paramType, argType, ErrArgType) {
 				continue
 			}
-			c.errorf(arg.Token(), ErrArgType, "cannot use type %s as argument of type %s", argType, paramType)
+			c.errorfWithSuggestion(arg.Token(), ErrArgType, c.arrayAdvice(paramType, argType, "Ensure the argument is of type "+describe(paramType)), "cannot use type %s as argument of type %s", argType, paramType)
 		}
 	}
 
@@ -688,8 +688,15 @@ func (c *Checker) assignable(target, source Type) bool {
 		}
 
 	case *ArrayType:
+		// An array is changed in place, and through every name it has: an
+		// [Int] seen as an [Int?] could be given a null that the [Int]
+		// would then hold. So the element types are the same, except in a
+		// cast, which checks every element when it runs.
 		if src, ok := source.(*ArrayType); ok {
-			return c.assignable(t.ElementType, src.ElementType)
+			if c.castingArrays {
+				return c.assignable(t.ElementType, src.ElementType)
+			}
+			return c.sameType(t.ElementType, src.ElementType)
 		}
 
 	case *FunctionType:
@@ -712,6 +719,23 @@ func (c *Checker) assignable(target, source Type) bool {
 		return c.implements(source, t)
 	}
 	return false
+}
+
+// arrayAdvice is what to suggest when a value of type source does not fit
+// target: otherwise, for an array whose elements would fit one by one,
+// how to do without an array of the wider type.
+func (c *Checker) arrayAdvice(target, source Type, otherwise string) string {
+	t, ok := withoutNullOrNil(target).(*ArrayType)
+	src, ok2 := source.(*ArrayType)
+	if !ok || !ok2 || !c.assignable(t.ElementType, src.ElementType) {
+		return otherwise
+	}
+	if _, isTrait := t.ElementType.(*BehaviorType); isTrait {
+		return fmt.Sprintf("An array of %s could then be given another %s. Take any array of them: fn f<T: %s>(items: [T]), or make a new array: items.map(item -> item as %s)",
+			describe(src.ElementType), describe(t.ElementType), describe(t.ElementType), describe(t.ElementType))
+	}
+	return fmt.Sprintf("An array of %s could then be given values of type %s, which it cannot hold. Make a new array: items.map(item -> item as %s)",
+		describe(src.ElementType), describe(t.ElementType), describe(t.ElementType))
 }
 
 // checkMethodBounds checks a method call against what the impl and the
@@ -745,10 +769,14 @@ func (c *Checker) checkCastExpr(e *ast.CastExpr) Type {
 		return target
 	}
 
+	c.castingArrays = true
+	widens, narrows := c.assignable(target, source), c.assignable(source, target)
+	c.castingArrays = false
+
 	switch {
-	case c.assignable(target, source):
+	case widens:
 		// Always succeeds: nothing to check at runtime
-	case c.assignable(source, target):
+	case narrows:
 		descriptor, ok := c.castDescriptor(target)
 		if !ok {
 			c.errorf(e.Type.Token(), ErrInvalidCast, "a cast to %s cannot be checked", target)

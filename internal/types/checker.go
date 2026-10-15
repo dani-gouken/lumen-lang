@@ -54,6 +54,10 @@ type Checker struct {
 	// What has been reported, so that nothing is reported twice
 	said map[string]bool
 
+	// While a cast is checked, an array may stand for one of a wider
+	// element type: the cast checks each element when it runs
+	castingArrays bool
+
 	prog        *ast.Program
 	table       *resolve.Table
 	errs        *errors.Handler
@@ -552,7 +556,7 @@ func (c *Checker) checkAssignment(e *ast.BinaryExpr) Type {
 	}
 
 	if left != nil && right != nil && !c.assignable(left, right) {
-		c.errorfWithSuggestion(e.Right.Token(), ErrTypeMismatch, fmt.Sprintf("Ensure the value is of type %s", describe(left)), "cannot assign type %s to %s", right, left)
+		c.errorfWithSuggestion(e.Right.Token(), ErrTypeMismatch, c.arrayAdvice(left, right, fmt.Sprintf("Ensure the value is of type %s", describe(left))), "cannot assign type %s to %s", right, left)
 	}
 	return Void
 }
@@ -770,7 +774,7 @@ func (c *Checker) checkLetStmt(s *ast.LetStmt) {
 	asTemplate(&s.Value, declType)
 	valType := c.checkExprAs(s.Value, declType)
 	if valType != nil && !c.assignable(declType, valType) && !c.refusedAsTemplate(s.Value, declType, valType, ErrTypeMismatch) {
-		c.errorfWithSuggestion(s.Value.Token(), ErrTypeMismatch, fmt.Sprintf("Ensure the value is of type %s", describe(declType)), "cannot assign type %s to %s", valType, declType)
+		c.errorfWithSuggestion(s.Value.Token(), ErrTypeMismatch, c.arrayAdvice(declType, valType, fmt.Sprintf("Ensure the value is of type %s", describe(declType))), "cannot assign type %s to %s", valType, declType)
 	}
 }
 
@@ -795,7 +799,7 @@ func (c *Checker) checkReturnStmt(s *ast.ReturnStmt) {
 		valType := c.checkExprAs(s.Value, returnType)
 		if valType != nil {
 			if !c.assignable(returnType, valType) && !c.refusedAsTemplate(s.Value, returnType, valType, ErrReturnMismatch) {
-				c.errorfWithSuggestion(s.Value.Token(), ErrReturnMismatch, fmt.Sprintf("Ensure the return value is of type %s", describe(returnType)), "cannot return type %s from function returning %s", valType, returnType)
+				c.errorfWithSuggestion(s.Value.Token(), ErrReturnMismatch, c.arrayAdvice(returnType, valType, fmt.Sprintf("Ensure the return value is of type %s", describe(returnType))), "cannot return type %s from function returning %s", valType, returnType)
 			}
 		}
 	} else {

@@ -318,7 +318,9 @@ func TestEnumsWithTraitsStructsAndClosures(t *testing.T) {
 			}
 		}
 
-		fn all(items: [Describe]) -> [String] {
+		// Any array of things that describe themselves: an array of
+		// Describe, or of one type that implements it
+		fn all<T: Describe>(items: [T]) -> [String] {
 			let out: [String] = [];
 			for item in items { out.push(item.describe()); }
 			return out;
