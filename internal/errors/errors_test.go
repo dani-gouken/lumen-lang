@@ -47,11 +47,11 @@ func TestDiagnosticString(t *testing.T) {
 			},
 			expected: `[ERROR] E1001: undefined variable 'count'
   --> src/main.lum:10:5
-      |
+    |
  10 |     print(cont)
-      |           ^^^^ 
-      |
-      = Suggestion: Did you mean 'count'?
+    |           ^^^^ 
+    |
+    = Suggestion: Did you mean 'count'?
 `,
 		},
 		{
@@ -69,9 +69,9 @@ func TestDiagnosticString(t *testing.T) {
 			},
 			expected: `[ERROR] P0001: unexpected token
   --> src/main.lum:5:10
-     |
+   |
  5 | if x > 10
-     |          ^
+   |          ^
 `,
 		},
 	}

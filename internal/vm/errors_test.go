@@ -188,11 +188,11 @@ func TestRuntimeErrorIsShownLikeACompileError(t *testing.T) {
 	got := failing(t, NewVM(), chunk).Error()
 	want := `[ERROR] R0002: index out of bounds: 7 (length 0)
   --> list.lum:12:12 in function 'pick'
-      |
+    |
  12 |     return items[index];
-      |            ^^^^^ 
-      |
-      = Suggestion: Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing
+    |            ^^^^^ 
+    |
+    = Suggestion: Compare the index with the length (items.len()) before using it, or use items.at(index), which gives null instead of failing
   called from middle.lum:2:5 in function 'middle'
   called from main.lum:3:5 in function 'main'
 `

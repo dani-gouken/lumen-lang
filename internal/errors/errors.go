@@ -76,11 +76,11 @@ func (d Diagnostic) String() string {
 		lineNumStr := fmt.Sprintf("%d", d.Pos.Line)
 		padding := strings.Repeat(" ", len(lineNumStr))
 
-		sb.WriteString(fmt.Sprintf("   %s |\n", padding))
+		sb.WriteString(fmt.Sprintf(" %s |\n", padding))
 		sb.WriteString(fmt.Sprintf(" %s | %s\n", lineNumStr, d.Context))
 
 		// Highlights
-		sb.WriteString(fmt.Sprintf("   %s | ", padding))
+		sb.WriteString(fmt.Sprintf(" %s | ", padding))
 		if len(d.Highlights) > 0 {
 			// Find max end col to size the buffer
 			maxCol := 0
@@ -124,8 +124,8 @@ func (d Diagnostic) String() string {
 	if d.Suggestion != "" {
 		lineNumStr := fmt.Sprintf("%d", d.Pos.Line)
 		padding := strings.Repeat(" ", len(lineNumStr))
-		sb.WriteString(fmt.Sprintf("   %s |\n", padding))
-		sb.WriteString(fmt.Sprintf("   %s = Suggestion: %s\n", padding, d.Suggestion))
+		sb.WriteString(fmt.Sprintf(" %s |\n", padding))
+		sb.WriteString(fmt.Sprintf(" %s = Suggestion: %s\n", padding, d.Suggestion))
 	}
 	for _, note := range d.Notes {
 		sb.WriteString("  " + note + "\n")
