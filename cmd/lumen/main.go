@@ -346,7 +346,7 @@ func bytecodeOutput(input, output string) string {
 		return strings.TrimSuffix(name, filepath.Ext(name)) + ".lc"
 	}
 	if filepath.Ext(output) != ".lc" {
-		fatal(fmt.Errorf("%s: bytecode is written to a .lc file; lumen dump prints a listing", output))
+		fatal(fmt.Errorf("%s: bytecode is written to a .lc file; lumen dump prints a listing, lumen native makes an executable", output))
 	}
 	return output
 }
