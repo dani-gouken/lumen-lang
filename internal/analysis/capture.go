@@ -81,6 +81,7 @@ func (a *Analyzer) visitStmt(stmt ast.Stmt, scope *functionScope) {
 
 	switch s := stmt.(type) {
 	case *ast.BlockStmt:
+		defer scope.enterBlock()()
 		for _, st := range s.Stmts {
 			a.visitStmt(st, scope)
 		}
@@ -108,8 +109,9 @@ func (a *Analyzer) visitStmt(stmt ast.Stmt, scope *functionScope) {
 		}
 	case *ast.ForStmt:
 		// For-in loop: for x in iterable { ... }
-		// Loop variable is local
+		// Loop variable is local, to the loop
 		a.visitExpr(s.Iterable, scope)
+		defer scope.enterBlock()()
 		scope.locals[s.Var] = &resolve.Symbol{Name: s.Var, Kind: resolve.SymbolVar, Decl: s}
 		if s.Index != nil {
 			scope.locals[s.Index.Name] = &resolve.Symbol{Name: s.Index.Name, Kind: resolve.SymbolVar, Decl: s.Index}
@@ -181,6 +183,7 @@ func (a *Analyzer) visitExpr(expr ast.Expr, scope *functionScope) {
 			a.visitExpr(fieldValue, scope)
 		}
 	case *ast.BlockExpr:
+		defer scope.enterBlock()()
 		for _, st := range e.Stmts {
 			a.visitStmt(st, scope)
 		}
@@ -195,6 +198,17 @@ func (a *Analyzer) visitExpr(expr ast.Expr, scope *functionScope) {
 	case *ast.Literal:
 		// No variables to check
 	}
+}
+
+// enterBlock starts a block of the function: what is declared in it is a
+// local until the block ends, and a name it declares again is the outer
+// one's after that. It returns what ends the block.
+func (s *functionScope) enterBlock() func() {
+	outer := make(map[string]*resolve.Symbol, len(s.locals))
+	for name, sym := range s.locals {
+		outer[name] = sym
+	}
+	return func() { s.locals = outer }
 }
 
 // checkCapture determines if an identifier is a captured variable

@@ -66,6 +66,11 @@ func analyzeSource(t *testing.T, src string) []string {
 			visitExpr(s.Expr)
 		case *ast.ForStmt:
 			visitStmt(s.Body)
+		case *ast.IfStmt:
+			visitStmt(s.Then)
+			if s.Else != nil {
+				visitStmt(s.Else)
+			}
 		}
 	}
 	for _, decl := range prog.Decls {
@@ -149,6 +154,75 @@ func TestCapturesFromSource(t *testing.T) {
 			`struct P { x: Int; }
 			 impl P { fn getter() -> Int { let f = fn() -> Int { return self.x; }; return f(); } }`,
 			[]string{"self"},
+		},
+		{
+			// A name a loop inside declares is the loop's: after it, the
+			// name is the captured one again
+			"a loop variable of the same name ends with the loop",
+			`fn main() -> Int {
+				let i = 7;
+				let f = fn() -> Int {
+					for i in [1, 2] { print(i); }
+					return i;
+				};
+				return 0;
+			}`,
+			[]string{"i"},
+		},
+		{
+			"a variable of a block ends with the block",
+			`fn main() -> Int {
+				let total = 7;
+				let f = fn(flag: Bool) -> Int {
+					if flag { let total = 1; print(total); }
+					return total;
+				};
+				return 0;
+			}`,
+			[]string{"total"},
+		},
+		{
+			"inside the block it is the block's",
+			`fn main() -> Int {
+				let total = 7;
+				let f = fn(flag: Bool) -> Int {
+					if flag { let total = 1; return total; }
+					return 0;
+				};
+				return 0;
+			}`,
+			[]string{""},
+		},
+		{
+			// The function in the middle declares n in a block; the one
+			// inside, made after the block, reaches the outer n through it
+			"two levels down, past a block of the middle one",
+			`fn main() -> Int {
+				let n = 3;
+				let outer = fn() -> Int {
+					if true { let n = 1; print(n); }
+					let inner = fn() -> Int { return n; };
+					return inner();
+				};
+				return 0;
+			}`,
+			[]string{"n", "n^"},
+		},
+		{
+			"a function made inside the block sees the block's",
+			`fn main() -> Int {
+				let n = 3;
+				let outer = fn() -> Int {
+					if true {
+						let n = 1;
+						let inner = fn() -> Int { return n; };
+						return inner();
+					}
+					return 0;
+				};
+				return 0;
+			}`,
+			[]string{"", "n"},
 		},
 	}
 
