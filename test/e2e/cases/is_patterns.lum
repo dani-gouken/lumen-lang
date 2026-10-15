@@ -2,9 +2,6 @@
 // match would say more than is meant. A small machine that runs a list of
 // instructions, and reports on what it ran.
 
-import std.arrays;
-import std.strings;
-
 enum Value { Number(Int), Text(String), Pair(Value, Value), Nothing }
 
 enum Step { Push(Value), Add, Join, Swap, Jump(Int), JumpIfZero(Int), Print, Halt }

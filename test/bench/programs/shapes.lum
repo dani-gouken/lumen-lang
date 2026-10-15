@@ -1,5 +1,4 @@
 // Traits: values of several structs behind one trait, called in a loop.
-import std.arrays;
 
 trait Shape {
     fn area() -> Int;

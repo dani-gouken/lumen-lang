@@ -388,7 +388,7 @@ impl Parser {
         let value = self.assignment()?;
 
         match target {
-            case Expr.Variable(name, number): {
+            case Expr.Variable(name, _): {
                 return Expr.Assign(name, value, self.name());
             }
 

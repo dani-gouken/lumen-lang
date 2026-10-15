@@ -120,7 +120,7 @@ func projectOptions(inputFile string) compiler.Options {
 		fatal(err)
 	}
 	if cfg == nil {
-		return compiler.Options{}
+		return compiler.Options{Unused: true}
 	}
 	if heapMB == 0 {
 		heapMB = cfg.HeapMB
@@ -131,7 +131,7 @@ func projectOptions(inputFile string) compiler.Options {
 	if err := cfg.CheckInstalled(); err != nil {
 		fatal(err)
 	}
-	return compiler.Options{Root: cfg.RootDir(), Packages: cfg.PackageDirs()}
+	return compiler.Options{Root: cfg.RootDir(), Packages: cfg.PackageDirs(), Unused: true}
 }
 
 // argument returns the i-th command line argument, or "".

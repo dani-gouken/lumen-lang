@@ -1,6 +1,5 @@
 // Parts of arrays and texts taken with a range between the brackets:
 // items[1..3], items[1..], items[..2], and ranges kept in a variable.
-import std.strings;
 
 struct Page {
     number: Int;

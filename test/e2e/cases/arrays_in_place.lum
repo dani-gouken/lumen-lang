@@ -5,9 +5,6 @@
 // ahead. Exercises enums holding values, Result, structs holding arrays,
 // closures kept in arrays, optionals and loops that remove as they go.
 
-import std.arrays;
-import std.strings;
-
 // --- A stack machine ---
 
 enum Op {
@@ -100,7 +97,7 @@ impl Machine {
                     return Err("step ${i}: ${message}");
                 }
 
-                case Ok(depth): {}
+                case Ok(_): {}
             }
         }
 
@@ -143,11 +140,11 @@ impl Editor {
                 self.lines.insertAt(at, line);
             }
 
-            case Edit.Remove(at, line): {
+            case Edit.Remove(at, _): {
                 self.lines.removeAt(at);
             }
 
-            case Edit.Wipe(before): {
+            case Edit.Wipe(_): {
                 self.lines.clear();
             }
         }
@@ -155,7 +152,7 @@ impl Editor {
 
     fn revert(edit: Edit) {
         match edit {
-            case Edit.Insert(at, line): {
+            case Edit.Insert(at, _): {
                 self.lines.removeAt(at);
             }
 

@@ -196,6 +196,13 @@ func (h *Handler) ReportWarningFromToken(code, msg string, tok token.Token, sour
 	h.Add(NewDiagnosticFromToken(SeverityWarning, code, msg, tok, h.linesFor(tok, sourceLines)))
 }
 
+// ReportWarningWithSuggestion adds a warning diagnostic with a suggestion.
+func (h *Handler) ReportWarningWithSuggestion(code, msg, suggestion string, tok token.Token, sourceLines map[int]string) {
+	d := NewDiagnosticFromToken(SeverityWarning, code, msg, tok, h.linesFor(tok, sourceLines))
+	d.Suggestion = suggestion
+	h.Add(d)
+}
+
 // ReportErrorWithSuggestion adds an error diagnostic with a suggestion.
 func (h *Handler) ReportErrorWithSuggestion(code, msg, suggestion string, tok token.Token, sourceLines map[int]string) {
 	d := NewDiagnosticFromToken(SeverityError, code, msg, tok, h.linesFor(tok, sourceLines))

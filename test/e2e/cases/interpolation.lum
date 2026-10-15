@@ -1,8 +1,5 @@
 // Expressions inside strings: "${expression}".
 
-import std.arrays;
-import std.strings;
-
 struct Item {
     name: String;
     price: Int;

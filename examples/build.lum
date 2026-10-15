@@ -7,7 +7,6 @@
 // whoever writes the log.
 
 import std.task.{Task, Channel};
-import std.result.{Failure};
 
 struct Target {
     name: String;

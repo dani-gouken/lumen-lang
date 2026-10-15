@@ -1,7 +1,5 @@
 // Texts and dictionaries: a text is built, cut into words and counted.
-import std.arrays;
 import std.dict;
-import std.strings;
 
 fn text(sentences: Int) -> String {
     let nouns = ["river", "stone", "lantern", "garden", "étoile", "bridge", "window", "harbour"];

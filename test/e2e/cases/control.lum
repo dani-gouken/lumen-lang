@@ -3,8 +3,6 @@
 // case; ranges to loop over and to match against; defer for what has to
 // happen whichever way a block is left.
 
-import std.arrays;
-import std.strings;
 import std.result.{Result, attempt};
 
 enum Size { Letter, Box(Int, Int, Int), Pallet(Int) }

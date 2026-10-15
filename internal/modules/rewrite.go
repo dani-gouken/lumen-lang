@@ -6,6 +6,7 @@ import (
 
 	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/resolve"
+	"github.com/dani-gouken/lumen/internal/stdlib"
 	"github.com/dani-gouken/lumen/internal/token"
 )
 
@@ -27,6 +28,60 @@ type rewriter struct {
 	// The enums each name of a variant is a variant of, among those the
 	// module names without a dot; made when first needed
 	variants map[string][]*item
+
+	// The names of modules and the names imported that were used
+	usedAliases map[string]bool
+	usedNames   map[string]bool
+	imports     []*ast.ImportDecl // As written, before rewriting drops them
+}
+
+// unusedImports warns of the imports of the module nothing uses: of a
+// module whose name is never written, or of names never written. The
+// imports the loader adds, those passed on with pub, and those of the
+// library are left alone; so is the import of a module that implements
+// traits for the types of others, which may be what it is imported for.
+func (r *rewriter) unusedImports() {
+	if strings.HasPrefix(r.m.name, stdlib.Package+".") || r.m.name == stdlib.Package {
+		return
+	}
+	for _, imp := range r.imports {
+		if imp.Implicit || imp.Pub {
+			continue
+		}
+		if target := r.loader.modules[imp.Path]; target != nil && implementsForOthers(target) {
+			continue
+		}
+		if len(imp.Names) == 0 {
+			alias := imp.Alias
+			if alias == "" {
+				alias = imp.Path[strings.LastIndex(imp.Path, ".")+1:]
+			}
+			if !r.usedAliases[alias] {
+				r.warn(imp.Token(), ErrUnusedImport, "Remove the import", "module '%s' is imported and never used", imp.Path)
+			}
+			continue
+		}
+		for _, name := range imp.Names {
+			if !r.usedNames[name.Name] {
+				r.warn(name.Token(), ErrUnusedImport, "Remove it from the import", "'%s' is imported and never used", name.Name)
+			}
+		}
+	}
+}
+
+// implementsForOthers reports whether a module implements a trait for a
+// type it does not declare.
+func implementsForOthers(m *module) bool {
+	own := make(map[string]bool)
+	for name, it := range m.types {
+		own[name], own[it.qualified] = true, true
+	}
+	for _, decl := range m.prog.Decls {
+		if impl, ok := decl.(*ast.ImplDecl); ok && impl.TraitName != "" && !own[impl.StructName] {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *rewriter) rewrite() {
@@ -116,6 +171,7 @@ func (r *rewriter) rewrite() {
 			})
 		}
 	}
+	r.imports = r.m.prog.Imports
 	r.m.prog.Imports = nil
 }
 
@@ -169,7 +225,11 @@ func (r *rewriter) value(name string) *item {
 	if it, ok := r.m.values[name]; ok {
 		return it
 	}
-	return r.m.importedValues[name]
+	it := r.m.importedValues[name]
+	if it != nil && r.usedNames != nil {
+		r.usedNames[name] = true
+	}
+	return it
 }
 
 // typeItem is value for types.
@@ -177,7 +237,11 @@ func (r *rewriter) typeItem(name string) *item {
 	if it, ok := r.m.types[name]; ok {
 		return it
 	}
-	return r.m.importedTypes[name]
+	it := r.m.importedTypes[name]
+	if it != nil && r.usedNames != nil {
+		r.usedNames[name] = true
+	}
+	return it
 }
 
 // typeName returns the program-wide name of a type as written: `Body`, or
@@ -201,6 +265,9 @@ func (r *rewriter) typeName(name string, tok token.Token) string {
 	}
 
 	target, ok := r.m.aliases[alias]
+	if ok {
+		r.usedAliases[alias] = true
+	}
 	if !ok {
 		r.report(tok, ErrModuleNotFound, r.importSuggestion(alias),
 			"'%s' is not an imported module", alias)
@@ -251,6 +318,9 @@ func (r *rewriter) moduleOf(expr ast.Expr) (*module, bool) {
 		return nil, false
 	}
 	target, ok := r.m.aliases[ident.Name]
+	if ok {
+		r.usedAliases[ident.Name] = true
+	}
 	return target, ok
 }
 

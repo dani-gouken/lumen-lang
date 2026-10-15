@@ -2,9 +2,6 @@
 // optionals, closures, generics, match on types and compound assignment
 // working together.
 
-import std.arrays;
-import std.strings;
-
 trait Transaction {
     fn apply(balance: Int) -> Int;
     fn label() -> String;

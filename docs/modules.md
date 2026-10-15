@@ -216,7 +216,6 @@ A diagnostic shows the file it is about and quotes that file's line, wherever in
 *   **A registry of packages.** [`lumen install`](packages.md) gets packages from git repositories, with versions; there is no index of them like Composer's Packagist. The one package that needs no installing is the [standard library](stdlib.md), `std`, which is inside `lumen`.
 *   **Variables shared between modules.** A module's variables outside functions are its own; others reach them through its functions.
 *   **Per-field privacy.** A `pub struct` exposes all its fields.
-*   **Warnings for unused imports.**
 *   **Separate compilation.** Every imported module is parsed and compiled on each run, and all of it ends up in the bytecode, used or not.
 *   **Redeclaring a builtin is treated differently in a module**: the entry file may not declare `fn print`, a module may (it becomes `module.print`, and hides the builtin inside that module).
 

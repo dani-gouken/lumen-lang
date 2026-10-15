@@ -42,6 +42,7 @@ type Symbol struct {
 	Name string
 	Kind SymbolKind
 	Decl ast.Node // Pointer to the AST node where it is declared
+	Used bool     // A name refers to it
 }
 
 // Scope represents a lexical region where names are valid.

@@ -1,8 +1,6 @@
 // One program touching every supported feature, as a regression net for
 // the whole pipeline.
 
-import std.arrays;
-
 struct Account {
     owner: String;
     balance: Int;

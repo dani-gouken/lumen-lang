@@ -141,7 +141,7 @@ func TestCompilerModule(t *testing.T) {
 	t.Setenv("XDG_CACHE_HOME", filepath.Join(t.TempDir(), "cache"))
 	dir := t.TempDir()
 	path := filepath.Join(dir, "shop.lum")
-	source := `import std.math;
+	source := `// A shop: its methods of numbers need no import.
 
 // What something costs.
 struct Price { cents: Int; }
@@ -239,6 +239,7 @@ null null
 ["cents:Field", "double:Method"]
 ["extra: Int", "price: Price", "rate: Int"]
 shop.lum:15:26: error E1001: undefined identifier 'extras' | 32 true | Did you mean 'extra'?
+shop.lum:14:9: warning E1004: variable 'extra' is never used | 14 false | Remove it, or start its name with _ if it has to be there
 Warning E2023 20 false
 ["error 1"] 0
 0 ["triple"]

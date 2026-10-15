@@ -62,7 +62,7 @@ pub fn truth(value: Value) -> Bool? {
         case Value.Null: null;
         case Value.Int(n): n != 0;
         case Value.Real(x): x != 0.0;
-        case Value.Text(text): false;
+        case Value.Text(_): false;
     };
 }
 
@@ -150,11 +150,11 @@ pub fn order(a: Value, b: Value) -> Int {
             return compareTexts(x, y);
         }
 
-        case (Value.Text(x), _): {
+        case (Value.Text(_), _): {
             return 1;
         }
 
-        case (_, Value.Text(y)): {
+        case (_, Value.Text(_)): {
             return -1;
         }
     }

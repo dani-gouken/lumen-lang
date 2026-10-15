@@ -548,6 +548,7 @@ type LetStmt struct {
 	Type    *Type
 	Value   Expr
 	IsConst bool
+	NameTok token.Token // Where the name is written, when it is
 }
 
 func (s *LetStmt) stmtNode() {}

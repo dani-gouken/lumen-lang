@@ -199,11 +199,23 @@ func TestComplete(t *testing.T) {
 	}
 }
 
+// errorsOf keeps the errors of what Check says: the sample imports more
+// than it uses, for the questions asked of its imports.
+func errorsOf(all []Diagnostic) []Diagnostic {
+	var errs []Diagnostic
+	for _, d := range all {
+		if d.Severity == "error" {
+			errs = append(errs, d)
+		}
+	}
+	return errs
+}
+
 func TestCheck(t *testing.T) {
-	if got := Check("main.lum", sample); len(got) != 0 {
+	if got := errorsOf(Check("main.lum", sample)); len(got) != 0 {
 		t.Errorf("expected nothing to say about the sample, got %+v", got)
 	}
-	got := Check("main.lum", sample+"fn bad() -> Int { return nope; }\n")
+	got := errorsOf(Check("main.lum", sample+"fn bad() -> Int { return nope; }\n"))
 	if len(got) != 1 {
 		t.Fatalf("expected one diagnostic, got %+v", got)
 	}

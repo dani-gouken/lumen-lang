@@ -49,7 +49,7 @@ pub fn show(value: Value) -> String {
         case Value.Number(number): toString(number);
         case Value.Text(text): text;
         case Value.Function(function): "<fn ${function.declaration.name.lexeme}>";
-        case Value.Native(name): "<native fn>";
+        case Value.Native(_): "<native fn>";
         case Value.Class(class): class.name;
         case Value.Instance(instance): "${instance.class.name} instance";
     };
@@ -213,7 +213,7 @@ impl Interpreter {
                 print(show(self.evaluate(value)?));
             }
 
-            case Stmt.Return(keyword, value): {
+            case Stmt.Return(_, value): {
                 if value == null {
                     return Ok(Flow.Return(Value.Nil));
                 }
@@ -409,7 +409,7 @@ impl Interpreter {
                 return Err(failed(name, "Only instances have fields."));
             }
 
-            case Expr.Super(keyword, methodName, number): {
+            case Expr.Super(_, methodName, number): {
                 // `super` is one scope out of `this`, where the resolver found it
                 let distance = self.distances[number];
 
@@ -478,7 +478,7 @@ impl Interpreter {
                 return Ok(Value.Instance(instance));
             }
 
-            case Value.Native(name): {
+            case Value.Native(_): {
                 checkArity(0, arguments, paren)?;
                 // The only one there is: the seconds on the clock
                 return Ok(Value.Number(time.ticks().toFloat() / 1000000.0));

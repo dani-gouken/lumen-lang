@@ -2,12 +2,9 @@
 // on, `?.` to read through what may be missing, texts over several lines,
 // and tests that reach into function expressions.
 
-import std.strings;
-import std.arrays;
 import std.dict;
 import std.dict.{Dict};
 import std.format;
-import std.math;
 
 const stock = """
     # item, quantity, price, supplier

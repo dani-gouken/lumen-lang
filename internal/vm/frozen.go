@@ -53,10 +53,10 @@ func freeze(v Value) {
 // when it is asked for again is defined in terms of itself, which the
 // compiler refuses; a chunk that does it anyway is told so.
 //
-//go:noinline
-//
 // A variable outside functions is made the same way, by ONCE with C set:
 // once, the first time it is used, and left as it is, to be changed.
+//
+//go:noinline
 func (vm *VM) once(chunk *Chunk, kept *chunkCache, index int, variable bool) (Value, error) {
 	if kept.once == nil {
 		kept.once = make([]Value, len(chunk.Prototypes))

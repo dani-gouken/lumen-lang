@@ -129,7 +129,7 @@ func TestControlFlowInTheEditor(t *testing.T) {
 	}
 
 	// Diagnostics: none for the program, and those of the new checks
-	if got := Check("main.lum", control); len(got) != 0 {
+	if got := errorsOf(Check("main.lum", control)); len(got) != 0 {
 		t.Errorf("expected a clean program, got %+v", got)
 	}
 	for _, c := range []struct{ old, new, code string }{
@@ -138,9 +138,14 @@ func TestControlFlowInTheEditor(t *testing.T) {
 		{"0..origin.sum() + 3", "0..1.5", "E2038"},
 		{"case Shape.Circle(_) | Shape.Dot", "case Shape.Circle(r) | Shape.Dot", "E2029"},
 	} {
-		got := Check("main.lum", strings.Replace(control, c.old, c.new, 1))
-		if len(got) == 0 || got[0].Code != c.code {
-			t.Errorf("%q: expected %s, got %+v", c.new, c.code, got)
+		var errs []Diagnostic
+		for _, problem := range Check("main.lum", strings.Replace(control, c.old, c.new, 1)) {
+			if problem.Severity == "error" {
+				errs = append(errs, problem)
+			}
+		}
+		if len(errs) == 0 || errs[0].Code != c.code {
+			t.Errorf("%q: expected %s, got %+v", c.new, c.code, errs)
 		}
 	}
 }

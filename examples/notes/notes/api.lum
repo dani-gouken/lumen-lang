@@ -10,7 +10,6 @@
 
 import std.http.{Request, Response, Router};
 import std.json.{Json};
-import notes.book;
 import notes.book.{Book, Note, Refusal};
 
 // The routes of the service, over one book of notes.

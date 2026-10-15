@@ -17,7 +17,6 @@ Sizes are rough: **S** is an afternoon, **M** touches several stages of the comp
 
 | Missing | Today | Size |
 |---------|-------|------|
-| Warnings for variables, parameters and imports never used | Silent | S |
 | Type arguments found from where a value goes: `let xs = none();` | `none<Int>()` is written, or `let xs: [Int] = none();` | M |
 
 ## Runtime

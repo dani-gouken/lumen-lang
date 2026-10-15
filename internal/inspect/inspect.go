@@ -102,7 +102,7 @@ func absolute(path string) string {
 // options says where the modules of the program at path are found: by its
 // project file if it has one, with the files being edited in front.
 func options(path string) compiler.Options {
-	opts := compiler.Options{}
+	opts := compiler.Options{Unused: true}
 	if cfg, err := project.Find(filepath.Dir(path)); err == nil && cfg != nil {
 		opts.Root, opts.Packages = cfg.RootDir(), cfg.PackageDirs()
 	}

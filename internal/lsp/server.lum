@@ -14,8 +14,6 @@ import std.json;
 import std.json.{Json};
 import std.dict;
 import std.dict.{Dict};
-import std.strings;
-import std.arrays;
 import std.encoding;
 import std.result;
 import std.task;
@@ -308,10 +306,10 @@ impl Server {
 
         self.documents.remove(document.path);
         compiler.close(document.path);
-        self.publish(document.path, document.uri, [], null);
+        self.publish(document.uri, [], null);
 
         for file in self.flagged.getOr(document.path, []) {
-            self.publish(file, uriOf(file), [], null);
+            self.publish(uriOf(file), [], null);
         }
 
         self.flagged.remove(document.path);
@@ -341,7 +339,7 @@ impl Server {
 
         for file in self.flagged.getOr(document.path, []) {
             if !byFile.has(file) {
-                self.publish(file, uriOf(file), [], null);
+                self.publish(uriOf(file), [], null);
             }
         }
 
@@ -349,9 +347,9 @@ impl Server {
             if file == document.path {
                 // Said of the text as it was checked, which the editor
                 // may have changed since
-                self.publish(file, document.uri, byFile.getOr(file, []), document.edition);
+                self.publish(document.uri, byFile.getOr(file, []), document.edition);
             } else {
-                self.publish(file, uriOf(file), byFile.getOr(file, []), null);
+                self.publish(uriOf(file), byFile.getOr(file, []), null);
             }
         }
 
@@ -360,7 +358,7 @@ impl Server {
 
     // Tells the editor what is wrong in a file; for an open one, with the
     // editor's number for the text that was checked.
-    fn publish(file: String, uri: String, problems: [Problem], edition: Int?) {
+    fn publish(uri: String, problems: [Problem], edition: Int?) {
         let list = json.array(problems, fn(problem: Problem) -> Json {
             let message = problem.message;
 

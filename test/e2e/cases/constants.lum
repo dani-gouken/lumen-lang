@@ -1,7 +1,6 @@
 // Constants: values with a name, worked out when the program is compiled.
 
 import std.math;
-import std.strings;
 
 const COLUMNS = 8;
 const ROWS = COLUMNS / 2;

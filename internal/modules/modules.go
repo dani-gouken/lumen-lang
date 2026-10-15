@@ -44,6 +44,7 @@ const (
 	ErrStatements     = "E8007" // Statements outside a function where they cannot run
 	ErrVariantNames   = "E8008" // A variant built or matched by names, which it does not have
 	ErrHiddenType     = "E8009" // A pub declaration uses a type other modules cannot name
+	ErrUnusedImport   = "E8010" // An import nothing uses (a warning)
 )
 
 // Extension is the suffix of Lumen source files.
@@ -65,6 +66,9 @@ type Options struct {
 	// the root: with "std" in "vendor/std", the module std.list is the
 	// file vendor/std/list.lum and the module std is vendor/std.lum.
 	Packages map[string]string
+
+	// Unused has the imports nothing uses said, as warnings.
+	Unused bool
 
 	// EveryMethod brings the modules that give the builtin types their
 	// methods (MethodModules) into the program whether it calls one or
@@ -120,6 +124,7 @@ func (m *module) display() string {
 }
 
 type loader struct {
+	unused      bool
 	errs        *errors.Handler
 	read        ReadFile
 	rootDir     string
@@ -149,6 +154,7 @@ func Load(src, file string, opts Options, errs *errors.Handler) *ast.Program {
 		rootSet:     opts.Root != "",
 		packages:    opts.Packages,
 		everyMethod: opts.EveryMethod,
+		unused:      opts.Unused,
 		modules:     make(map[string]*module),
 	}
 	if !l.rootSet {
@@ -175,7 +181,11 @@ func Load(src, file string, opts Options, errs *errors.Handler) *ast.Program {
 	// of the modules that did load are reported in the same run
 	merged := &ast.Program{BaseNode: l.root.prog.BaseNode}
 	for _, m := range l.order {
-		(&rewriter{loader: l, m: m}).rewrite()
+		rewriting := &rewriter{loader: l, m: m, usedAliases: map[string]bool{}, usedNames: map[string]bool{}}
+		rewriting.rewrite()
+		if l.unused {
+			rewriting.unusedImports()
+		}
 		for _, decl := range m.prog.Decls {
 			// A function the runtime provides has nothing to compile; it is
 			// kept apart, for its name and signature
@@ -945,6 +955,11 @@ func (l *loader) checkModuleNames() {
 			}
 		}
 	}
+}
+
+// warn adds a warning, with what usually fixes it.
+func (l *loader) warn(tok token.Token, code, suggestion, format string, args ...interface{}) {
+	l.errs.ReportWarningWithSuggestion(code, fmt.Sprintf(format, args...), suggestion, tok, nil)
 }
 
 func (l *loader) report(tok token.Token, code, suggestion, format string, args ...interface{}) {

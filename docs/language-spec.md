@@ -213,6 +213,7 @@ Full description: [modules.md](modules.md).
 
 ## 9. Errors
 - Static: unknown identifier, type mismatch, bad arity, assign to `const`.
+- Warnings, with `lumen run`, `check`, `test` and in the editor: a variable, a parameter or a name of a pattern nothing uses (`E1004`), an import nothing uses (`E8010`). Names starting with `_`, the parameters of a trait's method and of a short function, and the library are not counted.
 - Runtime: array index out of bounds (read or write), integer overflow (an `Int` is 48 bits and never wraps), division by zero, a failed cast. The program stops with a message naming the source line.
 
 ## 10. Minimal Stdlib (host-provided)

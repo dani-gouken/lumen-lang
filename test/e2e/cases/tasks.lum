@@ -4,10 +4,8 @@
 
 import std.task;
 import std.task.{Task, Channel};
-import std.result;
-import std.result.{Result, Failure, Kind};
+import std.result.{Result, Kind};
 import std.arrays;
-import std.strings;
 import std.dict;
 import std.dict.{Dict};
 
@@ -177,11 +175,11 @@ fn main() -> Int {
 
     for taker in takers {
         match taker.wait() {
-            case Ok(Ok(left)): {
+            case Ok(Ok(_)): {
                 taken++;
             }
 
-            case Ok(Err(Refusal.Short(by))): {}
+            case Ok(Err(Refusal.Short(_))): {}
 
             case Err(failure): {
                 println("a withdrawal stopped:", failure.describe());

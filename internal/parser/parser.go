@@ -1106,7 +1106,8 @@ func (p *Parser) parseStmt() ast.Stmt {
 func (p *Parser) parseLetStmt() *ast.LetStmt {
 	tok := p.next()
 	stmt := &ast.LetStmt{BaseNode: base(tok), IsConst: tok.Type == token.CONST}
-	stmt.Name = p.expect(token.IDENT, "variable name").Literal
+	stmt.NameTok = p.expect(token.IDENT, "variable name")
+	stmt.Name = stmt.NameTok.Literal
 	if p.accept(token.COLON) {
 		stmt.Type = p.parseType()
 	}

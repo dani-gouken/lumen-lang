@@ -13,8 +13,6 @@ import std.io;
 import std.os;
 import std.fs;
 import std.path;
-import std.strings;
-import std.arrays;
 import std.format;
 
 const usage = """

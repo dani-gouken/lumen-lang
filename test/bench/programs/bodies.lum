@@ -1,5 +1,4 @@
 // Structs and methods: bodies that move, bounce off walls and are counted.
-import std.arrays;
 
 struct Vec {
     x: Int;

@@ -218,7 +218,7 @@ impl Parser {
         }
 
         let name = match value {
-            case Expr.Column(table, column): column;
+            case Expr.Column(_, column): column;
             default: "column" + toString(start);
         };
 

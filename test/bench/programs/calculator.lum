@@ -37,7 +37,7 @@ fn evaluate(expr: Expr, x: Int) -> Int {
             return n;
         }
 
-        case Expr.Variable(name): {
+        case Expr.Variable(_): {
             return x;
         }
 

@@ -17,7 +17,7 @@ import std.time.{Date};
 import todo.task;
 import todo.task.{Task, Priority, State};
 import todo.store;
-import todo.store.{Store, StoreError};
+import todo.store.{Store};
 
 enum Command {
     Add(String, Priority, Date?),
@@ -212,7 +212,7 @@ fn listing(list: Store, today: Date, all: Bool) -> [String] {
                 }
             }
 
-            case State.Done(when): {
+            case State.Done(_): {
                 mark = "x";
             }
         }

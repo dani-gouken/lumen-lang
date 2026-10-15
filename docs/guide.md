@@ -945,6 +945,8 @@ The compiler reports the errors of one stage at a time. After fixing syntax erro
 
 A warning does not stop compilation: the program runs, and the exit code is not affected.
 
+What nothing uses is said too: a variable, a parameter, a name a pattern gives (`E1004`), an import (`E8010`). Start a name with `_` (`_unit`, or `_` alone in a pattern) when it is there on purpose; the parameters a trait or a short function asks for are not counted, nor is anything of the library.
+
 ### Runtime errors
 
 A program that fails while it runs is reported the same way, with the calls that led there:

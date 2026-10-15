@@ -3,9 +3,6 @@
 // with an index, optionals for "no result", recursion through traits,
 // generic containers and casts.
 
-import std.arrays;
-import std.strings;
-
 struct Token {
     kind: String;  // "num", "op", "(", ")", "end"
     text: String;

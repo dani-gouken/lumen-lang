@@ -1,5 +1,4 @@
 // Closures: functions given to functions, over arrays of records.
-import std.arrays;
 
 struct Order {
     id: Int;

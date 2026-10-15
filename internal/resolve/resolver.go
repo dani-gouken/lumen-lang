@@ -15,6 +15,7 @@ const (
 	ErrUndefined     = "E1001" // Undefined identifier, type, or trait
 	ErrRedeclaration = "E1002" // Redeclaration of a name in the same scope
 	ErrUnusableName  = "E1003" // A pattern names a value where nothing could use the name
+	ErrUnused        = "E1004" // A variable, a parameter or a name of a pattern nothing uses (a warning)
 )
 
 type Resolver struct {
@@ -36,6 +37,15 @@ type Resolver struct {
 	// calls it is told how to write one that may
 	defining string
 
+	// The variables, parameters and names of patterns of the program's
+	// own code, which are said to be unused when nothing names them; and
+	// whether what is being resolved is the program's own code, and
+	// whether its parameters are its to choose (not those of a trait)
+	watched   []*Symbol
+	ownCode   bool
+	ownParams bool
+	unused    bool
+
 	// The variants of the program's enums, which a variant written alone
 	// and misspelt may have meant
 	variants []string
@@ -56,6 +66,12 @@ func NewResolver(errs *errors.Handler) *Resolver {
 	return r
 }
 
+// WarnUnused has the variables, parameters and names of patterns nothing
+// uses said, as warnings.
+func (r *Resolver) WarnUnused(on bool) {
+	r.unused = on
+}
+
 // SetSourceLines sets the source lines for error reporting.
 func (r *Resolver) SetSourceLines(lines map[int]string) {
 	r.sourceLines = lines
@@ -67,6 +83,9 @@ func (r *Resolver) Resolve(prog *ast.Program) *Table {
 
 	// Pass 2: Function bodies and other executable code
 	r.resolveBody(prog)
+	if r.unused {
+		r.reportUnused()
+	}
 
 	return r.table
 }
@@ -124,7 +143,41 @@ func (r *Resolver) declare(name string, kind SymbolKind, node ast.Node) {
 	}
 	if err := r.current.Insert(name, sym); err != nil {
 		r.errs.ReportErrorFromToken(ErrRedeclaration, err.Error(), node.Token(), r.sourceLines)
+		return
 	}
+	if kind == SymbolVar && r.ownCode && !strings.HasPrefix(name, "_") && name != "self" {
+		if _, isParam := node.(*ast.Param); !isParam || r.ownParams {
+			r.watched = append(r.watched, sym)
+		}
+	}
+}
+
+// reportUnused warns of the variables, parameters and names of patterns
+// nothing uses: a mistake, or something left over.
+func (r *Resolver) reportUnused() {
+	for _, sym := range r.watched {
+		if sym.Used {
+			continue
+		}
+		what, fix := "variable", "Remove it, or start its name with _ if it has to be there"
+		switch sym.Decl.(type) {
+		case *ast.Param:
+			what = "parameter"
+		case *ast.BindingPattern:
+			what, fix = "name", "Write _ in its place"
+		case *ast.ForStmt, *ast.ForIndex:
+			fix = "Write _ in its place"
+		}
+		r.errs.ReportWarningWithSuggestion(ErrUnused, fmt.Sprintf("%s '%s' is never used", what, sym.Name), fix, nameToken(sym.Decl), r.sourceLines)
+	}
+}
+
+// nameToken is where a declaration writes its name, as far as it is known.
+func nameToken(node ast.Node) token.Token {
+	if let, ok := node.(*ast.LetStmt); ok && let.NameTok.Literal != "" {
+		return let.NameTok
+	}
+	return node.Token()
 }
 
 func (r *Resolver) resolveBody(prog *ast.Program) {
@@ -144,7 +197,10 @@ func (r *Resolver) resolveBody(prog *ast.Program) {
 func (r *Resolver) visitDecl(decl ast.Decl) {
 	switch d := decl.(type) {
 	case *ast.FnDecl:
+		// A function's parameters are its own to choose
+		r.ownParams = true
 		r.visitFnDecl(d)
+		r.ownParams = false
 	case *ast.ConstDecl:
 		if d.Type != nil {
 			r.visitType(d.Type)
@@ -165,6 +221,11 @@ func (r *Resolver) visitFnDecl(d *ast.FnDecl) {
 	// Create new scope for function
 	r.pushScope(d)
 	defer r.popScope()
+	// What the library declares and does not use is its own business
+	savedOwn, savedParams := r.ownCode, r.ownParams
+	r.ownCode = !strings.HasPrefix(d.Module, stdlib.Package+".") && !strings.HasPrefix(d.Name, stdlib.Package+".") && d.Body != nil
+	r.ownParams = r.ownParams && d.Name != "main"
+	defer func() { r.ownCode, r.ownParams = savedOwn, savedParams }()
 	inScript := r.inScript
 	r.inScript = d.Script
 	defer func() { r.inScript = inScript }()
@@ -299,7 +360,11 @@ func (r *Resolver) visitMethodDecl(impl *ast.ImplDecl, m *ast.FnDecl) {
 	for _, tp := range impl.TypeParams {
 		r.current.Insert(tp, &Symbol{Name: tp, Kind: SymbolTypeParam, Decl: impl})
 	}
+	// The parameters of a method a trait asks for are the trait's
+	saved := r.ownParams
+	r.ownParams = impl.TraitName == ""
 	r.visitFnDecl(m)
+	r.ownParams = saved
 }
 
 func (r *Resolver) visitBlockStmt(b *ast.BlockStmt) {
@@ -636,6 +701,11 @@ func (r *Resolver) visitExpr(expr ast.Expr) {
 func (r *Resolver) visitFnExpr(e *ast.FnExpr) {
 	r.pushScope(e)
 	defer r.popScope()
+	// The parameters of a function written where it is used are what it
+	// is handed to asks for: (sum, item) -> sum
+	saved := r.ownParams
+	r.ownParams = false
+	defer func() { r.ownParams = saved }()
 
 	for _, param := range e.Params {
 		r.visitType(param.Type)
@@ -666,6 +736,7 @@ func (r *Resolver) resolveIdent(id *ast.Ident) {
 		return
 	}
 	r.table.Defs[id] = sym
+	sym.Used = true
 }
 
 func (r *Resolver) visitType(t *ast.Type) {

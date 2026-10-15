@@ -42,6 +42,10 @@ fn main() -> Int {
     let p1 = Point { x: 10, y: 20 };
     let p2 = p1.clone();
 
+    if p2.x != p1.x {
+        return 1;
+    }
+
     print_all("Values:", 1, "two", true);
 
     let numbers = collect<Int>(1, 2, 3, 4);

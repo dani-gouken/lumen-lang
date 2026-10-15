@@ -7,7 +7,7 @@
 // reason it could not be: a log has lines nobody planned for, and one of
 // them must not cost the report.
 
-import std.regex.{Regex, Match};
+import std.regex.{Regex};
 import std.time.{Date};
 import std.format.{Align};
 

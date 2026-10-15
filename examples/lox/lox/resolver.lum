@@ -223,12 +223,12 @@ impl Resolver {
                 self.local(number, name);
             }
 
-            case Expr.Binary(left, operator, right): {
+            case Expr.Binary(left, _, right): {
                 self.expression(left);
                 self.expression(right);
             }
 
-            case Expr.Call(callee, paren, arguments): {
+            case Expr.Call(callee, _, arguments): {
                 self.expression(callee);
 
                 for argument in arguments {
@@ -236,7 +236,7 @@ impl Resolver {
                 }
             }
 
-            case Expr.Get(object, name): {
+            case Expr.Get(object, _): {
                 self.expression(object);
             }
 
@@ -244,19 +244,19 @@ impl Resolver {
                 self.expression(inner);
             }
 
-            case Expr.Literal(value): {}
+            case Expr.Literal(_): {}
 
-            case Expr.Logical(left, operator, right): {
+            case Expr.Logical(left, _, right): {
                 self.expression(left);
                 self.expression(right);
             }
 
-            case Expr.Set(object, name, value): {
+            case Expr.Set(object, _, value): {
                 self.expression(value);
                 self.expression(object);
             }
 
-            case Expr.Super(keyword, method, number): {
+            case Expr.Super(keyword, _, number): {
                 if self.class == InsideClass.None {
                     self.reporter.atToken(keyword, "Can't use 'super' outside of a class.");
                 } else if self.class != InsideClass.Subclass {
@@ -278,7 +278,7 @@ impl Resolver {
                 self.local(number, keyword);
             }
 
-            case Expr.Unary(operator, right): {
+            case Expr.Unary(_, right): {
                 self.expression(right);
             }
 

@@ -16,7 +16,7 @@
 // columns (see bind): a name that no table has, or that two have, is an
 // error then, and a row is afterwards read by position.
 
-import query.tree.{Expr, Item, Source, Join, OrderKey, Select};
+import query.tree.{Expr, Item, Select};
 import query.value.{Value, show, key, truth, fromBool, order, compare, arithmetic, parse};
 
 // --- Tables ---
@@ -161,11 +161,11 @@ fn bindAll(expressions: [Expr], columns: [Column], grouped: Bool) -> Result<[Exp
 // out for a group of rows, where COUNT, SUM and the like make sense.
 fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, String> {
     match expression {
-        case Expr.Literal(value): {
+        case Expr.Literal(_): {
             return Ok(expression);
         }
 
-        case Expr.Slot(at): {
+        case Expr.Slot(_): {
             return Ok(expression);
         }
 
@@ -282,23 +282,22 @@ fn bind(expression: Expr, columns: [Column], grouped: Bool) -> Result<Expr, Stri
 // Whether an expression asks something of a group of rows.
 fn aggregates(expression: Expr) -> Bool {
     return match expression {
-        case Expr.Literal(value): false;
-        case Expr.Slot(at): false;
-        case Expr.Column(table, name): false;
+        case Expr.Literal(_): false;
+        case Expr.Slot(_): false;
+        case Expr.Column(_, _): false;
         case Expr.Negate(inner): aggregates(inner);
         case Expr.Not(inner): aggregates(inner);
-        case Expr.Binary(operator, left, right): aggregates(left) || aggregates(right);
-        case Expr.Like(value, pattern, negated): aggregates(value) || aggregates(pattern);
-        case Expr.In(value, options, negated): aggregates(value) || options.any(aggregates);
+        case Expr.Binary(_, left, right): aggregates(left) || aggregates(right);
+        case Expr.Like(value, pattern, _): aggregates(value) || aggregates(pattern);
+        case Expr.In(value, options, _): aggregates(value) || options.any(aggregates);
 
-        case Expr.Between(value, low, high, negated): aggregates(value)
+        case Expr.Between(value, low, high, _): aggregates(value)
             || aggregates(low)
             || aggregates(high);
 
-        case Expr.IsNull(inner, negated): aggregates(inner);
+        case Expr.IsNull(inner, _): aggregates(inner);
 
-        case Expr.Call(function, arguments, star): isAggregate(function)
-            || arguments.any(aggregates);
+        case Expr.Call(function, arguments, _): isAggregate(function) || arguments.any(aggregates);
 
         case Expr.Case(branches, otherwise): {
             for (condition, value) in branches {
@@ -339,7 +338,7 @@ fn eval(expression: Expr, row: [Value], group: [[Value]]?) -> Value {
             return row[at];
         }
 
-        case Expr.Column(table, name): {
+        case Expr.Column(_, _): {
             return Value.Null;
         }
 
@@ -348,7 +347,7 @@ fn eval(expression: Expr, row: [Value], group: [[Value]]?) -> Value {
                 case Value.Int(n): Value.Int(-n);
                 case Value.Real(x): Value.Real(-x);
                 case Value.Null: Value.Null;
-                case Value.Text(text): Value.Int(0);
+                case Value.Text(_): Value.Int(0);
             };
         }
 

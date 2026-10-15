@@ -21,7 +21,7 @@ import lox.token.{Reporter};
 import lox.scanner;
 import lox.parser;
 import lox.resolver;
-import lox.interpreter.{Interpreter, RuntimeError, interpreter};
+import lox.interpreter.{Interpreter, interpreter};
 
 const CANNOT_BE_READ = 65;
 const FAILED = 70;

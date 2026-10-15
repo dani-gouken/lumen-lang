@@ -1,13 +1,10 @@
 // A reading list worked over with functions written without types:
 // their parameters and results come from what they are handed to.
 
-import std.arrays;
-import std.strings;
 import std.list;
 import std.dict;
 import std.option;
 import std.format;
-import std.math;
 
 struct Book {
     title: String;

@@ -98,6 +98,11 @@ type Options struct {
 	// file of the library that is open in it. Otherwise what a program
 	// does not use of the library is left out (see prune.go).
 	WholeLibrary bool
+
+	// Unused has the variables, parameters, names of patterns and imports
+	// of the program that nothing uses said, as warnings: for a person
+	// reading what they wrote, not for a tool that compiles code it made.
+	Unused bool
 }
 
 func readSourceFile(path string) (string, error) {
@@ -131,7 +136,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	// 1. Parsing, of the entry file and of the modules it imports. They
 	// come back as one program in which every declaration has a unique
 	// name, so the stages below know nothing about modules.
-	prog := modules.Load(src, file, modules.Options{Read: opts.Read, Root: opts.Root, Packages: opts.Packages}, errs)
+	prog := modules.Load(src, file, modules.Options{Read: opts.Read, Root: opts.Root, Packages: opts.Packages, Unused: opts.Unused}, errs)
 	result.AST = prog
 	if failed() {
 		return result
@@ -156,6 +161,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	// 2. Name resolution
 	resolver := resolve.NewResolver(errs)
 	resolver.SetSourceLines(lines)
+	resolver.WarnUnused(opts.Unused)
 	table := resolver.Resolve(prog)
 	if failed() {
 		return result

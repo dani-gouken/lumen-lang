@@ -3,9 +3,6 @@
 // An enum that holds arrays of itself, a struct holding the enum, generic
 // enums for results, constants, and the standard library around them.
 
-import std.arrays;
-import std.strings;
-
 const INDENT = "  ";
 const MAX_DEPTH = 3;
 

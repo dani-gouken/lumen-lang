@@ -1199,3 +1199,53 @@ func TestPubUsesOnlyPubTypes(t *testing.T) {
 		"main.lum": "import vault;\nfn main() -> Int { println(vault.open(1).code); return 0; }",
 	}, "7\n")
 }
+
+// With Unused on, what nothing uses is said as warnings: variables,
+// parameters, names of patterns, imports. Names starting with _, the
+// parameters a trait or a short function asks for, and the library are
+// left alone; without it nothing is said.
+func TestUnusedWarnings(t *testing.T) {
+	fs := sources{
+		"lib.lum": "pub fn twice(n: Int) -> Int { return n * 2; }\npub fn half(n: Int) -> Int { return n / 2; }",
+		"main.lum": `
+			import lib;
+			import lib.{twice, half};
+			import std.json;
+			trait Named { fn name(prefix: String) -> String; }
+			struct P { n: Int; }
+			impl Named for P { fn name(prefix: String) -> String { return "p"; } }
+			enum E { A(Int), B }
+			fn f(used: Int, unused: Int, _skipped: Int) -> Int {
+				let spare = 1;
+				let _fine = 2;
+				let e = E.A(used);
+				match e { case E.A(n): { } case E.B: { } }
+				return [1, 2].fold(0, (sum, item) -> sum) + twice(used);
+			}
+			fn main() -> Int { return f(1, 2, 3); }
+		`,
+	}
+	errs := errors.NewHandler()
+	CompileOptions(fs["main.lum"], "main.lum", Options{Read: fs.read, Unused: true}, errs)
+	var got []string
+	for _, d := range errs.Diagnostics {
+		got = append(got, d.Code+" "+d.Message)
+	}
+	want := []string{
+		"E8010 module 'lib' is imported and never used",
+		"E8010 'half' is imported and never used",
+		"E8010 module 'std.json' is imported and never used",
+		"E1004 parameter 'unused' is never used",
+		"E1004 variable 'spare' is never used",
+		"E1004 name 'n' is never used",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("got\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+
+	errs = errors.NewHandler()
+	CompileOptions(fs["main.lum"], "main.lum", Options{Read: fs.read}, errs)
+	if len(errs.Diagnostics) != 0 {
+		t.Errorf("expected nothing without Unused, got %v", errs.Diagnostics)
+	}
+}
