@@ -251,6 +251,10 @@ vm.CollectGarbage()
 
 An allocation, or the growth of an array or object, that would exceed the heap limit runs a collection first and is retried. Only if there is still no room does the program stop with `out of memory`.
 
+### Texts joined
+
+Two texts joined whose length reaches 1 KB are not copied: the new text is the two (a rope), and its bytes are written out the first time something reads them, then kept. A text built a part at a time, `text = text + part`, is then a chain of parts written out once, instead of a copy of everything so far at every part. A rope knows its length in characters from its parts. The collector keeps the parts of a rope while it is not written out. A rope is counted for itself when it is made, and for its bytes when it is written out.
+
 ### Go's collector
 
 Every object of a program is also a Go object: the VM's collector frees it by forgetting it, and Go's collector takes the memory back. A program that makes many small values would otherwise have Go collect every few megabytes it allocates. `lumen run` and the executables of `lumen native` set Go's collector to run a quarter as often (`GOGC=400`), with a soft limit of twice the program's heap limit and 512 MB, past which it collects sooner: 8 to 15% less time for such programs, for some more memory. `GOGC` and `GOMEMLIMIT`, when set, are left as they are.

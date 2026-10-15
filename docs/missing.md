@@ -212,9 +212,9 @@ A cast to a function type is checked against the signature recorded when the fun
 
 ## 3. Runtime and VM
 
-### Strings are not counted when they grow — S
+### Texts built of many short parts — S
 
-`a + b` and `text += part` create a new string each time, and each is counted. But building a long string in a loop makes garbage proportional to the square of its length (every step copies everything so far). Collecting the pieces in an array and calling `join` once avoids it; there is no string builder that does this behind `+=`.
+`text = text + part` copies nothing once the text is 1 KB long: the two are kept as a rope and written out once, when the bytes are first read ([memory-management.md](memory-management.md)). Until then the chain of parts takes more room than the text will (some 100 bytes a part besides its own), so a text of millions of short parts built under a small `--heap-mb` runs out sooner than its length suggests. Short texts are still copied when joined: a short key made in a loop is a new object each time.
 
 ### Method dispatch cost — M
 
