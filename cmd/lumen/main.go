@@ -45,6 +45,11 @@ var (
 // Where --cpuprofile writes what the processor was doing, for go tool pprof
 var cpuProfile = ""
 
+// showResult, set by --result, makes run print what main returned instead
+// of making it the exit status: how a program written in assembly is looked
+// at, whose main may return anything
+var showResult = false
+
 // startProfile begins recording for --cpuprofile, if it was given.
 func startProfile() {
 	if cpuProfile == "" {
@@ -151,15 +156,19 @@ func parseOptions(args []string) []string {
 		if arg == "--" && afterFile {
 			return append(rest, args[i+1:]...)
 		}
-		isOurs := name == "--heap-mb" || name == "--max-depth" || name == "--cpuprofile" || arg == "--strip"
-		// fmt and test have options of their own, which they read themselves
-		ofTool := len(rest) >= 2 && (rest[1] == "fmt" || rest[1] == "test" || rest[1] == "check" || slices.Contains(pkgmgr.Commands, rest[1]))
+		isOurs := name == "--heap-mb" || name == "--max-depth" || name == "--cpuprofile" || arg == "--strip" || arg == "--result"
+		// fmt, test, check and dump have options of their own, which they read themselves
+		ofTool := len(rest) >= 2 && (rest[1] == "fmt" || rest[1] == "test" || rest[1] == "check" || rest[1] == "dump" || slices.Contains(pkgmgr.Commands, rest[1]))
 		if !strings.HasPrefix(arg, "--") || ((afterFile || ofTool) && !isOurs) {
 			rest = append(rest, arg)
 			continue
 		}
 		if arg == "--strip" {
 			strip = true
+			continue
+		}
+		if arg == "--result" {
+			showResult = true
 			continue
 		}
 		if name == "--cpuprofile" {
@@ -350,7 +359,7 @@ func bytecodeOutput(input, output string) string {
 		return strings.TrimSuffix(name, filepath.Ext(name)) + ".lc"
 	}
 	if filepath.Ext(output) != ".lc" {
-		fatal(fmt.Errorf("%s: bytecode is written to a .lc file; lumen dump prints a listing, lumen native makes an executable", output))
+		fatal(fmt.Errorf("%s: bytecode is written to a .lc file; lumen dump prints a listing", output))
 	}
 	return output
 }
@@ -430,6 +439,7 @@ func printHelp() {
 	fmt.Println("  --heap-mb=N                Memory the program may use, in MB (default 256)")
 	fmt.Println("  --max-depth=N              How deep calls may nest (default 10000)")
 	fmt.Println("  --cpuprofile=FILE          Write where the time went, for go tool pprof")
+	fmt.Println("  --result                   Print what main returned, instead of making it the exit status")
 	fmt.Println()
 	fmt.Println("Option for compile:")
 	fmt.Println("  --strip                    Leave out what errors use to name the source line:")
@@ -527,6 +537,10 @@ func cmdRun(inputFile string) {
 		leaveIfAsked(err)
 		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
 		exit(1)
+	}
+	if showResult {
+		fmt.Printf("Result: %s\n", formatValue(result))
+		return
 	}
 	if result.IsInt() {
 		exit(int(result.AsInt() & 0xFF))
@@ -821,8 +835,6 @@ func runTests(file, src string, apart bool) (failed int, ok bool) {
 	return int(value.AsInt()), true
 }
 
-
-
 // cmdCompile writes the bytecode of a program.
 func cmdCompile(inputFile, outputFile string) {
 	chunk := compileSource(inputFile).Chunk
@@ -897,9 +909,6 @@ func cmdAssemble(inputFile, outputFile string) {
 
 	fmt.Printf("Assembled %s -> %s (%d bytes)\n", inputFile, outputFile, len(bytecode))
 }
-
-
-
 
 func formatValue(val vm.Value) string {
 	if val.IsHeapPtr() {

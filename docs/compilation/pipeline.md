@@ -24,7 +24,7 @@ graph TD
 ```
 
 The whole pipeline is driven by one function, `compiler.Compile`, which is what
-`lumen run`, `lumen build`, `lumen ir` and `lumen lumdbg` call.
+`lumen run`, `lumen compile`, `lumen dump` and `lumen debug` call.
 
 ## Package Structure
 
@@ -297,10 +297,10 @@ text includes the source location recorded by bytecode generation.
 ## Inspecting the Pipeline
 
 ```bash
-lumen ir program.lum                  # IR after stage 7
-lumen build program.lum out.lasm      # bytecode listing after stage 8
-lumen build program.lum out.lc        # bytecode file
-lumen lumdbg program.lum              # step through the bytecode with source lines
+lumen dump --ir program.lum           # IR after stage 7
+lumen dump program.lum                # bytecode listing after stage 8
+lumen compile program.lum -o out.lc   # bytecode file
+lumen debug program.lum               # step through the bytecode with source lines
 ```
 
 From Go, `compiler.Result.AST`, `.Lowered` and `.IR` give the same views;

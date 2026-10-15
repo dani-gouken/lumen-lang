@@ -190,7 +190,7 @@ Names of the entry file are kept as written. This is what appears in:
 *   **type errors**: `physics.body.Body has no field 'y'`;
 *   **runtime errors**: `at game/physics/body.lum:12:9 in function 'physics.body.new'`, with the source line of that file;
 *   **type tests**: two modules may each have a `struct Node`. They are different types; `value is a.Node` and `value is b.Node` tell them apart, and a failed cast names both;
-*   **`lumen ir`, listings and the debugger**.
+*   **`lumen dump --ir`, listings and the debugger**.
 
 ## Errors
 

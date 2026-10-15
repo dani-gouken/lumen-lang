@@ -35,7 +35,7 @@ func queryFiles(t *testing.T) []string {
 func buildQuery(t *testing.T) string {
 	t.Helper()
 	compiled := filepath.Join(t.TempDir(), "query.lc")
-	if res := runLumen(t, "build", "examples/query", compiled); res.exit != 0 {
+	if res := runLumen(t, "compile", "examples/query", "-o", compiled); res.exit != 0 {
 		t.Fatalf("the query engine does not compile:\n%s", res.stderr)
 	}
 	return compiled

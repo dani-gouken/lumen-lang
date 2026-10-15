@@ -98,7 +98,7 @@ func loxTests(t *testing.T) []string {
 func buildLox(t *testing.T) string {
 	t.Helper()
 	compiled := filepath.Join(t.TempDir(), "lox.lc")
-	if res := runLumen(t, "build", "examples/lox", compiled); res.exit != 0 {
+	if res := runLumen(t, "compile", "examples/lox", "-o", compiled); res.exit != 0 {
 		t.Fatalf("the interpreter does not compile:\n%s", res.stderr)
 	}
 	return compiled

@@ -108,7 +108,7 @@ A library is only looked for when one of its functions is called. A program that
 
 A library that is there and cannot be opened (it is for another processor, or needs a library that is missing) fails with what the system says of it.
 
-A program built to bytecode (`lumen build`) carries its declarations with it, and finds the libraries the same way where it is run.
+A program compiled to bytecode (`lumen compile`) carries its declarations with it, and finds the libraries the same way where it is run.
 
 ## What Is Not Checked
 

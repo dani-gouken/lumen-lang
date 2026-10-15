@@ -28,10 +28,10 @@ func TestDamagedBytecodeIsRefused(t *testing.T) {
 			}`,
 	})
 	bytecode := filepath.Join(dir, "sum.lc")
-	if res := runLumen(t, "build", filepath.Join(dir, "sum.lum"), bytecode); res.exit != 0 {
-		t.Fatalf("build failed:\n%s", res.stderr)
+	if res := runLumen(t, "compile", filepath.Join(dir, "sum.lum"), "-o", bytecode); res.exit != 0 {
+		t.Fatalf("compile failed:\n%s", res.stderr)
 	}
-	if res := runLumen(t, "exec", bytecode); res.exit != 0 || !strings.HasPrefix(res.stdout, "55\n") {
+	if res := runLumen(t, "run", bytecode); res.exit != 0 || !strings.HasPrefix(res.stdout, "55\n") {
 		t.Fatalf("the file as built: exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
 	}
 	whole, err := os.ReadFile(bytecode)
@@ -59,7 +59,7 @@ func TestDamagedBytecodeIsRefused(t *testing.T) {
 			if err := os.WriteFile(damaged, change(append([]byte(nil), whole...)), 0644); err != nil {
 				t.Fatal(err)
 			}
-			res := runLumen(t, "exec", damaged)
+			res := runLumen(t, "run", damaged)
 			if res.exit != 1 || res.stdout != "" {
 				t.Errorf("expected a refusal: exit %d, wrote %q", res.exit, res.stdout)
 			}

@@ -58,8 +58,8 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 	build := func(source string, options ...string) (string, int) {
 		t.Helper()
 		out := filepath.Join(t.TempDir(), "program.lc")
-		args := append([]string{"build"}, options...)
-		if res := runLumen(t, append(args, filepath.Join(dir, source), out)...); res.exit != 0 {
+		args := append([]string{"compile"}, options...)
+		if res := runLumen(t, append(args, filepath.Join(dir, source), "-o", out)...); res.exit != 0 {
 			t.Fatalf("build of %s failed:\n%s", source, res.stderr)
 		}
 		info, err := os.Stat(out)
@@ -76,7 +76,7 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 			t.Errorf("a program using a little of seven modules compiles to %d bytes", size)
 		}
 		fromSource := runLumen(t, "run", filepath.Join(dir, "report.lum"))
-		fromFile := runLumen(t, "exec", built)
+		fromFile := runLumen(t, "run", built)
 		want := "north    165\nsouth    80\n245\n"
 		if fromSource.stdout != want || !strings.HasPrefix(fromFile.stdout, want) || fromSource.exit != 0 || fromFile.exit != 0 {
 			t.Errorf("from source: %q (exit %d)\nfrom the file: %q (exit %d)\n%s%s", fromSource.stdout, fromSource.exit, fromFile.stdout, fromFile.exit, fromSource.stderr, fromFile.stderr)
@@ -97,10 +97,9 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 	t.Run("a failure says the same from a file", func(t *testing.T) {
 		built, _ := build("failing.lum")
 		fromSource := runLumen(t, "run", filepath.Join(dir, "failing.lum"))
-		fromFile := runLumen(t, "exec", built)
+		fromFile := runLumen(t, "run", built)
 
-		// exec says first that it was executing; the rest is the message
-		message := strings.TrimSpace(strings.TrimPrefix(fromFile.stderr, "Execution error: "))
+		message := strings.TrimSpace(fromFile.stderr)
 		if message != strings.TrimSpace(fromSource.stderr) {
 			t.Errorf("from source:\n%s\nfrom the file:\n%s", fromSource.stderr, fromFile.stderr)
 		}
@@ -126,7 +125,7 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 		if size >= whole {
 			t.Errorf("stripped: %d bytes, with debug information: %d", size, whole)
 		}
-		res := runLumen(t, "exec", built)
+		res := runLumen(t, "run", built)
 		// The same program: the cleanup runs, the same failure ends it
 		if res.stdout != "checked a\n" || res.exit != 1 {
 			t.Errorf("wrote %q, exit %d", res.stdout, res.exit)
@@ -144,7 +143,7 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 
 		// The option is lumen's wherever it is written, and run ignores it
 		after := filepath.Join(t.TempDir(), "after.lc")
-		if res := runLumen(t, "build", filepath.Join(dir, "failing.lum"), after, "--strip"); res.exit != 0 {
+		if res := runLumen(t, "compile", filepath.Join(dir, "failing.lum"), "-o", after, "--strip"); res.exit != 0 {
 			t.Fatalf("build with the option last failed:\n%s", res.stderr)
 		}
 		if info, _ := os.Stat(after); info == nil || int(info.Size()) != size {

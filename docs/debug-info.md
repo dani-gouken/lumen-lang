@@ -138,7 +138,7 @@ Read back, every instruction has the record it had. A source line is in the file
 
 Instructions from the same place share one record in memory too: a record got from `GetDebugInfo` is not to be changed.
 
-`lumen build --strip` writes a file without any of this. The program is the same; an error then names the instruction instead of the line:
+`lumen compile --strip` writes a file without any of this. The program is the same; an error then names the instruction instead of the line:
 
 ```
 [ERROR] R0002: index out of bounds: 2 (length 2) (at instruction 14)

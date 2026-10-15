@@ -222,8 +222,8 @@ func TestPackages(t *testing.T) {
 	}
 	// The other commands that compile find the packages too
 	lumenOK(t, shop, "check", "main.lum")
-	lumenOK(t, shop, "build", "shop.lc")
-	if exec := lumenOK(t, shop, "exec", "shop.lc"); !strings.HasPrefix(exec.stdout, "** HELLO ADA **\n") {
+	lumenOK(t, shop, "compile", "-o", "shop.lc")
+	if exec := lumenOK(t, shop, "run", "shop.lc"); !strings.HasPrefix(exec.stdout, "** HELLO ADA **\n") {
 		t.Errorf("unexpected output of the bytecode: %q", exec.stdout)
 	}
 

@@ -865,7 +865,7 @@ back_to_start:
 
 ## Instructions Only the Compiler Writes
 
-A listing made from a Lumen program (`lumen build program.lum program.lasm`) shows instructions the assembler does not read. Each says in one step what several of the instructions above say, and is written by the compiler where it can ([bytecode_generation.md](compilation/bytecode_generation.md#one-instruction-for-several)):
+A listing made from a Lumen program (`lumen dump program.lum`) shows instructions the assembler does not read. Each says in one step what several of the instructions above say, and is written by the compiler where it can ([bytecode_generation.md](compilation/bytecode_generation.md#one-instruction-for-several)):
 
 | Instruction | Does |
 |---|---|

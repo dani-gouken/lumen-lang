@@ -21,7 +21,7 @@ type Instruction struct {
 *   **Registers are not single-assignment.** A variable keeps one register for its whole life and assignments write to it again. There are no phi nodes. This keeps generation direct; the backend recovers the lifetime information it needs.
 *   **Constants** carry a type tag that tells the backend how to load them: `Int`, `Float`, `Bool`, `Null`, `String`, `FuncRef` (the name of a function), `Upvalue` (an upvalue index, only as a closure capture).
 
-`lumen ir file.lum` prints it:
+`lumen dump --ir file.lum` prints it:
 
 ```
 fn fib(%v1) {

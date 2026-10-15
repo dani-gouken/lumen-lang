@@ -13,7 +13,7 @@ import std.strings;
 pub extern fn args() -> [String];
 
 // The file the program was run from: the entry file given to `lumen run`,
-// or the bytecode given to `lumen exec`. Files that come with a program
+// or the bytecode given to `lumen run`. Files that come with a program
 // are found from it: path.inside(path.dir(os.program()), "data.csv").
 pub extern fn program() -> String;
 

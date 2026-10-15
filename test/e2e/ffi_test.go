@@ -77,7 +77,7 @@ func TestForeignLibraryByName(t *testing.T) {
 	expectOutput(t, res, probeOutput...)
 
 	for _, flags := range [][]string{nil, {"--strip"}} {
-		build := append(append([]string{"build"}, flags...), "main.lum", "main.lc")
+		build := append(append([]string{"compile"}, flags...), "main.lum", "-o", "main.lc")
 		if res := runLumenIn(t, dir, "", build...); res.exit != 0 {
 			t.Fatalf("lumen %v: exit %d\n%s", build, res.exit, res.stderr)
 		}
@@ -108,8 +108,8 @@ func TestForeignLibraryNotFound(t *testing.T) {
 	}
 
 	// It compiles all the same: the library is only needed to run
-	if res := runLumenIn(t, dir, "", "build", "main.lum", "main.lc"); res.exit != 0 {
-		t.Errorf("build: exit %d\n%s", res.exit, res.stderr)
+	if res := runLumenIn(t, dir, "", "compile", "main.lum", "-o", "main.lc"); res.exit != 0 {
+		t.Errorf("compile: exit %d\n%s", res.exit, res.stderr)
 	}
 }
 
@@ -250,7 +250,7 @@ fn main() {
 func TestWindowedExamplesCompile(t *testing.T) {
 	for name := range opensAWindow {
 		bytecode := filepath.Join(t.TempDir(), name+".lc")
-		if res := runLumen(t, "build", filepath.Join("examples", name), bytecode); res.exit != 0 || res.stderr != "" {
+		if res := runLumen(t, "compile", filepath.Join("examples", name), "-o", bytecode); res.exit != 0 || res.stderr != "" {
 			t.Errorf("%s: exit %d\n%s", name, res.exit, res.stderr)
 		}
 	}

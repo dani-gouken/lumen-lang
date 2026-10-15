@@ -59,7 +59,7 @@ A string literal with `${expr}` in it is not one token. The lexer turns it into 
 
 The lexer keeps the tokens it has made and not yet handed out in a queue (`Lexer.pending`); `Next` empties it before reading on.
 
-Doing this in the lexer means no later stage knows the feature exists. The price is that a string with interpolation prints back, in a diagnostic or in `lumen ir`, as the concatenation.
+Doing this in the lexer means no later stage knows the feature exists. The price is that a string with interpolation prints back, in a diagnostic or in `lumen dump --ir`, as the concatenation.
 
 ## Parser (`parser.go`)
 

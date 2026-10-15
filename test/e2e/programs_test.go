@@ -56,11 +56,11 @@ func TestProgramArguments(t *testing.T) {
 
 	// Compiled bytecode is given arguments the same way
 	bytecode := filepath.Join(t.TempDir(), "args.lc")
-	if res := runLumen(t, "build", file, bytecode); res.exit != 0 {
-		t.Fatalf("build failed:\n%s", res.stderr)
+	if res := runLumen(t, "compile", file, "-o", bytecode); res.exit != 0 {
+		t.Fatalf("compile failed:\n%s", res.stderr)
 	}
-	if res := runLumen(t, "exec", bytecode, "one", "--two"); !strings.Contains(res.stdout, `["one", "--two"] args.lc true`) {
-		t.Errorf("expected exec to pass the arguments on, got %q\n%s", res.stdout, res.stderr)
+	if res := runLumen(t, "run", bytecode, "one", "--two"); !strings.Contains(res.stdout, `["one", "--two"] args.lc true`) {
+		t.Errorf("expected the file to pass the arguments on, got %q\n%s", res.stdout, res.stderr)
 	}
 }
 

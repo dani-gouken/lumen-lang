@@ -257,39 +257,44 @@ func TestExampleProjects(t *testing.T) {
 	}
 }
 
-// TestBuildThenExec checks that compiled bytecode behaves like `lumen run`.
-func TestBuildThenExec(t *testing.T) {
+// TestCompileThenRun checks that compiled bytecode behaves like its source:
+// the same output, the same status, nothing of lumen's own.
+func TestCompileThenRun(t *testing.T) {
 	bytecode := filepath.Join(t.TempDir(), "features.lc")
 	source := "test/e2e/cases/features.lum"
 
-	build := runLumen(t, "build", source, bytecode)
-	if build.exit != 0 {
-		t.Fatalf("build failed with exit code %d:\n%s", build.exit, build.stderr)
+	compiled := runLumen(t, "compile", source, "-o", bytecode)
+	if compiled.exit != 0 {
+		t.Fatalf("compile failed with exit code %d:\n%s", compiled.exit, compiled.stderr)
 	}
 	if info, err := os.Stat(bytecode); err != nil || info.Size() == 0 {
 		t.Fatalf("expected a bytecode file at %s", bytecode)
 	}
 
 	direct := runLumen(t, "run", source)
-	executed := runLumen(t, "exec", bytecode)
-	if executed.exit != 0 {
-		t.Fatalf("exec failed with exit code %d:\n%s", executed.exit, executed.stderr)
-	}
-
-	// exec appends a line with main's result to the program's own output
-	if !strings.HasPrefix(executed.stdout, direct.stdout) {
-		t.Errorf("expected exec to print what run prints\n--- run ---\n%s--- exec ---\n%s", direct.stdout, executed.stdout)
-	}
-	if !strings.HasSuffix(executed.stdout, "Result: Int(9)\n") {
-		t.Errorf("expected exec to report main's result, got:\n%s", executed.stdout)
+	fromFile := runLumen(t, "run", bytecode)
+	if fromFile.stdout != direct.stdout || fromFile.exit != direct.exit || fromFile.exit != 9 {
+		t.Errorf("expected the file to do what its source does\n--- source (exit %d) ---\n%s--- file (exit %d) ---\n%s%s", direct.exit, direct.stdout, fromFile.exit, fromFile.stdout, fromFile.stderr)
 	}
 }
 
-func TestBuildListing(t *testing.T) {
+// dumpTo saves the listing lumen dump prints of a program to a file.
+func dumpTo(t *testing.T, program, listing string) result {
+	t.Helper()
+	res := runLumen(t, "dump", program)
+	if res.exit == 0 {
+		if err := os.WriteFile(listing, []byte(res.stdout), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return res
+}
+
+func TestDumpListing(t *testing.T) {
 	listing := filepath.Join(t.TempDir(), "hello.lasm")
 
-	if res := runLumen(t, "build", "examples/hello.lum", listing); res.exit != 0 {
-		t.Fatalf("build failed with exit code %d:\n%s", res.exit, res.stderr)
+	if res := dumpTo(t, "examples/hello.lum", listing); res.exit != 0 {
+		t.Fatalf("compile failed with exit code %d:\n%s", res.exit, res.stderr)
 	}
 	text, err := os.ReadFile(listing)
 	if err != nil {
@@ -302,10 +307,10 @@ func TestBuildListing(t *testing.T) {
 	}
 }
 
-func TestBuildFailureWritesNothing(t *testing.T) {
+func TestCompileFailureWritesNothing(t *testing.T) {
 	bytecode := filepath.Join(t.TempDir(), "broken.lc")
 
-	res := runLumen(t, "build", "test/e2e/cases/type_error.lum", bytecode)
+	res := runLumen(t, "compile", "test/e2e/cases/type_error.lum", "-o", bytecode)
 	if res.exit != 1 || !strings.Contains(res.stderr, "E2001") {
 		t.Errorf("expected exit code 1 with a type error, got %d:\n%s", res.exit, res.stderr)
 	}
@@ -314,8 +319,8 @@ func TestBuildFailureWritesNothing(t *testing.T) {
 	}
 }
 
-func TestIRCommand(t *testing.T) {
-	res := runLumen(t, "ir", "examples/hello.lum")
+func TestDumpIR(t *testing.T) {
+	res := runLumen(t, "dump", "examples/hello.lum", "--ir")
 	if res.exit != 0 {
 		t.Fatalf("ir failed with exit code %d:\n%s", res.exit, res.stderr)
 	}
@@ -360,12 +365,12 @@ func TestMachineLimits(t *testing.T) {
 
 	// The same options apply to compiled bytecode
 	bytecode := filepath.Join(t.TempDir(), "deep.lc")
-	if res := runLumen(t, "build", deep, bytecode); res.exit != 0 {
-		t.Fatalf("build failed:\n%s", res.stderr)
+	if res := runLumen(t, "compile", deep, "-o", bytecode); res.exit != 0 {
+		t.Fatalf("compile failed:\n%s", res.stderr)
 	}
-	res = runLumen(t, "exec", bytecode, "--max-depth=1000")
+	res = runLumen(t, "run", bytecode, "--max-depth=1000")
 	if res.exit != 1 || !strings.Contains(res.stderr, "max call depth 1000 exceeded") {
-		t.Errorf("expected exec to honour --max-depth, got exit %d:\n%s", res.exit, res.stderr)
+		t.Errorf("expected the file to honour --max-depth, got exit %d:\n%s", res.exit, res.stderr)
 	}
 
 	for _, bad := range [][]string{
@@ -452,11 +457,11 @@ fn main() -> Int {
 
 	// Bytecode is profiled the same way
 	bytecode := filepath.Join(dir, "busy.lc")
-	if res := runLumen(t, "build", filepath.Join(dir, "busy.lum"), bytecode); res.exit != 0 {
-		t.Fatalf("build failed:\n%s", res.stderr)
+	if res := runLumen(t, "compile", filepath.Join(dir, "busy.lum"), "-o", bytecode); res.exit != 0 {
+		t.Fatalf("compile failed:\n%s", res.stderr)
 	}
-	if res := runLumen(t, "exec", bytecode, "--cpuprofile="+filepath.Join(dir, "exec.prof")); res.exit != 0 || !profiled("exec.prof") {
-		t.Errorf("expected exec to write a profile, got exit %d:\n%s", res.exit, res.stderr)
+	if res := runLumen(t, "run", bytecode, "--cpuprofile="+filepath.Join(dir, "exec.prof")); res.exit != 0 || !profiled("exec.prof") {
+		t.Errorf("expected a run of bytecode to write a profile, got exit %d:\n%s", res.exit, res.stderr)
 	}
 
 	// After "--" it is the program's, like any other argument
@@ -488,7 +493,7 @@ func TestMissingFile(t *testing.T) {
 }
 
 func TestUsageErrors(t *testing.T) {
-	for _, args := range [][]string{{"run"}, {"build", "only-input.lum"}, {"ir"}, {"no-such-command"}} {
+	for _, args := range [][]string{{"run"}, {"compile", "one.lum", "two.lum"}, {"dump"}, {"dump", "--ir"}, {"assemble"}, {"no-such-command"}} {
 		t.Run(strings.Join(args, " "), func(t *testing.T) {
 			res := runLumen(t, args...)
 			if res.exit != 1 {
@@ -550,18 +555,18 @@ func TestLargeProgram(t *testing.T) {
 
 	// The same through a bytecode file
 	bytecode := filepath.Join(dir, "large.lc")
-	if res := runLumen(t, "build", source, bytecode); res.exit != 0 {
-		t.Fatalf("build failed:\n%s", res.stderr)
+	if res := runLumen(t, "compile", source, "-o", bytecode); res.exit != 0 {
+		t.Fatalf("compile failed:\n%s", res.stderr)
 	}
-	res = runLumen(t, "exec", bytecode)
+	res = runLumen(t, "run", bytecode)
 	if !strings.HasPrefix(res.stdout, want) || res.stderr != "" {
-		t.Errorf("exec: expected output starting with %q, got %q\n%s", want, res.stdout, res.stderr)
+		t.Errorf("run of the file: expected output starting with %q, got %q\n%s", want, res.stdout, res.stderr)
 	}
 
 	// The listing shows the operands that did not fit before
 	listing := filepath.Join(dir, "large.lasm")
-	if res := runLumen(t, "build", source, listing); res.exit != 0 {
-		t.Fatalf("build of the listing failed:\n%s", res.stderr)
+	if res := dumpTo(t, source, listing); res.exit != 0 {
+		t.Fatalf("dump failed:\n%s", res.stderr)
 	}
 	text, err := os.ReadFile(listing)
 	if err != nil {
@@ -585,7 +590,7 @@ func TestDebuggerSession(t *testing.T) {
 	program := "test/e2e/cases/closures_in_loops.lum"
 
 	// Step a few instructions, look at registers and state, then run on
-	res := runLumenWithInput(t, "s\ns\ns\nr\ni\nc\n", "lumdbg", program)
+	res := runLumenWithInput(t, "s\ns\ns\nr\ni\nc\n", "debug", program)
 	if res.exit != 0 {
 		t.Fatalf("debugger exited with %d:\n%s\n%s", res.exit, res.stdout, res.stderr)
 	}
@@ -610,7 +615,7 @@ func TestDebuggerSession(t *testing.T) {
 	}
 
 	// Limits apply under the debugger too, and errors name their place
-	res = runLumenWithInput(t, "c\n", "lumdbg", "--max-depth=50", "test/e2e/cases/limits_recursion.lum")
+	res = runLumenWithInput(t, "c\n", "debug", "--max-depth=50", "test/e2e/cases/limits_recursion.lum")
 	if res.exit != 1 || !strings.Contains(res.stderr, "stack overflow: max call depth 50 exceeded") {
 		t.Errorf("expected a stack overflow at depth 50, got exit %d:\n%s", res.exit, res.stderr)
 	}
@@ -627,23 +632,23 @@ func TestModulesThroughCommands(t *testing.T) {
 
 	// A bytecode file holds the whole program: no source is needed to run it
 	bytecode := filepath.Join(t.TempDir(), "modules.lc")
-	if res := runLumen(t, "build", program, bytecode); res.exit != 0 {
-		t.Fatalf("build failed:\n%s", res.stderr)
+	if res := runLumen(t, "compile", program, "-o", bytecode); res.exit != 0 {
+		t.Fatalf("compile failed:\n%s", res.stderr)
 	}
-	if res := runLumen(t, "exec", bytecode); !strings.HasPrefix(res.stdout, string(want)) {
-		t.Errorf("exec: expected output starting with %q, got %q\n%s", want, res.stdout, res.stderr)
+	if res := runLumen(t, "run", bytecode); !strings.HasPrefix(res.stdout, string(want)) {
+		t.Errorf("run of the file: expected output starting with %q, got %q\n%s", want, res.stdout, res.stderr)
 	}
 
 	// Functions of a module are named with its path, in the IR and in the listing
-	ir := runLumen(t, "ir", program)
+	ir := runLumen(t, "dump", program, "--ir")
 	for _, name := range []string{"fn main()", "fn zoo.animals.new(", "fn zoo.keeper.Keeper.feed(", "fn zoo.feed.portion("} {
 		if !strings.Contains(ir.stdout, name) {
 			t.Errorf("expected the IR to contain %q, got:\n%s", name, ir.stdout)
 		}
 	}
 	listing := filepath.Join(t.TempDir(), "modules.lasm")
-	if res := runLumen(t, "build", program, listing); res.exit != 0 {
-		t.Fatalf("build of the listing failed:\n%s", res.stderr)
+	if res := dumpTo(t, program, listing); res.exit != 0 {
+		t.Fatalf("dump failed:\n%s", res.stderr)
 	}
 	text, _ := os.ReadFile(listing)
 	for _, name := range []string{".func zoo.animals.heaviest ", "CALLK r9 2 zoo.animals.new"} {
@@ -653,7 +658,7 @@ func TestModulesThroughCommands(t *testing.T) {
 	}
 
 	// The debugger steps into a module and shows the module's source
-	session := runLumenWithInput(t, "s\ns\ns\ns\ns\ns\ns\ns\nc\n", "lumdbg", program)
+	session := runLumenWithInput(t, "s\ns\ns\ns\ns\ns\ns\ns\nc\n", "debug", program)
 	if session.exit != 0 || !strings.Contains(session.stdout, "[zoo.animals.new]") || !strings.Contains(session.stdout, "examples/zoo/animals.lum:") {
 		t.Errorf("expected the session to step into zoo.animals.new, got exit %d:\n%s", session.exit, session.stdout)
 	}
@@ -748,20 +753,20 @@ func TestExampleProject(t *testing.T) {
 	}
 
 	// The other commands take a project the same way
-	if res := runLumenIn(t, example, "", "ir"); !strings.Contains(res.stdout, "fn textkit.format.pad.left(") || !strings.Contains(res.stdout, "fn app.guests.invited(") {
+	if res := runLumenIn(t, example, "", "dump", "--ir"); !strings.Contains(res.stdout, "fn textkit.format.pad.left(") || !strings.Contains(res.stdout, "fn app.guests.invited(") {
 		t.Errorf("expected the IR of the project, got:\n%s%s", res.stdout, res.stderr)
 	}
 	bytecode := filepath.Join(t.TempDir(), "greeter.lc")
-	if res := runLumenIn(t, example, "", "build", bytecode); res.exit != 0 {
-		t.Fatalf("build failed:\n%s", res.stderr)
+	if res := runLumenIn(t, example, "", "compile", "-o", bytecode); res.exit != 0 {
+		t.Fatalf("compile failed:\n%s", res.stderr)
 	}
-	if res := runLumen(t, "exec", bytecode); !strings.HasPrefix(res.stdout, want) {
+	if res := runLumen(t, "run", bytecode); !strings.HasPrefix(res.stdout, want) {
 		t.Errorf("expected the built project to run, got %q\n%s", res.stdout, res.stderr)
 	}
-	if res := runLumen(t, "build", "examples/project", bytecode); res.exit != 0 {
-		t.Errorf("expected build to take a project folder:\n%s", res.stderr)
+	if res := runLumen(t, "compile", "examples/project", "-o", bytecode); res.exit != 0 {
+		t.Errorf("expected compile to take a project folder:\n%s", res.stderr)
 	}
-	if res := runLumenWithInput(t, "c\n", "lumdbg", "examples/project"); res.exit != 0 || !strings.Contains(res.stdout, "3 guests") {
+	if res := runLumenWithInput(t, "c\n", "debug", "examples/project"); res.exit != 0 || !strings.Contains(res.stdout, "3 guests") {
 		t.Errorf("expected the debugger to run the project, got exit %d:\n%s%s", res.exit, res.stdout, res.stderr)
 	}
 
@@ -861,7 +866,7 @@ func TestProjectFile(t *testing.T) {
 			{"unknown key", `{"main": "main.lum"}`, []string{"run"}, `lumen.json: unknown key "main"; the keys are name, entry, root, packages, heap_mb, max_depth`},
 			{"not JSON", "{\n  entry: \"main.lum\"\n}", []string{"run"}, "lumen.json: line 2, column 3: not valid JSON"},
 			{"no entry", `{"name": "x"}`, []string{"run"}, `does not say where the program starts; add "entry": "main.lum"`},
-			{"no entry, for build", `{}`, []string{"build", "out.lc"}, `does not say where the program starts`},
+			{"no entry, for compile", `{}`, []string{"compile", "-o", "out.lc"}, `does not say where the program starts`},
 			{"entry that does not exist", `{"entry": "start.lum"}`, []string{"run"}, "cannot read start.lum"},
 			// A broken project file is reported even when a file is named
 			{"broken, with a file", `{"heap_mb": "lots"}`, []string{"run", "main.lum"}, `"heap_mb" must be a whole number`},
@@ -944,16 +949,16 @@ fn main() -> Int {
 
 	// Compiled bytecode carries the library's functions with it
 	bytecode := filepath.Join(dir, "greet.lc")
-	if res := runLumen(t, "build", program, bytecode); res.exit != 0 {
-		t.Fatalf("build failed:\n%s", res.stderr)
+	if res := runLumen(t, "compile", program, "-o", bytecode); res.exit != 0 {
+		t.Fatalf("compile failed:\n%s", res.stderr)
 	}
-	res = runLumenWithInput(t, "bob\n1\n2\n", "exec", bytecode)
+	res = runLumenWithInput(t, "bob\n1\n2\n", "run", bytecode)
 	if !strings.HasPrefix(res.stdout, "Who are you? Hello, Bob!\n2 numbers, sum 3 largest 2\n") {
 		t.Errorf("expected the bytecode to run with the library, got %q\n%s", res.stdout, res.stderr)
 	}
 
 	// The library's functions appear under their module's name
-	ir := runLumen(t, "ir", program)
+	ir := runLumen(t, "dump", program, "--ir")
 	for _, name := range []string{"fn std.strings.capitalize(", "fn std.arrays.sum(", "fn std.io.ask("} {
 		if !strings.Contains(ir.stdout, name) {
 			t.Errorf("expected the IR to contain %q", name)
@@ -964,8 +969,8 @@ fn main() -> Int {
 		t.Error("did not expect native functions among the compiled ones")
 	}
 	listing := filepath.Join(dir, "greet.lasm")
-	if res := runLumen(t, "build", program, listing); res.exit != 0 {
-		t.Fatalf("build of the listing failed:\n%s", res.stderr)
+	if res := dumpTo(t, program, listing); res.exit != 0 {
+		t.Fatalf("dump failed:\n%s", res.stderr)
 	}
 	text, _ := os.ReadFile(listing)
 	if !regexp.MustCompile(`CALLX r\d+ \d+ std\.io\.readLine`).Match(text) {
@@ -996,4 +1001,107 @@ fn main() -> Int {
 	if res := runLumenIn(t, own, "", "run"); res.stdout != "-1\n" {
 		t.Errorf("expected the project's own std to be used, got %q\n%s", res.stdout, res.stderr)
 	}
+}
+
+// TestCommandsOneForEachThing covers the commands that make and look at
+// programs: run takes any kind of program, compile and assemble write
+// bytecode and nothing else, dump prints, and the old names say the new.
+func TestCommandsOneForEachThing(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, map[string]string{
+		"sum.lum": `fn main() -> Int {
+    let total = 0;
+
+    for i in 1..=10 {
+        total += i;
+    }
+
+    println("total", total);
+    return 3;
+}
+`,
+	})
+	if err := os.WriteFile(filepath.Join(dir, "add.lasm"), mustRead(t, filepath.Join(repoRoot, "examples/add.lasm")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// compile writes next to where it is run, under the program's name
+	if res := runLumenIn(t, dir, "", "compile", "sum.lum"); res.exit != 0 || !strings.Contains(res.stdout, "sum.lc") {
+		t.Fatalf("compile: exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+	}
+	// run takes source and bytecode alike, and so does lumen alone
+	for _, args := range [][]string{{"run", "sum.lum"}, {"run", "sum.lc"}, {"sum.lc"}} {
+		res := runLumenIn(t, dir, "", args...)
+		if res.exit != 3 || res.stdout != "total 55\n" || res.stderr != "" {
+			t.Errorf("%v: expected the total and exit 3, got exit %d, %q\n%s", args, res.exit, res.stdout, res.stderr)
+		}
+	}
+
+	// assemble the same way; run takes assembly too
+	if res := runLumenIn(t, dir, "", "assemble", "add.lasm", "-o", "sums.lc"); res.exit != 0 {
+		t.Fatalf("assemble: exit %d\n%s", res.exit, res.stderr)
+	}
+	fromFile := runLumenIn(t, dir, "", "run", "sums.lc")
+	for _, args := range [][]string{{"run", "add.lasm"}, {"add.lasm"}} {
+		res := runLumenIn(t, dir, "", args...)
+		if res.exit != fromFile.exit || res.stdout != fromFile.stdout || res.stderr != "" {
+			t.Errorf("%v: expected what the assembled file does (exit %d), got exit %d, %q\n%s", args, fromFile.exit, res.exit, res.stdout, res.stderr)
+		}
+	}
+
+	// --result prints what main returned instead of ending with it
+	if res := runLumenIn(t, dir, "", "run", "--result", "sum.lc"); res.exit != 0 || res.stdout != "total 55\nResult: Int(3)\n" {
+		t.Errorf("run --result: exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+	}
+	if res := runLumenIn(t, dir, "", "run", "add.lasm", "--result"); res.exit != 0 || res.stdout != "Result: Number(30)\n" {
+		t.Errorf("run --result of assembly: exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+	}
+
+	// dump shows the same program from its source or its bytecode
+	fromSource := runLumenIn(t, dir, "", "dump", "sum.lum")
+	fromBytecode := runLumenIn(t, dir, "", "dump", "sum.lc")
+	if fromSource.exit != 0 || fromSource.stdout != fromBytecode.stdout || !strings.Contains(fromSource.stdout, ".func main") {
+		t.Errorf("expected one listing from both:\n%s\n---\n%s%s", fromSource.stdout, fromBytecode.stdout, fromBytecode.stderr)
+	}
+	if res := runLumenIn(t, dir, "", "dump", "--ir", "sum.lum"); res.exit != 0 || !strings.Contains(res.stdout, "fn main() {") {
+		t.Errorf("dump --ir: exit %d, %q\n%s", res.exit, res.stdout, res.stderr)
+	}
+
+	// Mistakes say what to do instead, and write nothing
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"compile", "sum.lum", "-o", "sum.lasm"}, "lumen dump prints a listing"},
+		{[]string{"compile", "sum.lum", "-o", "sum"}, "written to a .lc file"},
+		{[]string{"assemble", "add.lasm", "-o", "add.out"}, "written to a .lc file"},
+		{[]string{"compile", "sum.lum", "-o"}, "-o needs a file"},
+		{[]string{"dump", "sum.lc", "--ir"}, "made from source"},
+		{[]string{"build", "sum.lum", "out.lc"}, "lumen build is now lumen compile"},
+		{[]string{"exec", "sum.lc"}, "lumen exec is now lumen run"},
+		{[]string{"runasm", "add.lasm"}, "lumen runasm is now lumen run"},
+		{[]string{"asm", "add.lasm", "out.lc"}, "lumen asm is now lumen assemble"},
+		{[]string{"disasm", "sum.lc", "out.lasm"}, "lumen disasm is now lumen dump"},
+		{[]string{"ir", "sum.lum"}, "lumen ir is now lumen dump --ir"},
+		{[]string{"lumdbg", "sum.lum"}, "lumen lumdbg is now lumen debug"},
+	} {
+		res := runLumenIn(t, dir, "", c.args...)
+		if res.exit != 1 || !strings.Contains(res.stderr, c.want) {
+			t.Errorf("%v: expected exit 1 and %q, got exit %d:\n%s%s", c.args, c.want, res.exit, res.stdout, res.stderr)
+		}
+	}
+	for _, never := range []string{"sum.lasm", "sum", "add.out", "out.lc", "out.lasm"} {
+		if _, err := os.Stat(filepath.Join(dir, never)); err == nil {
+			t.Errorf("%s was written", never)
+		}
+	}
+}
+
+func mustRead(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

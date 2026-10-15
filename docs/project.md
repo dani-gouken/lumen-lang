@@ -59,10 +59,10 @@ With an `entry`, the commands that take a source file can be given the project's
 lumen run                    # the project of the current folder (or of a folder above)
 lumen run path/to/greeter    # the project in that folder
 lumen run .                  # the same as nothing
-lumen build greeter.lc       # compile the current project to bytecode
-lumen build path/to/greeter greeter.lc
-lumen ir
-lumen lumdbg
+lumen compile -o greeter.lc  # compile the current project to bytecode
+lumen compile path/to/greeter -o greeter.lc
+lumen dump --ir
+lumen debug
 ```
 
 Naming a file still works and is unaffected by `entry`: `lumen run src/app/demo.lum`.
@@ -124,7 +124,7 @@ The [standard library](stdlib.md) is a package too, named `std`, whose folder is
 
 `heap_mb` and `max_depth` set what `--heap-mb` and `--max-depth` set (see [guide.md](guide.md#commands)), for every run of the project's source. An option on the command line wins over the file.
 
-They apply to `run` and `lumdbg`, which execute source. A compiled `.lc` file does not carry them: `lumen exec program.lc` uses the defaults or the command line.
+They apply to `run` and `debug` when they execute source. A compiled `.lc` file does not carry them: `lumen run program.lc` uses the defaults or the command line.
 
 ## Errors
 

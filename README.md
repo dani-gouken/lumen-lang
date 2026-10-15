@@ -228,7 +228,7 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ REPL (`lumen repl`): variables, declarations and closures kept from one input to the next
 - ✅ Formatter (`lumen fmt`), written in Lumen, and a test runner (`lumen test`)
 - ✅ Package manager in the manner of Composer (`lumen require`, `install`, `update`, `remove`, `show`), written in Lumen ([docs/packages.md](docs/packages.md))
-- ✅ CLI: `run`, `build`, `test`, `fmt`, `ir`, `repl`, `install`, `update`, `require`, `remove`, `show`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
+- ✅ CLI: `run`, `compile`, `assemble`, `dump`, `debug`, `test`, `check`, `fmt`, `repl`, `install`, `update`, `require`, `remove`, `show`, `lsp`
 
 Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics with requirements (`<T: Ordered>`), traits with type parameters and default methods, operators on structs, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values, ranges and types, as a statement or for its value, with conditions and several patterns per case), loops over ranges (`for i in 0..10`), `defer`, short-circuit operators, `?.` and `?` for values that may be missing, tuples, string interpolation (`"total: ${n}"`) and texts over several lines, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library ([docs/stdlib.md](docs/stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, files and folders, dates, program arguments, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, tests, tasks with channels for doing several things at once ([docs/tasks.md](docs/tasks.md)), and reflection. An editor gets mistakes as you type, hover, go to definition, an outline and suggestions from `lumen lsp`, a language server written in Lumen ([docs/editor.md](docs/editor.md)).
 
@@ -298,16 +298,16 @@ go run ./cmd/lumen
 # Compile and run a source file
 go run ./cmd/lumen run examples/hello.lum
 
-# Compile to bytecode, run it later
-go run ./cmd/lumen build examples/fibonacci.lum fib.lc
-go run ./cmd/lumen exec fib.lc
+# Compile to bytecode, run it later: it does what the source does
+go run ./cmd/lumen compile examples/fibonacci.lum -o fib.lc
+go run ./cmd/lumen run fib.lc
 
 # Look at what the compiler produced
-go run ./cmd/lumen ir examples/hello.lum                 # intermediate representation
-go run ./cmd/lumen build examples/hello.lum hello.lasm   # bytecode listing
+go run ./cmd/lumen dump --ir examples/hello.lum   # intermediate representation
+go run ./cmd/lumen dump examples/hello.lum        # bytecode listing
 
 # Step through a program
-go run ./cmd/lumen lumdbg examples/fibonacci.lum
+go run ./cmd/lumen debug examples/fibonacci.lum
 
 # What follows the file is for the program (std.os.args)
 go run ./cmd/lumen run examples/todo add "Buy milk" --due=2026-10-20
@@ -385,17 +385,17 @@ Lumen assembly (.lasm) uses a simple text format:
 
 ```bash
 # Assemble .lasm to .lc bytecode
-go run ./cmd/lumen asm input.lasm output.lc
+go run ./cmd/lumen assemble input.lasm -o output.lc
 
-# Disassemble .lc bytecode to .lasm text
-go run ./cmd/lumen disasm input.lc output.lasm
+# Print .lc bytecode as .lasm text
+go run ./cmd/lumen dump input.lc > output.lasm
 
-# Execute .lc bytecode
-go run ./cmd/lumen exec program.lc
+# Run bytecode, or assembly directly; --result prints what main returned
+go run ./cmd/lumen run program.lc --result
 
 # Example workflow
-go run ./cmd/lumen asm examples/add.lasm add.lc
-go run ./cmd/lumen exec add.lc
+go run ./cmd/lumen assemble examples/add.lasm -o add.lc
+go run ./cmd/lumen run add.lc --result
 # Output: Result: Number(30)
 ```
 

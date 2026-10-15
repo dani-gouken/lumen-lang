@@ -250,10 +250,10 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 
 | Missing | Today |
 |---------|-------|
-| Round-trip of compiled listings | `lumen build x.lum x.lasm` produces a listing that `lumen asm` cannot read, because long jumps are printed in an annotated form |
+| Round-trip of compiled listings | `lumen dump x.lum` prints a listing that `lumen assemble` cannot read, because long jumps are printed in an annotated form |
 | Errors from several stages in one run | The pipeline stops at the first stage with errors, so type errors appear only after syntax errors are fixed |
 | Machine-readable diagnostics | No `--format=json` on the command line; a program gets them as values from [`std.compiler`](stdlib.md#stdcompiler) |
-| Source-level debugging | `lumdbg` steps bytecode instructions and shows registers by number; it has no statement stepping and no variable names |
+| Source-level debugging | `lumen debug` steps bytecode instructions and shows registers by number; it has no statement stepping and no variable names |
 | Compiler flags | `--heap-mb` and `--max-depth` exist; no optimization level, no warnings-as-errors |
 | More from the language server | Colours, a language server and a formatter are there, with a VS Code extension ([editor.md](editor.md), [formatting.md](formatting.md)). Not there: renaming, finding every use of a name, the parameters of a function while its arguments are typed |
 | More from `lumen test` | Test files and `lumen test` are there ([stdlib.md](stdlib.md#test-files-lumen-test)). Not there: tests run side by side, how long each took, a report a machine reads, the tests listed in the editor |
