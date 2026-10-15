@@ -488,7 +488,7 @@ func TestControlFlowErrors(t *testing.T) {
 		{"cases of different types", `let a = match 3 { case 1: 1; default: "two"; };`, "E2001", "this case gives string, the cases above give int"},
 		{"case that gives nothing", `let a = match 3 { case 1: { println("x"); } default: 2; };`, "E2040", "this case gives no value"},
 		{"case that is a call of nothing", `let a = match 3 { case 1: println("x"); default: 2; };`, "E2040", "this case gives no value"},
-		{"names in alternatives", `let s = Shape.Circle(1.0); match s { case Shape.Circle(r) | Shape.Rect(r, _): { } }`, "E2029", "cannot name a value: 'r'"},
+		{"names some alternatives do not give", `let s = Shape.Circle(1.0); match s { case Shape.Circle(r) | Shape.Rect(_, _): { } default: { } }`, "E2029", "this pattern does not name 'r'"},
 		{"condition that is not a boolean", `match 3 { case 1 if 5: { } default: { } }`, "E2005", "condition must be bool"},
 		{"a condition handles nothing for sure", `let s = Shape.Circle(1.0); match s { case Shape.Circle(r) if r > 1.0: { } case Shape.Rect(_, _): { } }`, "E2028", "does not handle Shape.Circle"},
 		{"range of floats as a value", `let r = 0..10.5;`, "E2038", "the bounds of a range are whole numbers, this is float"},

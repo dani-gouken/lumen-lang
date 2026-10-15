@@ -35,7 +35,7 @@ fn mixed(n: Int) -> Int {
 
 fn round(shape: Shape) -> Bool {
     match shape {
-        case Shape.Circle(r) | Shape.Rect(r, _): {
+        case Shape.Circle(r) | Shape.Rect(w, _): {
             return r > 0.0;
         }
     }

@@ -29,10 +29,20 @@ func (c *Checker) checkMatch(s *ast.MatchStmt, asValue bool, expected Type) Type
 	caseFacts := make([]facts, len(s.Cases))
 	covered := make([][]string, len(s.Cases))
 	hasDefault := false
+	nullTaken := false
 	for i, matchCase := range s.Cases {
 		known := newFacts()
 		caseFacts[i] = known
 		hasDefault = hasDefault || matchCase.IsDefault()
+		if nullTaken && condType != nil {
+			// A case above took null: the value is not null here
+			if value := withoutNull(condType); value != nil {
+				c.learn(s.Cond, value, known)
+			}
+		}
+		if isNullPattern(matchCase) {
+			nullTaken = true
+		}
 
 		patterns := matchCase.Patterns()
 		covered[i] = make([]string, len(patterns))
@@ -42,9 +52,6 @@ func (c *Checker) checkMatch(s *ast.MatchStmt, asValue bool, expected Type) Type
 				// `case Shape.Rect(w, h):` names the values of the variant
 				if name, covers := c.checkVariantPattern(pattern, condType); covers {
 					covered[i][j] = name
-				}
-				if len(patterns) > 1 {
-					c.checkNamesNothing(pattern)
 				}
 			case *ast.Type:
 				// `case Int:` asks what the value is; inside the case it is one
@@ -69,7 +76,22 @@ func (c *Checker) checkMatch(s *ast.MatchStmt, asValue bool, expected Type) Type
 		}
 	}
 
+	for _, matchCase := range s.Cases {
+		if len(matchCase.Alternatives) > 0 {
+			c.checkSameNames(matchCase.Patterns())
+		}
+	}
 	c.checkExhaustive(s, withoutNullOrNil(condType), covered)
+	if s.Exhaustive && !hasDefault && !nullTaken && condType != nil && nullable(condType) && !isUnknown(condType) {
+		// Every variant is handled, and null is not: no case runs for it
+		s.Exhaustive = false
+		if asValue {
+			c.errorfWithSuggestion(s.Token(), ErrNonExhaustiveMatch,
+				"Add a case for it: case null: value;",
+				"match on %s does not handle null", describe(condType))
+			s.Exhaustive = true // Reported once
+		}
+	}
 	if asValue && !hasDefault && !s.Exhaustive {
 		c.errorfWithSuggestion(s.Token(), ErrNonExhaustiveMatch,
 			"Add a case for what is left: default: value;",
@@ -157,20 +179,52 @@ func (c *Checker) checkMatch(s *ast.MatchStmt, asValue bool, expected Type) Type
 	return result
 }
 
-// checkNamesNothing reports the names in a pattern that is one of several
-// of its case: whichever pattern matched, the body is the same, and a name
-// only some of them give would not always exist.
-func (c *Checker) checkNamesNothing(p *ast.VariantPattern) {
-	for _, arg := range p.Args {
-		switch a := arg.(type) {
-		case *ast.BindingPattern:
-			if !a.Ignored() {
-				c.errorfWithSuggestion(a.Token(), ErrInvalidPattern,
-					"Write '_' in its place, or give the pattern a case of its own",
-					"a case with several patterns cannot name a value: '%s'", a.Name)
+// isNullPattern reports whether a case is `case null:` alone, without a
+// condition: the cases after it never see null.
+func isNullPattern(matchCase *ast.MatchCase) bool {
+	if matchCase.Guard != nil || len(matchCase.Alternatives) > 0 {
+		return false
+	}
+	lit, ok := matchCase.Pattern.(*ast.Literal)
+	return ok && lit.Kind == "null"
+}
+
+// checkSameNames checks that the patterns of a case with several name the
+// same values, of the same types: whichever matched, the body is the same,
+// and a name only some of them give would not always exist.
+//
+//	case Add(x, _) | Sub(x, _): ...     x from either
+func (c *Checker) checkSameNames(patterns []ast.Node) {
+	namesOf := func(pattern ast.Node) map[string]*ast.BindingPattern {
+		names := make(map[string]*ast.BindingPattern)
+		if variant, ok := pattern.(*ast.VariantPattern); ok {
+			for _, binding := range variant.Bindings() {
+				names[binding.Name] = binding
 			}
-		case *ast.VariantPattern:
-			c.checkNamesNothing(a)
+		}
+		return names
+	}
+	first := namesOf(patterns[0])
+	for _, pattern := range patterns[1:] {
+		names := namesOf(pattern)
+		for name, binding := range names {
+			given, ok := first[name]
+			if !ok {
+				c.errorfWithSuggestion(binding.Token(), ErrInvalidPattern,
+					"Name the same values in every pattern of the case, or write '_' in its place",
+					"'%s' is not named by the first pattern of the case", name)
+				continue
+			}
+			if a, b := c.bindings[given], c.bindings[binding]; a != nil && b != nil && !isUnknown(a) && !isUnknown(b) && !c.sameType(a, b) {
+				c.errorf(binding.Token(), ErrInvalidPattern, "'%s' is a %s here and a %s in the first pattern of the case", name, describe(b), describe(a))
+			}
+		}
+		for name, binding := range first {
+			if _, ok := names[name]; !ok {
+				c.errorfWithSuggestion(pattern.Token(), ErrInvalidPattern,
+					"Name the same values in every pattern of the case, or write '_' in their place",
+					"this pattern does not name '%s', which the first one does", binding.Name)
+			}
 		}
 	}
 }

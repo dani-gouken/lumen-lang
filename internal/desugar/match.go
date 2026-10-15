@@ -204,6 +204,12 @@ func (d *Desugarer) caseTest(subject ast.Expr, caseStmt *ast.MatchCase, pos toke
 		}
 	}
 
+	if len(caseStmt.Alternatives) > 0 && len(names) > 0 {
+		// case Add(x, _) | Sub(x, _): each name is the value of whichever
+		// pattern matched
+		names = d.sharedNames(subject, caseStmt.Patterns(), pos)
+	}
+
 	if caseStmt.Guard != nil {
 		// The condition is asked once the pattern matched, with its names
 		guard := d.desugarExpr(caseStmt.Guard)
@@ -213,6 +219,46 @@ func (d *Desugarer) caseTest(subject ast.Expr, caseStmt *ast.MatchCase, pos toke
 		test = &ast.BinaryExpr{BaseNode: at, Left: test, Op: "&&", Right: guard}
 	}
 	return test, names
+}
+
+// sharedNames declares the names that every pattern of a case gives, each
+// the value of the first pattern that matched:
+//
+//	case Add(x, _) | Sub(x, _):    let x = value is Add ? value.Add#0 : value.Sub#0;
+//
+// The last pattern is not tested: the case only runs when one matched.
+func (d *Desugarer) sharedNames(subject ast.Expr, patterns []ast.Node, pos token.Position) []ast.Stmt {
+	first, ok := patterns[0].(*ast.VariantPattern)
+	if !ok {
+		return nil
+	}
+	var out []ast.Stmt
+	for _, binding := range first.Bindings() {
+		var value ast.Expr
+		for i := len(patterns) - 1; i >= 0; i-- {
+			pattern, ok := patterns[i].(*ast.VariantPattern)
+			if !ok {
+				continue
+			}
+			tests, lets := d.lowerPattern(subject, pattern, pos)
+			var given ast.Expr
+			for _, let := range lets {
+				if let, ok := let.(*ast.LetStmt); ok && let.Name == binding.Name {
+					given = let.Value
+				}
+			}
+			if given == nil {
+				continue
+			}
+			if value == nil {
+				value = given
+				continue
+			}
+			value = &ast.CondExpr{BaseNode: binding.BaseNode, Cond: d.allOf(tests, pos), Then: given, Else: value}
+		}
+		out = append(out, &ast.LetStmt{BaseNode: binding.BaseNode, Name: binding.Name, Value: value})
+	}
+	return out
 }
 
 // copyStmts copies statements that are needed in two places of the
