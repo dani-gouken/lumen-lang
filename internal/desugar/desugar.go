@@ -99,6 +99,21 @@ func (d *Desugarer) Desugar() (*ast.Program, *DesugarInfo) {
 	return newProg, d.info
 }
 
+// isGlobal reports whether a declaration is that of a variable outside
+// functions.
+func (d *Desugarer) isGlobal(decl ast.Node) bool {
+	let, ok := decl.(*ast.LetStmt)
+	if !ok {
+		return false
+	}
+	for _, global := range d.prog.Globals {
+		if global == let {
+			return true
+		}
+	}
+	return false
+}
+
 // desugarDecl desugars a declaration
 func (d *Desugarer) desugarDecl(decl ast.Decl) ast.Decl {
 	switch decl := decl.(type) {
@@ -376,6 +391,11 @@ func (d *Desugarer) desugarExprAsWritten(expr ast.Expr) ast.Expr {
 	case *ast.TypeTestExpr:
 		return &ast.TypeTestExpr{BaseNode: expr.BaseNode, Expr: d.desugarExpr(expr.Expr), Type: expr.Type}
 	case *ast.Ident:
+		if sym := d.resolveTable.Defs[expr]; sym != nil && d.isGlobal(sym.Decl) {
+			// A variable outside functions: the item of its place
+			call := &ast.CallExpr{BaseNode: expr.BaseNode, Func: d.createIdent(resolve.VariablePrefix+expr.Name, expr.Position())}
+			return &ast.IndexExpr{BaseNode: expr.BaseNode, Expr: call, Index: d.createIntLiteral("0", expr.Position())}
+		}
 		if decl := d.constOf(expr); decl != nil {
 			if once := d.madeOnce(decl, expr.BaseNode); once != nil {
 				return once

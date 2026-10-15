@@ -1146,12 +1146,13 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpONCE:
 			// The value of a constant: A = dest, B = the function that
-			// makes it, which is only run the first time
+			// makes it, which is only run the first time; C = 1 for a
+			// variable, which is not frozen
 			if cur.kept.once != nil && cur.kept.once[instr.B] != 0 {
 				cur.regs[instr.A] = cur.kept.once[instr.B]
 				break
 			}
-			value, err := vm.once(cur.chunk, cur.kept, int(instr.B))
+			value, err := vm.once(cur.chunk, cur.kept, int(instr.B), instr.C == 1)
 			if err != nil {
 				return NewNull(), err
 			}

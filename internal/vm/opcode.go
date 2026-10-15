@@ -133,7 +133,7 @@ const (
 	// The value of a constant that is a struct, an array or a value of an
 	// enum: what the function B returns, which is run the first time and
 	// never again. What it returned is frozen (see frozen.go).
-	OpONCE // A = dest, B = the function that makes the value
+	OpONCE // A = dest, B = the function that makes the value, C = 1 when it is a variable
 
 	OpISTYPE // A = dest (a Bool), B = the value, C = the constant of the name
 	OpJNTYPE // A = the value, B = the constant of the name, C = where to go on unless it is

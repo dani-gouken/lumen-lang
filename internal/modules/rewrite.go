@@ -30,6 +30,11 @@ type rewriter struct {
 }
 
 func (r *rewriter) rewrite() {
+	for _, global := range r.m.prog.Globals {
+		global.Name = r.m.qualify(global.Name)
+		r.typ(global.Type)
+		global.Value = r.expr(global.Value)
+	}
 	for _, decl := range r.m.prog.Decls {
 		switch d := decl.(type) {
 		case *ast.FnDecl:

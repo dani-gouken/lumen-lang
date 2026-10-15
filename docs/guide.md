@@ -588,6 +588,24 @@ Such a constant is made once, the first time the program uses it, and is that on
 
 What a function works out is not a constant: write the function, and call it.
 
+### Variables outside functions
+
+A `let` outside any function, in a file with a `main` or in a module, declares a variable every function of the file sees and can change:
+
+```rust
+let nextId = 1;
+let cache = dict.empty<Int>();
+
+fn issue() -> Int {
+    nextId += 1;
+    return nextId - 1;
+}
+```
+
+The variables are made before `main` starts, in the order they are written; one that uses another makes that one first. A variable of a module is the module's: another module reaches it through the module's functions. Since any function may change it, a test of one against `null` says nothing about the next line: use `?.`, `!`, or copy it into a local variable first.
+
+In a script, a file without a `main`, the statements outside functions are what runs, and their variables are those of the script, which its functions do not see.
+
 ### Generic structs
 
 ```rust

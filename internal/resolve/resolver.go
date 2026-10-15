@@ -72,6 +72,10 @@ func (r *Resolver) resolveTopLevel(prog *ast.Program) {
 	for _, fn := range prog.Externs {
 		r.declare(fn.Name, SymbolFunc, fn)
 	}
+	// So are the variables outside functions, for all of them
+	for _, global := range prog.Globals {
+		r.declare(global.Name, SymbolVar, global)
+	}
 
 	for _, decl := range prog.Decls {
 		if enum, ok := decl.(*ast.EnumDecl); ok && !strings.HasPrefix(enum.Name, stdlib.Package+".") {
@@ -120,6 +124,14 @@ func (r *Resolver) declare(name string, kind SymbolKind, node ast.Node) {
 }
 
 func (r *Resolver) resolveBody(prog *ast.Program) {
+	// The variables outside functions: what makes each sees the names of
+	// the file
+	for _, global := range prog.Globals {
+		if global.Type != nil {
+			r.visitType(global.Type)
+		}
+		r.visitExpr(global.Value)
+	}
 	for _, decl := range prog.Decls {
 		r.visitDecl(decl)
 	}

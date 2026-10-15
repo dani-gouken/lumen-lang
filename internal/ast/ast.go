@@ -82,6 +82,11 @@ type Program struct {
 	// at their first token, which the position of a statement need not be
 	StmtStarts []token.Position
 
+	// Globals are the variables declared outside any function in a file
+	// that is not run as a script: in a module, or next to a main. Each
+	// is made the first time it is used, and its functions all see it.
+	Globals []*LetStmt
+
 	// Externs are the functions declared with `extern fn`: they have a
 	// signature and no body, the runtime provides them. The parser leaves
 	// them among Decls; module loading moves them here, so that later

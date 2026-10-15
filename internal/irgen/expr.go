@@ -521,7 +521,7 @@ func (fc *FunctionCompiler) compileCallExpr(expr *ast.CallExpr) *ir.Register {
 	}
 
 	// A constant that is made once: its function is only run the first time
-	if ident, ok := expr.Func.(*ast.Ident); ok && len(expr.Args) == 0 && strings.HasPrefix(ident.Name, resolve.ConstantPrefix) {
+	if ident, ok := expr.Func.(*ast.Ident); ok && len(expr.Args) == 0 && (strings.HasPrefix(ident.Name, resolve.ConstantPrefix) || strings.HasPrefix(ident.Name, resolve.VariablePrefix)) {
 		fc.setPos(expr)
 		dest := fc.builder.NewRegister()
 		fc.builder.Emit(ir.OpOnce, dest, ir.Constant{Val: ident.Name, Type: "FuncRef"})

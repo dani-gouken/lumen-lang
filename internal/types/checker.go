@@ -180,6 +180,23 @@ func (c *Checker) Check() *Info {
 		}
 	}
 
+	// The variables outside functions, before the functions that use
+	// them: a function can change one between any two lines of another,
+	// so nothing a test learns of one holds, as for a variable a closure
+	// assigns
+	globals := make(map[ast.Node]bool)
+	for _, global := range c.prog.Globals {
+		globals[global] = true
+		c.checkLetStmt(global)
+	}
+	if len(globals) > 0 {
+		for _, sym := range c.table.Defs {
+			if globals[sym.Decl] {
+				c.shared[sym] = true
+			}
+		}
+	}
+
 	for _, decl := range c.prog.Decls {
 		c.checkDecl(decl)
 	}

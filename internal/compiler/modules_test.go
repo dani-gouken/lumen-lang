@@ -1143,3 +1143,35 @@ func TestVariantsAloneAcrossModules(t *testing.T) {
 		`,
 	}, "E1001", "main.lum", "undefined identifier 'Full'")
 }
+
+// A module's variables outside functions are its own: its functions share
+// them, another module only reaches them through those functions, and
+// they are made before main starts.
+func TestModuleVariables(t *testing.T) {
+	expectModulesOutput(t, sources{
+		"ids.lum": `
+			let next = 100;
+			let given: [Int] = [];
+			pub fn take() -> Int { next += 1; given.push(next); return next; }
+			pub fn all() -> [Int] { return given; }
+		`,
+		"main.lum": `
+			import ids;
+			let first = ids.take();
+			fn main() -> Int {
+				println(first, ids.take(), ids.take(), ids.all());
+				return 0;
+			}
+		`,
+	}, "101 102 103 [101, 102, 103]\n")
+
+	expectModulesError(t, sources{
+		"ids.lum":  `let next = 100;`,
+		"main.lum": `import ids; fn main() -> Int { return ids.next; }`,
+	}, "E8003", "main.lum", "variable 'next' of module 'ids' is private")
+
+	expectModulesError(t, sources{
+		"ids.lum":  "let next = 100;\nnext += 1;",
+		"main.lum": `import ids; fn main() -> Int { return 0; }`,
+	}, "E8007", "ids.lum", "statements outside a function only run in the program's entry file")
+}

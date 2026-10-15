@@ -15,6 +15,11 @@ const PushFunction = "__push"
 // text: what items[1..3] is made of, with what the range is made of.
 const SliceFunction = "__slice"
 
+// VariablePrefix starts the name of the function that makes the place of a
+// variable declared outside functions: an array of one item, made the
+// first time the variable is used and changed in place from then on.
+const VariablePrefix = "__var."
+
 // ConstantPrefix starts the name of the function that makes the value of
 // a constant that is a struct, an array or a value of an enum. No program
 // writes such a function: the compiler does, one for each of those

@@ -454,7 +454,7 @@ func (vm *VM) compiledONCE(kept *chunkCache, instr Instr) error {
 		vm.regs[instr.A] = kept.once[instr.B]
 		return nil
 	}
-	value, err := vm.once(vm.chunk, kept, int(instr.B))
+	value, err := vm.once(vm.chunk, kept, int(instr.B), instr.C == 1)
 	if err != nil {
 		return err
 	}

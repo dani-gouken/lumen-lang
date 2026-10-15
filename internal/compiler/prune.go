@@ -91,7 +91,12 @@ func prune(prog *ast.Program, onlyBodies bool) *ast.Program {
 		return prog
 	}
 
-	// Everything the program itself declares is where it starts from
+	// Everything the program itself declares is where it starts from,
+	// what makes its variables outside functions included
+	for _, global := range prog.Globals {
+		p.typ(global.Type)
+		p.expr(global.Value)
+	}
 	for _, decl := range prog.Decls {
 		switch d := decl.(type) {
 		case *ast.FnDecl:

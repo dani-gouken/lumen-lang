@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/dani-gouken/lumen/internal/ir"
+	"github.com/dani-gouken/lumen/internal/resolve"
 	"github.com/dani-gouken/lumen/internal/token"
 	"github.com/dani-gouken/lumen/internal/vm"
 )
@@ -1310,7 +1311,12 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 				f.fail(ErrUnsupportedIR, fmt.Sprintf("the constant made by %s has no function", name), "")
 				break
 			}
-			f.emit(vm.OpONCE, f.dest(instr), uint16(index), 0)
+			// A variable's place is changed, a constant's value never
+			variable := uint16(0)
+			if strings.HasPrefix(name, resolve.VariablePrefix) {
+				variable = 1
+			}
+			f.emit(vm.OpONCE, f.dest(instr), uint16(index), variable)
 		}
 	case ir.OpLen:
 		if f.arity(instr, 1) {

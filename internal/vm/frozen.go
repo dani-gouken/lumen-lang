@@ -54,13 +54,20 @@ func freeze(v Value) {
 // compiler refuses; a chunk that does it anyway is told so.
 //
 //go:noinline
-func (vm *VM) once(chunk *Chunk, kept *chunkCache, index int) (Value, error) {
+//
+// A variable outside functions is made the same way, by ONCE with C set:
+// once, the first time it is used, and left as it is, to be changed.
+func (vm *VM) once(chunk *Chunk, kept *chunkCache, index int, variable bool) (Value, error) {
 	if kept.once == nil {
 		kept.once = make([]Value, len(chunk.Prototypes))
 		kept.making = make([]bool, len(chunk.Prototypes))
 	}
 	if kept.making[index] {
-		return NewNull(), vm.runtimeError(fmt.Sprintf("the constant made by %s is defined in terms of itself", chunk.Prototypes[index].Name))
+		what := "constant"
+		if variable {
+			what = "variable"
+		}
+		return NewNull(), vm.runtimeError(fmt.Sprintf("the %s made by %s is defined in terms of itself", what, chunk.Prototypes[index].Name))
 	}
 	function, err := vm.functionObject(chunk, kept.funcs, index)
 	if err != nil {
@@ -72,7 +79,9 @@ func (vm *VM) once(chunk *Chunk, kept *chunkCache, index int) (Value, error) {
 	if err != nil {
 		return NewNull(), err
 	}
-	freeze(value)
+	if !variable {
+		freeze(value)
+	}
 	kept.once[index] = value
 	return value, nil
 }

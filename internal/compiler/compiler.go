@@ -173,6 +173,10 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	// name are called as those functions from here on
 	forwardLibraryMethods(prog, typeInfo)
 
+	// The variables outside functions are made by functions of their own
+	// from here on
+	lowerGlobals(prog, typeInfo)
+
 	// What nothing reaches of the standard library goes no further: the
 	// stages below are most of the work, and would do it for all of it
 	if !opts.WholeLibrary {

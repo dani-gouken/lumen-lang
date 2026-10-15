@@ -184,6 +184,7 @@ func Load(src, file string, opts Options, errs *errors.Handler) *ast.Program {
 			}
 			merged.Decls = append(merged.Decls, decl)
 		}
+		merged.Globals = append(merged.Globals, m.prog.Globals...)
 	}
 	return merged
 }
@@ -214,7 +215,7 @@ func (l *loader) parse(name, file, src string) *module {
 			name:      declName,
 			qualified: m.qualify(declName),
 			kind:      kind,
-			isType:    kind != "function" && kind != "constant",
+			isType:    kind != "function" && kind != "constant" && kind != "variable",
 			pub:       pub,
 			module:    m,
 		}
@@ -233,6 +234,9 @@ func (l *loader) parse(name, file, src string) *module {
 			declare(m.types, d.Name, "enum", d.Pub)
 		}
 	}
+	for _, global := range m.prog.Globals {
+		declare(m.values, global.Name, "variable", false)
+	}
 	l.importsResult(m, src)
 	return m
 }
@@ -249,19 +253,32 @@ func (l *loader) script(m *module) {
 	if len(stmts) == 0 {
 		return
 	}
-	first := stmts[0].Token()
-	if m.name != "" {
-		l.report(first, ErrStatements, "Put them in a function, and call it from the program",
-			"statements outside a function only run in the program's entry file, not in %s", m.display())
-		return
-	}
+	hasMain := false
 	for _, decl := range m.prog.Decls {
 		if fn, ok := decl.(*ast.FnDecl); ok && fn.Name == "main" && !fn.Extern {
-			l.report(first, ErrStatements, "Move them into main, or leave main out: the statements are then what runs",
-				"statements outside a function cannot run in a file that has a main")
-			return
+			hasMain = true
 		}
 	}
+	if m.name != "" || hasMain {
+		// Not run as a script: its variables are the file's, and nothing
+		// else may stand outside a function
+		for _, stmt := range stmts {
+			if let, ok := stmt.(*ast.LetStmt); ok && !let.IsConst {
+				m.prog.Globals = append(m.prog.Globals, let)
+				continue
+			}
+			if m.name != "" {
+				l.report(stmt.Token(), ErrStatements, "Put them in a function, and call it from the program",
+					"statements outside a function only run in the program's entry file, not in %s", m.display())
+			} else {
+				l.report(stmt.Token(), ErrStatements, "Move them into main, or leave main out: the statements are then what runs",
+					"statements outside a function cannot run in a file that has a main")
+			}
+			return
+		}
+		return
+	}
+	first := stmts[0].Token()
 	main := &ast.FnDecl{BaseNode: ast.BaseNode{Pos: first.Pos, Tok: first}, Name: "main", Script: true,
 		Body: &ast.BlockStmt{BaseNode: ast.BaseNode{Pos: first.Pos, Tok: first}, Stmts: stmts}}
 	if at := returnsValue(stmts); at != nil {
