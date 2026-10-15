@@ -249,7 +249,7 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 			// A function of the type, which takes no value
 			c.errorfWithSuggestion(member.Token(), ErrUnknownMethod,
 				fmt.Sprintf("Call it on the type: %s.%s(...)", displayName(t.Name), member.Name),
-				"%s is a function of %s, which does not use a value of it", member.Name, displayName(t.Name))
+				"%s is a static function of %s, which takes no value of it", member.Name, displayName(t.Name))
 			c.checkArgsOnly(e)
 			return Unknown
 		}

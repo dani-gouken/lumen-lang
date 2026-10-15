@@ -358,7 +358,7 @@ impl Server {
 
     // Tells the editor what is wrong in a file; for an open one, with the
     // editor's number for the text that was checked.
-    fn publish(uri: String, problems: [Problem], edition: Int?) {
+    static fn publish(uri: String, problems: [Problem], edition: Int?) {
         let list = json.array(problems, fn(problem: Problem) -> Json {
             let message = problem.message;
 
@@ -503,7 +503,7 @@ impl Server {
     }
 
     // What the server can do, told to the editor when they meet.
-    fn capabilities() -> Json {
+    static fn capabilities() -> Json {
         let can = json.object()
             .int("textDocumentSync", 1)
             .bool("hoverProvider", true)

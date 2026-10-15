@@ -690,7 +690,7 @@ func TestAFieldAndAMethodOfTheSameName(t *testing.T) {
 			lamp.name = "hall";
 			let dial = Dial { level: 0 };
 			dial.mode(Mode.On);
-			println(lamp.count, lamp.count(), lamp.name(), Dial.name(), dial.level);
+			println(lamp.count, lamp.count(), lamp.name(), dial.name(), dial.level);
 			println(total([lamp, Shelf { items: ["a", "b"] }]), lamp);
 			return 0;
 		}`, nil)

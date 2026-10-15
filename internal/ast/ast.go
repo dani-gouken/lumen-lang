@@ -276,6 +276,10 @@ type FnDecl struct {
 	Body          *BlockStmt
 	IsTraitMethod bool
 
+	// Static marks a function of an impl written `static fn`: a function
+	// of the type, Point.origin(), which has no self
+	Static bool
+
 	// FromTrait names the trait whose default this method is a copy of,
 	// for a method an impl did not write itself
 	FromTrait string

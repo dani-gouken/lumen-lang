@@ -4,7 +4,7 @@ is_names_errors.lum:10:16
 is_names_errors.lum:16:12
 [ERROR] E1003: 'r' cannot be named here: nothing runs only when this test holds
 is_names_errors.lum:20:32
-Write '_' to test without naming. A name can be used when the test is the condition of an 'if' or a 'while', or stands before an '&&'
+Write '_' to test without naming. A name can be used when the test is the condition of an 'if' or a 'while', stands before an '&&', or is the test of an if that leaves when it fails
 [ERROR] E1003: 'width' cannot be named here: nothing runs only when this test holds
 is_names_errors.lum:28:52
 [ERROR] E1003: 'r' cannot be named here: nothing runs only when this test holds

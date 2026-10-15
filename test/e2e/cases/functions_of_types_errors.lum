@@ -5,7 +5,7 @@ struct Money {
 }
 
 impl Money {
-    fn zero() -> Money {
+    static fn zero() -> Money {
         return Money { cents: 0 };
     }
 }

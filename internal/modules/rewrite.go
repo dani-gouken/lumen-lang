@@ -91,9 +91,13 @@ func (r *rewriter) staticsOf(impl *ast.ImplDecl) []ast.Decl {
 	var kept []*ast.FnDecl
 	var out []ast.Decl
 	for _, method := range impl.Methods {
-		if ast.UsesSelf(method) {
+		if !method.Static {
 			kept = append(kept, method)
 			continue
+		}
+		if ast.UsesSelf(method) {
+			r.report(method.Token(), ErrStaticSelf, "Take the value as a parameter, or make it a method: remove 'static'",
+				"static function '%s' has no self: it is called on the type, %s.%s()", method.Name, impl.StructName, method.Name)
 		}
 		if method.Pub {
 			r.exposes(method, "function '"+impl.StructName+"."+method.Name+"'")
@@ -216,8 +220,16 @@ func (r *rewriter) rewrite() {
 			})
 
 		case *ast.ImplDecl:
-			// The functions of the impl that do not use self are the
-			// type's: Point.origin(), not point.origin()
+			if r.loader.unused && d.TraitName == "" && !strings.HasPrefix(r.m.name, stdlib.Package+".") {
+				for _, method := range d.Methods {
+					if !method.Static && !ast.UsesSelf(method) {
+						r.warn(method.Token(), ErrCouldBeStatic, "Write it static fn "+method.Name+"(...), and call it "+d.StructName+"."+method.Name+"(...)",
+							"method '%s' does not use self", method.Name)
+					}
+				}
+			}
+			// The static functions of the impl are the type's:
+			// Point.origin(), not point.origin()
 			if r.m.statics[d.StructName] != nil {
 				statics = append(statics, r.staticsOf(d)...)
 			}

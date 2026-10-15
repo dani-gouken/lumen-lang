@@ -763,8 +763,16 @@ func (p *Parser) parseImplBody(decl *ast.ImplDecl) *ast.ImplDecl {
 	p.expect(token.LBRACE, "'{'")
 	for !p.at(token.RBRACE) {
 		pub := p.accept(token.PUB)
+		// static fn origin(): a function of the type. The word is a name
+		// anywhere else
+		static := false
+		if p.at(token.IDENT) && p.cur().Literal == "static" && p.peekAt(1).Type == token.FN {
+			p.next()
+			static = true
+		}
 		method := p.parseFnDecl(false)
 		method.Pub = pub
+		method.Static = static
 		decl.Methods = append(decl.Methods, method)
 	}
 	p.expect(token.RBRACE, "'}'")

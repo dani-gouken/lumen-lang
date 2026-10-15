@@ -45,6 +45,8 @@ const (
 	ErrVariantNames   = "E8008" // A variant built or matched by names, which it does not have
 	ErrHiddenType     = "E8009" // A pub declaration uses a type other modules cannot name
 	ErrUnusedImport   = "E8010" // An import nothing uses (a warning)
+	ErrCouldBeStatic  = "E8011" // A method that does not use self (a warning)
+	ErrStaticSelf     = "E8012" // A static function that uses self
 )
 
 // Extension is the suffix of Lumen source files.
@@ -260,7 +262,7 @@ func (l *loader) parse(name, file, src string) *module {
 			continue
 		}
 		for _, method := range impl.Methods {
-			if !ast.UsesSelf(method) {
+			if method.Static {
 				if m.statics[impl.StructName] == nil {
 					m.statics[impl.StructName] = make(map[string]bool)
 				}

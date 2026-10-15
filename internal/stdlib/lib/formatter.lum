@@ -1311,6 +1311,12 @@ impl Parser {
                 method.push(space());
             }
 
+            if self.is("static") && self.ahead(1).text == "fn" {
+                // static fn origin(): a function of the type
+                method.push(self.take());
+                method.push(space());
+            }
+
             method.push(self.function());
             let doc = layout.concat(method);
 
