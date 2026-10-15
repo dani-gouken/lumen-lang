@@ -239,23 +239,31 @@ func main() {
 
 	switch command {
 	case "run":
-		cmdRun(sourceFile(argument(2), "Usage: lumen run [file.lum | project folder]"))
+		cmdRun(sourceFile(argument(2), "Usage: lumen run [file.lum | file.lc | file.lasm | project folder] [arguments]"))
 
-	case "build":
-		// With one argument it is the output, and the input is the project's entry
-		usage := "Usage: lumen build [input.lum | project folder] <output.lc|output.lasm>"
-		switch len(os.Args) {
-		case 3:
-			cmdBuild(sourceFile("", usage), os.Args[2])
-		case 4:
-			cmdBuild(sourceFile(os.Args[2], usage), os.Args[3])
-		default:
-			fmt.Println(usage)
+	case "compile":
+		// With no file, the project's entry is compiled
+		args, output := outputOption(os.Args[2:])
+		if len(args) > 1 {
+			fmt.Println("Usage: lumen compile [file.lum | project folder] [-o file.lc]")
 			exit(1)
 		}
+		input := sourceFile(firstOf(args), "Usage: lumen compile [file.lum | project folder] [-o file.lc]")
+		cmdCompile(input, bytecodeOutput(input, output))
 
-	case "ir":
-		cmdIR(sourceFile(argument(2), "Usage: lumen ir [file.lum | project folder]"))
+	case "assemble":
+		args, output := outputOption(os.Args[2:])
+		if len(args) != 1 {
+			fmt.Println("Usage: lumen assemble <file.lasm> [-o file.lc]")
+			exit(1)
+		}
+		cmdAssemble(args[0], bytecodeOutput(args[0], output))
+
+	case "dump":
+		cmdDump(os.Args[2:])
+
+	case "debug":
+		cmdDebug(sourceFile(argument(2), "Usage: lumen debug [file.lum | file.lc | file.lasm | project folder]"))
 
 	case "repl":
 		cmdRepl()
@@ -265,9 +273,6 @@ func main() {
 
 	case "fmt":
 		cmdFmt()
-
-	case "install", "update", "require", "remove", "show":
-		cmdPackages()
 
 	case "test":
 		cmdTest(os.Args[2:])
@@ -283,53 +288,111 @@ func main() {
 		}
 		fmt.Printf("lumen %s %s/%s\n", version, runtime.GOOS, arch)
 
-	case "asm":
-		if len(os.Args) < 4 {
-			fmt.Println("Usage: lumen asm <input.lasm> <output.lc>")
-			exit(1)
-		}
-		cmdAssemble(os.Args[2], os.Args[3])
-
-	case "disasm":
-		if len(os.Args) < 4 {
-			fmt.Println("Usage: lumen disasm <input.lc> <output.lasm>")
-			exit(1)
-		}
-		cmdDisassemble(os.Args[2], os.Args[3])
-
-	case "exec":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: lumen exec <file.lc>")
-			exit(1)
-		}
-		cmdExecute(os.Args[2])
-
-	case "runasm":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: lumen runasm <file.lasm>")
-			exit(1)
-		}
-		cmdRunAsm(os.Args[2])
-
-	case "lumdbg":
-		cmdDebug(sourceFile(argument(2), "Usage: lumen lumdbg [file.lum | file.lasm | file.lc | project folder]"))
+	case "install", "update", "require", "remove", "show", "why", "outdated":
+		cmdPackages()
 
 	default:
+		if now, renamed := renamedCommands[command]; renamed {
+			fmt.Fprintf(os.Stderr, "Error: lumen %s is now lumen %s\n", command, now)
+			exit(1)
+		}
 		fmt.Printf("Unknown command: %s\n", command)
 		printHelp()
 		exit(1)
 	}
 }
 
+// renamedCommands are the commands that have another name now: one verb
+// for each thing to do, the file saying the rest.
+var renamedCommands = map[string]string{
+	"build":  "compile (bytecode) or lumen dump (a listing)",
+	"ir":     "dump --ir",
+	"asm":    "assemble",
+	"disasm": "dump",
+	"exec":   "run",
+	"runasm": "run",
+	"lumdbg": "debug",
+}
+
+// outputOption takes "-o file" out of the arguments of a command that
+// writes a file, and returns the rest and the file ("" when not given).
+func outputOption(args []string) ([]string, string) {
+	var rest []string
+	output := ""
+	for i := 0; i < len(args); i++ {
+		if args[i] == "-o" {
+			if i+1 >= len(args) {
+				fatal(fmt.Errorf("-o needs a file, as in -o app.lc"))
+			}
+			output = args[i+1]
+			i++
+			continue
+		}
+		rest = append(rest, args[i])
+	}
+	return rest, output
+}
+
+// firstOf is the first of the arguments, or "".
+func firstOf(args []string) string {
+	if len(args) == 0 {
+		return ""
+	}
+	return args[0]
+}
+
+// bytecodeOutput is where a command that makes bytecode writes it: the
+// file asked for, which has to be a .lc, or the input's name with .lc in
+// the current folder.
+func bytecodeOutput(input, output string) string {
+	if output == "" {
+		name := filepath.Base(input)
+		return strings.TrimSuffix(name, filepath.Ext(name)) + ".lc"
+	}
+	if filepath.Ext(output) != ".lc" {
+		fatal(fmt.Errorf("%s: bytecode is written to a .lc file; lumen dump prints a listing, lumen native makes an executable", output))
+	}
+	return output
+}
+
+// loadProgram makes the chunk of a program to run, debug or look at:
+// compiled from source, read from bytecode, or assembled.
+func loadProgram(inputFile string) *vm.Chunk {
+	programFile = inputFile
+	switch filepath.Ext(inputFile) {
+	case ".lc":
+		data, err := os.ReadFile(inputFile)
+		if err != nil {
+			fatal(err)
+		}
+		chunk, err := vm.DeserializeChunk(data)
+		if err != nil {
+			fatal(fmt.Errorf("%s: %v", inputFile, err))
+		}
+		return chunk
+	case ".lasm":
+		data, err := os.ReadFile(inputFile)
+		if err != nil {
+			fatal(err)
+		}
+		chunk, err := asm.AssembleFromFile(string(data), inputFile)
+		if err != nil {
+			fatal(fmt.Errorf("%s: %v", inputFile, err))
+		}
+		return chunk
+	}
+	return compileSource(inputFile).Chunk
+}
+
 // commands are the first words lumen understands. A file of that name is
 // run with lumen run.
-var commands = append([]string{"run", "build", "ir", "repl", "lsp", "fmt", "test", "check", "version", "asm", "disasm", "exec", "runasm", "lumdbg"}, pkgmgr.Commands...)
+var commands = append([]string{"run", "compile", "assemble", "dump", "debug", "repl", "lsp", "fmt", "test", "check", "version"}, pkgmgr.Commands...)
 
 // isProgram reports whether a first argument names a program to run
-// rather than a command: a .lum or .lc file, or any file that is not
+// rather than a command: a .lum, .lc or .lasm file, or any file that is not
 // called as a command is (a script without an extension, run through #!).
 func isProgram(arg string) bool {
-	if strings.HasSuffix(arg, ".lum") || strings.HasSuffix(arg, ".lc") {
+	if strings.HasSuffix(arg, ".lum") || strings.HasSuffix(arg, ".lc") || strings.HasSuffix(arg, ".lasm") {
 		return true
 	}
 	if slices.Contains(commands, arg) || strings.HasPrefix(arg, "-") {
@@ -343,11 +406,12 @@ func printHelp() {
 	fmt.Println("Lumen Programming Language")
 	fmt.Println()
 	fmt.Println("Usage:")
-	fmt.Println("  lumen run <file.lum>       Compile and run a Lumen source file")
-	fmt.Println("  lumen run <file.lc>        Run a program built earlier, as its source would run")
+	fmt.Println("  lumen run <file> [args]    Run a program: .lum source, .lc bytecode or .lasm assembly")
 	fmt.Println("  lumen <file.lum> [args]    The same as lumen run: what #!/usr/bin/env lumen runs")
-	fmt.Println("  lumen build <in> <out>     Compile .lum to .lc bytecode (or .lasm text)")
-	fmt.Println("  lumen ir <file.lum>        Print the intermediate representation")
+	fmt.Println("  lumen compile <file.lum>   Compile to bytecode, file.lc; -o names it, --strip makes it smaller")
+	fmt.Println("  lumen assemble <file.lasm> Assemble to bytecode, file.lc; -o names it")
+	fmt.Println("  lumen dump <file> [--ir]   Print what a .lum or .lc is as bytecode; --ir, the intermediate form")
+	fmt.Println("  lumen debug <file>         Step through a .lum, .lc or .lasm program")
 	fmt.Println("  lumen repl                 Type Lumen in a line at a time")
 	fmt.Println("  lumen test [files]         Run the tests: the functions test...() of the files *_test.lum")
 	fmt.Println("  lumen check [--json] [files] Compile without running and say what is wrong; --json for tools")
@@ -356,21 +420,18 @@ func printHelp() {
 	fmt.Println("  lumen install [--no-dev]   Install the packages of lumen.lock (resolve first if there is none)")
 	fmt.Println("  lumen update [vendor/name] Resolve the packages again, write lumen.lock, install")
 	fmt.Println("  lumen remove <vendor/name> Remove a package from the project")
-	fmt.Println("  lumen show                 List the installed packages")
+	fmt.Println("  lumen show [vendor/name]   List the installed packages, or tell all about one")
+	fmt.Println("  lumen why <vendor/name>    Say what requires a package")
+	fmt.Println("  lumen outdated             List the packages that have newer versions")
 	fmt.Println("  lumen version              Say which lumen this is")
 	fmt.Println("  lumen lsp                  Start the language server, for an editor to talk to")
-	fmt.Println("  lumen asm <in> <out>       Assemble .lasm to .lc bytecode")
-	fmt.Println("  lumen disasm <in> <out>    Disassemble .lc to .lasm text")
-	fmt.Println("  lumen exec <file>          Execute .lc bytecode file")
-	fmt.Println("  lumen runasm <file>        Assemble and run .lasm file directly")
-	fmt.Println("  lumen lumdbg <file>        Debug a .lum, .lasm or .lc file")
 	fmt.Println()
 	fmt.Println("Options for commands that execute a program:")
 	fmt.Println("  --heap-mb=N                Memory the program may use, in MB (default 256)")
 	fmt.Println("  --max-depth=N              How deep calls may nest (default 10000)")
 	fmt.Println("  --cpuprofile=FILE          Write where the time went, for go tool pprof")
 	fmt.Println()
-	fmt.Println("Option for build:")
+	fmt.Println("Option for compile:")
 	fmt.Println("  --strip                    Leave out what errors use to name the source line:")
 	fmt.Println("                             a smaller file, whose errors name the instruction")
 	fmt.Println()
@@ -378,10 +439,10 @@ func printHelp() {
 	fmt.Println("  A lumen.json in the program's folder, or above it, says where the program")
 	fmt.Println("  starts (\"entry\"), where module paths start (\"root\"), which packages it")
 	fmt.Println("  uses (\"packages\") and its limits (\"heap_mb\", \"max_depth\"). With one,")
-	fmt.Println("  run, build, ir and lumdbg take a project folder, or nothing at all:")
+	fmt.Println("  run, compile, dump and debug take a project folder, or nothing at all:")
 	fmt.Println("    lumen run                  Run the project of the current folder")
 	fmt.Println("    lumen run path/to/project  Run the project in that folder")
-	fmt.Println("    lumen build out.lc         Compile the project of the current folder")
+	fmt.Println("    lumen compile -o app.lc    Compile the project of the current folder")
 }
 
 // compileSource runs the compilation pipeline on a .lum file. Diagnostics
@@ -455,27 +516,11 @@ func stopOnInterrupt(machine *vm.VM) {
 // with it (std.os.program).
 var programFile string
 
-// cmdRun compiles and executes a .lum file. An Int returned by main becomes
-// the process exit code.
-//
-// A .lc file built earlier is run the same way: what `lumen build` made of
-// a program does what the program does, ends with the status it ends with
-// and writes nothing of its own. (`lumen exec` is the tool for looking at
-// a bytecode file: it says what main returned.)
+// cmdRun runs a program: compiled from source, read from bytecode made
+// earlier, or assembled. An Int returned by main becomes the process exit
+// code; the run writes nothing of its own.
 func cmdRun(inputFile string) {
-	var chunk *vm.Chunk
-	if strings.HasSuffix(inputFile, ".lc") {
-		programFile = inputFile
-		data, err := os.ReadFile(inputFile)
-		if err != nil {
-			fatal(err)
-		}
-		if chunk, err = vm.DeserializeChunk(data); err != nil {
-			fatal(fmt.Errorf("%s: %v", inputFile, err))
-		}
-	} else {
-		chunk = compileSource(inputFile).Chunk
-	}
+	chunk := loadProgram(inputFile)
 
 	result, err := newVM().Exec(chunk)
 	if err != nil {
@@ -776,36 +821,50 @@ func runTests(file, src string, apart bool) (failed int, ok bool) {
 	return int(value.AsInt()), true
 }
 
-// cmdBuild compiles a .lum file to bytecode, or to assembly text when the
-// output name ends in .lasm.
-func cmdBuild(inputFile, outputFile string) {
+
+
+// cmdCompile writes the bytecode of a program.
+func cmdCompile(inputFile, outputFile string) {
 	chunk := compileSource(inputFile).Chunk
-
-	var output []byte
-	if strings.HasSuffix(outputFile, ".lasm") {
-		output = []byte(asm.Disassemble(chunk))
-	} else {
-		if strip {
-			chunk = chunk.Stripped()
-		}
-		bytecode, err := vm.SerializeChunk(chunk)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Serialization error: %v\n", err)
-			exit(1)
-		}
-		output = bytecode
+	if strip {
+		chunk = chunk.Stripped()
 	}
-
-	if err := os.WriteFile(outputFile, output, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-		exit(1)
+	bytecode, err := vm.SerializeChunk(chunk)
+	if err != nil {
+		fatal(err)
+	}
+	if err := os.WriteFile(outputFile, bytecode, 0644); err != nil {
+		fatal(err)
 	}
 	fmt.Printf("Compiled %s -> %s\n", inputFile, outputFile)
 }
 
-// cmdIR prints the intermediate representation of a .lum file.
-func cmdIR(inputFile string) {
-	fmt.Print(compileSource(inputFile).IR.Dump())
+// cmdDump prints what a program is as bytecode, or with --ir the
+// intermediate form of its source.
+func cmdDump(args []string) {
+	usage := "Usage: lumen dump [file.lum | file.lc | project folder] [--ir]"
+	ir := false
+	var rest []string
+	for _, arg := range args {
+		if arg == "--ir" {
+			ir = true
+			continue
+		}
+		rest = append(rest, arg)
+	}
+	if len(rest) > 1 {
+		fmt.Println(usage)
+		exit(1)
+	}
+	input := sourceFile(firstOf(rest), usage)
+	if ir {
+		if ext := filepath.Ext(input); ext == ".lc" || ext == ".lasm" {
+			fatal(fmt.Errorf("%s: the intermediate form is made from source; dump a .lum file with --ir", input))
+		}
+		fmt.Print(compileSource(input).IR.Dump())
+		return
+	}
+	fmt.Print(asm.Disassemble(loadProgram(input)))
 }
 
 func cmdAssemble(inputFile, outputFile string) {
@@ -839,88 +898,8 @@ func cmdAssemble(inputFile, outputFile string) {
 	fmt.Printf("Assembled %s -> %s (%d bytes)\n", inputFile, outputFile, len(bytecode))
 }
 
-func cmdDisassemble(inputFile, outputFile string) {
-	// Read input bytecode file
-	data, err := os.ReadFile(inputFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		exit(1)
-	}
 
-	// Deserialize to chunk
-	chunk, err := vm.DeserializeChunk(data)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
-		exit(1)
-	}
 
-	// Disassemble to text
-	asmText := asm.Disassemble(chunk)
-
-	// Write output file
-	if err := os.WriteFile(outputFile, []byte(asmText), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing file: %v\n", err)
-		exit(1)
-	}
-
-	fmt.Printf("Disassembled %s -> %s\n", inputFile, outputFile)
-}
-
-func cmdExecute(inputFile string) {
-	programFile = inputFile
-	// Read bytecode file
-	data, err := os.ReadFile(inputFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		exit(1)
-	}
-
-	// Deserialize to chunk
-	chunk, err := vm.DeserializeChunk(data)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
-		exit(1)
-	}
-
-	// Create VM and execute
-	v := newVM()
-	result, err := v.Exec(chunk)
-	if err != nil {
-		leaveIfAsked(err)
-		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
-		exit(1)
-	}
-
-	fmt.Printf("Result: %s\n", formatValue(result))
-}
-
-func cmdRunAsm(inputFile string) {
-	programFile = inputFile
-	// Read assembly file
-	data, err := os.ReadFile(inputFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-		exit(1)
-	}
-
-	// Assemble to chunk
-	chunk, err := asm.AssembleFromFile(string(data), inputFile)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Assembly error: %v\n", err)
-		exit(1)
-	}
-
-	// Create VM and execute directly
-	v := newVM()
-	result, err := v.Exec(chunk)
-	if err != nil {
-		leaveIfAsked(err)
-		fmt.Fprintf(os.Stderr, "Execution error: %v\n", err)
-		exit(1)
-	}
-
-	fmt.Printf("Result: %s\n", formatValue(result))
-}
 
 func formatValue(val vm.Value) string {
 	if val.IsHeapPtr() {
@@ -945,39 +924,7 @@ func formatValue(val vm.Value) string {
 }
 
 func cmdDebug(inputFile string) {
-	programFile = inputFile
-	var chunk *vm.Chunk
-
-	// Determine if file is .lum, .lc or .lasm
-	if strings.HasSuffix(inputFile, ".lum") {
-		chunk = compileSource(inputFile).Chunk
-	} else if len(inputFile) > 3 && inputFile[len(inputFile)-3:] == ".lc" {
-		// Load bytecode file
-		data, err := os.ReadFile(inputFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-			exit(1)
-		}
-
-		chunk, err = vm.DeserializeChunk(data)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Deserialization error: %v\n", err)
-			exit(1)
-		}
-	} else {
-		// Assume .lasm file
-		data, err := os.ReadFile(inputFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error reading file: %v\n", err)
-			exit(1)
-		}
-
-		chunk, err = asm.AssembleFromFile(string(data), inputFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Assembly error: %v\n", err)
-			exit(1)
-		}
-	}
+	chunk := loadProgram(inputFile)
 
 	// Create VM
 	v := newVM()

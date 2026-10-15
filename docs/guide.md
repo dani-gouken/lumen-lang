@@ -39,7 +39,7 @@ Every program needs a `main` function without parameters. If it returns an `Int`
 | `lumen check [--json] file.lum` | Compile without running and say what is wrong; `--json` for a CI step, an editor or an agent |
 | `lumen test` | Run the tests: the functions `test...()` of the files `*_test.lum` ([stdlib.md](stdlib.md#test-files-lumen-test)) |
 | `lumen fmt` | Write `.lum` files the one way; `--check` only says which would change ([formatting.md](formatting.md)) |
-| `lumen require vendor/name` | Add a package to the project, and install it; `lumen install`, `update`, `remove`, `show` do the rest ([packages.md](packages.md)) |
+| `lumen require vendor/name` | Add a package to the project, and install it; `lumen install`, `update`, `remove`, `show`, `why`, `outdated` do the rest ([packages.md](packages.md)) |
 | `lumen lumdbg file.lum` | Step through the program in the debugger ([debugger.md](debugger.md)) |
 | `lumen asm` / `disasm` / `exec` / `runasm` | Work with hand-written assembly ([assembly.md](assembly.md)) |
 

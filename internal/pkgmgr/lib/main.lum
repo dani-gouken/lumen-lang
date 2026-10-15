@@ -21,6 +21,7 @@ import installer;
 import sources;
 import sources.{Sources};
 import catalog;
+import inspect;
 import std.dict;
 import std.dict.{Dict};
 import std.fs;
@@ -37,7 +38,9 @@ const usage = """
            lumen update [vendor/name]... [--no-dev]
            lumen require vendor/name[:constraint]... [--dev]
            lumen remove vendor/name...
-           lumen show
+           lumen show [vendor/name]
+           lumen why vendor/name
+           lumen outdated
     """;
 
 // What a command was asked to do.
@@ -331,7 +334,10 @@ fn require(project: Project, request: Request) -> Result<Void, String> {
                 io.remove(project.file(manifest.FILE));
             } else {
                 say("Installation failed, reverting ${manifest.FILE} to its original content.");
-                io.writeFile(project.file(manifest.FILE), original).mapErr(error -> error.describe())?;
+
+                io.writeFile(project.file(manifest.FILE), original).mapErr(
+                    error -> error.describe(),
+                )?;
             }
 
             return Result.Err(reason);
@@ -396,38 +402,51 @@ fn remove(project: Project, request: Request) -> Result<Void, String> {
 }
 
 // The installed packages: name, version, import name, description.
-fn show(project: Project) -> Result<Void, String> {
+// The lock of a project that has one, for the commands that only look.
+fn lockOf(project: Project) -> Result<Lock, String> {
     let lock = lockfile.read(project.file(lockfile.FILE))?;
-    let installed = installer.installed(project.dir);
 
     if lock == null {
         return Result.Err("there is no ${lockfile.FILE}: run lumen install");
     }
 
-    let rows: [[String]] = [];
+    return Result.Ok(lock);
+}
 
-    for locked in lock.packages {
-        let state = if installed.has(locked.name) { "" } else { " (not installed)" };
-        let tag = if locked.dev { " [dev]" } else { "" };
-
-        rows.push([
-            locked.name + tag,
-            locked.version + state,
-            "import ${locked.importName}",
-            locked.description,
-        ]);
+fn printAll(lines: [String]) -> Result<Void, String> {
+    for line in lines {
+        println(line);
     }
 
-    if rows.isEmpty() {
+    return Result.Ok();
+}
+
+fn show(project: Project, request: Request) -> Result<Void, String> {
+    let lock = lockOf(project)?;
+
+    if lock.packages.isEmpty() && request.names.isEmpty() {
         say("No packages");
         return Result.Ok();
     }
 
-    for row in rows {
-        println(row.join("  ").trim());
+    let installed = installer.installed(project.dir);
+    return printAll(inspect.show(lock, project.manifest, installed, request.names.first())?);
+}
+
+fn why(project: Project, request: Request) -> Result<Void, String> {
+    let name = request.names.first();
+
+    if name == null {
+        return Result.Err("name the package: lumen why vendor/name");
     }
 
-    return Result.Ok();
+    return printAll(inspect.why(lockOf(project)?, project.manifest, name)?);
+}
+
+fn outdated(project: Project) -> Result<Void, String> {
+    let lock = lockOf(project)?;
+    let found = inspect.outdated(lock, project.manifest, project.sources())?;
+    return printAll(inspect.outdatedLines(found));
 }
 
 fn parse(arguments: [String]) -> Result<Request, String> {
@@ -469,7 +488,9 @@ fn run(arguments: [String]) -> Result<Void, String> {
         case "update": updateCommand(project, request);
         case "require": require(project, request);
         case "remove": remove(project, request);
-        case "show": show(project);
+        case "show": show(project, request);
+        case "why": why(project, request);
+        case "outdated": outdated(project);
         default: Result.Err("unknown command ${request.command}\n${usage}");
     };
 }

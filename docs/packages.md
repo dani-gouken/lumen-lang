@@ -11,6 +11,9 @@ lumen update                        # newer versions, as lumen.json allows
 lumen update acme/textkit           # only that package
 lumen remove acme/textkit
 lumen show                          # what is installed
+lumen show acme/textkit             # all about one package
+lumen why acme/strings              # what requires it
+lumen outdated                      # what has newer versions
 ```
 
 ```rust
@@ -105,6 +108,23 @@ A program whose `lumen.json` requires a package that is not installed does not c
 Error: lumen.json requires acme/textkit, which is not installed: run lumen install
 ```
 
+## Looking at the Packages
+
+`lumen outdated` asks the repositories what is newer than what is locked:
+
+```
+acme/dates    dev-main  ! dev-main 3f2a9c1  lumen update acme/dates
+acme/greet    1.2.0     ! 1.3.0             lumen update acme/greet
+acme/strings  2.1.0     ~ 3.0.0             beyond what is required
+
+! an update the requirements allow: lumen update brings it
+~ a new major version, beyond the requirements: change them to have it
+```
+
+A pre-release counts only for a package installed at one; a package kept in a folder is never outdated.
+
+`lumen why acme/strings` says what requires a package and with what constraint, and `lumen show acme/greet` all there is to know about one: its version and commit, where it comes from, the name it is imported by, the folder of its modules, what it requires and what requires it.
+
 ## Where Packages Come From
 
 **Git.** A package is a git repository. Its versions are its tags (`v1.4.2` or `1.4.2`; tags that are not versions are ignored), its branches are `dev-<branch>`. The repository is looked for in the `repositories` of `lumen.json`: for each `git` one, its `lumen.json` on the default branch says what package it is. A name none of them has is fetched from GitHub, `https://github.com/<vendor>/<name>.git`.
@@ -139,7 +159,7 @@ Two packages imported by the same name cannot be in one program; one of them has
 
 ## Compared to Composer
 
-The same: `require`, `require-dev`, `repositories`, `lumen.lock` with its `content-hash`, `vendor/`, the constraint syntax, one version of each package for the program, the commands and what they print.
+The same: `require`, `require-dev`, `repositories`, `lumen.lock` with its `content-hash`, `vendor/`, the constraint syntax, one version of each package for the program, the commands (`install`, `update`, `require`, `remove`, `show`, `why`, `outdated`) and what they print.
 
 Not there yet:
 
@@ -147,7 +167,6 @@ Not there yet:
 *   **Archives.** Packages are fetched with git, never as a zip of a release.
 *   **Stability flags** (`@beta`, `minimum-stability`), `provide`, `replace`, `conflict`, scripts and plugins.
 *   **Checks a SAT solver would do in one go.** The resolver searches, skipping the versions that would fail for a reason already found. A large graph full of conflicts can take it longer than Composer.
-*   `lumen outdated`, `lumen why`, and `lumen show` of one package.
 
 ## How It Is Built
 
@@ -162,5 +181,6 @@ The package manager is a Lumen program, in [`internal/pkgmgr/lib/`](../internal/
 | `sources.lum` | The real `Catalog`: git mirrors and folders |
 | `lockfile.lum` | Reads and writes `lumen.lock` |
 | `installer.lum` | Fills `vendor/` and writes `vendor/installed.json` |
+| `inspect.lum` | `show`, `why` and `outdated` |
 
 Versions and constraints are [`std.semver`](stdlib.md#stdsemver), which any program can use. The compiler only reads `vendor/installed.json` (in `internal/project`), which maps each import name to a folder of modules the way `"packages"` does.

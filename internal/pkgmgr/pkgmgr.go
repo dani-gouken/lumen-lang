@@ -1,7 +1,7 @@
 // Package pkgmgr holds the package manager of Lumen: `lumen install`,
-// `update`, `require`, `remove` and `show`. It is a Lumen program of
-// several modules, in lib/, compiled into the lumen binary; see
-// docs/packages.md.
+// `update`, `require`, `remove`, `show`, `why` and `outdated`. It is a
+// Lumen program of several modules, in lib/, compiled into the lumen
+// binary; see docs/packages.md.
 package pkgmgr
 
 import (
@@ -21,7 +21,7 @@ const Root = "<pkg>"
 const File = Root + "/main.lum"
 
 // Commands are the commands of lumen that the package manager answers.
-var Commands = []string{"install", "update", "require", "remove", "show"}
+var Commands = []string{"install", "update", "require", "remove", "show", "why", "outdated"}
 
 //go:embed lib/*.lum
 var files embed.FS

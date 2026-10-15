@@ -465,3 +465,86 @@ func TestPackageErrors(t *testing.T) {
 		}
 	}
 }
+
+// What lumen show, why and outdated say of a project, as its packages
+// move on: an update the requirements allow, a major version beyond
+// them, a branch with new commits.
+func TestPackageInspection(t *testing.T) {
+	gitEnv(t)
+	world := t.TempDir()
+	stringsRepo := filepath.Join(world, "repos", "strings")
+	greetRepo := filepath.Join(world, "repos", "greet")
+	datesRepo := filepath.Join(world, "repos", "dates")
+	publishStrings(t, stringsRepo)
+	publishGreet(t, greetRepo)
+	release(t, datesRepo, "", map[string]string{"lumen.json": `{"name": "acme/dates"}`, "dates.lum": ""})
+
+	shop := filepath.Join(world, "shop")
+	write(t, shop, map[string]string{
+		"lumen.json": `{
+    "require": { "acme/greet": "^1.0", "acme/strings": "^2.0", "acme/dates": "dev-main" },
+    "repositories": [
+        { "type": "git", "url": "` + filepath.ToSlash(stringsRepo) + `" },
+        { "type": "git", "url": "` + filepath.ToSlash(greetRepo) + `" },
+        { "type": "git", "url": "` + filepath.ToSlash(datesRepo) + `" }
+    ]
+}
+`,
+	})
+	lumenOK(t, shop, "install")
+
+	if res := lumenOK(t, shop, "outdated"); res.stdout != "All the packages are up to date\n" {
+		t.Errorf("unexpected outdated, nothing new yet:\n%s", res.stdout)
+	}
+
+	// The world moves on
+	release(t, greetRepo, "1.3.0", map[string]string{})
+	release(t, stringsRepo, "v3.0.0", map[string]string{})
+	release(t, datesRepo, "", map[string]string{"dates.lum": "pub fn today() -> String {\n    return \"monday\";\n}\n"})
+	head := git(t, datesRepo, "rev-parse", "HEAD")[:7]
+
+	res := lumenOK(t, shop, "outdated")
+	expectLines(t, res.stdout,
+		"acme/dates    dev-main  ! dev-main "+head+"  lumen update acme/dates",
+		"acme/greet    1.2.0     ! 1.3.0             lumen update acme/greet",
+		"acme/strings  2.1.0     ~ 3.0.0             beyond what is required",
+		"",
+		"! an update the requirements allow: lumen update brings it",
+		"~ a new major version, beyond the requirements: change them to have it")
+
+	res = lumenOK(t, shop, "why", "acme/strings")
+	if res.stdout != "lumen.json requires acme/strings (^2.0)\nacme/greet 1.2.0 requires acme/strings (^2.0)\n" {
+		t.Errorf("unexpected why:\n%s", res.stdout)
+	}
+
+	res = lumenOK(t, shop, "show", "acme/greet")
+	expectLines(t, res.stdout,
+		"name        : acme/greet",
+		"description : Greetings",
+		"version     : 1.2.0",
+		"source      : git "+filepath.ToSlash(greetRepo)+" "+git(t, greetRepo, "rev-parse", "1.2.0")[:12],
+		"import      : import greet;",
+		"folder      : vendor/acme/greet/greet",
+		"requires    : acme/strings ^2.0",
+		"required by : lumen.json (^1.0)")
+
+	// After the update, only the major version is left
+	lumenOK(t, shop, "update")
+	res = lumenOK(t, shop, "outdated")
+	if !strings.HasPrefix(res.stdout, "acme/strings  2.1.0  ~ 3.0.0  beyond what is required\n\n") {
+		t.Errorf("unexpected outdated after the update:\n%s", res.stdout)
+	}
+
+	for _, tt := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"why", "acme/nothing"}, "acme/nothing is not a package of this project"},
+		{[]string{"why"}, "name the package: lumen why vendor/name"},
+		{[]string{"show", "acme/nothing"}, "acme/nothing is not a package of this project"},
+	} {
+		if res := runLumenIn(t, shop, "", tt.args...); res.exit != 1 || !strings.Contains(res.stderr, tt.want) {
+			t.Errorf("lumen %v: expected %q, got exit %d\n%s", tt.args, tt.want, res.exit, res.stderr)
+		}
+	}
+}
