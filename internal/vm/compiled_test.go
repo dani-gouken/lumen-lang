@@ -122,3 +122,57 @@ func TestCompiledCallsGoTooDeepAndGrowTheStackAsCallsDo(t *testing.T) {
 		t.Errorf("after the call: %d frames, %v", machine.frameCount, machine.regs)
 	}
 }
+
+// A failure on its way out of frameless calls becomes the error the calls
+// would have made with frames: the frameless calls first, innermost first,
+// then the calls with frames, from where the last of them made its call.
+func TestFramelessFailuresAreWhatFramesWouldHaveMade(t *testing.T) {
+	chunk := twoFunctions(5)
+	machine, _ := machineIn(t, chunk)
+	machine.ip = 1
+
+	failure := machine.framelessFailed(1, 2, "integer overflow")
+	failure = machine.framelessCalled(failure, 1, 2)
+	err := machine.framelessArrived(failure)
+	got, ok := err.(*RuntimeError)
+	if !ok {
+		t.Fatalf("expected a RuntimeError, got %T", err)
+	}
+	if got.Kind != kindOf("integer overflow") || got.Message != "integer overflow" || got.instruction != 2 {
+		t.Errorf("got %v %q at %d", got.Kind, got.Message, got.instruction)
+	}
+	names := []string{}
+	for _, frame := range got.Stack {
+		names = append(names, frame.Function)
+	}
+	if strings.Join(names, " ") != "f f main" {
+		t.Errorf("expected the frameless calls then main, got %v", names)
+	}
+
+	// What stops a program is fatal, frames or none
+	machine.Interrupt()
+	if fatal, ok := machine.framelessArrived(machine.framelessStopped(1, 2)).(*fatalError); !ok || !IsInterrupted(fatal.err) {
+		t.Errorf("expected an interruption that ends the program, got %v", fatal)
+	}
+	machine.interrupted.Store(false)
+	machine.SetStepLimit(7)
+	stopped := machine.framelessArrived(machine.framelessStopped(1, 2))
+	if fatal, ok := stopped.(*fatalError); !ok || !strings.Contains(fatal.Error(), "more than the 7 steps") {
+		t.Errorf("expected the budget to end the program, got %v", stopped)
+	}
+
+	// Too deep says what enter says
+	machine.SetMaxCallDepth(3)
+	if err := machine.framelessArrived(machine.framelessTooDeep(1, 2)); !strings.Contains(err.Error(), "stack overflow: max call depth 3 exceeded") {
+		t.Errorf("got %v", err)
+	}
+	if err := machine.tooDeep(); !strings.Contains(err.Error(), "stack overflow: max call depth 3 exceeded") {
+		t.Errorf("got %v", err)
+	}
+
+	// An error that did not come out of frameless calls is passed on as it is
+	plain := machine.runtimeError("other")
+	if machine.framelessArrived(plain) != plain {
+		t.Error("expected another error to be left as it is")
+	}
+}

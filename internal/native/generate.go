@@ -39,9 +39,10 @@ func Table(name string) string {
 // Result is the Go source of the programs' functions, and how many of them
 // were compiled.
 type Result struct {
-	Source   string
-	Compiled int
-	Total    int
+	Source    string
+	Compiled  int
+	Frameless int // Of those compiled, how many have a frameless form too
+	Total     int
 }
 
 // Generate writes the functions of programs as Go, in one file of package
@@ -61,10 +62,15 @@ func Generate(programs ...Program) Result {
 			compiled[i] = supported(chunk, i)
 		}
 		prefix := "compiled" + program.Name + "_"
+		light := framelessFunctions(chunk, compiled)
 		for i := range chunk.Prototypes {
 			if compiled[i] {
-				writeFunction(&out, chunk, i, compiled, prefix)
+				writeFunction(&out, chunk, i, compiled, light, prefix)
 				result.Compiled++
+			}
+			if light[i] != nil {
+				writeFrameless(&out, chunk, i, light, prefix)
+				result.Frameless++
 			}
 		}
 		result.Total += len(chunk.Prototypes)
@@ -154,7 +160,7 @@ func targets(code []vm.Instr, start int) (map[int]bool, []int) {
 	return found, handlers
 }
 
-func writeFunction(out *strings.Builder, chunk *vm.Chunk, index int, compiled []bool, prefix string) {
+func writeFunction(out *strings.Builder, chunk *vm.Chunk, index int, compiled []bool, light []*frameless, prefix string) {
 	p := chunk.Prototypes[index]
 	code := chunk.Code[p.CodeStart : p.CodeStart+p.CodeSize]
 	jumpedTo, handlers := targets(code, p.CodeStart)
@@ -164,7 +170,7 @@ func writeFunction(out *strings.Builder, chunk *vm.Chunk, index int, compiled []
 	out.WriteString("\tr := vm.regs\n\tkept := vm.kept()\n\tconsts := vm.chunk.Constants\n")
 	out.WriteString("\t_, _, _ = r, kept, consts\n")
 	var body strings.Builder
-	w := &writer{out: &body, compiled: compiled, consts: chunk.Constants, registers: p.RegisterCount, code: code, start: p.CodeStart, prefix: prefix}
+	w := &writer{out: &body, compiled: compiled, consts: chunk.Constants, registers: p.RegisterCount, code: code, start: p.CodeStart, prefix: prefix, proto: index, light: light}
 	params, _ := signature(p.Signature, p.ArgCount)
 	returns := make([]kind, len(chunk.Prototypes))
 	for i, callee := range chunk.Prototypes {
@@ -229,6 +235,9 @@ func writeFunction(out *strings.Builder, chunk *vm.Chunk, index int, compiled []
 var failing = regexp.MustCompile(`return NewNull\(\), ([^;{}\n]+?)( }|\n|;)`)
 
 type writer struct {
+	frameless bool         // Writing the frameless form of a function
+	proto     int          // The function being written
+	light     []*frameless // The functions that have a frameless form
 	kinds     []kind
 	local     []bool
 	prefix    string
@@ -351,6 +360,9 @@ func (w *writer) fail() string {
 // jump goes to an instruction, letting the program be stopped on a jump
 // back, as the loop does.
 func (w *writer) jump(target int) string {
+	if target <= w.pc && w.frameless {
+		return fmt.Sprintf("{ if vm.interrupted.Load() || vm.outOfSteps() { return 0, vm.framelessStopped(%d, %d) }; goto L%d }", w.proto, w.pc, target)
+	}
 	if target <= w.pc {
 		return fmt.Sprintf("{ if vm.interrupted.Load() || vm.outOfSteps() { vm.ip = %d; return NewNull(), vm.stopped() }; goto L%d }", w.pc, target)
 	}
@@ -654,6 +666,9 @@ func (w *writer) general() {
 		w.line("}")
 
 	case vm.OpCALLK:
+		if w.framelessCall() {
+			return
+		}
 		first, last := A+1, A+1+B
 		w.line("{")
 		w.at()

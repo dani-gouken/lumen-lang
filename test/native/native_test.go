@@ -167,7 +167,10 @@ func TestNativeDoesWhatTheInterpreterDoes(t *testing.T) {
 		named = append(named, native.Program{Name: p.name, Chunk: p.chunk})
 	}
 	generated := native.Generate(named...)
-	t.Logf("%d programs, %d of %d functions compiled to Go", len(programs), generated.Compiled, generated.Total)
+	t.Logf("%d programs, %d of %d functions compiled to Go, %d of them frameless too", len(programs), generated.Compiled, generated.Total, generated.Frameless)
+	if generated.Frameless == 0 {
+		t.Error("no function is frameless: what makes them is not tested")
+	}
 	if generated.Compiled != generated.Total {
 		t.Errorf("%d functions stayed bytecode", generated.Total-generated.Compiled)
 	}

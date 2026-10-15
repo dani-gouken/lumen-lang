@@ -19,6 +19,8 @@ A program is compiled as for `lumen run`, to the bytecode `lumen compile` writes
 
 A register that holds an Int on every path the function can take, or a Float on every path, is a Go variable (`int64`, `float64`), which Go keeps in a register of the processor. What it holds is worked out from the bytecode: `LOADI` gives an Int, a sum of two Ints is an Int, and so on until nothing changes; the arguments and the results of calls are what the functions' signatures say, which the type checker made sure of. A register that a function made inside captures stays on the stack, since the closure follows it. An instruction that reads such a variable and is written the general way is given its value in the register first.
 
+A function whose every register holds an Int or a Float, which takes and gives Ints and Floats and calls nothing but functions like it (`fib`, `gcd`, a power, a loop of arithmetic), is also written a second time, frameless: a Go function of Go numbers, which compiled code calls directly, with no frame of the VM entered or left. Nothing in it is anything the collector or a task would look for. What a frame is still needed for is a failure's stack trace: a frameless function that fails says where, each call it goes back through adds where it made its call, and the first function with a frame makes of it the error the calls would have made with frames, with the same message and trace. Calls without frames count toward `--max-depth` as calls with them do.
+
 What the instruction loop does besides stays as it is. Every call goes in and out of a call frame as it would, and the registers are on the stack of the virtual machine: the collector, [tasks](tasks.md), stack traces, `defer` and `attempt`, and the limits work as they do for bytecode. The executable is the virtual machine with the program's bytecode in it, whose functions run as Go instead of in the loop.
 
 The Go of the functions and a `main` are built with the source of Lumen's runtime, which `lumen` carries: it is unpacked once into the cache (`LUMEN_CACHE`, or `~/.cache/lumen`), and built there with `go build`. Nothing is left behind but the executable.
@@ -40,12 +42,12 @@ The first build also fetches the one Go module the runtime needs, for calling C 
 | Program | `lumen run` | native |
 |---|---|---|
 | A loop of 100 million sums, products and remainders of Ints | 2.06 s | 0.37 s (5.6×) |
-| `fib(35)`: calls | 0.88 s | 0.29 s (3×) |
+| `fib(35)`: calls | 0.87 s | 0.10 s (8.7×) |
 | The Lox interpreter of `examples/lox` on `fib.lox` | 0.25 s | 0.14 s (1.8×) |
 | Building texts and counting them in a dictionary | 1.71 s | 1.34 s (1.3×) |
 
-Numbers kept in Go variables gain the most. A call of a compiled function by a compiled one goes in and out of a frame of the virtual machine the short way: the chunk is the same on both sides, and compiled code says where it is before anything can ask. The library, making texts and dictionaries, is Go already. Building takes a second or two.
+Numbers kept in Go variables gain the most, and calls between frameless functions. Any other call of a compiled function by a compiled one goes in and out of a frame of the virtual machine the short way: the chunk is the same on both sides, and compiled code says where it is before anything can ask. The library, making texts and dictionaries, is Go already. Building takes a second or two.
 
 ## Tests
 
-`test/native` compiles every example, every program of `test/e2e/cases`, of the benchmarks and of `test/native/programs` (numbers kept in Go variables: arguments, counters, Floats and Ints mixed, what fails on the way), and the Lox interpreter, into one executable, runs each the two ways and compares what they print, how they fail and how they end. It also covers the command: names, `-o`, a project's name and limits, `--strip`, `std.compiler`, and what is refused.
+`test/native` compiles every example, every program of `test/e2e/cases`, of the benchmarks and of `test/native/programs` (numbers kept in Go variables: arguments, counters, Floats and Ints mixed, what fails on the way; functions without frames failing deep inside their calls), and the Lox interpreter, into one executable, runs each the two ways and compares what they print, how they fail and how they end. It also covers the command: names, `-o`, a project's name and limits, `--strip`, `std.compiler`, and what is refused.

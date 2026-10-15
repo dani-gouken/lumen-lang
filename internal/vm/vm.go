@@ -68,6 +68,10 @@ type VM struct {
 	// What is kept for each chunk that has code running (see chunkCache)
 	caches map[*Chunk]*chunkCache
 
+	// The calls of frameless functions in progress (see compiled.go): calls
+	// as much as frames are, for how deep a program may go
+	framelessCalls int
+
 	// What compiled functions read of caches: the chunk asked about last,
 	// and what is kept for it (see keptNow)
 	keptChunk *Chunk

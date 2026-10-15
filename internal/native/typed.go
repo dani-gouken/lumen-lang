@@ -94,7 +94,16 @@ func known(operands ...operand) bool {
 
 // overflow is what fails when an Int does not fit.
 func (w *writer) overflow() string {
-	return fmt.Sprintf("{ vm.ip = %d; return NewNull(), vm.runtimeError(\"integer overflow\") }", w.pc)
+	return w.failure("integer overflow")
+}
+
+// failure fails the instruction with a message: where it is, for a
+// function with a frame; with where it is, for one without.
+func (w *writer) failure(message string) string {
+	if w.frameless {
+		return fmt.Sprintf("{ return 0, vm.framelessFailed(%d, %d, %q) }", w.proto, w.pc, message)
+	}
+	return fmt.Sprintf("{ vm.ip = %d; return NewNull(), vm.runtimeError(%q) }", w.pc, message)
 }
 
 // typed writes the instruction on Ints and Floats, if what it works on is
@@ -208,7 +217,24 @@ func (w *writer) typed() bool {
 		w.line("if !(%s) %s", comparison(test, x, k), w.jump(C))
 		return true
 
+	case vm.OpNOP:
+		return w.frameless
+
+	case vm.OpJMP:
+		if !w.frameless {
+			return false
+		}
+		w.line("%s", w.jump(A))
+		return true
+
+	case vm.OpCALLK:
+		return w.framelessCall()
+
 	case vm.OpRET:
+		if w.frameless {
+			w.line("return %s, nil", w.name(A))
+			return true
+		}
 		if !w.local[A] {
 			return false
 		}
@@ -266,11 +292,11 @@ func (w *writer) arithmetic(dest int, x, y operand) bool {
 			w.line("n, fits := mulInts(x, y)")
 			w.line("if !fits %s", w.overflow())
 		case vm.OpDIV:
-			w.line("if y == 0 { vm.ip = %d; return NewNull(), vm.runtimeError(\"division by zero\") }", w.pc)
+			w.line("if y == 0 %s", w.failure("division by zero"))
 			w.line("n := x / y")
 			w.line("if n < MinInt || n > MaxInt %s", w.overflow())
 		case vm.OpMOD:
-			w.line("if y == 0 { vm.ip = %d; return NewNull(), vm.runtimeError(\"division by zero\") }", w.pc)
+			w.line("if y == 0 %s", w.failure("division by zero"))
 			w.line("n := x %% y")
 		}
 		w.store(dest, intKind, "n")

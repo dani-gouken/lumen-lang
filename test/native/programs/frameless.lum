@@ -1,0 +1,77 @@
+// Functions of numbers that call only each other run without frames when
+// compiled. What they fail with must say the same: the message, every
+// call in progress, the status the program ends with.
+import std.result.{attempt};
+
+fn depth(n: Int) -> Int {
+    if n == 0 {
+        return 0;
+    }
+
+    return 1 + depth(n - 1);
+}
+
+// Fails at the bottom, n calls down: an Int too large
+fn overflowAt(n: Int, big: Int) -> Int {
+    if n == 0 {
+        return big * 4;
+    }
+
+    return overflowAt(n - 1, big) + 1;
+}
+
+fn divideDown(n: Int, d: Int) -> Int {
+    if n == 0 {
+        return 10 / d;
+    }
+
+    return divideDown(n - 1, d - 1);
+}
+
+fn halves(x: Float, n: Int) -> Float {
+    if n == 0 {
+        return x;
+    }
+
+    return halves(x / 2.0, n - 1);
+}
+
+fn mixed(n: Int) -> Float {
+    return halves(n.toFloat(), 2) + depth(n).toFloat();
+}
+
+fn report(name: String, job: fn() -> Int, whole: Bool) {
+    match attempt(job) {
+        case Result.Ok(n): {
+            println(name, "gave", n);
+        }
+
+        case Result.Err(failure): {
+            println(
+                name,
+                "failed:",
+                failure.message,
+                "with",
+                failure.stack.len(),
+                "calls in progress",
+            );
+
+            if whole {
+                println(failure.trace());
+            }
+        }
+    }
+}
+
+fn main() -> Int {
+    println(depth(5000), halves(1024.0, 10), mixed(12));
+    report("overflow 20 calls down", () -> overflowAt(20, 140737488355327 / 2), true);
+    report("division by zero 3 calls down", () -> divideDown(3, 3), true);
+    report("deeper than the program may go", () -> depth(20000), false);
+
+    // After a failure, the calls in progress are counted from where they were
+    report("deep again, within the limit", () -> depth(9000), false);
+
+    // Not caught: the program ends with the trace, and the status 1
+    return overflowAt(5, 140737488355327 / 2);
+}

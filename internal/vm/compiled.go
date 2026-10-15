@@ -693,3 +693,92 @@ func (vm *VM) compiledRETHROW() error {
 	vm.pending = vm.pending[:n-1]
 	return failure
 }
+
+// Frameless functions.
+//
+// A compiled function whose every register holds an Int or a Float, and
+// which calls nothing but functions like it, needs nothing of a frame: the
+// collector has nothing to find in it, no task can take the turn in it,
+// no closure follows its registers. lumen native writes it a second time,
+// as a Go function of Go numbers that compiled code calls directly, with
+// no frame entered or left.
+//
+// What a frame is still needed for is a failure: its stack trace names
+// every call in progress. A frameless function that fails says where, and
+// each that the failure goes through on its way out adds where it made
+// its call; the first function with a frame (framelessArrived) makes of it
+// the error the calls would have made with frames: the same message, the
+// same kind, the same trace. Frameless code never sets vm.ip, so that the
+// function with a frame is still where it made the call.
+
+// framelessFailure is a failure on its way out of frameless calls.
+type framelessFailure struct {
+	kind        ErrorKind
+	message     string
+	fatal       bool
+	frames      []StackFrame // The innermost call first
+	instruction int
+}
+
+func (f *framelessFailure) Error() string { return f.message }
+
+// framelessFrame is where a frameless function is: its instruction pc.
+func (vm *VM) framelessFrame(proto, pc int) StackFrame {
+	frame := frameAt(vm.chunk, pc, nil)
+	if frame.Function == "" {
+		frame.Function = vm.chunk.Prototypes[proto].Name
+	}
+	return frame
+}
+
+// framelessFailed is the failure of the instruction pc of a frameless
+// function, as runtimeError would have made it.
+func (vm *VM) framelessFailed(proto, pc int, message string) error {
+	return &framelessFailure{kind: kindOf(message), message: message, frames: []StackFrame{vm.framelessFrame(proto, pc)}, instruction: pc}
+}
+
+// framelessStopped is what stopped makes of a program told to stop, or out
+// of steps, in a frameless function.
+func (vm *VM) framelessStopped(proto, pc int) error {
+	f := &framelessFailure{fatal: true, frames: []StackFrame{vm.framelessFrame(proto, pc)}, instruction: pc}
+	if vm.interrupted.Load() {
+		f.kind, f.message = KindInterrupted, "interrupted"
+	} else {
+		f.kind, f.message = KindBudget, fmt.Sprintf("the program ran for more than the %d steps it may", vm.stepLimit)
+	}
+	return f
+}
+
+// framelessTooDeep is the failure of a call that would go deeper than the
+// program may, from a frameless function, as enter makes it.
+func (vm *VM) framelessTooDeep(proto, pc int) error {
+	return vm.framelessFailed(proto, pc, fmt.Sprintf("stack overflow: max call depth %d exceeded", vm.maxCallDepth))
+}
+
+// tooDeep is the same from a function with a frame, where it is.
+func (vm *VM) tooDeep() error {
+	return vm.runtimeError(fmt.Sprintf("stack overflow: max call depth %d exceeded", vm.maxCallDepth))
+}
+
+// framelessCalled passes on the failure of a call a frameless function
+// made at pc, with where it made it.
+func (vm *VM) framelessCalled(err error, proto, pc int) error {
+	f := err.(*framelessFailure)
+	f.frames = append(f.frames, vm.framelessFrame(proto, pc))
+	return f
+}
+
+// framelessArrived makes of a failure that comes out of frameless calls,
+// into a function with a frame that is where it made the call, the error
+// the calls would have made with frames.
+func (vm *VM) framelessArrived(err error) error {
+	f, ok := err.(*framelessFailure)
+	if !ok {
+		return err
+	}
+	failure := &RuntimeError{Kind: f.kind, Message: f.message, Stack: append(f.frames, vm.callStack()...), instruction: f.instruction}
+	if f.fatal {
+		return &fatalError{failure}
+	}
+	return failure
+}
