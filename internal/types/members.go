@@ -245,6 +245,14 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 			c.info.Types[member] = fieldType
 			return c.callValue(e, fieldType)
 		}
+		if c.libraryFunction(ast.StaticName(t.Name, member.Name)) != nil {
+			// A function of the type, which takes no value
+			c.errorfWithSuggestion(member.Token(), ErrUnknownMethod,
+				fmt.Sprintf("Call it on the type: %s.%s(...)", displayName(t.Name), member.Name),
+				"%s is a function of %s, which does not use a value of it", member.Name, displayName(t.Name))
+			c.checkArgsOnly(e)
+			return Unknown
+		}
 		if similar := c.similarMember(t, member.Name); similar != "" {
 			c.errorfWithSuggestion(member.Token(), ErrUnknownMethod, "Did you mean '"+similar+"'?",
 				"%s has no method '%s'", t, member.Name)

@@ -570,7 +570,7 @@ impl Show for Version { fn show() -> String { return "v"; } }
 impl Indexed<Int, Int> for Version { fn at(key: Int) -> Int { return key; } }
 struct Sorted<T: Ordered> { items: [T]; }
 struct Box<T> { item: T; }
-impl<T: Ordered> Box<T> { fn bigger(other: T) -> Bool { return self.item > other; } fn get() -> T { return self.item; } fn pick<U>(u: U) -> U { return u; } }
+impl<T: Ordered> Box<T> { fn bigger(other: T) -> Bool { return self.item > other; } fn get() -> T { return self.item; } fn pick<U>(u: U) -> U { let _item = self.item; return u; } }
 trait Source<T> { fn next() -> T?; }
 struct Words { }
 impl Source<String> for Words { fn next() -> String? { return null; } }

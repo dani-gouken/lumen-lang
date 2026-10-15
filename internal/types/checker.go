@@ -1423,6 +1423,11 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 	if ok && c.isTypeMethod(member) {
 		// Point.norm(p): the method of the type, called on p
 		result = c.callValue(e, c.checkMemberExpr(member))
+	} else if ok && !c.isVariantRef(member) && c.typeNamed(member.Expr) != nil {
+		// Money.one(): the type has no function or method of that name
+		c.errorf(member.Token(), ErrUnknownMethod, "%s has no function or method '%s'", describe(c.typeNamed(member.Expr)), member.Name)
+		c.checkArgsOnly(e)
+		return Unknown
 	} else if ok && c.isVariantRef(member) {
 		// Shape.Circle(2.0): a value of an enum, not a method call
 		return c.checkVariant(member, e, expected)

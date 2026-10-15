@@ -84,7 +84,82 @@ func implementsForOthers(m *module) bool {
 	return false
 }
 
+// staticsOf takes the functions of the type out of an impl, as functions
+// of their own named Type::name, the impl's type parameters theirs too,
+// and rewrites them.
+func (r *rewriter) staticsOf(impl *ast.ImplDecl) []ast.Decl {
+	var kept []*ast.FnDecl
+	var out []ast.Decl
+	for _, method := range impl.Methods {
+		if ast.UsesSelf(method) {
+			kept = append(kept, method)
+			continue
+		}
+		if method.Pub {
+			r.exposes(method, "function '"+impl.StructName+"."+method.Name+"'")
+		}
+		fn := method
+		fn.Name = ast.StaticName(r.m.qualify(impl.StructName), method.Name)
+		fn.Module = r.m.name
+		fn.TypeParams = append(append([]string{}, impl.TypeParams...), method.TypeParams...)
+		if len(impl.Bounds) > 0 {
+			// Copies: the impl's are rewritten with it
+			bounds := make(map[string][]*ast.Type)
+			cloner := &ast.Cloner{}
+			for name, b := range impl.Bounds {
+				for _, bound := range b {
+					bounds[name] = append(bounds[name], cloner.Type(bound))
+				}
+			}
+			for name, b := range method.Bounds {
+				bounds[name] = b
+			}
+			fn.Bounds = bounds
+		}
+		r.fn(fn)
+		out = append(out, fn)
+	}
+	impl.Methods = kept
+	return out
+}
+
+// staticOf gives the function of a type a member expression names, as the
+// name of that function: Point.origin, geo.Point.origin.
+func (r *rewriter) staticOf(e *ast.MemberExpr) ast.Expr {
+	var owner *item
+	switch base := e.Expr.(type) {
+	case *ast.Ident:
+		if r.isLocal(base.Name) || r.value(base.Name) != nil {
+			return nil
+		}
+		owner = r.typeItem(base.Name)
+	case *ast.MemberExpr:
+		target, ok := r.moduleOf(base.Expr)
+		if !ok {
+			return nil
+		}
+		if it, _ := target.lookup(base.Name, make(map[*module]bool)); it != nil && it.isType {
+			owner = it
+		}
+	}
+	if owner == nil || owner.module == nil {
+		return nil
+	}
+	pub, ok := owner.module.statics[owner.name][e.Name]
+	if !ok {
+		return nil
+	}
+	tok := memberToken(e)
+	if !pub && owner.module != r.m {
+		r.report(tok, ErrPrivate, "Declare it with 'pub' in "+owner.module.file+" to use it from other modules",
+			"function '%s.%s' of %s is private", owner.name, e.Name, owner.module.display())
+	}
+	return &ast.Ident{BaseNode: ast.BaseNode{Pos: tok.Pos, Tok: tok}, Name: ast.StaticName(owner.qualified, e.Name), TypeArgs: e.TypeArgs}
+}
+
 func (r *rewriter) rewrite() {
+	var statics []ast.Decl
+	defer func() { r.m.prog.Decls = append(r.m.prog.Decls, statics...) }()
 	for _, global := range r.m.prog.Globals {
 		global.Name = r.m.qualify(global.Name)
 		r.typ(global.Type)
@@ -141,6 +216,11 @@ func (r *rewriter) rewrite() {
 			})
 
 		case *ast.ImplDecl:
+			// The functions of the impl that do not use self are the
+			// type's: Point.origin(), not point.origin()
+			if r.m.statics[d.StructName] != nil {
+				statics = append(statics, r.staticsOf(d)...)
+			}
 			// The pub methods of a type others can name are theirs too
 			if owner := r.m.types[d.StructName]; d.TraitName == "" && (owner == nil || owner.pub) {
 				for _, method := range d.Methods {
@@ -653,6 +733,9 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 
 	case *ast.MemberExpr:
 		r.types(e.TypeArgs)
+		if static := r.staticOf(e); static != nil {
+			return static
+		}
 		if target, ok := r.moduleOf(e.Expr); ok {
 			return r.moduleMember(e, target)
 		}

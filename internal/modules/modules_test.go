@@ -346,7 +346,7 @@ func TestMethodsRecordModuleAndVisibility(t *testing.T) {
 			impl Shape for Square { fn area() -> Int { return self.side; } }
 			impl Square {
 				pub fn shown() -> Int { return self.hidden(); }
-				fn hidden() -> Int { return 1; }
+				fn hidden() -> Int { return self.side; }
 			}
 		`,
 	})

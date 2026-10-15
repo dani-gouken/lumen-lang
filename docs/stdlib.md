@@ -159,7 +159,7 @@ let diagonal = (a * a + b * b).sqrt();    // 5.0
 |----------|--------|
 | `join(parts, separator) -> String` | The parts with the separator between them |
 | `repeat(text, count)` | The text `count` times over. Fails for a negative count |
-| `padLeft(text, width)`, `padRight(text, width)` | The text with spaces before or after it, up to `width` characters |
+| `padLeft(text, width, fill = " ")`, `padRight(text, width, fill = " ")` | The text with `fill` before or after it, up to `width` characters: `"7".padLeft(3, "0")` is `"007"` |
 | `reverse(text)` | The characters in the opposite order |
 
 Building a long text piece by piece with `+=` copies everything so far at each step. Collect the pieces in an array and `join` them once.

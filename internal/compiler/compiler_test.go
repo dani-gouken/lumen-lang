@@ -1271,7 +1271,7 @@ func TestCompileErrors(t *testing.T) {
 		{"missing return", "fn f(n: Int) -> Int { if n > 0 { return 1; } }\nfn main() -> Int { return f(1); }", "E2004", "can reach its end without returning"},
 		{"impossible cast", "fn main() -> Int { let s = 1 as String; return 0; }", "E2021", "cannot cast int to string"},
 		{"generic impl without parameters", "struct Box<T> { value: T; }\nimpl Box { fn get() -> T { return self.value; } }\nfn main() -> Int { return 0; }", "E1001", "undefined type 'T'"},
-		{"method type argument nothing determines", "struct U { n: Int; }\nimpl U { fn none<T>() -> [T] { return []; } }\nfn size<V>(items: [V]) -> Int { return 0; }\nfn main() -> Int { let u = U { n: 1 }; return size(u.none()); }", "E2024", "cannot infer the type arguments of method 'none'"},
+		{"method type argument nothing determines", "struct U { n: Int; }\nimpl U { fn none<T>() -> [T] { let _n = self.n; return []; } }\nfn size<V>(items: [V]) -> Int { return 0; }\nfn main() -> Int { let u = U { n: 1 }; return size(u.none()); }", "E2024", "cannot infer the type arguments of method 'none'"},
 		{"trait type parameter count", "trait C { fn conv<T>(v: T) -> T; }\nstruct W { n: Int; }\nimpl C for W { fn conv<A, B>(v: A) -> A { return v; } }\nfn main() -> Int { return 0; }", "E2013", "has 2 type parameters, trait requires 1"},
 		{"field used after a call that may change it", "struct P { x: Int?; }\nfn touch(p: P) -> Void { p.x = null; }\nfn main() -> Int { let p = P { x: 1 }; if p.x != null { touch(p); return p.x + 1; } return 0; }", "E2017", "the value may be null"},
 		{"type test that can never succeed", "fn main() -> Int { let n = 1; if n is String { return 1; } return 0; }", "E2021", "int can never be string"},

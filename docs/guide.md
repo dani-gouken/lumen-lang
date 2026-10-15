@@ -466,6 +466,7 @@ impl Shape for Point {
 
 impl Point {                                         // methods outside a trait
     fn moved(dx: Int) -> Point { return Point { x: self.x + dx, y: self.y }; }
+    fn origin() -> Point { return Point { x: 0, y: 0 }; }   // no self: a function of the type
 }
 
 fn show(s: Shape) -> Void { println(s.area()); }     // only structs implementing Shape
@@ -473,7 +474,10 @@ fn show(s: Shape) -> Void { println(s.area()); }     // only structs implementin
 let p = Point { x: 2, y: 3 };
 p.x = 5;
 show(p.moved(1));
+show(Point.origin());
 ```
+
+A function of an `impl` that does not use `self` is a function of the type: it is called on the type, `Point.origin()`, never on a value. It takes the type parameters of the `impl` (`Pair.twice(1)` is a `Pair<Int>`), and from another module it is `geo.Point.origin()`, or `Point.origin()` after `import geo.{Point};`, when it is `pub`.
 
 Structs are references: `let q = p;` makes `q` and `p` the same value.
 

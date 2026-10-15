@@ -111,22 +111,23 @@ extern fn join(parts: [String], separator: String) -> String;
 // The text `count` times over.
 extern fn repeat(text: String, count: Int) -> String;
 
-// The text with spaces in front until it is `width` characters long.
-fn padLeft(text: String, width: Int) -> String {
-    if len(text) >= width {
+// The text with `fill` in front until it is `width` characters long:
+// "7".padLeft(3, "0") is "007".
+fn padLeft(text: String, width: Int, fill: String = " ") -> String {
+    if len(text) >= width || fill == "" {
         return text;
     }
 
-    return repeat(" ", width - len(text)) + text;
+    return substring(repeat(fill, width - len(text)), 0, width - len(text)) + text;
 }
 
-// The text with spaces after it until it is `width` characters long.
-fn padRight(text: String, width: Int) -> String {
-    if len(text) >= width {
+// The text with `fill` after it until it is `width` characters long.
+fn padRight(text: String, width: Int, fill: String = " ") -> String {
+    if len(text) >= width || fill == "" {
         return text;
     }
 
-    return text + repeat(" ", width - len(text));
+    return text + substring(repeat(fill, width - len(text)), 0, width - len(text));
 }
 
 fn reverse(text: String) -> String {
@@ -322,14 +323,16 @@ impl String {
         return repeat(self, count);
     }
 
-    // The text with spaces in front until it is `width` characters long.
-    pub fn padLeft(width: Int) -> String {
-        return padLeft(self, width);
+    // The text with `fill`, a space unless said, in front until it is
+    // `width` characters long: "7".padLeft(3, "0") is "007".
+    pub fn padLeft(width: Int, fill: String = " ") -> String {
+        return padLeft(self, width, fill);
     }
 
-    // The text with spaces after it until it is `width` characters long.
-    pub fn padRight(width: Int) -> String {
-        return padRight(self, width);
+    // The text with `fill`, a space unless said, after it until it is
+    // `width` characters long.
+    pub fn padRight(width: Int, fill: String = " ") -> String {
+        return padRight(self, width, fill);
     }
 
     pub fn reverse() -> String {

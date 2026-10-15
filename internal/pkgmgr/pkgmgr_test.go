@@ -91,7 +91,7 @@ impl Catalog for Memory {
         let found: [Candidate] = [];
 
         for line in self.lines {
-            let words = self.parts(line).0.split(" ");
+            let words = Memory.parts(line).0.split(" ");
 
             if words[0] != name {
                 continue;
@@ -107,7 +107,7 @@ impl Catalog for Memory {
 
     fn manifest(candidate: Candidate) -> Result<Manifest, String> {
         for line in self.lines {
-            let (head, requires) = self.parts(line);
+            let (head, requires) = Memory.parts(line);
             let words = head.split(" ");
             if words[0] != candidate.name || labelOf(words[1]) != candidate.label {
                 continue;

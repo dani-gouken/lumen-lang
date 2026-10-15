@@ -8,6 +8,27 @@ import "strings"
 // method is the function under another name, and is called as the
 // function: nothing stands between the program and what fails, and there
 // is one call where there were two.
+// UsesSelf reports whether a method names self anywhere in its body. One
+// that does not is a function of its type: Point.origin().
+func UsesSelf(m *FnDecl) bool {
+	if m.Body == nil {
+		return true
+	}
+	uses := false
+	Walk(m.Body, func(e Expr) {
+		if ident, ok := e.(*Ident); ok && ident.Name == "self" {
+			uses = true
+		}
+	}, func(Stmt) {})
+	return uses
+}
+
+// StaticName is the name of a function of a type, Point::origin, which no
+// method or function of a program can have.
+func StaticName(typeName, name string) string {
+	return typeName + "::" + name
+}
+
 func ForwardedTo(m *FnDecl) string {
 	if !strings.HasPrefix(m.Module, "std.") || m.Body == nil || len(m.Body.Stmts) != 1 {
 		return ""

@@ -1185,7 +1185,7 @@ func TestPubUsesOnlyPubTypes(t *testing.T) {
 	}, "E8009", "vault.lum", "pub function 'make' of module 'vault' uses Secret")
 
 	expectModulesError(t, sources{
-		"vault.lum": "struct Secret { n: Int; }\npub struct Box { n: Int; }\nimpl Box { pub fn open(keys: [Secret?]) -> Int { return 0; } }",
+		"vault.lum": "struct Secret { n: Int; }\npub struct Box { n: Int; }\nimpl Box { pub fn open(keys: [Secret?]) -> Int { return self.n; } }",
 		"main.lum":  "import vault;\nfn main() -> Int { return 0; }",
 	}, "E8009", "vault.lum", "pub method 'open' of module 'vault' uses Secret")
 

@@ -306,10 +306,10 @@ impl Server {
 
         self.documents.remove(document.path);
         compiler.close(document.path);
-        self.publish(document.uri, [], null);
+        Server.publish(document.uri, [], null);
 
         for file in self.flagged.getOr(document.path, []) {
-            self.publish(uriOf(file), [], null);
+            Server.publish(uriOf(file), [], null);
         }
 
         self.flagged.remove(document.path);
@@ -339,7 +339,7 @@ impl Server {
 
         for file in self.flagged.getOr(document.path, []) {
             if !byFile.has(file) {
-                self.publish(uriOf(file), [], null);
+                Server.publish(uriOf(file), [], null);
             }
         }
 
@@ -347,9 +347,9 @@ impl Server {
             if file == document.path {
                 // Said of the text as it was checked, which the editor
                 // may have changed since
-                self.publish(document.uri, byFile.getOr(file, []), document.edition);
+                Server.publish(document.uri, byFile.getOr(file, []), document.edition);
             } else {
-                self.publish(uriOf(file), byFile.getOr(file, []), null);
+                Server.publish(uriOf(file), byFile.getOr(file, []), null);
             }
         }
 
@@ -527,7 +527,7 @@ impl Server {
     fn answer(method: String, params: Json) -> Json? {
         match method {
             case "initialize": {
-                return self.capabilities();
+                return Server.capabilities();
             }
 
             case "shutdown": {

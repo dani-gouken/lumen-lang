@@ -113,6 +113,11 @@ type module struct {
 	aliases        map[string]*module
 	importedValues map[string]*item
 	importedTypes  map[string]*item
+
+	// The functions of each type of the module: those of its impls that
+	// do not use self, by the type and their name, with whether they are
+	// pub. Point.origin() calls one.
+	statics map[string]map[string]bool
 }
 
 // display names a module in messages.
@@ -247,6 +252,21 @@ func (l *loader) parse(name, file, src string) *module {
 	}
 	for _, global := range m.prog.Globals {
 		declare(m.values, global.Name, "variable", false)
+	}
+	m.statics = make(map[string]map[string]bool)
+	for _, decl := range m.prog.Decls {
+		impl, ok := decl.(*ast.ImplDecl)
+		if !ok || impl.TraitName != "" || m.types[impl.StructName] == nil {
+			continue
+		}
+		for _, method := range impl.Methods {
+			if !ast.UsesSelf(method) {
+				if m.statics[impl.StructName] == nil {
+					m.statics[impl.StructName] = make(map[string]bool)
+				}
+				m.statics[impl.StructName][method.Name] = method.Pub
+			}
+		}
 	}
 	l.importsResult(m, src)
 	return m
