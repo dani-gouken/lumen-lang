@@ -130,7 +130,12 @@ func (vm *VM) markObject(h *ObjHeader) {
 	}
 	h.Marked = true
 	switch h.Type {
-	case ObjTypeString, ObjTypeExternFunction, ObjTypeIndex:
+	case ObjTypeString:
+		// A text holds the texts it was joined of until it is written out
+		if (*StringObj)(unsafe.Pointer(h)).rope() != nil {
+			vm.gray = append(vm.gray, h)
+		}
+	case ObjTypeExternFunction, ObjTypeIndex:
 		// These hold no other object
 	default:
 		vm.gray = append(vm.gray, h)
@@ -145,6 +150,11 @@ func (vm *VM) markReachable() {
 		vm.gray = vm.gray[:len(vm.gray)-1]
 
 		switch h.Type {
+		case ObjTypeString:
+			if rope := (*StringObj)(unsafe.Pointer(h)).rope(); rope != nil {
+				vm.markObject(&rope.left.header)
+				vm.markObject(&rope.right.header)
+			}
 		case ObjTypeArray:
 			for _, v := range (*ArrayObj)(unsafe.Pointer(h)).elements {
 				vm.markValue(v)

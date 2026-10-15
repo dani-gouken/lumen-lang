@@ -79,6 +79,11 @@ func sizeOf(header *ObjHeader) uint64 {
 	switch header.Type {
 	case ObjTypeString:
 		obj := (*StringObj)(unsafe.Pointer(header))
+		// A text not written out yet is counted without the bytes it will
+		// have: they are counted when it is (see flatten)
+		if obj.rope() != nil {
+			return uint64(unsafe.Sizeof(StringObj{}))
+		}
 		return uint64(unsafe.Sizeof(StringObj{})) + uint64(len(obj.data))
 	case ObjTypeArray:
 		obj := (*ArrayObj)(unsafe.Pointer(header))
@@ -229,6 +234,22 @@ func (h *Heap) AllocJoined(a, b string) (*StringObj, bool, error) {
 		return nil, false, err
 	}
 	obj := joined(a, b)
+	h.track(obj)
+	return obj, h.ShouldCollect(), nil
+}
+
+// AllocRope allocates the text of two texts one after the other, kept as
+// the two until its bytes are asked for. It knows its length in characters
+// from theirs.
+func (h *Heap) AllocRope(left, right *StringObj) (*StringObj, bool, error) {
+	size := left.ByteLen() + right.ByteLen()
+	if err := h.reserve(uint64(unsafe.Sizeof(StringObj{}))); err != nil {
+		return nil, false, err
+	}
+	obj := &StringObj{header: ObjHeader{Type: ObjTypeString}, side: &stringSide{left: left, right: right, size: size, heap: h}}
+	obj.runes = int32(left.RuneLen() + right.RuneLen())
+	obj.ascii = left.ascii && right.ascii
+	obj.measured = true
 	h.track(obj)
 	return obj, h.ShouldCollect(), nil
 }

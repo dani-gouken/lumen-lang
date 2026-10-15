@@ -54,7 +54,7 @@ func init() {
 				return NewNull(), err
 			}
 			for at, held := range keys.elements {
-				if h := header(held); h != nil && h.Type == ObjTypeString && (*StringObj)(unsafe.Pointer(h)).data == key {
+				if h := header(held); h != nil && h.Type == ObjTypeString && (*StringObj)(unsafe.Pointer(h)).Data() == key {
 					return NewInt(int64(at)), nil
 				}
 			}

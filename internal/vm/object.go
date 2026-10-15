@@ -1,6 +1,9 @@
 package vm
 
-import "unicode/utf8"
+import (
+	"unicode/utf8"
+	"unsafe"
+)
 
 // ObjType represents the type of a heap-allocated object.
 type ObjType byte
@@ -45,8 +48,33 @@ type StringObj struct {
 	runes    int32
 	measured bool
 	ascii    bool
-	starts   *[]uint32
+	side     *stringSide
 }
+
+// stringSide is what few texts have, kept apart so that the others are
+// small. A text made by joining two long ones is the two, until its bytes
+// are asked for (see ropeMin): then they are written out once, and it is a
+// text like any other. A text written out that is not plain ASCII has
+// where every runeStride-th character starts.
+type stringSide struct {
+	starts      []uint32
+	left, right *StringObj // The texts it is made of, not written out yet
+	size        int        // How many bytes they make
+	heap        *Heap      // Which counts the bytes once they are written out
+}
+
+// rope returns the texts a text is made of, if it is not written out yet.
+func (s *StringObj) rope() *stringSide {
+	if s.side != nil && s.side.left != nil {
+		return s.side
+	}
+	return nil
+}
+
+// ropeMin is how long a text joined of two must be to be kept as the two:
+// joining a part to a long text then copies nothing, and a text built a
+// part at a time is written out once, not once per part.
+const ropeMin = 1024
 
 // runeStride is how far apart the recorded character positions are: the
 // most that is decoded to reach any one character.
@@ -57,14 +85,52 @@ func (s *StringObj) Header() *ObjHeader {
 }
 
 func (s *StringObj) String() string {
+	return s.Data()
+}
+
+// Data is the bytes of the text, written out first if it is still the
+// texts it was joined of.
+func (s *StringObj) Data() string {
+	if s.side != nil && s.side.left != nil {
+		s.flatten()
+	}
 	return s.data
 }
 
-func (s *StringObj) Data() string {
-	return s.data
+// ByteLen is how many bytes the text has, written out or not.
+func (s *StringObj) ByteLen() int {
+	if rope := s.rope(); rope != nil {
+		return rope.size
+	}
+	return len(s.data)
+}
+
+// flatten writes out the bytes of a text kept as the texts it was joined
+// of, and lets go of them. A text built a part at a time is a long chain
+// of joins: it is walked with a stack of its own, not by recursion.
+func (s *StringObj) flatten() {
+	buf := make([]byte, 0, s.side.size)
+	pending := []*StringObj{s}
+	for len(pending) > 0 {
+		part := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		if rope := part.rope(); rope != nil {
+			pending = append(pending, rope.right, rope.left)
+			continue
+		}
+		buf = append(buf, part.data...)
+	}
+	s.data = unsafe.String(unsafe.SliceData(buf), len(buf))
+	// The text was counted without its bytes; it has them now. They are
+	// counted whatever the limit: the next allocation collects, or fails
+	s.side.heap.bytesAllocated += uint64(len(buf))
+	s.side = nil
 }
 
 func (s *StringObj) measure() {
+	if s.rope() != nil {
+		s.flatten()
+	}
 	s.measured = true
 	s.ascii = true
 	for i := 0; i < len(s.data); i++ {
@@ -85,7 +151,7 @@ func (s *StringObj) measure() {
 		}
 		n++
 	}
-	s.runes, s.starts = int32(n), &starts
+	s.runes, s.side = int32(n), &stringSide{starts: starts}
 }
 
 // RuneLen is the length of the text in characters.
@@ -99,7 +165,12 @@ func (s *StringObj) RuneLen() int {
 // offsetOf is where the character at a position starts among the bytes of
 // the text. The position may be the length: the end of the text.
 func (s *StringObj) offsetOf(i int) int {
-	if !s.measured {
+	if s.rope() != nil {
+		s.flatten()
+	}
+	// A text written out of parts knows how many characters it has, not
+	// where they are
+	if !s.measured || (!s.ascii && s.side == nil) {
 		s.measure()
 	}
 	if s.ascii {
@@ -108,7 +179,7 @@ func (s *StringObj) offsetOf(i int) int {
 	if i >= int(s.runes) {
 		return len(s.data)
 	}
-	offset := int((*s.starts)[i/runeStride])
+	offset := int(s.side.starts[i/runeStride])
 	for skip := i % runeStride; skip > 0; skip-- {
 		_, size := utf8.DecodeRuneInString(s.data[offset:])
 		offset += size
@@ -130,7 +201,8 @@ func (s *StringObj) RuneAt(i int) string {
 // Slice returns the characters from one position up to another. Both must
 // be within the text or at its end, and in order.
 func (s *StringObj) Slice(from, to int) string {
-	return s.data[s.offsetOf(from):s.offsetOf(to)]
+	start, end := s.offsetOf(from), s.offsetOf(to)
+	return s.data[start:end]
 }
 
 // ArrayObj represents a heap-allocated array.

@@ -1,0 +1,74 @@
+// Texts built a part at a time, as long as programs make them: joined
+// without being copied, written out when they are read, the same whichever
+// way they are read.
+import std.dict;
+
+fn report(lines: Int) -> String {
+    let out = "";
+
+    for i in 0..lines {
+        out += "line ${i}: ";
+        out = out + "étoile " + i.toString() + "\n";
+    }
+
+    return out;
+}
+
+fn main() -> Int {
+    let built = report(2000);
+
+    println(
+        built.len(),
+        built.lines().len(),
+        built.startsWith("line 0: étoile 0"),
+        built.endsWith("étoile 1999\n"),
+    );
+
+    // Read across where the parts meet
+    println(
+        built.substring(0, 30),
+        built[built.len() - 2],
+        built.substring(built.len() - 25, built.len() - 1),
+    );
+
+    // The same text, made another way, is equal to it
+    let again = report(2000);
+
+    println(
+        built == again,
+        built != again + "x",
+        again < built + "!",
+        built.contains("line 1234: étoile 1234"),
+    );
+
+    // Long texts as keys
+    let seen = dict.empty<Int>();
+    seen[built] = 1;
+    seen[again] = (seen[again] ?? 0) + 1;
+    seen[report(10)] = 7;
+    println(seen.size(), seen[report(2000)], seen[report(10)]);
+
+    // Taken apart and put back
+    let parts = built.split("\n");
+    println(parts.len(), parts[1999], parts.join("\n") == built);
+
+    // Built in a string of its own, and read inside another
+    let quoted = "<<${built}>>";
+    println(quoted.len() == built.len() + 4, quoted.substring(0, 12));
+
+    // Many long texts, each of many parts, most let go of
+    let total = 0;
+
+    for round in 0..200 {
+        let piece = "";
+
+        for i in 0..200 {
+            piece = piece + "${round}-${i};";
+        }
+
+        total += piece.len();
+    }
+
+    println(total);
+    return 0;
+}

@@ -418,6 +418,14 @@ func (vm *VM) arithmeticError(name, symbol string, a, b Value) error {
 // concatenate is ADD on something other than two numbers of a kind: it
 // joins two strings.
 func (vm *VM) concatenate(a, b Value) (Value, error) {
+	// Long texts are joined without being copied: see ropeMin
+	if left, right := stringObject(a), stringObject(b); left != nil && right != nil && left.ByteLen()+right.ByteLen() >= ropeMin {
+		str, _, err := vm.heap.AllocRope(left, right)
+		if err != nil {
+			return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
+		}
+		return valueOf(&str.header), nil
+	}
 	sa, ok := stringValue(a)
 	if !ok {
 		return NewNull(), vm.arithmeticError("ADD", "+", a, b)
@@ -431,6 +439,14 @@ func (vm *VM) concatenate(a, b Value) (Value, error) {
 		return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
 	}
 	return valueOf(&str.header), nil
+}
+
+// stringObject is the text a value is, or nil.
+func stringObject(v Value) *StringObj {
+	if t, ok := heapType(v); !ok || t != ObjTypeString {
+		return nil
+	}
+	return (*StringObj)(unsafe.Pointer(v.AsHeapPtr()))
 }
 
 // compare applies an ordering instruction to operands that are not two
