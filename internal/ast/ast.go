@@ -1352,6 +1352,44 @@ func Conjuncts(cond Expr) []Expr {
 	return []Expr{cond}
 }
 
+// GuardTest gives, for an `if` that leaves when a pattern test does not
+// hold, the test: the `value is Ok(n)` of
+//
+//	if !(value is Ok(n)) { return; }
+//
+// whose names are variables of what follows the `if` in its block. The
+// `if` has no `else`, and its block always leaves: it ends with return,
+// break, continue or a call of panic. Anything else gives nil.
+func GuardTest(s *IfStmt) Expr {
+	not, ok := s.Cond.(*UnaryExpr)
+	if !ok || not.Op != "!" || s.Else != nil || len(PatternTests(not.Expr)) == 0 || !Leaves(s.Then) {
+		return nil
+	}
+	return not.Expr
+}
+
+// Leaves reports whether a block ends with a statement that leaves it,
+// whatever happens: return, break, continue, or a call of panic.
+func Leaves(block *BlockStmt) bool {
+	if block == nil || len(block.Stmts) == 0 {
+		return false
+	}
+	switch last := block.Stmts[len(block.Stmts)-1].(type) {
+	case *ReturnStmt, *BreakStmt, *ContinueStmt:
+		return true
+	case *ExprStmt:
+		call, ok := last.Expr.(*CallExpr)
+		if !ok {
+			return false
+		}
+		ident, ok := call.Func.(*Ident)
+		return ok && ident.Name == "panic"
+	case *BlockStmt:
+		return Leaves(last)
+	}
+	return false
+}
+
 // PatternTests lists the pattern tests whose names reach what a condition
 // guards: the ones that have to hold for the whole condition to hold.
 // One under `||` or `!` is not among them, since the condition can hold

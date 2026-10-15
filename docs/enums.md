@@ -272,7 +272,17 @@ if stock.take(label, 1) is Err(reason) { log(reason); }
 **Where the names exist.** A name of the pattern is a variable of the code that runs only when the test held:
 
 *   the rest of a chain of `&&`: `shape is Shape.Rect(w, h) && w == h`, and a test further on may look into it: `next() is Option.Some(shape) && shape is Shape.Circle(r)`;
-*   the block of the `if` or the `while` whose condition the test is, alone or in such a chain.
+*   the block of the `if` or the `while` whose condition the test is, alone or in such a chain;
+*   what follows an `if` that leaves when the test fails: the test under `!`, no `else`, and a block that ends with `return`, `break`, `continue` or `panic`. The happy path then reads down the page:
+
+```rust
+let parsed = command(line);
+if !(parsed is Ok(cmd)) {
+    println("skipped:", line);
+    continue;
+}
+run(cmd);                      // cmd is the command from here on
+```
 
 They do not exist in the `else`, in the next `else if`, or after the statement. Each branch of an `else if` chain has its own:
 
@@ -428,7 +438,6 @@ What tuples add is reading a value by its position, `pair.0`, and being printed 
 ## What Is Not There
 
 *   **Patterns on arrays**: an array is bound to a name and looked at with its methods.
-*   **Names from a test that failed**: `if !(shape is Shape.Circle(r)) { return; }` does not leave `r` for what follows. The block of the `if` is where the names are.
 *   **Several patterns, ranges and literals after `is`**: `value is A.X | A.Y`, `n is 1..10`, `n is 3`. Write `||`, comparisons, `==`.
 
 ## How It Is Compiled

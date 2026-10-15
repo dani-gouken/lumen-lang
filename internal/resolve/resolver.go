@@ -401,6 +401,15 @@ func (r *Resolver) visitStmt(stmt ast.Stmt) {
 			r.visitExpr(s.Value)
 		}
 	case *ast.IfStmt:
+		if test := ast.GuardTest(s); test != nil {
+			// if !(value is Ok(n)) { return; }: what the test names is a
+			// variable of what follows, which only runs when it held
+			r.pushScope(s)
+			r.visitBlockStmt(s.Then)
+			r.popScope()
+			r.visitCondition(test, true)
+			return
+		}
 		// What `if value is Shape.Circle(r)` names is a variable of the
 		// block that runs when the test held; the `else` does not see it
 		r.pushScope(s)
@@ -606,7 +615,7 @@ func (r *Resolver) rejectNames(e *ast.PatternTestExpr) {
 	for _, name := range e.Pattern.Bindings() {
 		r.errs.ReportErrorWithSuggestion(ErrUnusableName,
 			fmt.Sprintf("'%s' cannot be named here: nothing runs only when this test holds", name.Name),
-			"Write '_' to test without naming. A name can be used when the test is the condition of an 'if' or a 'while', or stands before an '&&'",
+			"Write '_' to test without naming. A name can be used when the test is the condition of an 'if' or a 'while', stands before an '&&', or is the test of an if that leaves when it fails: if !(value is Ok(n)) { return; }",
 			name.Token(), r.sourceLines)
 	}
 	r.namesNothing = true

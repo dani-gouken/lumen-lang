@@ -215,7 +215,17 @@ func (d *Desugarer) desugarStmt(stmt ast.Stmt) ast.Stmt {
 func (d *Desugarer) desugarBlockStmt(block *ast.BlockStmt) *ast.BlockStmt {
 	newStmts := make([]ast.Stmt, 0, len(block.Stmts))
 
-	for _, stmt := range block.Stmts {
+	for i, stmt := range block.Stmts {
+		if guard, ok := stmt.(*ast.IfStmt); ok {
+			if test := ast.GuardTest(guard); test != nil {
+				// if !(value is Ok(n)) { return; } rest: the rest runs
+				// when the test held, with its names, the block otherwise
+				rest := &ast.BlockStmt{BaseNode: guard.BaseNode, Stmts: block.Stmts[i+1:]}
+				turned := &ast.IfStmt{BaseNode: guard.BaseNode, Cond: test, Then: rest, Else: guard.Then}
+				newStmts = append(newStmts, d.desugarStmt(turned))
+				break
+			}
+		}
 		newStmt := d.desugarStmt(stmt)
 		newStmts = append(newStmts, newStmt)
 	}
