@@ -734,3 +734,66 @@ One(5) Pair(7, "x") Pair(8, "x") Deep(Deep(Pair(3, "x!")))
 true true false false
 `)
 }
+
+// The values of an enum are never changed once made, so an enum value
+// holds whatever its type arguments allow: a Result<Lock, E> is a
+// Result<Lock?, E>, and Result.Ok(lock) can be returned as one.
+func TestEnumsAreWiderWithWiderTypeArguments(t *testing.T) {
+	expectOutput(t, `
+		import std.result.{Result};
+
+		struct Lock { hash: String; }
+		enum Shape<T> { Box(T), Pair(T, T), Empty }
+
+		fn read(present: Bool) -> Result<Lock?, String> {
+			if !present {
+				return Result.Ok(null);
+			}
+			return Result.Ok(Lock { hash: "abc" });
+		}
+
+		fn total(shapes: [Shape<Int?>]) -> Int {
+			let sum = 0;
+			for shape in shapes {
+				match shape {
+					case Shape.Box(n): { sum += n ?? 100; }
+					case Shape.Pair(a, b): { sum += (a ?? 0) + (b ?? 0); }
+					case Shape.Empty: {}
+				}
+			}
+			return sum;
+		}
+	`, `
+		match read(true) {
+			case Result.Ok(lock): { println(lock?.hash ?? "none"); }
+			case Result.Err(reason): { println(reason); }
+		}
+		println(read(false).value() == null, read(true).isOk());
+
+		let exact: Result<Int, String> = Result.Ok(5);
+		let wider: Result<Int?, String> = exact;
+		println(wider.value(), wider.map(n -> (n ?? 0) + 1).value(), wider.isOk());
+
+		let some: Shape<Int> = Shape.Pair(1, 2);
+		let none: Shape<Int?> = Shape.Box(null);
+		println(total([some, none, Shape.Box(4), Shape.Empty]));
+	`, `abc
+true true
+5 6 true
+107
+`)
+
+	// The other way is not, nor is a struct, whose fields can be assigned
+	refused := []string{
+		"let r: Result<Int?, String> = Result.Ok(1); let back: Result<Int, String> = r;",
+		"let b = Box<Result<Int, String>> { item: Result.Ok(1) }; let c: Box<Result<Int?, String>> = b;",
+		"let b = Box<Int> { item: 1 }; let c: Box<Int?> = b;",
+	}
+	for _, body := range refused {
+		errs := errors.NewHandler()
+		Compile("import std.result.{Result};\nstruct Box<T> { item: T; }\nfn main() -> Int {\n"+body+"\nreturn 0;\n}\n", "test.lum", errs)
+		if !errs.HasErrors() || errs.Diagnostics[0].Code != "E2001" {
+			t.Errorf("%s: expected E2001, got %v", body, errs.Diagnostics)
+		}
+	}
+}

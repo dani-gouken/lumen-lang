@@ -619,3 +619,50 @@ points
   v2
 `)
 }
+
+// A fallback that may be null itself: a ?? b ?? c tries each in turn, and
+// what is left optional stays so until a fallback that is not.
+func TestFallbacksInARow(t *testing.T) {
+	expectOutput(t, peopleDecls+`
+		fn lookup(names: [String], wanted: String) -> Int? {
+			return names.indexOf(wanted);
+		}
+	`, `
+		let none: Int? = null;
+		let some: Int? = 2;
+		let ada = user("ada", "London");
+		let bob = user("bob", null);
+		bob.friend = ada;
+		let nobody: User? = null;
+
+		println(none ?? some ?? 0, none ?? none ?? 9, none ?? none, some ?? none);
+		let total: Int = none ?? some ?? 0;
+		println(total + 1);
+
+		// With ?. and calls on either side
+		println(nobody?.name ?? bob.friend?.name ?? "nobody", bob.address?.city ?? ada.address?.city ?? "nowhere");
+		let names = ["ada", "bob"];
+		println(lookup(names, "eve") ?? lookup(names, "bob") ?? -1, lookup(names, "eve") ?? lookup(names, "zed") ?? -1);
+
+		// Tuples, as cut gives them
+		let (key, value) = "a:b".cut("=") ?? "a:b".cut(":") ?? ("", "");
+		println(key, value);
+
+		// The fallbacks after the first that holds are not worked out
+		let asked = 0;
+		let ask = fn() -> Int? { asked++; return 5; };
+		println(some ?? ask() ?? 0, none ?? ask() ?? ask() ?? 0, asked);
+	`, `2 9 null 2
+3
+ada London
+1 -1
+a b
+2 5 1
+`)
+
+	errs := errors.NewHandler()
+	Compile("fn main() -> Int {\nlet a: Int? = null;\nlet b: String? = \"x\";\nlet c = a ?? b ?? 0;\nreturn 0;\n}\n", "test.lum", errs)
+	if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "fallback of type") {
+		t.Errorf("expected a fallback of another type to be refused, got %v", errs.Diagnostics)
+	}
+}

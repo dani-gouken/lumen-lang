@@ -645,7 +645,15 @@ func (c *Checker) assignable(target, source Type) bool {
 		if len(t.TypeArgs) != len(src.TypeArgs) {
 			return len(t.TypeArgs) == 0 || len(src.TypeArgs) == 0
 		}
+		// The values of an enum cannot be changed once made, so one holds
+		// whatever its type arguments allow: a Result<Lock, E> is a
+		// Result<Lock?, E>. A struct's fields can be assigned, and its type
+		// arguments have to be the same.
+		decl, _ := c.enumOfType(t)
 		for i := range t.TypeArgs {
+			if decl != nil && c.assignable(t.TypeArgs[i], src.TypeArgs[i]) {
+				continue
+			}
 			if !c.sameType(t.TypeArgs[i], src.TypeArgs[i]) {
 				return false
 			}

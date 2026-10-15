@@ -528,6 +528,8 @@ What follows `is` is what follows `case`: a variant, with a name, `_`, a literal
 
 Values of an enum are equal when they are the same variant holding equal values. More in [enums.md](enums.md).
 
+A value of an enum never changes once made, so it is also a value of the same enum with wider type arguments: a `Result<Lock, String>` is a `Result<Lock?, String>`, and `return Result.Ok(lock);` is fine in a function that returns the second. A struct's fields can be assigned, so a `Box<Int>` is not a `Box<Int?>`.
+
 ### Constants
 
 A value with a name, declared outside any function:
@@ -624,7 +626,7 @@ fn port(config: Config) -> Int? {
 }
 ```
 
-*   **`a ?? b`** is `a`, or `b` when `a` is null.
+*   **`a ?? b`** is `a`, or `b` when `a` is null. When `b` may be null too the result may be: `a ?? b ?? 0` tries `a`, then `b`, then gives `0`.
 *   **`value?.member`** reads a field or calls a method when the value is not null, and gives null when it is. All that follows on the same chain is done with the value too: in `user?.address.city`, the city is read when there is a user. A step that may itself be null needs a `?.` of its own, as `address` above. On a value that can never be null it is an error (`E2035`): use a dot.
 *   **`value?`** after an expression gives the value, and returns `null` from the enclosing function if there is none. The function has to be one that may return null, or one that returns nothing, which it then simply ends. The same `?` passes on the failure of a [`Result`](#failures).
 

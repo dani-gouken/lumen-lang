@@ -1124,10 +1124,22 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 
 	case "??":
 		// `a ?? b` is `a` unless it is null, so the result is a's type
-		// without null, and b has to fit it.
+		// without null, and b has to fit it. A fallback that may be null
+		// itself gives a result that may be: a ?? b ?? 0 tries a, then b.
 		value := withoutNull(left)
 		if value == nil || isUnknown(value) {
 			return right
+		}
+		if isOptional(right) || right.Equals(Null) {
+			inner := withoutNull(right)
+			if inner == nil || right.Equals(Null) {
+				return optional(value)
+			}
+			inner = c.widen(e.Right, value, inner)
+			if !c.assignable(value, inner) {
+				c.errorf(e.Right.Token(), ErrTypeMismatch, "fallback of type %s does not match %s", right, optional(value))
+			}
+			return optional(value)
 		}
 		right = c.widen(e.Right, value, right)
 		if !c.assignable(value, right) {
