@@ -56,6 +56,18 @@ func (fc *FunctionCompiler) compileStmt(stmt ast.Stmt) {
 
 // compileLetStmt compiles a variable declaration
 func (fc *FunctionCompiler) compileLetStmt(stmt *ast.LetStmt) {
+	if fn, ok := stmt.Value.(*ast.FnExpr); ok && !fn.Short && !stmt.IsConst {
+		// let walk = fn(...) { ... walk(...) ... }: the variable exists
+		// before the function is made, which captures it, and holds it
+		// once it is
+		reg := fc.builder.CreateMov(ir.Constant{Val: nil, Type: "Null"})
+		fc.declare(stmt.Name, reg)
+		closure := fc.compileExpr(stmt.Value)
+		fc.setPos(stmt)
+		fc.builder.Emit(ir.OpMov, reg, closure)
+		return
+	}
+
 	// Compile initializer
 	var reg *ir.Register
 	if stmt.Value != nil {

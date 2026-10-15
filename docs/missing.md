@@ -10,7 +10,6 @@ Sizes are rough: **S** is an afternoon, **M** touches several stages of the comp
 |---------|-------|------|
 | Default values for parameters: `fn open(path: String, mode: String = "r")` | Every argument is given, or a second function is written | M |
 | Functions of a type: `Point.origin()` | A function next to the struct: `origin()` | M |
-| A function written in a function calling itself: `let walk = fn(n: Node) { ... walk(child) ... };` | The name is not in scope in its own body; write a top-level function | S |
 | Names of a test that did not hold, for the code after it: `if !(value is Ok(n)) { return; }` then `n` | The names of `is` exist in the block it guards; use a `match`, or `value!` | M |
 | Fields private to a module | A `pub struct` shows all its fields | M |
 

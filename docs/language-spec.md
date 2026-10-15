@@ -147,6 +147,7 @@ Full description: [enums.md](enums.md).
 - `let name = value;` (or `let name: Type = value;`) at the top level of a module, or of an entry file that has a `main`, declares a variable of the file. Its functions read and assign it; it is private to its module. Every such variable is made before `main` runs, in the order written, a variable whose value uses another making that one first. Any other statement outside a function there is `E8007`. A null test does not narrow one. In a script (an entry file without `main`), the top-level statements are its body and their variables are not seen by its functions.
 
 ### Closures
+- In `let name = fn(params) -> Type { body };`, the long form with its types, `name` is in scope in `body`: the function can call itself. A short function (`x -> ...`) does not see the name it is given.
 - A function expression captures the variables it uses **by reference**: it sees later assignments made by the enclosing function, and its own assignments are visible outside. A captured variable lives on after the enclosing function returns.
 - Each iteration of a loop has its own variables: closures created in different iterations keep the values of their own iteration, including the loop's variables (`for i, item in items`). Within one iteration a closure and the loop body still share them. A variable declared outside the loop is shared by all of them.
 

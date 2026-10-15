@@ -788,6 +788,11 @@ func (c *Checker) checkBlockEnding(s *ast.BlockStmt) (ending map[*resolve.Symbol
 }
 
 func (c *Checker) checkLetStmt(s *ast.LetStmt) {
+	if fn, ok := s.Value.(*ast.FnExpr); ok && !fn.Short && s.Type == nil {
+		// let walk = fn(node: Node) { ... walk(child) ... }: what the body
+		// calls has the type the signature says
+		c.info.Types[s.Value] = c.resolveFnType(&ast.FnDecl{BaseNode: fn.BaseNode, Params: fn.Params, ReturnType: fn.ReturnType})
+	}
 	if s.Type == nil {
 		c.checkExpr(s.Value)
 

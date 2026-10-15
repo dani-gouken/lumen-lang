@@ -782,6 +782,7 @@ lines.each(line -> {                                  // several statements go i
 *   The arrow is the one of `fn(n: Int) -> Int`: what is on its left gives what is on its right.
 *   After it comes one expression, which is what the function gives; or one assignment, or a block.
 *   It works wherever a function type is expected: an argument, a variable or a field declared with one, a `return`. Where nothing says what the parameters are (`let f = x -> x + 1;`), it is an error (`E2037`) and the long form is the one to write: `fn(x: Int) -> Int { return x + 1; }`.
+*   A function in the long form given to a `let` sees its own name, and can call itself: `let walk = fn(folder: Folder) { for inner in folder.folders { walk(inner); } };`. The short form does not, its types coming from outside.
 *   For a generic function, the other arguments say what the parameters are, and the body says what the result is: in `people.map(p -> p.name)`, `T` is `Person` from the array and `U` is `String` from `p.name`.
 
 ```rust

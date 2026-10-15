@@ -86,6 +86,13 @@ func (a *Analyzer) visitStmt(stmt ast.Stmt, scope *functionScope) {
 			a.visitStmt(st, scope)
 		}
 	case *ast.LetStmt:
+		if fn, ok := s.Value.(*ast.FnExpr); ok && !fn.Short && !s.IsConst {
+			// A function written with its types sees its own name, which
+			// it then captures
+			scope.locals[s.Name] = &resolve.Symbol{Name: s.Name, Kind: resolve.SymbolVar, Decl: s}
+			a.visitExpr(s.Value, scope)
+			break
+		}
 		// The initializer is evaluated before the name comes into scope
 		if s.Value != nil {
 			a.visitExpr(s.Value, scope)

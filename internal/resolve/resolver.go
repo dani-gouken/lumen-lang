@@ -32,6 +32,10 @@ type Resolver struct {
 	scriptVars map[string]bool
 	inScript   bool
 
+	// The variable whose value is being resolved: a short function that
+	// calls it is told how to write one that may
+	defining string
+
 	// The variants of the program's enums, which a variant written alone
 	// and misspelt may have meant
 	variants []string
@@ -349,8 +353,18 @@ func (r *Resolver) visitLetStmt(s *ast.LetStmt) {
 	if s.Type != nil {
 		r.visitType(s.Type)
 	}
-	if s.Value != nil {
+	if fn, ok := s.Value.(*ast.FnExpr); ok && !fn.Short && !s.IsConst {
+		// let walk = fn(node: Node) { ... walk(child) ... }: a function
+		// written with its types sees its own name
+		r.declare(s.Name, SymbolVar, s)
 		r.visitExpr(s.Value)
+		return
+	}
+	if s.Value != nil {
+		saved := r.defining
+		r.defining = s.Name
+		r.visitExpr(s.Value)
+		r.defining = saved
 	}
 	// Declare variable AFTER resolving initializer
 	r.declare(s.Name, SymbolVar, s)
@@ -726,6 +740,9 @@ func (r *Resolver) reportUndefined(what, name string, tok token.Token) {
 		suggestion = importSuggestion(name, modules)
 	} else if similar != "" {
 		suggestion = fmt.Sprintf("Did you mean '%s'?", similar)
+	}
+	if what == "undefined identifier" && name == r.defining && name != "" {
+		suggestion = fmt.Sprintf("A function sees its own name when it is written with its types: let %s = fn(n: Int) -> Int { ... %s(...) ... };", name, name)
 	}
 	if what == "undefined identifier" && r.aloneInInsertion(tok) {
 		// "cost: ${price}" may be a text that means the characters
