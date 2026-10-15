@@ -39,6 +39,7 @@ Every program needs a `main` function without parameters. If it returns an `Int`
 | `lumen check [--json] file.lum` | Compile without running and say what is wrong; `--json` for a CI step, an editor or an agent |
 | `lumen test` | Run the tests: the functions `test...()` of the files `*_test.lum` ([stdlib.md](stdlib.md#test-files-lumen-test)) |
 | `lumen fmt` | Write `.lum` files the one way; `--check` only says which would change ([formatting.md](formatting.md)) |
+| `lumen require vendor/name` | Add a package to the project, and install it; `lumen install`, `update`, `remove`, `show` do the rest ([packages.md](packages.md)) |
 | `lumen lumdbg file.lum` | Step through the program in the debugger ([debugger.md](debugger.md)) |
 | `lumen asm` / `disasm` / `exec` / `runasm` | Work with hand-written assembly ([assembly.md](assembly.md)) |
 
@@ -767,7 +768,7 @@ lumen run path/to/project
 lumen build app.lc
 ```
 
-`root` is where import paths start (default: the folder of `lumen.json`). `packages` gives a name to a folder of modules kept elsewhere: `import textkit.format.pad;` reads `../libs/textkit/format/pad.lum`. `heap_mb` and `max_depth` set the limits described under [Commands](#commands). All keys are optional. See [project.md](project.md).
+`root` is where import paths start (default: the folder of `lumen.json`). `packages` gives a name to a folder of modules kept elsewhere: `import textkit.format.pad;` reads `../libs/textkit/format/pad.lum`. Packages with versions, downloaded from git, are listed under `require` and installed with `lumen install` ([packages.md](packages.md)). `heap_mb` and `max_depth` set the limits described under [Commands](#commands). All keys are optional. See [project.md](project.md).
 
 ### Builtin functions
 

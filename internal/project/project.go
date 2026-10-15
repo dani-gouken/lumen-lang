@@ -8,10 +8,16 @@
 //	    "root": "src",
 //	    "packages": { "std": "vendor/std" },
 //	    "heap_mb": 512,
-//	    "max_depth": 20000
+//	    "max_depth": 20000,
+//	    "require": { "acme/textkit": "^1.2" }
 //	}
 //
 // Every key is optional. Paths are relative to the folder of the file.
+//
+// The packages of "require" are installed by `lumen install` into vendor/,
+// which then has a file, vendor/installed.json, that says where each one's
+// modules are. Load reads it, and the packages it lists are found like
+// those of "packages".
 package project
 
 import (
@@ -22,6 +28,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -51,10 +58,46 @@ type Config struct {
 	HeapMB   int `json:"heap_mb"`
 	MaxDepth int `json:"max_depth"`
 
+	// What a package says of itself, for the package manager: its
+	// version when it is not taken from tags, what it is, the name its
+	// modules are imported by.
+	Version     string `json:"version"`
+	Description string `json:"description"`
+	License     string `json:"license"`
+	Import      string `json:"import"`
+
+	// The packages the program requires, by name and version constraint,
+	// and where to find those that are not at the default place.
+	Require      map[string]string `json:"require"`
+	RequireDev   map[string]string `json:"require-dev"`
+	Repositories []Repository      `json:"repositories"`
+
+	// Installed is the folder of each installed package, by the name it
+	// is imported by, from vendor/installed.json.
+	Installed map[string]string `json:"-"`
+
+	// installed holds the names of the packages installed, and installedDev
+	// whether those of require-dev were.
+	installed    map[string]bool
+	installedDev bool
+
 	// Path is the project file, Dir its folder.
 	Path string `json:"-"`
 	Dir  string `json:"-"`
 }
+
+// Repository is a place packages come from: {"type": "git", "url": ...}.
+type Repository struct {
+	Type string `json:"type"`
+	URL  string `json:"url"`
+}
+
+// Vendor is the folder packages are installed in, next to the project
+// file; InstalledFile the file in it that says where each one is.
+const (
+	Vendor        = "vendor"
+	InstalledFile = "installed.json"
+)
 
 // Find looks for a project file in dir and then in each folder above it.
 // It returns nil when there is none.
@@ -103,7 +146,73 @@ func Load(path string) (*Config, error) {
 	}
 	cfg.Path = path
 	cfg.Dir = filepath.Dir(path)
+	if err := cfg.readInstalled(); err != nil {
+		return nil, err
+	}
 	return cfg, nil
+}
+
+// readInstalled reads vendor/installed.json, if there is one.
+func (c *Config) readInstalled() error {
+	file := filepath.Join(c.Dir, Vendor, InstalledFile)
+	data, err := os.ReadFile(file)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("cannot read %s: %w", file, err)
+	}
+
+	var installed struct {
+		Dev      bool `json:"dev"`
+		Packages []struct {
+			Name   string `json:"name"`
+			Import string `json:"import"`
+			Dir    string `json:"dir"`
+		} `json:"packages"`
+	}
+	if err := json.Unmarshal(data, &installed); err != nil {
+		return fmt.Errorf("%s: %v; run lumen install to write it again", file, err)
+	}
+
+	c.Installed = map[string]string{}
+	c.installed = map[string]bool{}
+	c.installedDev = installed.Dev
+	for _, pkg := range installed.Packages {
+		if !isIdentifier(pkg.Import) || pkg.Dir == "" {
+			return fmt.Errorf("%s: package %q has no import name or no folder; run lumen install to write it again", file, pkg.Name)
+		}
+		if _, taken := c.Packages[pkg.Import]; taken {
+			return fmt.Errorf("%s: the package %s is imported as %s, which \"packages\" of %s gives to a folder already", c.Path, pkg.Name, pkg.Import, FileName)
+		}
+		c.Installed[pkg.Import] = c.resolve(pkg.Dir)
+		c.installed[pkg.Name] = true
+	}
+	return nil
+}
+
+// CheckInstalled reports the first package the project requires that is
+// not installed: the project has to be installed before it is compiled.
+func (c *Config) CheckInstalled() error {
+	names := sortedKeys(c.Require)
+	if c.installed == nil || c.installedDev {
+		names = append(names, sortedKeys(c.RequireDev)...)
+	}
+	for _, name := range names {
+		if !c.installed[name] {
+			return fmt.Errorf("%s requires %s, which is not installed: run lumen install", c.Path, name)
+		}
+	}
+	return nil
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for key := range m {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // Parse reads the content of a project file.
@@ -141,7 +250,7 @@ func describe(err error, data []byte) error {
 	return err
 }
 
-var keys = []string{"name", "entry", "root", "packages", "heap_mb", "max_depth"}
+var keys = []string{"name", "entry", "root", "packages", "heap_mb", "max_depth", "version", "description", "license", "import", "require", "require-dev", "repositories"}
 
 func expected(field string) string {
 	switch strings.SplitN(field, ".", 2)[0] {
@@ -149,6 +258,10 @@ func expected(field string) string {
 		return "a whole number"
 	case "packages":
 		return `an object of names and folders, as in {"std": "vendor/std"}`
+	case "require", "require-dev":
+		return `an object of packages and versions, as in {"acme/textkit": "^1.2"}`
+	case "repositories":
+		return `an array of repositories, as in [{"type": "git", "url": "https://example.com/textkit.git"}]`
 	}
 	return "a string"
 }
@@ -177,6 +290,30 @@ func (c *Config) check() error {
 	if c.MaxDepth < 0 {
 		return fmt.Errorf(`"max_depth" must be positive, got %d`, c.MaxDepth)
 	}
+	if c.Import != "" && !isIdentifier(c.Import) {
+		return fmt.Errorf(`"import" must be a name that can be imported: use letters, digits and '_', not starting with a digit, got %q`, c.Import)
+	}
+	for _, section := range []struct {
+		key      string
+		packages map[string]string
+	}{{"require", c.Require}, {"require-dev", c.RequireDev}} {
+		for _, name := range sortedKeys(section.packages) {
+			if !packageName.MatchString(name) {
+				return fmt.Errorf(`%q in %q is not a package name: write vendor/name, in lower case`, name, section.key)
+			}
+			if strings.TrimSpace(section.packages[name]) == "" {
+				return fmt.Errorf(`%s in %q has no version: write a constraint, as in "^1.2", or "*" for any`, name, section.key)
+			}
+		}
+	}
+	for i, repository := range c.Repositories {
+		if repository.Type != "git" && repository.Type != "path" {
+			return fmt.Errorf(`repository %d has a "type" that is not "git" or "path"`, i+1)
+		}
+		if repository.URL == "" {
+			return fmt.Errorf(`repository %d has no "url"`, i+1)
+		}
+	}
 	for _, name := range c.packageNames() {
 		if !isIdentifier(name) {
 			return fmt.Errorf(`package name %q is not a name that can be imported: use letters, digits and '_', not starting with a digit`, name)
@@ -187,6 +324,9 @@ func (c *Config) check() error {
 	}
 	return nil
 }
+
+// packageName is what a package is called: vendor/name, as Composer has it.
+var packageName = regexp.MustCompile(`^[a-z0-9]([_.-]?[a-z0-9]+)*/[a-z0-9](([_.]|-{1,2})?[a-z0-9]+)*$`)
 
 func (c *Config) packageNames() []string {
 	names := make([]string, 0, len(c.Packages))
@@ -228,9 +368,13 @@ func (c *Config) EntryFile() (string, error) {
 	return c.resolve(c.Entry), nil
 }
 
-// PackageDirs returns the folder of each package.
+// PackageDirs returns the folder of each package: those "packages" names,
+// and those installed.
 func (c *Config) PackageDirs() map[string]string {
-	dirs := make(map[string]string, len(c.Packages))
+	dirs := make(map[string]string, len(c.Packages)+len(c.Installed))
+	for name, dir := range c.Installed {
+		dirs[name] = dir
+	}
 	for name, dir := range c.Packages {
 		dirs[name] = c.resolve(dir)
 	}

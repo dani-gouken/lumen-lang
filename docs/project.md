@@ -27,6 +27,9 @@ A working example is in [`examples/project/`](../examples/project).
 | `packages` | Names for folders of modules that live outside the root | No packages |
 | `heap_mb` | Memory the program may hold at once, in MB | 256 |
 | `max_depth` | How deep calls may nest | 10000 |
+| `require`, `require-dev` | The packages the program needs, by name and version: `{"acme/textkit": "^1.4"}`. Installed by `lumen install` ([packages.md](packages.md)) | No packages |
+| `repositories` | Where packages come from besides GitHub ([packages.md](packages.md#where-packages-come-from)) | |
+| `version`, `description`, `license`, `import` | What a package says of itself to the projects that require it ([packages.md](packages.md#making-a-package)) | |
 
 Every key is optional; `{}` is a valid project file. Paths are relative to the folder of `lumen.json`, or absolute.
 
@@ -113,9 +116,9 @@ A package name must be usable in an import: letters, digits and `_`, not startin
 
 The [standard library](stdlib.md) is a package too, named `std`, whose folder is inside `lumen` itself. It does not have to be listed. Listing a package named `std` replaces it, whole, with the folder given: the program then gets none of the built-in modules.
 
-### What packages are not
+### Packages with versions
 
-There is no installer, no registry, no versions, and a package cannot declare packages of its own: the program's `lumen.json` names every package the program uses, including the ones its packages import. It is a way to say where code is, not a way to get it there.
+`"packages"` says where code is; it does not get it there. For packages that are downloaded, have versions, and require packages of their own, use `"require"` and `lumen install`: see [packages.md](packages.md). The packages it installs are found like those of `"packages"`, from the folders `vendor/installed.json` gives; a name in both is an error.
 
 ## Limits
 
@@ -128,7 +131,7 @@ They apply to `run` and `lumdbg`, which execute source. A compiled `.lc` file do
 Mistakes in `lumen.json` stop the command before anything is compiled, with the file named:
 
 ```
-Error: lumen.json: unknown key "main"; the keys are name, entry, root, packages, heap_mb, max_depth
+Error: lumen.json: unknown key "main"; the keys are name, entry, root, packages, heap_mb, max_depth, version, description, license, import, require, require-dev, repositories
 Error: lumen.json: line 3, column 3: not valid JSON: invalid character 'e' looking for beginning of object key string
 Error: lumen.json: line 2: "heap_mb" must be a whole number
 Error: lumen.json: package name "my-lib" is not a name that can be imported: use letters, digits and '_', not starting with a digit

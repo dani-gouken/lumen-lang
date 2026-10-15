@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/lum-wordmark-white.svg">
+    <img src="assets/lum-wordmark.svg" height="96" alt="lum">
+  </picture>
+</p>
+
 # Lumen Programming Language
 
 Lumen is a statically typed language that is small enough to learn in an afternoon and complete enough to write real programs: a web service, a build tool, its own language server. This repository holds all of it: the compiler, the virtual machine, the standard library, and the editor support.
@@ -220,13 +227,14 @@ This is a prototype implementation. A Lumen program goes through the whole chain
 - ✅ Language server (`lumen lsp`) and VS Code extension
 - ✅ REPL (`lumen repl`): variables, declarations and closures kept from one input to the next
 - ✅ Formatter (`lumen fmt`), written in Lumen, and a test runner (`lumen test`)
-- ✅ CLI: `run`, `build`, `test`, `fmt`, `ir`, `repl`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
+- ✅ Package manager in the manner of Composer (`lumen require`, `install`, `update`, `remove`, `show`), written in Lumen ([docs/packages.md](docs/packages.md))
+- ✅ CLI: `run`, `build`, `test`, `fmt`, `ir`, `repl`, `install`, `update`, `require`, `remove`, `show`, `asm`, `disasm`, `exec`, `runasm`, `lumdbg`, `lsp`
 
 Language features that work: integers, floats, booleans, strings, arrays, structs, traits and methods, functions and recursion, closures, generics with requirements (`<T: Ordered>`), traits with type parameters and default methods, operators on structs, variadic functions, optionals, casts and type tests, `if`/`while`/`for`/`match` (on values, ranges and types, as a statement or for its value, with conditions and several patterns per case), loops over ranges (`for i in 0..10`), `defer`, short-circuit operators, `?.` and `?` for values that may be missing, tuples, string interpolation (`"total: ${n}"`) and texts over several lines, enums with pattern matching checked for completeness ([docs/enums.md](docs/enums.md)), constants, failures as values and recovery from runtime errors ([docs/errors.md](docs/errors.md)), programs in several files (`import`, `pub`; see [docs/modules.md](docs/modules.md)), described by an optional project file ([docs/project.md](docs/project.md)), and a built-in standard library ([docs/stdlib.md](docs/stdlib.md)): numbers, text, arrays, lists, dictionaries, sets, files and folders, dates, program arguments, JSON, CSV, regular expressions, encodings and hashes, an HTTP client and server, tests, tasks with channels for doing several things at once ([docs/tasks.md](docs/tasks.md)), and reflection. An editor gets mistakes as you type, hover, go to definition, an outline and suggestions from `lumen lsp`, a language server written in Lumen ([docs/editor.md](docs/editor.md)).
 
 Not there yet:
 
-- ⚠️ A way to install packages (`lumen.json` can point at folders of modules, nothing fetches them); native code from shared libraries
+- ⚠️ Packages are installed from git repositories with versions and a lock file (`lumen require`, `install`, `update`), but there is no registry yet; native code from shared libraries
 - ⚠️ Several processors at once: tasks take turns on one
 - ⚠️ Renaming and finding uses in the editor
 
@@ -336,6 +344,7 @@ Example programs in [examples/](examples/):
 - **words.lum** - Word counts of a text with the standard library: `std.strings`, `std.dict`, `std.arrays`, `std.list`, `std.math`
 - **modules.lum** - A program in several files: `import`, `pub`, with its modules in `zoo/`
 - **project/** - A program with a project file (`lumen.json`): entry, module root, a package. Run it with `lumen run examples/project`
+- **invoices/** - An invoice from a CSV file, with two packages required in `lumen.json` and locked in `lumen.lock`, one requiring the other. `lumen install` in its folder, then `lumen run examples/invoices`
 - **calculator/** - A small language implementation in three modules: lexer, recursive-descent parser, and a tree of trait objects that evaluates itself. `lumen run examples/calculator`, and `lumen test examples/calculator` for its tests
 
 Whole programs on the standard library, each a project to run by its folder:

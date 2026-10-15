@@ -62,6 +62,16 @@ func TestParseErrors(t *testing.T) {
 		{"package starting with a digit", `{"packages": {"2d": "x"}}`, `package name "2d" is not a name`},
 		{"package without a name", `{"packages": {"": "x"}}`, `package name "" is not a name`},
 		{"package without a folder", `{"packages": {"std": ""}}`, `package "std" has no folder`},
+		{"require as a list", `{"require": ["acme/log"]}`, `"require" must be an object of packages and versions`},
+		{"require with a number", `{"require": {"acme/log": 1}}`, `"require" must be an object of packages and versions`},
+		{"require of a name without a vendor", `{"require": {"log": "^1.0"}}`, `"log" in "require" is not a package name: write vendor/name, in lower case`},
+		{"require of a name in capitals", `{"require-dev": {"Acme/Log": "^1.0"}}`, `"Acme/Log" in "require-dev" is not a package name`},
+		{"require without a version", `{"require": {"acme/log": " "}}`, `acme/log in "require" has no version`},
+		{"repositories as an object", `{"repositories": {"type": "git"}}`, `"repositories" must be an array of repositories`},
+		{"repository of an unknown type", `{"repositories": [{"type": "svn", "url": "x"}]}`, `repository 1 has a "type" that is not "git" or "path"`},
+		{"repository without an address", `{"repositories": [{"type": "git", "url": "a"}, {"type": "path"}]}`, `repository 2 has no "url"`},
+		{"repository with a misspelled key", `{"repositories": [{"type": "git", "uri": "a"}]}`, `unknown key "uri"`},
+		{"import that cannot be imported", `{"import": "text-kit"}`, `"import" must be a name that can be imported`},
 	}
 
 	for _, tt := range tests {
@@ -208,5 +218,100 @@ func TestFind(t *testing.T) {
 	write(t, broken, "lumen.json", `{"entry": }`)
 	if _, err := Find(filepath.Join(broken)); err == nil || !strings.Contains(err.Error(), "not valid JSON") {
 		t.Errorf("expected the broken file to be reported, got %v", err)
+	}
+}
+
+func TestParsePackageKeys(t *testing.T) {
+	cfg, err := Parse([]byte(`{
+		"name": "acme/shop",
+		"version": "1.2.0",
+		"description": "A shop",
+		"license": "MIT",
+		"import": "shop",
+		"require": { "acme/log": "^1.0", "acme/my--lib.x": "dev-main" },
+		"require-dev": { "acme/test_kit": "*" },
+		"repositories": [
+			{ "type": "git", "url": "https://example.com/log.git" },
+			{ "type": "path", "url": "../kit" }
+		]
+	}`))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if cfg.Version != "1.2.0" || cfg.Import != "shop" || cfg.Require["acme/log"] != "^1.0" || cfg.RequireDev["acme/test_kit"] != "*" {
+		t.Errorf("unexpected config: %+v", cfg)
+	}
+	if len(cfg.Repositories) != 2 || cfg.Repositories[1] != (Repository{Type: "path", URL: "../kit"}) {
+		t.Errorf("unexpected repositories: %+v", cfg.Repositories)
+	}
+}
+
+// installed.json, as lumen install writes it, gives the folders of the
+// packages; CheckInstalled says when one the project requires is missing.
+func TestInstalledPackages(t *testing.T) {
+	dir := t.TempDir()
+	path := write(t, dir, "shop/lumen.json", `{
+		"packages": { "local": "lib/local" },
+		"require": { "acme/log": "^1.0", "acme/text-kit": "^2.0" },
+		"require-dev": { "acme/test": "*" }
+	}`)
+	shop := filepath.Join(dir, "shop")
+
+	// Nothing installed yet
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := cfg.CheckInstalled(); err == nil || err.Error() != path+" requires acme/log, which is not installed: run lumen install" {
+		t.Errorf("expected the first package missing to be named, got %v", err)
+	}
+	if dirs := cfg.PackageDirs(); len(dirs) != 1 {
+		t.Errorf("expected only the folder of \"packages\", got %v", dirs)
+	}
+
+	// Installed, without require-dev
+	write(t, dir, "shop/vendor/installed.json", `{
+		"dev": false,
+		"packages": [
+			{ "name": "acme/log", "version": "1.4.0", "import": "log", "dir": "vendor/acme/log/log" },
+			{ "name": "acme/text-kit", "version": "2.0.1", "import": "text_kit", "dir": "/opt/kits/text_kit" }
+		]
+	}`)
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := cfg.CheckInstalled(); err != nil {
+		t.Errorf("expected an install without require-dev to be enough, got %v", err)
+	}
+	dirs := cfg.PackageDirs()
+	if dirs["log"] != filepath.Join(shop, "vendor", "acme", "log", "log") || dirs["text_kit"] != "/opt/kits/text_kit" || dirs["local"] != filepath.Join(shop, "lib", "local") {
+		t.Errorf("unexpected folders: %v", dirs)
+	}
+
+	// Installed with require-dev, but without one of its packages
+	write(t, dir, "shop/vendor/installed.json", `{"dev": true, "packages": [
+		{ "name": "acme/log", "import": "log", "dir": "vendor/acme/log/log" },
+		{ "name": "acme/text-kit", "import": "text_kit", "dir": "vendor/acme/text-kit/text_kit" }
+	]}`)
+	cfg, err = Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := cfg.CheckInstalled(); err == nil || !strings.Contains(err.Error(), "requires acme/test, which is not installed") {
+		t.Errorf("expected the package of require-dev to be missed, got %v", err)
+	}
+
+	broken := []struct{ installed, want string }{
+		{`{"packages": [`, "vendor/installed.json: unexpected end of JSON input; run lumen install to write it again"},
+		{`{"packages": [{"name": "acme/log", "import": "a-b", "dir": "x"}]}`, `package "acme/log" has no import name or no folder`},
+		{`{"packages": [{"name": "acme/log", "import": "log"}]}`, `package "acme/log" has no import name or no folder`},
+		{`{"packages": [{"name": "acme/local", "import": "local", "dir": "x"}]}`, `the package acme/local is imported as local, which "packages" of lumen.json gives to a folder already`},
+	}
+	for _, tt := range broken {
+		write(t, dir, "shop/vendor/installed.json", tt.installed)
+		if _, err := Load(path); err == nil || !strings.Contains(err.Error(), tt.want) {
+			t.Errorf("%s: expected an error containing %q, got %v", tt.installed, tt.want, err)
+		}
 	}
 }

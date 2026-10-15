@@ -302,8 +302,13 @@ impl Json {
 
     // Over several lines, each level two spaces further in.
     pub fn pretty() -> String {
+        return self.prettyWith("  ");
+    }
+
+    // Over several lines, each level `indent` further in: "    ", "\t".
+    pub fn prettyWith(indent: String) -> String {
         let out: [String] = [];
-        self.write(out, "  ", "\n");
+        self.write(out, indent, "\n");
         return out.join("");
     }
 

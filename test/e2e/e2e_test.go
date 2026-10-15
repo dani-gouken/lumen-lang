@@ -233,7 +233,22 @@ func TestExampleProjects(t *testing.T) {
 		}
 
 		t.Run(name, func(t *testing.T) {
-			res := runLumen(t, "run", filepath.Join("examples", name))
+			var res result
+			if _, err := os.Stat(filepath.Join(filepath.Dir(config), "lumen.lock")); err == nil {
+				// A project with packages is installed first, in a copy, so
+				// that nothing is written into the repository
+				dir := filepath.Join(t.TempDir(), name)
+				if err := os.CopyFS(dir, os.DirFS(filepath.Dir(config))); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("LUMEN_CACHE", t.TempDir())
+				if install := runLumenIn(t, dir, "", "install"); install.exit != 0 {
+					t.Fatalf("lumen install failed: exit %d\n%s", install.exit, install.stderr)
+				}
+				res = runLumenIn(t, dir, "", "run")
+			} else {
+				res = runLumen(t, "run", filepath.Join("examples", name))
+			}
 			if res.exit != 0 || res.stderr != "" {
 				t.Fatalf("expected a clean run, got exit code %d\nstderr:\n%s", res.exit, res.stderr)
 			}

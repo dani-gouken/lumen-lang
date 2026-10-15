@@ -73,7 +73,7 @@ func TestModulesAreEmbedded(t *testing.T) {
 	want := []string{
 		"std.arrays", "std.compiler", "std.csv", "std.dict", "std.encoding", "std.ffi", "std.format", "std.formatter", "std.fs", "std.hash", "std.http", "std.io", "std.json",
 		"std.layout", "std.list",
-		"std.math", "std.ops", "std.option", "std.os", "std.path", "std.random", "std.reflect", "std.regex", "std.result", "std.set", "std.sh", "std.strings", "std.task", "std.test", "std.time",
+		"std.math", "std.ops", "std.option", "std.os", "std.path", "std.random", "std.reflect", "std.regex", "std.result", "std.semver", "std.set", "std.sh", "std.strings", "std.task", "std.test", "std.time",
 	}
 	if got := stdlib.Modules(); strings.Join(got, " ") != strings.Join(want, " ") {
 		t.Errorf("expected the modules %v, got %v", want, got)
@@ -770,4 +770,137 @@ func TestLibraryErrorsPointAtTheCaller(t *testing.T) {
 			t.Errorf("expected the error to contain %q, got:\n%v", want, err)
 		}
 	}
+}
+
+func TestSemver(t *testing.T) {
+	imports := "import std.semver;\nimport std.semver.{Version};"
+
+	// Reading versions: a v in front, parts left out, pre-release and build
+	expect(t, imports, `
+		for text in ["1.2.3", "v1.2.3", "V2", "1.4", "2.0.0-beta.3", "1.0.0+build.7", "1.0.0-rc.1+exp.sha.5114f85", "0.0.0"] {
+			println(semver.parse(text).expect(text));
+		}
+		let v = semver.parse("3.1.4-alpha").expect("v");
+		println(v.major, v.minor, v.patch, v.pre, v.isPrerelease(), v.release(), v.nextMajor(), v.nextMinor(), v.nextPatch());
+	`, "1.2.3", "1.2.3", "2.0.0", "1.4.0", "2.0.0-beta.3", "1.0.0+build.7", "1.0.0-rc.1+exp.sha.5114f85", "0.0.0",
+		`3 1 4 ["alpha"] true 3.1.4 4.0.0 3.2.0 3.1.5`)
+
+	// What is not a version, and why
+	expect(t, imports, `
+		for text in ["", "abc", "1.2.3.4", "1..2", "1.x.2", "1.2.*", "1.-2.0", "1.2.3-", "1.2.3-a..b", "1.2.3+", "1.2.3-ü"] {
+			match semver.parse(text) {
+				case Result.Ok(v): { println("accepted", v); }
+				case Result.Err(error): { println(error.describe()); }
+			}
+		}
+	`, `"" is not a version: write it as 1.2.3`,
+		`"abc" has "abc" where a number is expected`,
+		`"1.2.3.4" is not a version: write it as 1.2.3`,
+		`"1..2" has "" where a number is expected`,
+		`"1.x.2" has a wildcard that is not its last part`,
+		`"1.2.*" has a wildcard where a version is expected`,
+		`"1.-2.0" has "" where a number is expected`,
+		`"1.2.3-" has an empty or malformed pre-release part`,
+		`"1.2.3-a..b" has an empty or malformed pre-release part`,
+		`"1.2.3+" has an empty or malformed build part`,
+		`"1.2.3-ü" has an empty or malformed pre-release part`)
+
+	// The order of semver.org, item 11: 1.0.0-alpha < 1.0.0-alpha.1 <
+	// 1.0.0-alpha.beta < 1.0.0-beta < 1.0.0-beta.2 < 1.0.0-beta.11 <
+	// 1.0.0-rc.1 < 1.0.0; the build plays no part
+	expect(t, imports, `
+		let texts = ["1.0.0", "1.0.0-rc.1", "1.0.0-beta.11", "1.0.0-beta.2", "1.0.0-beta", "1.0.0-alpha.beta", "1.0.0-alpha.1", "1.0.0-alpha", "0.9.12", "0.10.0"];
+		let ordered = semver.sorted(texts.map(text -> semver.parse(text).expect(text)));
+		println(ordered.map(v -> toString(v)).join(" < "));
+		let a = semver.parse("1.0.0+a").expect("a");
+		let b = semver.parse("1.0.0+b").expect("b");
+		println(a == b, a < b, semver.parse("2.0.0").expect("") > semver.parse("10.0.0").expect(""));
+	`, "0.9.12 < 0.10.0 < 1.0.0-alpha < 1.0.0-alpha.1 < 1.0.0-alpha.beta < 1.0.0-beta < 1.0.0-beta.2 < 1.0.0-beta.11 < 1.0.0-rc.1 < 1.0.0",
+		"true false false")
+}
+
+// Each constraint against the same versions: the ones it accepts, and the
+// newest of them.
+func TestSemverConstraints(t *testing.T) {
+	imports := "import std.semver;\nimport std.semver.{Version};"
+	versions := `["0.3.1", "0.3.9", "0.4.0", "0.0.3", "0.0.4", "1.0.0", "1.2.0", "1.2.3", "1.2.9", "1.3.0-rc.1", "1.4.0", "1.10.0", "2.0.0-beta.1", "2.0.0", "2.5.1", "3.0.0"]`
+	body := `
+		let all = ` + versions + `.map(text -> semver.parse(text).expect(text));
+		for text in CONSTRAINTS {
+			let wanted = semver.constraint(text).expect(text);
+			let accepted = all.filter(v -> wanted.allows(v)).map(v -> toString(v)).join(" ");
+			let best = semver.highest(all, wanted);
+			let shown = if best == null { "none" } else { toString(best) };
+			println("${text}: ${accepted} | ${shown}");
+		}
+	`
+	cases := []struct{ constraint, want string }{
+		{"1.2.3", "1.2.3 | 1.2.3"},
+		{"=1.2.3", "1.2.3 | 1.2.3"},
+		{"==1.2.3", "1.2.3 | 1.2.3"},
+		{"v1.2.3", "1.2.3 | 1.2.3"},
+		{"1.2", "1.2.0 1.2.3 1.2.9 | 1.2.9"},
+		{"1", "1.0.0 1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{"1.2.*", "1.2.0 1.2.3 1.2.9 | 1.2.9"},
+		{"1.x", "1.0.0 1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{"*", "0.3.1 0.3.9 0.4.0 0.0.3 0.0.4 1.0.0 1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 2.0.0 2.5.1 3.0.0 | 3.0.0"},
+		{"^1.2", "1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{"^1.2.3", "1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{"^1", "1.0.0 1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{"^0.3.1", "0.3.1 0.3.9 | 0.3.9"},
+		{"^0.3", "0.3.1 0.3.9 | 0.3.9"},
+		{"^0.0.3", "0.0.3 | 0.0.3"},
+		{"^0", "0.3.1 0.3.9 0.4.0 0.0.3 0.0.4 | 0.4.0"},
+		{"~1.2", "1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{"~1.2.3", "1.2.3 1.2.9 | 1.2.9"},
+		{"~1", "1.0.0 1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{">=1.2 <2.0", "1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{">= 1.2, < 2.0", "1.2.0 1.2.3 1.2.9 1.4.0 1.10.0 | 1.10.0"},
+		{">1.2.3 <=1.4.0", "1.2.9 1.4.0 | 1.4.0"},
+		{">=1.0 !=1.2.3 <1.3", "1.0.0 1.2.0 1.2.9 | 1.2.9"},
+		{"1.0 - 1.2", "1.0.0 1.2.0 1.2.3 1.2.9 | 1.2.9"},
+		{"1.0.0 - 1.2.3", "1.0.0 1.2.0 1.2.3 | 1.2.3"},
+		{"^0.3 || ^2.0", "0.3.1 0.3.9 2.0.0 2.5.1 | 2.5.1"},
+		{"^0.3 | ~1.2.3 | 3.0.0", "0.3.1 0.3.9 1.2.3 1.2.9 3.0.0 | 3.0.0"},
+		{"<0.1", "0.0.3 0.0.4 | 0.0.4"},
+		{">3", " | none"},
+		// A pre-release only for a constraint that names one of the same version
+		{"^2.0.0-beta", "2.0.0-beta.1 2.0.0 2.5.1 | 2.5.1"},
+		{">=2.0.0-alpha <2.0.0", "2.0.0-beta.1 | 2.0.0-beta.1"},
+		{"1.3.0-rc.1", "1.3.0-rc.1 | 1.3.0-rc.1"},
+		{">=1.3.0-rc.1", "1.3.0-rc.1 1.4.0 1.10.0 2.0.0 2.5.1 3.0.0 | 3.0.0"},
+	}
+	var list, want []string
+	for _, c := range cases {
+		list = append(list, `"`+c.constraint+`"`)
+		want = append(want, c.constraint+": "+c.want)
+	}
+	expect(t, imports+"\nconst CONSTRAINTS = ["+strings.Join(list, ", ")+"];", body, want...)
+
+	// What is not a constraint
+	expect(t, imports, `
+		for text in ["", "^", "~", ">=", "1.2 ||", "|| 1.2", ">=1.*", "^abc", "1.0 - ", "dev-main"] {
+			match semver.constraint(text) {
+				case Result.Ok(c): { println("accepted", c); }
+				case Result.Err(error): { println(error.describe()); }
+			}
+		}
+	`, `"" has an empty alternative`,
+		`"^" is not a constraint: "" is not a version: write it as 1.2.3`,
+		`"~" is not a constraint: "" is not a version: write it as 1.2.3`,
+		`">=" is not a constraint: "" is not a version: write it as 1.2.3`,
+		`"1.2 ||" has an empty alternative`,
+		`"|| 1.2" has an empty alternative`,
+		`">=1.*" has a wildcard after a comparison`,
+		`"^abc" is not a constraint: "abc" has "abc" where a number is expected`,
+		`"1.0 - " is not a constraint: "-" has an empty or malformed pre-release part`,
+		`"dev-main" has "dev" where a number is expected`)
+
+	// The constraint a new requirement is written with
+	expect(t, imports, `
+		for text in ["1.4.2", "2.0.0", "0.3.1", "0.0.7"] {
+			println(semver.caret(semver.parse(text).expect(text)));
+		}
+		println(semver.constraint(" ^1.2 ").expect("").show(), semver.constraint("*").expect("").isAny(), semver.constraint("^1").expect("").isAny());
+	`, "^1.4", "^2.0", "^0.3.1", "^0.0.7", "^1.2 true false")
 }

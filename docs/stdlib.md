@@ -39,6 +39,7 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.regex`](#stdregex) | Regular expressions |
 | [`std.csv`](#stdcsv) | Tables as text |
 | [`std.set`](#stdset) | `Set<T>`: values without repeats |
+| [`std.semver`](#stdsemver) | Versions, 1.4.2, and the constraints on them, `^1.2 \|\| ^2.0` |
 | [`std.encoding`, `std.hash`](#stdencoding-and-stdhash) | Base64, hex, URL encoding; SHA, MD5, HMAC |
 | [`std.http`](#stdhttp) | Asking web servers, and being one |
 | [`std.task`](#stdtask) | Doing several things at once: tasks and channels |
@@ -854,7 +855,8 @@ pub enum Json { Null, Bool(Bool), Number(Float), String(String), Array([Json]), 
 | `text()`, `number()`, `int()`, `bool()`, `items()`, `fields()` | The value if it is of that kind, else `null` |
 | `isNull()` | |
 | `a == b`, `a != b` | By content: the same kind of value, equal items in the same order, equal values under the same keys |
-| `stringify()`, `pretty()` | On one line; over several, indented |
+| `stringify()`, `pretty()` | On one line; over several, indented by two spaces |
+| `prettyWith(indent)` | Over several lines, each level indented by `indent`: `"    "`, `"\t"` |
 | `json.int(n)`, `json.texts(items)`, `json.ints(items)`, `json.array(items, convert)` | Making documents |
 | `json.object()` | An object built a key at a time: `.text(k, v)`, `.int`, `.number`, `.bool`, `.none`, `.set(k, json)`, then `.done()` |
 | `json.textOf`, `intOf`, `numberOf`, `boolOf`, `itemsOf` | The same accessors as functions, to hand to `map` and the like |
@@ -929,6 +931,48 @@ Values without repeats. A set tells its items apart by a text worked out from ea
 | `union(other)`, `intersection(other)`, `difference(other)`, `filter(wanted)` | New sets |
 | `isSubsetOf(other)`, `a == b` | Two sets are equal when they hold the same items, in whatever order |
 | `for item in set` | Goes through the items |
+
+---
+
+## `std.semver`
+
+Versions numbered the semantic way, `major.minor.patch`, and the constraints written on them in the syntax of Composer and npm. The [package manager](packages.md) chooses versions with it.
+
+```rust
+import std.semver;
+
+let installed = semver.parse("v1.4.2").expect("a version");
+let wanted = semver.constraint("^1.2 || ^2.0").expect("a constraint");
+
+wanted.allows(installed)                       // true
+semver.highest(available, wanted)              // the newest that fits, or null
+installed < semver.parse("1.10.0").expect("")  // true: by the numbers, not the letters
+```
+
+| Function / method | Result |
+|-------------------|--------|
+| `semver.parse(text) -> Result<Version, ParseError>` | `1.4.2`, `v2`, `1.4` (2.0.0, 1.4.0), `2.0.0-beta.3`, `1.0.0+build.7` |
+| `semver.constraint(text) -> Result<Constraint, ParseError>` | See the table below |
+| `semver.highest(versions, constraint) -> Version?` | The newest the constraint accepts |
+| `semver.sorted(versions)` | Oldest first |
+| `semver.caret(version) -> String` | The constraint to require a version with: `^1.4` for 1.4.2, `^0.3.1` for 0.3.1 |
+| `version.major`, `minor`, `patch`, `pre`, `build` | `pre` is the parts after `-`: `["beta", "3"]` |
+| `version.isPrerelease()`, `release()` | `release()` leaves out what follows the patch |
+| `version.nextMajor()`, `nextMinor()`, `nextPatch()` | |
+| `<`, `==`, `toString`, ... | `Version` is `Ordered`, `Equal` and `Show`. A pre-release comes before its release; the build plays no part |
+| `constraint.allows(version)`, `isAny()` | |
+
+| Constraint | Accepts |
+|------------|---------|
+| `1.2.3`, `=1.2.3` | That version |
+| `^1.2.3`, `^0.3.1`, `^0.0.3` | Up to the next change of the first number that is not 0: `<2.0.0`, `<0.4.0`, `<0.0.4` |
+| `~1.2`, `~1.2.3` | The last number written may grow: `<2.0.0`; `<1.3.0` |
+| `1.2.*`, `1.2`, `1.x`, `*` | Every version that starts so |
+| `>=1.2 <2.0`, `>=1.2, <2.0`, `!=1.5.0` | Comparisons that all hold |
+| `1.0 - 2.1` | `>=1.0.0 <2.2.0` |
+| `^1.0 \|\| ^2.0`, `^1.0 \| ^2.0` | Either |
+
+A pre-release is accepted only by a range that names a pre-release of the same version, so that `^1.0` never takes `2.0.0-beta.1`, nor `1.3.0-rc.1`.
 
 ---
 

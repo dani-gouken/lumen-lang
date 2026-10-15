@@ -213,7 +213,7 @@ A diagnostic shows the file it is about and quotes that file's line, wherever in
 
 ## What Is Not There
 
-*   **Getting packages.** [`lumen.json`](project.md) can say where a package is; nothing downloads, installs or versions one. The one package that needs no telling is the [standard library](stdlib.md), `std`, which is inside `lumen`.
+*   **A registry of packages.** [`lumen install`](packages.md) gets packages from git repositories, with versions; there is no index of them like Composer's Packagist. The one package that needs no installing is the [standard library](stdlib.md), `std`, which is inside `lumen`.
 *   **Variables shared between modules.** A module exports functions, constants and types; there are no variables outside functions.
 *   **Per-field privacy.** A `pub struct` exposes all its fields.
 *   **A check that a `pub` signature only uses `pub` types.** `pub fn f() -> Secret` compiles; callers get a value they cannot name the type of.

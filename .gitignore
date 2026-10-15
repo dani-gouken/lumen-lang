@@ -48,3 +48,6 @@ temp/
 
 # Packaged editor extensions
 *.vsix
+
+# Packages installed by lumen install
+vendor/

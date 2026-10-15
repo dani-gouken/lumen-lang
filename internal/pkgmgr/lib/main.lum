@@ -1,0 +1,480 @@
+// lumen install, update, require, remove, show: the packages of a
+// project, the way Composer does it for PHP.
+//
+//     lumen install                 what lumen.lock says, or resolve and lock first
+//     lumen update [vendor/name]    resolve again, all or those packages, and lock
+//     lumen require vendor/name[:^1.2] [--dev]
+//     lumen remove vendor/name
+//     lumen show                    what is installed
+//
+// lumen.json says what the project requires; lumen.lock the versions it
+// was resolved to; vendor/ holds them, and vendor/installed.json tells
+// the compiler where each package's modules are.
+
+import manifest;
+import manifest.{Manifest};
+import lockfile;
+import lockfile.{Lock, Locked};
+import resolver;
+import resolver.{Requirement, Choice};
+import installer;
+import sources;
+import sources.{Sources};
+import catalog;
+import std.dict;
+import std.dict.{Dict};
+import std.fs;
+import std.io;
+import std.os;
+import std.path;
+import std.semver;
+import std.set;
+import std.format;
+import std.result.{Result};
+
+const usage = """
+    Usage: lumen install [--no-dev]
+           lumen update [vendor/name]... [--no-dev]
+           lumen require vendor/name[:constraint]... [--dev]
+           lumen remove vendor/name...
+           lumen show
+    """;
+
+// What a command was asked to do.
+struct Request {
+    command: String;
+    names: [String] = [];
+    dev: Bool = true;
+    toDev: Bool = false;
+}
+
+// The project worked on: the folder of its lumen.json, and what it says.
+struct Project {
+    dir: String;
+    manifest: Manifest;
+
+    // Made once, so that each repository is fetched once in a run.
+    found: Sources? = null;
+}
+
+impl Project {
+    fn file(name: String) -> String {
+        return path.join([self.dir, name]);
+    }
+
+    fn sources() -> Sources {
+        let made = self.found;
+
+        if made != null {
+            return made;
+        }
+
+        let fresh = Sources {
+            project: self.dir,
+            repositories: self.manifest.repositories,
+            cache: sources.cacheDir(),
+            say: say,
+        };
+
+        self.found = fresh;
+        return fresh;
+    }
+}
+
+fn say(line: String) {
+    io.printError(line + "\n");
+}
+
+// The project of the current folder, or of a folder above it.
+fn findProject(create: Bool) -> Result<Project, String> {
+    let dir = fs.currentDir();
+
+    while true {
+        let file = manifest.inside(dir);
+
+        if io.exists(file) {
+            return Result.Ok(Project { dir: dir, manifest: manifest.load(file)? });
+        }
+
+        let parent = path.dir(dir);
+
+        if parent == dir {
+            break;
+        }
+
+        dir = parent;
+    }
+
+    if !create {
+        return Result.Err("there is no ${manifest.FILE} in this folder or above it: lumen require vendor/name makes one");
+    }
+
+    let here = fs.currentDir();
+    say("Writing a new ${manifest.FILE}");
+    return Result.Ok(Project { dir: here, manifest: manifest.parse("{}")? });
+}
+
+fn requirementsOf(project: Manifest) -> [Requirement] {
+    return project.requirements(true).map(
+        entry -> Requirement { name: entry.0, wanted: entry.1, by: manifest.FILE },
+    );
+}
+
+// Resolves the project again and writes the lock. Packages not named in
+// `only` keep their locked version where they can; with `only` empty all
+// of them are resolved afresh.
+fn update(project: Project, only: [String]) -> Result<Lock, String> {
+    let old = lockfile.read(project.file(lockfile.FILE))?;
+    let prefer = dict.empty<String>();
+
+    let locked = old?.packages ?? [];
+    let known = set.of(locked.map(entry -> entry.name));
+
+    for name in only {
+        if !known.has(name)
+            && !project.manifest.require.has(name)
+            && !project.manifest.requireDev.has(name)
+        {
+            return Result.Err("${name} is not a package of this project");
+        }
+    }
+
+    if old != null && !only.isEmpty() {
+        prefer = old.versions();
+
+        for name in only {
+            prefer.remove(name);
+        }
+    }
+
+    say("Updating dependencies");
+    let choices = resolver.resolve(project.sources(), requirementsOf(project.manifest), prefer)?;
+
+    let lock = Lock {
+        hash: lockfile.contentHash(project.manifest),
+        packages: lockedOf(project.manifest, choices),
+    };
+
+    report(old, lock);
+    say("Writing lock file");
+
+    io.writeFile(project.file(lockfile.FILE), lockfile.text(lock)).mapErr(
+        error -> error.describe(),
+    )?;
+
+    return Result.Ok(lock);
+}
+
+// The choices as the lock has them: the packages require needs, then
+// those only require-dev needs, each part by name.
+fn lockedOf(project: Manifest, choices: [Choice]) -> [Locked] {
+    let byName = dict.empty<Choice>();
+
+    for choice in choices {
+        byName.set(choice.candidate.name, choice);
+    }
+
+    // What the project's require reaches, through what each package requires
+    let needed = set.texts();
+    let waiting = project.require.keys();
+
+    while !waiting.isEmpty() {
+        let name = waiting.pop();
+
+        if name == null || !needed.add(name) {
+            continue;
+        }
+
+        let choice = byName.get(name);
+
+        if choice != null {
+            waiting = waiting.concat(choice.manifest.require.keys());
+        }
+    }
+
+    let locked = choices.map(
+        choice -> Locked {
+            name: choice.candidate.name,
+            version: choice.candidate.label,
+            source: choice.candidate.source,
+            importName: choice.manifest.importName,
+            root: choice.manifest.root,
+            description: choice.manifest.description,
+            require: choice.manifest.require,
+            dev: !needed.has(choice.candidate.name),
+        },
+    );
+
+    return locked.sortedByText(entry -> entry.name);
+}
+
+// What changed in the lock, as Composer says it.
+fn report(old: Lock?, new: Lock) {
+    let lines: [String] = [];
+    let installs = 0;
+    let updates = 0;
+    let removals = 0;
+
+    for locked in new.packages {
+        let before = old?.find(locked.name);
+
+        if before == null {
+            installs++;
+            lines.push("  - Locking ${locked.name} (${locked.version})");
+        } else if before.version != locked.version
+            || before.source.reference != locked.source.reference
+        {
+            updates++;
+            lines.push("  - ${changeOf(before.version, locked.version)} ${locked.name} (${before.version} => ${locked.version})");
+        }
+    }
+
+    for before in old?.packages ?? [] {
+        if new.find(before.name) == null {
+            removals++;
+            lines.push("  - Removing ${before.name} (${before.version})");
+        }
+    }
+
+    if lines.isEmpty() {
+        say("Nothing to modify in lock file");
+        return;
+    }
+
+    say("Lock file operations: ${format.plural(installs, "install", "installs")}, ${format.plural(updates, "update", "updates")}, ${format.plural(removals, "removal", "removals")}");
+
+    for line in lines {
+        say(line);
+    }
+}
+
+fn changeOf(from: String, to: String) -> String {
+    let old = semver.parse(from).value();
+    let new = semver.parse(to).value();
+
+    if old == null || new == null || old == new {
+        return "Updating";
+    }
+
+    return if new > old { "Upgrading" } else { "Downgrading" };
+}
+
+fn install(project: Project, request: Request) -> Result<Void, String> {
+    let found = lockfile.read(project.file(lockfile.FILE))?;
+
+    if found != null && found.hash != lockfile.contentHash(project.manifest) {
+        say("Warning: The lock file is not up to date with the latest changes in ${manifest.FILE}. You may be getting outdated dependencies. Run lumen update to update them.");
+    }
+
+    let lock = if found == null {
+        say("No lock file found. Updating dependencies instead of installing from lock file.");
+        update(project, [])?
+    } else {
+        found
+    };
+
+    say("Installing dependencies from lock file");
+    return installer.install(project.sources(), lock, request.dev);
+}
+
+fn updateCommand(project: Project, request: Request) -> Result<Void, String> {
+    let lock = update(project, request.names)?;
+    return installer.install(project.sources(), lock, request.dev);
+}
+
+// Adds requirements to lumen.json, resolves, installs. When it cannot be
+// done lumen.json is left as it was.
+fn require(project: Project, request: Request) -> Result<Void, String> {
+    if request.names.isEmpty() {
+        return Result.Err("name the packages to require: lumen require vendor/name[:^1.2]");
+    }
+
+    let original = manifest.text(project.manifest);
+    let key = if request.toDev { "require-dev" } else { "require" };
+    let other = if request.toDev { "require" } else { "require-dev" };
+    let added: [String] = [];
+
+    for spec in request.names {
+        let (name, wanted) = spec.cut(":") ?? (spec, "");
+
+        if !manifest.isPackageName(name) {
+            return Result.Err("${name} is not a package name: write vendor/name, in lower case");
+        }
+
+        if wanted == "" {
+            wanted = newest(project, name)?;
+            say("Using version ${wanted} for ${name}");
+        }
+
+        catalog.check(name, wanted)?;
+        manifest.setRequirement(project.manifest, key, name, wanted);
+        manifest.setRequirement(project.manifest, other, name, "");
+        added.push(name);
+    }
+
+    say("${project.file(manifest.FILE)} has been updated");
+
+    io.writeFile(project.file(manifest.FILE), manifest.text(project.manifest)).mapErr(
+        error -> error.describe(),
+    )?;
+
+    match update(project, added) {
+        case Result.Ok(lock): {
+            return installer.install(project.sources(), lock, request.dev);
+        }
+
+        case Result.Err(reason): {
+            say("Installation failed, reverting ${manifest.FILE} to its original content.");
+            io.writeFile(project.file(manifest.FILE), original).mapErr(error -> error.describe())?;
+            return Result.Err(reason);
+        }
+    }
+}
+
+// The constraint a package is required with when none is given: ^ of
+// its newest release.
+fn newest(project: Project, name: String) -> Result<String, String> {
+    let all = project.sources().candidates(name)?;
+
+    let releases = all.filter(
+        candidate -> candidate.version != null && !candidate.version.isPrerelease(),
+    );
+
+    let best = releases.sorted(catalog.newestFirst).first();
+
+    if best != null {
+        let version = best.version;
+
+        if version != null {
+            return Result.Ok(semver.caret(version));
+        }
+    }
+
+    if all.find(candidate -> candidate.anyVersion) != null {
+        return Result.Ok("*");
+    }
+
+    let branch = all.find(candidate -> candidate.version == null);
+
+    if branch != null {
+        return Result.Ok(branch.label);
+    }
+
+    return Result.Err("${name} has no version to require");
+}
+
+fn remove(project: Project, request: Request) -> Result<Void, String> {
+    if request.names.isEmpty() {
+        return Result.Err("name the packages to remove: lumen remove vendor/name");
+    }
+
+    for name in request.names {
+        if !project.manifest.require.has(name) && !project.manifest.requireDev.has(name) {
+            return Result.Err("${name} is not required by ${manifest.FILE}");
+        }
+
+        manifest.setRequirement(project.manifest, "require", name, "");
+        manifest.setRequirement(project.manifest, "require-dev", name, "");
+    }
+
+    say("${project.file(manifest.FILE)} has been updated");
+
+    io.writeFile(project.file(manifest.FILE), manifest.text(project.manifest)).mapErr(
+        error -> error.describe(),
+    )?;
+
+    let lock = update(project, request.names)?;
+    return installer.install(project.sources(), lock, request.dev);
+}
+
+// The installed packages: name, version, import name, description.
+fn show(project: Project) -> Result<Void, String> {
+    let lock = lockfile.read(project.file(lockfile.FILE))?;
+    let installed = installer.installed(project.dir);
+
+    if lock == null {
+        return Result.Err("there is no ${lockfile.FILE}: run lumen install");
+    }
+
+    let rows: [[String]] = [];
+
+    for locked in lock.packages {
+        let state = if installed.has(locked.name) { "" } else { " (not installed)" };
+        let tag = if locked.dev { " [dev]" } else { "" };
+
+        rows.push([
+            locked.name + tag,
+            locked.version + state,
+            "import ${locked.importName}",
+            locked.description,
+        ]);
+    }
+
+    if rows.isEmpty() {
+        say("No packages");
+        return Result.Ok();
+    }
+
+    for row in rows {
+        println(row.join("  ").trim());
+    }
+
+    return Result.Ok();
+}
+
+fn parse(arguments: [String]) -> Result<Request, String> {
+    if arguments.isEmpty() {
+        return Result.Err(usage);
+    }
+
+    let request = Request { command: arguments[0] };
+
+    for argument in arguments.drop(1) {
+        match argument {
+            case "--no-dev": {
+                request.dev = false;
+            }
+
+            case "--dev": {
+                request.toDev = true;
+            }
+
+            default: {
+                if argument.startsWith("-") {
+                    return Result.Err("unknown option ${argument}\n${usage}");
+                }
+
+                request.names.push(argument);
+            }
+        }
+    }
+
+    return Result.Ok(request);
+}
+
+fn run(arguments: [String]) -> Result<Void, String> {
+    let request = parse(arguments)?;
+    let project = findProject(request.command == "require")?;
+
+    return match request.command {
+        case "install": install(project, request);
+        case "update": updateCommand(project, request);
+        case "require": require(project, request);
+        case "remove": remove(project, request);
+        case "show": show(project);
+        default: Result.Err("unknown command ${request.command}\n${usage}");
+    };
+}
+
+fn main() -> Int {
+    match run(os.args()) {
+        case Result.Ok(_): {
+            return 0;
+        }
+
+        case Result.Err(reason): {
+            io.printError("\n${reason.trim()}\n");
+            return 1;
+        }
+    }
+}

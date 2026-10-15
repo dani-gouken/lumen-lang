@@ -197,9 +197,17 @@ func TestFormattedExamplesRunTheSame(t *testing.T) {
 	}
 	configs, _ := filepath.Glob(filepath.Join(examples, "*", "lumen.json"))
 	for _, config := range configs {
-		if name := filepath.Base(filepath.Dir(config)); !opensAWindow[name] {
-			check(name, name)
+		name := filepath.Base(filepath.Dir(config))
+		if opensAWindow[name] {
+			continue
 		}
+		if _, err := os.Stat(filepath.Join(filepath.Dir(config), "lumen.lock")); err == nil {
+			t.Setenv("LUMEN_CACHE", t.TempDir())
+			if install := runLumenIn(t, filepath.Dir(config), "", "install"); install.exit != 0 {
+				t.Fatalf("%s: lumen install failed: exit %d\n%s", name, install.exit, install.stderr)
+			}
+		}
+		check(name, name)
 	}
 	if ran < 20 {
 		t.Errorf("expected the examples to be run, ran %d", ran)

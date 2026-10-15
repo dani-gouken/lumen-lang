@@ -14,7 +14,7 @@ Sizes are rough: **S** is an afternoon in one or two packages, **M** touches sev
 | Types | patterns on structs and arrays, names in a case with several patterns, traits for arrays |
 | Correctness | unused variables |
 | Runtime | method dispatch cost, tasks on several processors |
-| Program structure | a way to install packages, variables outside functions, C functions that call back |
+| Program structure | a registry of packages, variables outside functions, C functions that call back |
 | Tooling | renaming and finding uses in the editor, documentation from comments |
 
 ---
@@ -66,7 +66,7 @@ Most of this list has since been added, and the library and the examples rewritt
 
 ### Getting packages — L
 
-**Today**: [`lumen.json`](project.md) can name folders of modules kept elsewhere (`"packages"`). Nothing downloads or versions a package, and a package cannot name its own dependencies; the program lists them all.
+**Today**: `lumen require`, `install`, `update` get packages from git repositories with versions, resolve what packages require in turn, and lock the result, as Composer does ([packages.md](packages.md)). Missing: a registry that knows every package without cloning it, archives instead of git, stability flags, `lumen outdated`.
 
 A package can bring native code: the functions of a C library are declared in Lumen and found when the program runs ([ffi.md](ffi.md)). What is missing there: giving C a function of the program to call back, functions that take any number of arguments, calling C from a task, and Windows.
 
