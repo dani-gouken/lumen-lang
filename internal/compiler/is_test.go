@@ -428,7 +428,7 @@ func TestPatternTestErrors(t *testing.T) {
 		{"a value after is", "fn main() -> Int { let n = 3; if n is 3 { return 1; } return 0; }", "E0001", "'is' takes a type or the pattern of a variant, found '3'"},
 		{"name in the else", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Circle(r) { return 1; } else { println(r); } return 0; }", "E1001", "undefined identifier 'r'"},
 		{"name after the if", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Circle(r) { } println(r); return 0; }", "E1001", "undefined identifier 'r'"},
-		{"name under a not", "fn main() -> Int { let s = Shape.Empty; if !(s is Shape.Circle(r)) { return 1; } return 0; }", "E1003", "'r' cannot be named here: nothing runs only when this test holds"},
+		{"name under a not, in a block that may not leave", "fn main() -> Int { let s = Shape.Empty; if !(s is Shape.Circle(r)) { println(1); } return 0; }", "E1003", "'r' cannot be named here: nothing runs only when this test holds"},
 		{"name on a side of an or", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Empty || s is Shape.Rect(w, _) { return 1; } return 0; }", "E1003", "'w' cannot be named here"},
 		{"name in a value", "fn main() -> Int { let s = Shape.Empty; let round = s is Shape.Circle(r); return 0; }", "E1003", "'r' cannot be named here"},
 		{"name twice", "fn main() -> Int { let s = Shape.Empty; if s is Shape.Rect(a, a) { return 1; } return 0; }", "E1002", "'a' is already declared"},

@@ -64,7 +64,7 @@ func TestResolvePatternTestNames(t *testing.T) {
 		{"a name before its test", `if r > 1.0 && s is Shape.Circle(r) { }`, ErrUndefined, "undefined identifier 'r'"},
 		{"a name after the chain it is of", `let big = s is Shape.Circle(r) && r > 1.0; println(r);`, ErrUndefined, "undefined identifier 'r'"},
 		{"a name in the next branch of a chain", `if s is Shape.Circle(r) { } else if r > 1.0 { }`, ErrUndefined, "undefined identifier 'r'"},
-		{"a name under a not", `if !(s is Shape.Circle(r)) { return; }`, ErrUnusableName, "'r' cannot be named here"},
+		{"a name under a not, in a block that may not leave", `if !(s is Shape.Circle(r)) { println(1); }`, ErrUnusableName, "'r' cannot be named here"},
 		{"a name on a side of an or", `if s is Shape.Empty || s is Shape.Circle(r) { }`, ErrUnusableName, "'r' cannot be named here"},
 		{"a name on the left of an or", `if s is Shape.Circle(r) || ready { }`, ErrUnusableName, "'r' cannot be named here"},
 		{"a name in a test that is a value", `let round = s is Shape.Circle(r);`, ErrUnusableName, "'r' cannot be named here"},
