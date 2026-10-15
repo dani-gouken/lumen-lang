@@ -1019,6 +1019,6 @@ All of it is in [errors.md](errors.md).
 Things to be aware of:
 
 *   **What is known about a field ends at a call that may change a field.** `println`, and functions that only read, are fine; after calling something that assigns a field, or a function value, the field has to be tested again or copied into a local first. A variable that a lambda assigns is not narrowed at all, and inside a lambda only what is known about variables that are never assigned again carries over.
-*   **A type argument nothing determines has to be written**: `let xs = none();` gives no clue, so write `none<Int>()` or `let xs: [Int] = none();`.
+*   **A type argument nothing determines is taken from what follows**: after `let xs = none();`, the first use of `xs` that says a type decides it, an argument (`total(xs)`), a `return xs;`, a variable of a type it is put in, or a literal pushed onto it (`xs.push(1)`). When none says, write `none<Int>()` or `let xs: [Int] = none();`.
 
 The status table in the [language spec](language-spec.md#13-implementation-status) lists what works; [missing.md](missing.md) lists what does not yet, and what is left out on purpose.

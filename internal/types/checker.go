@@ -52,6 +52,13 @@ const (
 )
 
 type Checker struct {
+	// The statements after the one being checked, in its block, and the
+	// let without a type whose value is a call being checked: what a
+	// generic call says nothing of may be said by how its variable is
+	// used further on (see typeOfUse)
+	rest    []ast.Stmt
+	letCall *pendingLet
+
 	// What has been reported, so that nothing is reported twice
 	said map[string]bool
 
@@ -773,7 +780,12 @@ func (c *Checker) checkBlockEnding(s *ast.BlockStmt) (ending map[*resolve.Symbol
 	}()
 
 	warned := false
+	savedRest := c.rest
+	defer func() { c.rest = savedRest }()
 	for i, stmt := range s.Stmts {
+		// What comes after, where a variable made of a generic call that
+		// says nothing of its types may show them by how it is used
+		c.rest = s.Stmts[i+1:]
 		c.checkStmt(stmt)
 
 		// Nothing after a statement that always leaves the block can run.
@@ -789,6 +801,13 @@ func (c *Checker) checkBlockEnding(s *ast.BlockStmt) (ending map[*resolve.Symbol
 }
 
 func (c *Checker) checkLetStmt(s *ast.LetStmt) {
+	if call, ok := s.Value.(*ast.CallExpr); ok && s.Type == nil {
+		// let xs = none(); then total(xs): what none gives is what total
+		// takes, if nothing else says
+		saved := c.letCall
+		c.letCall = &pendingLet{let: s, call: call, rest: c.rest}
+		defer func() { c.letCall = saved }()
+	}
 	if fn, ok := s.Value.(*ast.FnExpr); ok && !fn.Short && s.Type == nil {
 		// let walk = fn(node: Node) { ... walk(child) ... }: what the body
 		// calls has the type the signature says

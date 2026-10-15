@@ -52,7 +52,128 @@ func (c *Checker) inferFunctionTypeArgs(e *ast.CallExpr, expected Type) {
 
 	if inferred := c.inferTypeArgs(signature, e.Args, expected, ident.BaseNode); inferred != nil {
 		ident.TypeArgs = inferred
+		return
 	}
+	// Nothing here says: what the variable it is given to is used as may
+	if use := c.typeOfUse(e); use != nil {
+		if inferred := c.inferTypeArgs(signature, e.Args, use, ident.BaseNode); inferred != nil {
+			ident.TypeArgs = inferred
+		}
+	}
+}
+
+// pendingLet is a let without a type whose value is a call, with the
+// statements of its block that follow it.
+type pendingLet struct {
+	let  *ast.LetStmt
+	call *ast.CallExpr
+	rest []ast.Stmt
+}
+
+// typeOfUse gives, for the call a let without a type is given, the type
+// the first use of the variable that says one asks for, in the statements
+// after the let: an argument of a function by its name, the value of a
+// return, of an assignment to a variable or a field of known type, of a
+// let with a type, or an array a literal is pushed onto.
+//
+//	let xs = none();     total(xs)   xs.push(1)   return xs;
+func (c *Checker) typeOfUse(call *ast.CallExpr) Type {
+	pending := c.letCall
+	if pending == nil || pending.call != call {
+		return nil
+	}
+	isVar := func(expr ast.Expr) bool {
+		ident, ok := expr.(*ast.Ident)
+		if !ok {
+			return false
+		}
+		sym := c.table.Defs[ident]
+		return sym != nil && sym.Decl == ast.Node(pending.let)
+	}
+	var found Type
+	look := func(expr ast.Expr) {
+		if found != nil {
+			return
+		}
+		switch e := expr.(type) {
+		case *ast.CallExpr:
+			if member, ok := e.Func.(*ast.MemberExpr); ok && isVar(member.Expr) && member.Name == "push" && len(e.Args) == 1 {
+				if lit, ok := e.Args[0].(*ast.Literal); ok {
+					if t := literalType(lit); t != nil {
+						found = NewArray(t)
+					}
+				}
+				return
+			}
+			callee, ok := e.Func.(*ast.Ident)
+			if !ok {
+				return
+			}
+			sym := c.table.Defs[callee]
+			if sym == nil {
+				return
+			}
+			fn, ok := sym.Decl.(*ast.FnDecl)
+			if !ok || len(fn.TypeParams) > 0 {
+				return
+			}
+			for i, arg := range e.Args {
+				if isVar(arg) && i < len(fn.Params) && fn.Params[i].Type != nil {
+					found = c.resolveType(fn.Params[i].Type)
+					return
+				}
+			}
+		case *ast.BinaryExpr:
+			if e.Op == "=" && isVar(e.Right) {
+				if target, ok := e.Left.(*ast.Ident); ok {
+					if sym := c.table.Defs[target]; sym != nil {
+						if let, ok := sym.Decl.(*ast.LetStmt); ok && let.Type != nil {
+							found = c.resolveType(let.Type)
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, stmt := range pending.rest {
+		switch s := stmt.(type) {
+		case *ast.ReturnStmt:
+			if isVar(s.Value) && c.currentFn != nil && c.currentFn.ReturnType != nil {
+				return c.resolveType(c.currentFn.ReturnType)
+			}
+		case *ast.LetStmt:
+			if isVar(s.Value) && s.Type != nil {
+				return c.resolveType(s.Type)
+			}
+		}
+		ast.Walk(stmt, look, func(inner ast.Stmt) {
+			if ret, ok := inner.(*ast.ReturnStmt); ok && found == nil && isVar(ret.Value) && c.currentFn != nil && c.currentFn.ReturnType != nil {
+				found = c.resolveType(c.currentFn.ReturnType)
+			}
+			if let, ok := inner.(*ast.LetStmt); ok && found == nil && isVar(let.Value) && let.Type != nil {
+				found = c.resolveType(let.Type)
+			}
+		})
+		if found != nil {
+			return found
+		}
+	}
+	return nil
+}
+
+// literalType is the type of a literal of a number, a text or a truth.
+func literalType(lit *ast.Literal) Type {
+	switch lit.Kind {
+	case "int":
+		return Int
+	case "float":
+		return Float
+	case "string":
+		return String
+	case "bool":
+		return Bool
+	}
+	return nil
 }
 
 // inferMethodTypeArgs does the same for a method with type parameters of

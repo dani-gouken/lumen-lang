@@ -374,7 +374,7 @@ known defects are inventoried in [missing.md](missing.md).
 | Optionals `T?`, `null`, `??` | Supported | Checked statically; null tests narrow variables and fields |
 | Casts `value as Type` | Supported | Verified at runtime, including array elements, generic struct fields and function signatures |
 | `const` | Supported | Reassignment is rejected |
-| Generic functions | Supported | Type arguments are inferred from the arguments, or written: `f<Int>(x)` |
+| Generic functions | Supported | Type arguments are inferred from the arguments, then from the type expected where the call stands, then, for the value of a `let` without a type, from the first use of the variable further in its block that says one (an argument of a function by its name, a `return`, a typed variable it is given to, a literal pushed onto it); or written: `f<Int>(x)` |
 | Variadic functions | Supported | Packed at direct calls |
 | `match` on literals, `default` | Supported | |
 | `match` as a value: `let x = match v { case 1: "one"; default: "many"; };` | Supported | Complete over an enum, or with a `default` |
