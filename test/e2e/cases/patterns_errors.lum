@@ -20,18 +20,18 @@ fn main() -> Int {
     let p = Point { x: 1, y: 2 };
 
     match p {
-        case Point { z: 0 }: { }
-        case Point { x: "one" }: { }
-        case Size { width }: { }
-        default: { }
+        case Point { z: 0 }: {}
+        case Point { x: "one" }: {}
+        case Size { width }: {}
+        default: {}
     }
 
     let s = Dot(p);
 
     match s {
-        case Dot(a) | Line(a, b): { }
-        case Blank | Line(_, c): { }
-        default: { }
+        case Dot(a) | Line(a, b): {}
+        case Blank | Line(_, c): {}
+        default: {}
     }
 
     return 0;

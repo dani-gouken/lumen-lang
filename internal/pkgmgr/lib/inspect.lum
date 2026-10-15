@@ -100,9 +100,7 @@ pub fn show(
 
     let width = rows.map(row -> row[0].len()).largest() ?? 0;
 
-    return Ok(
-        rows.filter(row -> row[1] != "").map(row -> "${row[0].padRight(width)} : ${row[1]}"),
-    );
+    return Ok(rows.filter(row -> row[1] != "").map(row -> "${row[0].padRight(width)} : ${row[1]}"));
 }
 
 fn summary(locked: Locked, installed: Dict<Installed>) -> String {

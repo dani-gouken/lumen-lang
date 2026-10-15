@@ -153,13 +153,7 @@ fn main() -> Int {
     match attempt(() -> dock.load(late, 9)) {
         case Ok(_): println("loaded?");
 
-        case Err(failure): println(
-            "failed:",
-            failure.message,
-            "- dock busy:",
-            dock.busy,
-            dock.log,
-        );
+        case Err(failure): println("failed:", failure.message, "- dock busy:", dock.busy, dock.log);
     }
 
     // The vans leave in order; every second day the big one stays

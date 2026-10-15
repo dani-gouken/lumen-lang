@@ -233,7 +233,7 @@ struct Document {
     text: String;
     version: Int = 0;  // goes up with every change
     edition: Int = 0;  // the editor's number for this text, which the
-                       // problems found in it are sent with
+    // problems found in it are sent with
 }
 
 struct Server {

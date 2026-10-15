@@ -463,17 +463,13 @@ fn boundsOf(text: String, word: String) -> Result<[Bound], ParseError> {
         ("==", Comparison.Exactly),
     ] {
         if word.startsWith(sign) {
-            return Ok([
-                Bound { comparison: comparison, version: exact(text, word.from(2))? },
-            ]);
+            return Ok([Bound { comparison: comparison, version: exact(text, word.from(2))? }]);
         }
     }
 
     for (sign, comparison) in [(">", Comparison.Above), ("<", Comparison.Below)] {
         if word.startsWith(sign) {
-            return Ok([
-                Bound { comparison: comparison, version: exact(text, word.from(1))? },
-            ]);
+            return Ok([Bound { comparison: comparison, version: exact(text, word.from(1))? }]);
         }
     }
 
@@ -520,10 +516,7 @@ fn boundsOf(text: String, word: String) -> Result<[Bound], ParseError> {
         // 1.2.* and 1.2 both stand for every 1.2.x
         let low = Bound { comparison: Comparison.AtLeast, version: partial.version };
 
-        return Ok([
-            low,
-            Bound { comparison: Comparison.Below, version: following(partial) },
-        ]);
+        return Ok([low, Bound { comparison: Comparison.Below, version: following(partial) }]);
     }
 
     return Ok([Bound { comparison: Comparison.Exactly, version: partial.version }]);
