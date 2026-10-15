@@ -83,6 +83,52 @@ true gone
 `)
 }
 
+// The methods of the builtin types after a ?.: they are rewritten into
+// calls of the library, with what they are called on as an argument, and
+// the value of the ?. still has to be found in there.
+func TestSafeAccessToBuiltinMethods(t *testing.T) {
+	expectOutput(t, peopleDecls+`
+		struct Team { members: [User]; tags: [String]; }
+	`, `
+		let ada = user("ada", "London");
+		let bob = user("bob", null);
+		let team: Team? = Team { members: [ada, bob], tags: ["core", "infra"] };
+		let none: Team? = null;
+		let suffix = "!";
+
+		// A method of an array, of a text, of a number
+		println(team?.members.len(), none?.members.len(), team?.tags.join("+"), team?.tags[1].upper());
+		println(team?.members[0].name.upper(), none?.tags.first(), team?.members.len().max(10));
+
+		// With a function written on the spot, that captures a variable
+		println(team?.members.map(m -> m.name + suffix), none?.members.map(m -> m.name + suffix));
+		println(team?.members.filter(m -> m.address?.city != null).map(m -> m.shout()) ?? []);
+		println(team?.tags.any(tag -> tag.startsWith("in")), team?.members.fold(0, (sum, m) -> sum + m.name.len()));
+
+		// A ?. inside the chain of another, and inside a function
+		println(team?.members[1].address?.city.upper(), team?.members[0].address?.city.lower().len());
+		let cities = fn(t: Team?) -> [String] {
+			return t?.members.map(m -> m.address?.city.upper() ?? "-") ?? [];
+		};
+		println(cities(team), cities(none));
+
+		// In a loop, and in a closure kept for later
+		let labels: [fn() -> String] = [];
+		for maybe in [team, none] {
+			labels.push(() -> maybe?.tags.map(tag -> tag.upper()).join(",") ?? "none");
+		}
+		println(labels.map(label -> label()));
+	`, `2 null core+infra INFRA
+ADA null 10
+["ada!", "bob!"] null
+["ADA"]
+true 6
+null 6
+["LONDON", "-"] []
+["CORE,INFRA", "none"]
+`)
+}
+
 func TestTryOnOptionals(t *testing.T) {
 	expectOutput(t, `
 		struct Config { port: String?; host: String?; }

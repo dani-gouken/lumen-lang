@@ -840,26 +840,46 @@ const SafeAccessOp = "?."
 
 // SafeHolder returns the identifier that stands for the value in the
 // right side of a `?.`, or nil if e is not one.
+//
+// It is what the chain of the right side starts from. Later stages may
+// rewrite the chain: `__safe1.items.len()` becomes a call of the library
+// with `__safe1.items` as its first argument. So the holder is looked for
+// by its name, in the receiver first and then in the arguments, and not
+// inside a function written in the chain, which has names of its own.
 func SafeHolder(e *BinaryExpr) *Ident {
 	if e.Op != SafeAccessOp {
 		return nil
 	}
-	// It is what the chain of the right side starts from
-	access := e.Right
-	for {
-		switch inner := access.(type) {
-		case *MemberExpr:
-			access = inner.Expr
-		case *CallExpr:
-			access = inner.Func
-		case *IndexExpr:
-			access = inner.Expr
-		case *Ident:
+	return findHolder(e.Right)
+}
+
+// SafeHolderPrefix starts the name the parser gives the value of a `?.`.
+const SafeHolderPrefix = "__safe"
+
+func findHolder(expr Expr) *Ident {
+	switch inner := expr.(type) {
+	case *Ident:
+		if strings.HasPrefix(inner.Name, SafeHolderPrefix) {
 			return inner
-		default:
-			return nil
+		}
+	case *MemberExpr:
+		return findHolder(inner.Expr)
+	case *IndexExpr:
+		return findHolder(inner.Expr)
+	case *BinaryExpr:
+		// A `?.` further on: the holder is on its left
+		return findHolder(inner.Left)
+	case *CallExpr:
+		if found := findHolder(inner.Func); found != nil {
+			return found
+		}
+		for _, arg := range inner.Args {
+			if found := findHolder(arg); found != nil {
+				return found
+			}
 		}
 	}
+	return nil
 }
 
 // Tuples: `(1, "a")`, of type `(Int, String)`.
