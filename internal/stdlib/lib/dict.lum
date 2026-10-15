@@ -81,6 +81,24 @@ impl<V> IndexedSet<String, V> for Dict<V> {
     }
 }
 
+// Two dictionaries are equal when they have the same keys, with equal
+// values, whatever order the keys were set in.
+impl<V> Equal for Dict<V> {
+    fn equals(other: Dict<V>) -> Bool {
+        if self.len() != other.len() {
+            return false;
+        }
+
+        for key in self.keys() {
+            if !other.has(key) || self.get(key) != other.get(key) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
 impl<V> Dict<V> {
     pub fn len() -> Int {
         return self.count;

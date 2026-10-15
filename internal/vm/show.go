@@ -64,9 +64,16 @@ func (vm *VM) format(v Value) (string, error) {
 }
 
 // showMethodOf is the function that shows values of the type of obj, if
-// the type implements Show. It is looked for in the program running, as
-// the methods a call asks for are (see chunkCache.method).
+// the type implements Show.
 func (vm *VM) showMethodOf(obj *ObjectObj) (Value, bool) {
+	return vm.machineMethod(obj, ShowMethod)
+}
+
+// machineMethod is the function of a method the compiler gives the type of obj
+// for the machine to call, ShowMethod or EqualMethod, if the type has it.
+// It is looked for in the program running, as the methods a call asks for
+// are (see chunkCache.method).
+func (vm *VM) machineMethod(obj *ObjectObj, method string) (Value, bool) {
 	chunk := vm.chunk
 	if chunk == nil {
 		return NewNull(), false
@@ -87,7 +94,7 @@ func (vm *VM) showMethodOf(obj *ObjectObj) (Value, bool) {
 			owner = owner[:dot]
 		}
 	}
-	found, ok := kept.byName[owner+"."+ShowMethod]
+	found, ok := kept.byName[owner+"."+method]
 	if !ok || owner == "" || chunk.Prototypes[found].UpvalueCount != 0 {
 		return NewNull(), false
 	}

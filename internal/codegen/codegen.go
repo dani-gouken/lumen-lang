@@ -155,6 +155,10 @@ func (g *Generator) reachableFunctions() []*ir.Function {
 	for _, target := range methods[vm.ShowMethod] {
 		reach(target)
 	}
+	// and compares a value of a type that implements Equal held by another
+	for _, target := range methods[vm.EqualMethod] {
+		reach(target)
+	}
 	for len(work) > 0 {
 		fn := work[len(work)-1]
 		work = work[:len(work)-1]

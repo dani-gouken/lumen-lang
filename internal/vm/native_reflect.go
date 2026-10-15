@@ -133,6 +133,15 @@ func init() {
 			}
 			return vm.newStringArray(names)
 		}},
+		// Whether two values are the very same one: for an array, a
+		// struct or a value of an enum, the same one made once, which
+		// == does not ask. Anything else is identical when it is equal.
+		native{"identical", 2, func(vm *VM, args []Value) (Value, error) {
+			if holdsValues(args[0]) || holdsValues(args[1]) {
+				return NewBool(args[0] == args[1]), nil
+			}
+			return NewBool(valuesEqual(args[0], args[1])), nil
+		}},
 		native{"hasField", 2, func(vm *VM, args []Value) (Value, error) {
 			name, err := argString(args, 1)
 			if err != nil {

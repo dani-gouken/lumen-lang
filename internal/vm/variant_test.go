@@ -139,10 +139,10 @@ func TestVariantValuesAreEqualByWhatTheyHold(t *testing.T) {
 		{"one holds more than the other",
 			join([]Instr{NewInstr(OpLOADI, 1, 5, 0)}, newVariant(10, 0, fields, 1)),
 			newVariant(11, 0, fields), false},
-		// Arrays keep their own rule: only the same array is equal
+		// Arrays inside are compared by what they hold
 		{"different arrays with the same content inside",
 			join([]Instr{NewInstr(OpNEWARRAY, 1, 2, 0)}, newVariant(10, 0, fields, 1)),
-			join([]Instr{NewInstr(OpNEWARRAY, 2, 2, 0)}, newVariant(11, 0, fields, 2)), false},
+			join([]Instr{NewInstr(OpNEWARRAY, 2, 2, 0)}, newVariant(11, 0, fields, 2)), true},
 		{"the same array inside",
 			join([]Instr{NewInstr(OpNEWARRAY, 1, 2, 0)}, newVariant(10, 0, fields, 1)),
 			newVariant(11, 0, fields, 1), true},
@@ -157,15 +157,15 @@ func TestVariantValuesAreEqualByWhatTheyHold(t *testing.T) {
 		}
 	}
 
-	// A struct is still only equal to itself, even with the same fields
+	// Two structs of one type with the same fields are equal
 	code := []Instr{
 		NewInstr(OpNEWOBJ, 10, 0, ObjectIsNamed),
 		NewInstr(OpNEWOBJ, 11, 0, ObjectIsNamed),
 		NewInstr(OpEQ, 0, 10, 11),
 		NewInstr(OpRET, 0, 0, 0),
 	}
-	if result := runVariant(t, names, code); result.AsBool() {
-		t.Error("expected two structs to be different values")
+	if result := runVariant(t, names, code); !result.AsBool() {
+		t.Error("expected two structs with the same fields to be equal")
 	}
 	// ...and a struct is never equal to a value of an enum of the same name
 	code = []Instr{

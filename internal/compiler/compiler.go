@@ -139,6 +139,7 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	declareTuples(prog)
 	giveDefaultMethods(prog)
 	giveShowMethods(prog)
+	giveEqualMethods(prog)
 	checkSupported(prog, errs, lines)
 	checkExterns(prog, opts.Hosted, errs, lines)
 	foreign := foreignFunctions(prog, errs, lines)
@@ -292,6 +293,26 @@ func giveShowMethods(prog *ast.Program) {
 		if template == nil {
 			src := "impl T { pub fn " + vm.ShowMethod + "() -> String { return self." + types.MethodShow + "(); } }"
 			parsed := parser.Parse(src, "<show>", errors.NewHandler())
+			template = parsed.Decls[0].(*ast.ImplDecl).Methods[0]
+		}
+		impl.Methods = append(impl.Methods, (&ast.Cloner{}).Fn(template))
+	}
+}
+
+// giveEqualMethods gives each type that implements std.ops.Equal a method
+// the virtual machine calls to compare a value of it found inside another:
+// [p] == [q] is what p.equals(q) says, as p == q is. Programs cannot name
+// the method.
+func giveEqualMethods(prog *ast.Program) {
+	var template *ast.FnDecl
+	for _, decl := range prog.Decls {
+		impl, ok := decl.(*ast.ImplDecl)
+		if !ok || impl.TraitName != types.TraitEqual {
+			continue
+		}
+		if template == nil {
+			src := "impl T { pub fn " + vm.EqualMethod + "(other: Self) -> Bool { return self.equals(other); } }"
+			parsed := parser.Parse(src, "<equal>", errors.NewHandler())
 			template = parsed.Decls[0].(*ast.ImplDecl).Methods[0]
 		}
 		impl.Methods = append(impl.Methods, (&ast.Cloner{}).Fn(template))

@@ -197,7 +197,7 @@ if total > limit { println("over by ${total}"); }
 ```
 
 *   `compare` gives a number below zero when the value comes first, zero when neither does, above zero when it comes after.
-*   **Without `Equal`, two structs are equal only when they are the very same one.** With it, `==` asks the struct, and so do `contains`, `indexOf` and `test.equal`, which are written with `==`.
+*   **Without `Equal`, two structs are equal when their fields are.** With it, `==` asks the struct, and so do `contains`, `indexOf` and `test.equal`, which are written with `==`, and so does `==` on an array or an enum that holds the struct. Whether two names are of the one value is `reflect.identical(a, b)`.
 *   A comparison with `null` is always a test for null, whatever the type implements.
 *   The key of `Indexed` is whatever the type asks for: a grid can be indexed by a pair, `grid[(2, 3)]`.
 *   `Int`, `Float`, `String` and `Bool` implement `Equal` and `Show`, and all but `Bool` implement `Ordered`: a function that requires those takes numbers and texts too.

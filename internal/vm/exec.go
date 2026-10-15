@@ -891,13 +891,16 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 			cur.regs[instr.A] = shifted
 
-		case OpEQ:
+		case OpEQ, OpNE:
 			a, b := cur.regs[instr.B], cur.regs[instr.C]
-			cur.regs[instr.A] = NewBool(sameValue(a, b))
-
-		case OpNE:
-			a, b := cur.regs[instr.B], cur.regs[instr.C]
-			cur.regs[instr.A] = NewBool(!sameValue(a, b))
+			equal := a == b && !a.IsNumber()
+			if !equal {
+				var err error
+				if equal, err = vm.equal(a, b); err != nil {
+					return NewNull(), err
+				}
+			}
+			cur.regs[instr.A] = NewBool(equal == (instr.Op == OpEQ))
 
 		case OpLT:
 			a, b := cur.regs[instr.B], cur.regs[instr.C]
@@ -1200,7 +1203,13 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpJNEQ, OpJNNE:
 			a, b := cur.regs[instr.A], cur.regs[instr.B]
-			equal := sameValue(a, b)
+			equal := a == b && !a.IsNumber()
+			if !equal {
+				var err error
+				if equal, err = vm.equal(a, b); err != nil {
+					return NewNull(), err
+				}
+			}
 			if equal != (instr.Op == OpJNEQ) {
 				target := int(instr.C)
 				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {

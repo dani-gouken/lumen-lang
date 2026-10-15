@@ -18,8 +18,8 @@
 // Ordered, so such a function takes them as well.
 import std.arrays;
 
-// Saying when two values are equal. Without it, two structs are only
-// equal when they are the very same one.
+// Saying when two values are equal. Without it, two structs are equal
+// when their fields are, as two arrays are when their items are.
 pub trait Equal {
     fn equals(other: Self) -> Bool;
 }

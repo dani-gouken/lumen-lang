@@ -70,13 +70,19 @@ fn truthy(value: Value) -> Bool {
 // Two values are equal if they are the same number, text or truth, or the
 // very same function, class or instance. A number equals no text.
 fn equal(a: Value, b: Value) -> Bool {
-    // Asked of the numbers themselves: a number that is not one (0/0)
-    // equals nothing, the very value it is included
-    if a is Value.Number(x) && b is Value.Number(y) {
-        return x == y;
-    }
-
-    return a == b;
+    return match (a, b) {
+        // Asked of the numbers themselves: a number that is not one (0/0)
+        // equals nothing, the very value it is included
+        case (Value.Number(x), Value.Number(y)): x == y;
+        case (Value.Text(x), Value.Text(y)): x == y;
+        case (Value.Bool(x), Value.Bool(y)): x == y;
+        case (Value.Nil, Value.Nil): true;
+        case (Value.Native(x), Value.Native(y)): x == y;
+        case (Value.Function(x), Value.Function(y)): reflect.identical(x, y);
+        case (Value.Class(x), Value.Class(y)): reflect.identical(x, y);
+        case (Value.Instance(x), Value.Instance(y)): reflect.identical(x, y);
+        default: false;
+    };
 }
 
 // --- Failures ---

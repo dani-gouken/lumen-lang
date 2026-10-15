@@ -181,7 +181,7 @@ NaN.
 - `GT r_dest r_a r_b` - Greater than
 - `GE r_dest r_a r_b` - Greater than or equal
 
-`EQ`/`NE` compare strings by content and every other heap object by identity.
+`EQ`/`NE` compare strings, arrays and objects by content: arrays item by item, objects of one type field by field. An object whose type has the method `__equal`, which the compiler gives every type that implements `Equal`, is compared by calling it. A value that holds itself is compared without going round for ever: a pair met again while it is being compared counts as equal. Functions are compared by identity.
 The ordering instructions accept two Ints, two Numbers or two Strings.
 
 ### Heap Objects
@@ -257,9 +257,8 @@ fields `"0"`, `"1"`, ...
 The mark changes two things:
 
 - **Equality.** `EQ` and `NE` compare two such objects by content: the same
-  name, and each value equal in turn, recursively through values that are
-  enums themselves. Structs and arrays are compared by identity, also when
-  they are inside a value of an enum.
+  name, and each value equal in turn, recursively, as structs and arrays
+  are.
 - **Printing.** `FormatValue` writes them as they are made, without the
   enum's name: `Rect(2, 3)`, `Empty`.
 

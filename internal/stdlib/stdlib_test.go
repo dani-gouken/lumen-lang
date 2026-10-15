@@ -292,7 +292,7 @@ func TestArrays(t *testing.T) {
 		println([3, 1, 2, 1, -5].sortedNumbers(), ["pear", "Apple", "fig"].sortedTexts(), [].sortedNumbers());
 		println(n.contains(3), n.contains(30), ["a"].contains("a"), ["a"].contains("b"), [true].contains(false), [].contains(1));
 		println(n.indexOf(3), n.indexOf(30), ["a", "b", "b"].indexOf("b"), [1.5, 2.5].indexOf(2.5));
-		// An array or a struct is only equal to itself
+		// Arrays and structs are equal by what they hold
 		let row = [1, 2];
 		let rows = [[1, 2], row];
 		println(rows.indexOf(row), rows.contains([1, 2]));
@@ -341,7 +341,7 @@ func TestArrays(t *testing.T) {
 		`[-5, 1, 1, 2, 3] ["Apple", "fig", "pear"] []`,
 		"true false true false false false",
 		"2 null 1 1",
-		"1 false",
+		"0 true",
 		`["Oslo", "Bern", "Lima", "Lagos"] ["Bern", "Lagos", "Lima", "Oslo"]`,
 		`["Lagos", "Oslo", "Lima", "Bern"] [1, 2, 3, 4, 5, 6, 7]`,
 		"[1, 2, 3] [3, 2, 1]",

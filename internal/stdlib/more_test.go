@@ -527,7 +527,7 @@ func TestCsv(t *testing.T) {
 		`"grace, h",45,"New`,
 		`York"`,
 		"alan,41,",
-		"false true",
+		"true true",
 		`[["a", "b"], ["1"]] [] [["a", "b,c"]] [["a", "b"]]`,
 		`a b,"c""d"`,
 		`"e,f",`,

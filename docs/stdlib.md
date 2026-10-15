@@ -330,7 +330,7 @@ while i < tasks.len() {
 | `maxBy(items, rank) -> T?`, `minBy(items, rank) -> T?` | |
 | `sumOf(items, amount) -> Int` | |
 
-**Equal**, for `indexOf` and `contains`, means what `==` means: numbers, texts and booleans are equal when they have the same value; an array or a struct is only equal to itself. To look for a struct by what is in it, use `find` with a function.
+**Equal**, for `indexOf` and `contains`, means what `==` means: numbers, texts and booleans are equal when they have the same value, arrays and structs when what they hold is, and a type that implements `Equal` when its `equals` says so.
 
 ```rust
 let people = [Person { name: "Ada", age: 36 }, Person { name: "Linus", age: 21 }];
@@ -1199,6 +1199,7 @@ println(reflect.dump(user));
 | `reflect.typeName(value)` | `"Int"`, `"array"`, and for a struct or an enum its name: `"User"`, `"geometry.Shape"` |
 | `reflect.fields(value) -> [String]` | The fields of a struct value, in alphabetical order |
 | `reflect.hasField(value, name)`, `get(value, name) -> Any` | `get` gives `null` for a field that is not there |
+| `reflect.identical(first, second) -> Bool` | Whether two names are of the one array, struct or value of an enum, which `==`, comparing what they hold, does not ask |
 | `reflect.set(value, name, to)` | Changes a field; the new value has to be of the same sort as the old |
 | `reflect.variant(value) -> String?` | For a value of an enum, which variant: `"Circle"` |
 | `reflect.values(value) -> [Any]` | What a variant or a tuple holds, in order |
@@ -1434,5 +1435,4 @@ A folder called `std` among a program's own modules is not reachable as `std.som
 *   **More for tasks.** Several things can be waited for at once ([`std.task`](#stdtask)), on one processor. There is no waiting for the first of several channels, no wait that gives up after some time, and no stopping a task from outside ([tasks.md](tasks.md#what-is-not-there)).
 *   **Time zones by name.** A date is told in UTC, where the program runs, or at a fixed offset; there is no "Europe/Paris".
 *   **Sockets below HTTP**, HTTPS for a server of your own, and e-mail.
-*   **Equality by content for arrays.** A struct says when two of its values are equal by implementing `Equal`; two arrays are still only `==` when they are the same one. `ops.same(first, second)` and `test.same` compare them item by item.
 *   Everything is compiled into the program that imports a module, used or not; there is no removal of unused functions yet. A program that imports `std.http` compiles `std.json`, `std.dict` and the rest with it.

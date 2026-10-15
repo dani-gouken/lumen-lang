@@ -339,7 +339,7 @@ Shape.Empty == Shape.Empty                  // true
 Shape.Circle(1.0) == Shape.Circle(2.0)      // false
 ```
 
-This goes all the way down through enums inside enums, so two trees built the same way are equal. An array or a struct *inside* an enum value keeps its own rule and is only equal to itself.
+This goes all the way down, through enums, arrays and structs inside enums, so two trees built the same way are equal. A type that implements `Equal` is compared by its `equals` wherever it is found.
 
 A value **prints** the way it is made, without the enum's name: `Circle(2)`, `Empty`, `Some("x")`, `Cons(1, Cons(2, Nil))`.
 

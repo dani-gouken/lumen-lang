@@ -43,6 +43,13 @@ pub fn of<T>(items: [T]) -> List<T> {
     return List<T> { items: items.copy() };
 }
 
+// Two lists are equal when they hold equal items in the same order.
+impl<T> Equal for List<T> {
+    fn equals(other: List<T>) -> Bool {
+        return self.toArray() == other.toArray();
+    }
+}
+
 impl<T> List<T> {
     pub fn len() -> Int {
         return self.items.len();

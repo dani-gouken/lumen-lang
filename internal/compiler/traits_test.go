@@ -77,7 +77,7 @@ func TestOperatorsOnStructs(t *testing.T) {
 		// Arrays of them, through the library
 		println([a, c].contains(b), [c, a].indexOf(b), ops.contains([a], c), ops.indexOf([c, c, a], b), ops.same([a, c], [b, c]), ops.same([a], [c]));
 
-		// What does not say when it is equal is equal to itself only
+		// What does not say when it is equal is equal by its fields
 		let p = Plain { n: 1 };
 		let q = Plain { n: 1 };
 		println(p == p, p == q, p != q, [p].contains(q), [p].contains(p));
@@ -95,7 +95,7 @@ true false true false true true
 true false true false
 2 9 [109, 110, 200]
 true 1 false 2 true false
-true false true false true
+true true false true true
 true true false
 `)
 }

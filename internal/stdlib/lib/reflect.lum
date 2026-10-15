@@ -84,6 +84,16 @@ pub fn fields(value: Any) -> [String] {
     return fieldNames(value);
 }
 
+// Whether two values are the very same one. == compares arrays, structs
+// and values of enums by what they hold; this asks whether they are one
+// value, made once, which a change through one name shows through the
+// other.
+//
+//     let a = [1];
+//     reflect.identical(a, a)      // true
+//     reflect.identical(a, [1])    // false, though a == [1]
+pub extern fn identical(first: Any, second: Any) -> Bool;
+
 // Whether a struct value has a field of that name.
 pub extern fn hasField(value: Any, name: String) -> Bool;
 

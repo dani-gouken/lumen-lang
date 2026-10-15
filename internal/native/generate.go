@@ -570,9 +570,9 @@ func (w *writer) general() {
 		w.line("}")
 
 	case vm.OpEQ:
-		w.line("r[%d] = NewBool(sameValue(r[%d], r[%d]))", A, B, C)
+		w.line("if eq, err := vm.equal(r[%d], r[%d]); err != nil { vm.ip = %d; return NewNull(), err } else { r[%d] = NewBool(eq) }", B, C, w.pc, A)
 	case vm.OpNE:
-		w.line("r[%d] = NewBool(!sameValue(r[%d], r[%d]))", A, B, C)
+		w.line("if eq, err := vm.equal(r[%d], r[%d]); err != nil { vm.ip = %d; return NewNull(), err } else { r[%d] = NewBool(!eq) }", B, C, w.pc, A)
 	case vm.OpLT, vm.OpLE, vm.OpGT, vm.OpGE:
 		symbol := map[vm.OpCode]string{vm.OpLT: "<", vm.OpLE: "<=", vm.OpGT: ">", vm.OpGE: ">="}[in.Op]
 		w.line("{")
@@ -614,9 +614,9 @@ func (w *writer) general() {
 		w.line("}")
 
 	case vm.OpJNEQ:
-		w.line("if !sameValue(r[%d], r[%d]) %s", A, B, w.jump(C))
+		w.line("if eq, err := vm.equal(r[%d], r[%d]); err != nil { vm.ip = %d; return NewNull(), err } else if !eq %s", A, B, w.pc, w.jump(C))
 	case vm.OpJNNE:
-		w.line("if sameValue(r[%d], r[%d]) %s", A, B, w.jump(C))
+		w.line("if eq, err := vm.equal(r[%d], r[%d]); err != nil { vm.ip = %d; return NewNull(), err } else if eq %s", A, B, w.pc, w.jump(C))
 
 	case vm.OpJNLTI, vm.OpJNLEI, vm.OpJNGTI, vm.OpJNGEI, vm.OpJNEQI, vm.OpJNNEI:
 		symbol := map[vm.OpCode]string{vm.OpJNLTI: "<", vm.OpJNLEI: "<=", vm.OpJNGTI: ">", vm.OpJNGEI: ">=", vm.OpJNEQI: "==", vm.OpJNNEI: "!="}[in.Op]
