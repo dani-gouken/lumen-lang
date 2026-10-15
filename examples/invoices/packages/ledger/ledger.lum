@@ -6,7 +6,6 @@
 
 import money;
 import money.{Money};
-import std.result.{Result};
 
 pub struct Line {
     description: String;

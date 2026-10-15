@@ -90,7 +90,7 @@ lines.each(fn(text: String) { println(text.len()); });
 | `channel.each(action)` | Every value until the channel is closed |
 | `channel.drain()` | The same, as an array |
 | `channel.close()` | Nothing more will be sent. What was sent is still received |
-| `channel.isClosed()`, `length()` | |
+| `channel.isClosed()`, `len()` | |
 
 Closing is how a receiver learns there is nothing more: a loop on `each` ends, and tasks waiting in `receive` go on with `null`. Sending to a closed channel is a mistake in the program and stops the task that does it.
 

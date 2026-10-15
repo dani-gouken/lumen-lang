@@ -12,7 +12,6 @@ import catalog.{Catalog, Candidate};
 import manifest.{Manifest};
 import std.dict;
 import std.dict.{Dict};
-import std.result.{Result};
 
 // What someone requires: lumen.json, or a version of a package.
 pub struct Requirement {

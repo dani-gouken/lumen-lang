@@ -354,12 +354,12 @@ func TestArrays(t *testing.T) {
 func TestList(t *testing.T) {
 	expect(t, "import std.list;\nimport std.list.{List};\nstruct City { name: String; people: Int; }", `
 		let names = list.empty<String>();
-		println(names.size(), names.isEmpty(), names.first(), names.last(), names.pop(), names.get(0));
+		println(names.len(), names.isEmpty(), names.first(), names.last(), names.pop(), names.get(0));
 
 		names.add("x");
 		names.addAll(["y", "z"]);
 		names.insert(1, "w");
-		println(names.toArray(), names.size(), names.isEmpty(), names.first(), names.last(), names.get(1), names.get(9), names.get(-1));
+		println(names.toArray(), names.len(), names.isEmpty(), names.first(), names.last(), names.get(1), names.get(9), names.get(-1));
 		names.set(0, "a");
 		println(names.pop(), names.removeAt(0), names.removeAt(7), names.toArray());
 		names.insert(99, "end");
@@ -426,17 +426,17 @@ func TestList(t *testing.T) {
 func TestMap(t *testing.T) {
 	expect(t, "import std.dict;\nimport std.arrays;\nimport std.dict.{Dict};\nstruct Point { x: Int; y: Int; }", `
 		let ages = dict.empty<Int>();
-		println(ages.size(), ages.isEmpty(), ages.get("ada"), ages.has("ada"), ages.remove("ada"), ages.keys(), ages.values());
+		println(ages.len(), ages.isEmpty(), ages.get("ada"), ages.has("ada"), ages.remove("ada"), ages.keys(), ages.values());
 
 		ages.set("ada", 36);
 		ages.set("linus", 21);
 		ages.set("grace", 85);
 		ages.set("ada", 37);          // Replaces: still three keys
-		println(ages.size(), ages.isEmpty(), ages.get("ada"), ages.get("zed"), ages.has("linus"), ages.has("Linus"));
+		println(ages.len(), ages.isEmpty(), ages.get("ada"), ages.get("zed"), ages.has("linus"), ages.has("Linus"));
 		println(ages.keys(), ages.values());
 		println(ages.get("zed") ?? -1, (ages.get("ada") ?? 0) + 1);
 
-		println(ages.remove("linus"), ages.remove("linus"), ages.size(), ages.keys(), ages.get("linus"));
+		println(ages.remove("linus"), ages.remove("linus"), ages.len(), ages.keys(), ages.get("linus"));
 		// A key set again after being removed goes to the end
 		ages.set("linus", 22);
 		println(ages.keys(), ages.values());
@@ -447,7 +447,7 @@ func TestMap(t *testing.T) {
 		odd.set(" ", "space");
 		odd.set("a", "lower");
 		odd.set("A", "upper");
-		println(odd.size(), odd.get(""), odd.get(" "), odd.get("a"), odd.get("A"));
+		println(odd.len(), odd.get(""), odd.get(" "), odd.get("a"), odd.get("A"));
 
 		// Many keys: the table grows several times, removed keys drop out
 		let big = dict.empty<Int>();
@@ -456,7 +456,7 @@ func TestMap(t *testing.T) {
 		i = 0;
 		while i < 3000 { if i % 3 == 0 { big.remove("key" + toString(i)); } i++; }
 		while i < 3500 { big.set("key" + toString(i), i * 2); i++; }
-		println(big.size(), big.get("key0"), big.get("key1"), big.get("key2999"), big.get("key3499"), big.keys().len(), big.values().len());
+		println(big.len(), big.get("key0"), big.get("key1"), big.get("key2999"), big.get("key3499"), big.keys().len(), big.values().len());
 		let sum = 0;
 		big.each(fn(key: String, value: Int) -> Void { sum += value; });
 		let expected = 0;

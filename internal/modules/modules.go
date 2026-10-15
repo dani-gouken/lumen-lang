@@ -361,10 +361,87 @@ var (
 )
 
 // importsResult gives a file the imports of Result and Template it did not
-// write, when it names them and has none of its own.
+// write, when it names them and has none of its own; the same for the
+// collections Dict, List and Set, and for the modules of the library it
+// names: dict.empty<Int>() is read as if the file began with
+// `import std.dict;`.
 func (l *loader) importsResult(m *module, src string) {
 	l.importsImplicitly(m, src, ResultModule, ResultName, saysResult)
 	l.importsImplicitly(m, src, TemplateModule, TemplateName, saysTemplate)
+	for _, collection := range implicitTypes {
+		l.importsImplicitly(m, src, collection.module, collection.name, collection.says)
+	}
+	l.importsModules(m, src)
+}
+
+// implicitTypes are the types of the library a file can name without
+// importing them, besides Result and Template.
+var implicitTypes = []struct {
+	module, name string
+	says         *regexp.Regexp
+}{
+	{"std.dict", "Dict", regexp.MustCompile(`\bDict\b`)},
+	{"std.list", "List", regexp.MustCompile(`\bList\b`)},
+	{"std.set", "Set", regexp.MustCompile(`\bSet\b`)},
+	{"std.ops", "Equal", regexp.MustCompile(`\bEqual\b`)},
+	{"std.ops", "Ordered", regexp.MustCompile(`\bOrdered\b`)},
+	{"std.ops", "Show", regexp.MustCompile(`\bShow\b`)},
+	{"std.ops", "Add", regexp.MustCompile(`\bAdd\b`)},
+	{"std.ops", "Subtract", regexp.MustCompile(`\bSubtract\b`)},
+	{"std.ops", "Multiply", regexp.MustCompile(`\bMultiply\b`)},
+	{"std.ops", "Divide", regexp.MustCompile(`\bDivide\b`)},
+	{"std.ops", "Iterable", regexp.MustCompile(`\bIterable\b`)},
+	{"std.ops", "Indexed", regexp.MustCompile(`\bIndexed\b`)},
+	{"std.ops", "IndexedSet", regexp.MustCompile(`\bIndexedSet\b`)},
+}
+
+// namesModule finds, in a source, the names written before a dot.
+var namesModule = regexp.MustCompile(`\b([a-z][a-z0-9]*)\s*\.\s*[A-Za-z_]`)
+
+// importsModules gives a file the import of each module of the library it
+// writes the name of before a dot, dict.empty<Int>(), when nothing of the
+// file's own goes by that name. A variable of that name in a function is
+// no reason not to: it hides the module there, as it would an import
+// that was written. The files of the library write their imports.
+func (l *loader) importsModules(m *module, src string) {
+	if l.packages[stdlib.Package] == "" || strings.HasPrefix(m.name, stdlib.Package+".") || m.name == stdlib.Package {
+		return
+	}
+	library := make(map[string]bool)
+	for _, module := range stdlib.Modules() {
+		library[strings.TrimPrefix(module, stdlib.Package+".")] = true
+	}
+	taken := make(map[string]bool)
+	for _, imp := range m.prog.Imports {
+		if imp.Alias != "" {
+			taken[imp.Alias] = true
+		} else if len(imp.Names) == 0 {
+			taken[imp.Path[strings.LastIndex(imp.Path, ".")+1:]] = true
+		}
+		for _, imported := range imp.Names {
+			taken[imported.Name] = true
+		}
+	}
+	for _, stmt := range m.prog.Stmts {
+		// The variables of a script are seen by all of it
+		if let, ok := stmt.(*ast.LetStmt); ok {
+			taken[let.Name] = true
+		}
+	}
+
+	at := m.prog.BaseNode
+	for _, found := range namesModule.FindAllStringSubmatch(src, -1) {
+		name := found[1]
+		if !library[name] || taken[name] || m.values[name] != nil || m.types[name] != nil {
+			continue
+		}
+		taken[name] = true
+		m.prog.Imports = append(m.prog.Imports, &ast.ImportDecl{
+			BaseNode: at,
+			Path:     stdlib.Package + "." + name,
+			Implicit: true,
+		})
+	}
 }
 
 func (l *loader) importsImplicitly(m *module, src, module, name string, says *regexp.Regexp) {

@@ -97,7 +97,7 @@ func TestMemoryIsGivenBackWhateverWasMade(t *testing.T) {
 			for round in 0..200 {
 				let seen = dict.empty<Int>();
 				for i in 0..300 { seen.set("key" + toString(i), i * round); }
-				total = (total + seen.size()) % 1000003;
+				total = (total + seen.len()) % 1000003;
 			}
 			let fromKept = 0;
 			for add in kept { fromKept += add(100); }
@@ -719,7 +719,7 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 		// Whether a dictionary holds exactly these keys with these values,
 		// in this order, by every way of asking
 		fn same(held: Dict<Int>, keys: [String], values: [Int]) -> Bool {
-			if held.size() != keys.len() || held.isEmpty() != (keys.len() == 0) { return false; }
+			if held.len() != keys.len() || held.isEmpty() != (keys.len() == 0) { return false; }
 			let listed = held.keys();
 			let worth = held.values();
 			if listed.len() != keys.len() || worth.len() != keys.len() { return false; }
@@ -756,7 +756,7 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 				values.push(i);
 				if !same(held, keys, values) { ok = false; }
 			}
-			println(ok, held.size());
+			println(ok, held.len());
 
 			// Set again: the value changes, the place does not
 			for i in 0..40 {
@@ -787,7 +787,7 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 					values.push(round);
 				}
 			}
-			println(removed, held.size(), held.keys());
+			println(removed, held.len(), held.keys());
 
 			// Few keys again, and the same ones a second time
 			for key in held.keys() { held.remove(key); }
@@ -795,7 +795,7 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 			held.set("b", 2);
 			held.remove("a");
 			held.set("a", 3);
-			println(held.keys(), held.values(), held.sortedKeys(), held.size());
+			println(held.keys(), held.values(), held.sortedKeys(), held.len());
 
 			// Many keys, counted and grouped
 			let stock = dict.empty<Stock>();
@@ -812,7 +812,7 @@ func TestADictionaryFromAFewKeysToMany(t *testing.T) {
 			for name in stock { total += stock.getOr(name, Stock { item: "", count: 0 }).count; }
 			let words = "the quick fox and the lazy dog and the cat".split(" ");
 			let counts = words.countBy(w -> w);
-			println(stock.size(), total, stock.getOr("item699", Stock { item: "", count: 0 }).count, counts.keys(), counts.values());
+			println(stock.len(), total, stock.getOr("item699", Stock { item: "", count: 0 }).count, counts.keys(), counts.values());
 			return 0;
 		}`, nil)
 	if err != nil {

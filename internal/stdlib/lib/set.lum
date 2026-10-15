@@ -57,13 +57,13 @@ impl<T> Iterable<T> for Set<T> {
 
 impl<T> Equal for Set<T> {
     fn equals(other: Set<T>) -> Bool {
-        return self.size() == other.size() && self.isSubsetOf(other);
+        return self.len() == other.len() && self.isSubsetOf(other);
     }
 }
 
 impl<T> Set<T> {
-    pub fn size() -> Int {
-        return self.members.size();
+    pub fn len() -> Int {
+        return self.members.len();
     }
 
     pub fn isEmpty() -> Bool {

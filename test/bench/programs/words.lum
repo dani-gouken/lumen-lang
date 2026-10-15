@@ -52,7 +52,7 @@ fn main() -> Int {
         line = line + key + "=" + toString(counts.getOr(key, 0)) + " ";
     }
 
-    println(source.len(), counts.size(), longest);
+    println(source.len(), counts.len(), longest);
     println(line.trim());
     return 0;
 }

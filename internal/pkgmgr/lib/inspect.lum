@@ -11,7 +11,6 @@ import manifest.{Manifest};
 import std.dict.{Dict};
 import std.semver;
 import std.semver.{Version};
-import std.result.{Result};
 
 // One thing that requires a package: lumen.json, or a locked package.
 pub struct Dependent {

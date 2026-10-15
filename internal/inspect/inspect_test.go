@@ -656,8 +656,8 @@ fn after() -> Int { return shelf().first().pages; }
 	expect("at the end of a chain", typed(30, `                .set("files", json.texts(tree.toArray())).`), builder)
 	// On one line, and as a statement of its own
 	expect("on one line", typed(22, `    json.object().text("a", "b").`), builder)
-	expect("a call on a variable", typed(22, "    names.filter(n -> true)."), []string{"add", "map", "size", "toArray"}, "done")
-	expect("a call with type arguments", typed(22, `    list.of<String>(["a"]).`), []string{"add", "size"})
+	expect("a call on a variable", typed(22, "    names.filter(n -> true)."), []string{"add", "map", "len", "toArray"}, "done")
+	expect("a call with type arguments", typed(22, `    list.of<String>(["a"]).`), []string{"add", "len"})
 	expect("a method of the program", typed(22, "    shelf().first()."), []string{"title", "pages", "longer"}, "books")
 	expect("an index", typed(22, "    shelf().books[0]."), []string{"title", "pages", "longer"})
 	expect("a field of a field", typed(22, "    shelf().first().title."), nil, "title", "return")
@@ -666,7 +666,7 @@ fn after() -> Int { return shelf().first().pages; }
 	expect("a task", typed(34, "    task.start(fn() -> Int { return 1; })."), []string{"wait", "isDone", "expect"})
 	// What needs the lines above: a variable of the function, used in a chain
 	expect("a variable declared above", typed(34, "    tree.toArray()."), nil, "return")
-	expect("a list declared above", typed(34, "    tree.filter(name -> true)."), []string{"add", "size"})
+	expect("a list declared above", typed(34, "    tree.filter(name -> true)."), []string{"add", "len"})
 	// The parameter of the function the cursor is in
 	expect("a parameter of a function expression", typed(26, "        request."), []string{"method", "path", "header", "json"})
 	// Where there is no dot before the cursor, the usual

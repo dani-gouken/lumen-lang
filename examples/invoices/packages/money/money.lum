@@ -7,7 +7,6 @@
 //     println(line + tax);                    // EUR 228.96
 
 import std.ops.{Add, Ordered, Equal, Show};
-import std.result.{Result};
 import std.format;
 
 pub struct Money {

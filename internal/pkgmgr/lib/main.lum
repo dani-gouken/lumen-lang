@@ -31,7 +31,6 @@ import std.path;
 import std.semver;
 import std.set;
 import std.format;
-import std.result.{Result};
 
 const usage = """
     Usage: lumen install [--no-dev]

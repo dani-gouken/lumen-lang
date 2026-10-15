@@ -46,7 +46,7 @@ fn main() -> Int {
     seen[built] = 1;
     seen[again] = (seen[again] ?? 0) + 1;
     seen[report(10)] = 7;
-    println(seen.size(), seen[report(2000)], seen[report(10)]);
+    println(seen.len(), seen[report(2000)], seen[report(10)]);
 
     // Taken apart and put back
     let parts = built.split("\n");

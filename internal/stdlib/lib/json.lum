@@ -163,7 +163,7 @@ impl Equal for Json {
             }
 
             case (Json.Object(mine), Json.Object(theirs)): {
-                if mine.size() != theirs.size() {
+                if mine.len() != theirs.len() {
                     return false;
                 }
 

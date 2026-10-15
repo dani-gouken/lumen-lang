@@ -21,7 +21,6 @@ import std.dict.{Dict};
 import std.io;
 import std.path;
 import std.regex;
-import std.result.{Result};
 
 pub const FILE = "lumen.json";
 

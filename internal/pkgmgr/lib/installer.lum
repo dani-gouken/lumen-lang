@@ -25,7 +25,6 @@ import std.os;
 import std.path;
 import std.semver;
 import std.format;
-import std.result.{Result};
 
 pub const VENDOR = "vendor";
 pub const MAP = "installed.json";

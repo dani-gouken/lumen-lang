@@ -846,14 +846,9 @@ Available everywhere, without an import:
 
 ### The standard library
 
-Everything else comes from the library built into `lumen`, one `import` away:
+Everything else comes from the library built into `lumen`. Its modules need no import: a file that writes `io.ask(...)` or `dict.empty<Int>()` has `std.io` or `std.dict`, unless it declares something of its own by that name (a variable of that name inside a function just hides the module there). The same goes for the types `Result`, `Dict`, `List` and `Set`, and for the traits of operators, `Ordered`, `Equal`, `Show` and the rest. An `import` is still how a module of the program or of a package comes in, and how a library module gets another name: `import std.strings as text;`.
 
 ```rust
-import std.strings;
-import std.arrays;
-import std.math;
-import std.io;
-
 fn main() -> Int {
     let line = io.ask("Numbers, separated by spaces: ") ?? "";
 

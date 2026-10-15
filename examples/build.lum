@@ -224,7 +224,7 @@ fn report(title: String, targets: [Target], wanted: [String], workers: Int) {
 
         case Result.Ok(outcomes): {
             let built = outcomes.values().count(outcome -> outcome.isBuilt());
-            println("  ${built} of ${outcomes.size()} built");
+            println("  ${built} of ${outcomes.len()} built");
         }
     }
 }

@@ -190,7 +190,7 @@ fn report(log: Log) {
     let bytes = hits.sumOf(hit -> hit.bytes);
 
     heading("Access log, ${first.format("dddd D MMMM YYYY")}");
-    println("${format.plural(count, "request", "requests")} from ${format.plural(clients.size(), "client", "clients")}, ${first.format("HH:mm")} to ${last.format("HH:mm")}");
+    println("${format.plural(count, "request", "requests")} from ${format.plural(clients.len(), "client", "clients")}, ${first.format("HH:mm")} to ${last.format("HH:mm")}");
     println("${format.bytes(bytes)} sent, ${format.bytes(bytes / count)} on average");
 
     heading("By outcome");

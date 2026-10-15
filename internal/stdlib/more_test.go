@@ -151,7 +151,7 @@ func TestOs(t *testing.T) {
 	expect(t, "import std.os;\nimport std.strings;", `
 		println(os.args(), os.platform() == `+quote(runtime.GOOS)+`);
 		let all = os.environment();
-		println(all.get("LUMEN_TEST_VARIABLE"), all.get("LUMEN_NO_SUCH_VARIABLE"), all.size() > 1);
+		println(all.get("LUMEN_TEST_VARIABLE"), all.get("LUMEN_NO_SUCH_VARIABLE"), all.len() > 1);
 	`,
 		"[] true",
 		"a=b null true",
@@ -337,7 +337,7 @@ func TestJson(t *testing.T) {
 				case Json.Number(x): { return "a number"; }
 				case Json.String(s): { return "a text of ${(json.texts([s]).items() ?? []).len()}"; }
 				case Json.Array(items): { return "${items.len()} items"; }
-				case Json.Object(fields): { return "${fields.size()} fields"; }
+				case Json.Object(fields): { return "${fields.len()} fields"; }
 			}
 		};
 		println(describe(doc), describe(Json.Null), describe(doc.find("tags") ?? Json.Null), describe(Json.String("x")));
@@ -497,14 +497,14 @@ func TestCsv(t *testing.T) {
 		import std.strings;
 		import std.arrays;`, `
 		let people = csv.table("name,age,city\nada,36,London\n\"grace, h\",45,\"New\nYork\"\nalan,41,\n").expect("a table");
-		println(people.header, people.size(), people.column("name"), people.column("nope"));
+		println(people.header, people.len(), people.column("name"), people.column("nope"));
 		println(people.cell(1, "age"), people.cell(1, "city") == "New\nYork", people.cell(2, "city") == "", people.cell(9, "age"), people.cell(0, "nope"), people.cell(-1, "age"));
 		let records = people.records();
 		println(records.len(), records[0].get("age"), records[1].keys());
 
 		// The rows a function accepts, and the table back as text
 		let older = people.where(fn(row: Dict<String>) -> Bool { return ((row.get("age") ?? "").parseInt() ?? 0) > 40; });
-		println(older.size(), older.column("name"));
+		println(older.len(), older.column("name"));
 		print(older.write());
 		println(csv.table(people.write()).expect("what was written").rows == people.rows, csv.table(people.write()).expect("x").write() == people.write());
 
@@ -701,21 +701,21 @@ func TestSet(t *testing.T) {
 		fn main() -> Int {
 			let seen = set.of(["a", "b", "a"]);
 			let other = set.of(["b", "c"]);
-			println(seen.size(), seen.isEmpty(), set.texts().isEmpty(), seen.has("a"), seen.has("z"), seen.items());
+			println(seen.len(), seen.isEmpty(), set.texts().isEmpty(), seen.has("a"), seen.has("z"), seen.items());
 			println(seen.union(other).items(), seen.intersection(other).items(), seen.difference(other).items(), other.difference(seen).items());
 			println(seen.isSubsetOf(other), set.of(["b"]).isSubsetOf(other), set.texts().isSubsetOf(other), seen.equals(set.of(["b", "a"])), seen.equals(other), seen.equals(set.of(["a"])));
-			println(seen.add("a"), seen.add("z"), seen.remove("a"), seen.remove("a"), seen.items(), seen.size());
+			println(seen.add("a"), seen.add("z"), seen.remove("a"), seen.remove("a"), seen.items(), seen.len());
 
 			// A copy is its own set
 			let copy = seen.copy();
 			copy.add("new");
-			println(seen.has("new"), copy.has("new"), copy.size() - seen.size());
+			println(seen.has("new"), copy.has("new"), copy.len() - seen.len());
 
 			// Numbers, and anything else given how to tell two apart
 			let numbers = set.ofNumbers([3, 3, 4, -1, 3]);
 			println(numbers.items(), numbers.has(4), numbers.has(5), numbers.filter(fn(n: Int) -> Bool { return n > 0; }).items());
 			let points = set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; });
-			println(points.add(Point { x: 1, y: 2 }), points.add(Point { x: 1, y: 2 }), points.add(Point { x: 2, y: 1 }), points.has(Point { x: 2, y: 1 }), points.size());
+			println(points.add(Point { x: 1, y: 2 }), points.add(Point { x: 1, y: 2 }), points.add(Point { x: 2, y: 1 }), points.has(Point { x: 2, y: 1 }), points.len());
 			println(points.items().map(fn(p: Point) -> Int { return p.x * 10 + p.y; }));
 
 			// The primes below 50, by crossing out
@@ -1025,7 +1025,7 @@ func TestHttpClient(t *testing.T) {
 		println(option.map(http.get("http://127.0.0.1:1/").reason(), kind), option.map(http.to(Method.Get, "ftp://x/").send().reason(), kind));
 		println(Method.Get.name(), http.methodOf("post"), http.methodOf("Delete") == Method.Delete, http.methodOf("fetch"));
 		let query = http.queryOf("a=1&b=x+y%26z&c&=d&");
-		println(query.keys(), query.get("b"), query.get("c") == "", http.queryOf("").size());
+		println(query.keys(), query.get("b"), query.get("c") == "", http.queryOf("").len());
 	`,
 		"200 true application/json application/json null",
 		`String("ada") go`,
@@ -1166,7 +1166,7 @@ func TestLibraryUnderMemoryPressure(t *testing.T) {
 					if parsed[i][1] != "value, ${i}" || found[i].groups[2] != toString(i * 7) { panic("row ${i} of round ${round} is wrong"); }
 					if option.then(tree.find("key${i}.2.n"), json.intOf) != i || option.then(tree.find("key${i}.1"), json.textOf) != "text ${i}" { panic("key ${i} of round ${round} is wrong"); }
 				}
-				total += parsed.len() + found.len() + (tree.fields() ?? dict.empty<Json>()).size() + bytes.len() / bytes.len();
+				total += parsed.len() + found.len() + (tree.fields() ?? dict.empty<Json>()).len() + bytes.len() / bytes.len();
 			}
 			println(total);
 			return 0;

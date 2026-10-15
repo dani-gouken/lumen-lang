@@ -236,7 +236,7 @@ fn parse(word: String) -> Result<Token, String> {
 
 	k.say("let names = list.of([\"b\", \"a\"])")
 	k.say("names.add(\"c\")")
-	k.expect("names.size()", "3")
+	k.expect("names.len()", "3")
 
 	k.say("let describe: fn(Shape) -> String = s -> \"${s.name()} of ${s.area()}\"")
 	k.expect("describe(shapes[1])", `"shape of 6"`)

@@ -2,7 +2,6 @@
 // on, `?.` to read through what may be missing, texts over several lines,
 // and tests that reach into function expressions.
 
-import std.result.{Result};
 import std.strings;
 import std.arrays;
 import std.dict;

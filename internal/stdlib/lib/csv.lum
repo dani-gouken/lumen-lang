@@ -96,7 +96,7 @@ fn asTable(all: [[String]]) -> Result<Table, ParseError> {
 }
 
 impl Table {
-    pub fn size() -> Int {
+    pub fn len() -> Int {
         return self.rows.len();
     }
 

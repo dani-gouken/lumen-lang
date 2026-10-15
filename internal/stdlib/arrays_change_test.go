@@ -694,13 +694,13 @@ impl Counter {
 func TestListChangesItsArrayInPlace(t *testing.T) {
 	expect(t, "import std.list;\nimport std.list.{List};\nimport std.arrays;\nstruct City { name: String; }\nenum Light { Red, Green }", `
 		let cities = list.of([City { name: "Oslo" }, City { name: "Lima" }, City { name: "Bern" }]);
-		println(cities.pop()?.name, cities.removeAt(0)?.name, cities.size(), cities.removeAt(1)?.name, cities.removeAt(-1)?.name);
+		println(cities.pop()?.name, cities.removeAt(0)?.name, cities.len(), cities.removeAt(1)?.name, cities.removeAt(-1)?.name);
 		cities.insert(0, City { name: "Lagos" });
 		cities.insert(99, City { name: "Kyiv" });
 		cities.insert(-1, City { name: "nowhere" });
 		println(cities.map(city -> city.name).toArray());
 		cities.clear();
-		println(cities.size(), cities.pop()?.name, cities.isEmpty());
+		println(cities.len(), cities.pop()?.name, cities.isEmpty());
 
 		let lights = list.empty<Light>();
 		lights.add(Light.Red);
@@ -708,7 +708,7 @@ func TestListChangesItsArrayInPlace(t *testing.T) {
 		println(lights.pop(), lights.pop(), lights.pop());
 
 		let maybe = list.of<Int?>([1, null]);
-		println(maybe.pop(), maybe.size(), maybe.pop(), maybe.size(), maybe.pop(), maybe.size());
+		println(maybe.pop(), maybe.len(), maybe.pop(), maybe.len(), maybe.pop(), maybe.len());
 
 		let nested = list.of([[1], [2, 3]]);
 		println(nested.removeAt(0), nested.toArray(), nested.pop(), nested.pop());
@@ -717,7 +717,7 @@ func TestListChangesItsArrayInPlace(t *testing.T) {
 		functions.add(n -> n + 1);
 		functions.insert(0, n -> n * 2);
 		let double = functions.removeAt(0);
-		if double != null { println(double(21), functions.size()); }
+		if double != null { println(double(21), functions.len()); }
 
 		// The array the list was made of is still not the list's
 		let source = [1, 2, 3];
@@ -737,7 +737,7 @@ func TestListChangesItsArrayInPlace(t *testing.T) {
 			work.add(n);
 			total += (work.removeAt(0) ?? 0) + (work.pop() ?? 0);
 		}
-		println(total, work.size(), work.isEmpty());
+		println(total, work.len(), work.isEmpty());
 	`,
 		"Bern Oslo 1 null null",
 		`["Lagos", "Lima", "Kyiv"]`,

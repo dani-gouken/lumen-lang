@@ -20,7 +20,6 @@ import std.os;
 import std.path;
 import std.format;
 import std.format.{Align};
-import std.result.{Result};
 
 const CURRENCY = "EUR";
 

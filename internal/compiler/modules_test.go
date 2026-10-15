@@ -699,7 +699,7 @@ func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
 			let found = scores.get("maths");
 			if found != null {
 				found.set("bob", 12);
-				println(found.get("ada"), found.keys(), found.size());
+				println(found.get("ada"), found.keys(), found.len());
 			}
 
 			let groups = dict.empty<List<String>>();
@@ -707,7 +707,7 @@ func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
 			let fruit = groups.get("fruit");
 			if fruit != null {
 				fruit.add("pear");
-				println(fruit.get(1), fruit.size(), fruit.toArray());
+				println(fruit.get(1), fruit.len(), fruit.toArray());
 			}
 
 			let rows = list.empty<Dict<Int>>();
@@ -716,7 +716,7 @@ func TestMethodsOnValuesFromNestedGenerics(t *testing.T) {
 			if row != null { println(row.get("bob"), row.has("zed")); }
 
 			let boxed = Box<List<Int>> { value: list.of([1, 2, 3]) };
-			println(boxed.get().size(), boxed.get().get(2), boxed.get().map<Int>(fn(n: Int) -> Int { return n * n; }).toArray());
+			println(boxed.get().len(), boxed.get().get(2), boxed.get().map<Int>(fn(n: Int) -> Int { return n * n; }).toArray());
 			return 0;
 		}
 	`}, "7 7 7\n19 [\"ada\", \"bob\"] 2\npear 2 [\"fig\", \"pear\"]\n12 false\n3 3 [1, 4, 9]\n")
@@ -1089,7 +1089,7 @@ func TestTheLibraryIsPrunedEarly(t *testing.T) {
 			for item in items { print(item, ""); }
 			let add = items.add;
 			add(4);
-			println(items.size(), (0..10).step(5).toArray());
+			println(items.len(), (0..10).step(5).toArray());
 			for i in (0..4).reversed() { print(i, ""); }
 			println();
 		}

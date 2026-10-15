@@ -5,7 +5,6 @@
 import std.csv;
 import std.dict;
 import std.dict.{Dict};
-import std.result.{Result};
 import std.strings;
 
 const MONTH = """date,category,amount,note

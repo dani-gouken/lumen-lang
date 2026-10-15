@@ -211,7 +211,7 @@ impl<T> Channel<T> {
     // closed channel stops the program: whoever closes says nothing more
     // will come.
     pub fn send(value: T) {
-        while self.capacity > 0 && self.length() >= self.capacity && !self.closed {
+        while self.capacity > 0 && self.len() >= self.capacity && !self.closed {
             waitIn(self.senders);
         }
 
@@ -279,14 +279,14 @@ impl<T> Channel<T> {
     }
 
     // How many values are waiting to be received.
-    pub fn length() -> Int {
+    pub fn len() -> Int {
         return self.items.len() - self.head;
     }
 
     // The next value in an array of one, or an empty array once the
     // channel is closed and empty: a value may itself be null.
     fn take() -> [T] {
-        while self.length() == 0 {
+        while self.len() == 0 {
             if self.closed {
                 let none: [T] = [];
                 return none;

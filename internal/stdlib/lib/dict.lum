@@ -82,7 +82,7 @@ impl<V> IndexedSet<String, V> for Dict<V> {
 }
 
 impl<V> Dict<V> {
-    pub fn size() -> Int {
+    pub fn len() -> Int {
         return self.count;
     }
 

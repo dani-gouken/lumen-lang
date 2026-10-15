@@ -3,7 +3,7 @@
 //
 //     let names = list.of(["ada", "linus"]);
 //     names.add("grace");
-//     names.filter(n -> n.len() > 3).size()
+//     names.filter(n -> n.len() > 3).len()
 
 import std.arrays;
 import std.ops.{Iterable, Indexed, IndexedSet};
@@ -44,7 +44,7 @@ pub fn of<T>(items: [T]) -> List<T> {
 }
 
 impl<T> List<T> {
-    pub fn size() -> Int {
+    pub fn len() -> Int {
         return self.items.len();
     }
 

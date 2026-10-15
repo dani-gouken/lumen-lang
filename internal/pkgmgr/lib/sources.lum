@@ -17,7 +17,6 @@ import std.io;
 import std.os;
 import std.path;
 import std.semver;
-import std.result.{Result};
 
 pub struct Sources {
     // The folder of the project's lumen.json: path repositories start there.

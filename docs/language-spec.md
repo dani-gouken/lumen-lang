@@ -155,6 +155,7 @@ Full description: [modules.md](modules.md).
 - A local variable hides a module of the same name.
 - `extern fn name(params) -> Type;` declares a function without a body, provided by the runtime under its full name (module path and name). Only the functions of the standard library exist there today.
 - The package `std` is the [standard library](stdlib.md), built into the compiler: `import std.strings;`.
+- Implicit imports: a file of the program that writes the name of a module of `std` before a dot (`dict.empty<Int>()`) is read as if it imported that module, unless it imports or declares something of that name at its top level. It is read as importing `Result`, `Template`, `Dict`, `List`, `Set` and the traits of `std.ops` (`Equal`, `Ordered`, `Show`, `Add`, `Subtract`, `Multiply`, `Divide`, `Iterable`, `Indexed`, `IndexedSet`) when it names them and declares and imports none of its own. The files of `std` write their imports.
 - The program starts in the `main` of the entry file, which cannot itself be imported. Only the entry file may have statements outside a function: in a module they are `E8007`.
 - A project file, [`lumen.json`](project.md), can name the entry file, move the folder paths start at (`root`), and name folders of modules outside it (`packages`). It is not part of the language: a program means the same with or without it, given the same files at the same module paths.
 

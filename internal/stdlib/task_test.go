@@ -222,7 +222,7 @@ func TestChannels(t *testing.T) {
 			});
 			hand.each(fn(n: Int) { log.push("got ${n}"); });
 			println(log.join(", "));
-			println(sender.wait(), hand.receive(), hand.isClosed(), hand.length());
+			println(sender.wait(), hand.receive(), hand.isClosed(), hand.len());
 
 			// With room for two: the sender runs ahead by two, then waits
 			let trace: [String] = [];
@@ -232,7 +232,7 @@ func TestChannels(t *testing.T) {
 				queue.close();
 			});
 			task.pause();
-			trace.push("len ${queue.length()}");
+			trace.push("len ${queue.len()}");
 			queue.each(fn(word: String) { trace.push("-${word}"); });
 			println(trace.join(" "));
 
@@ -291,7 +291,7 @@ func TestChannels(t *testing.T) {
 			let count = 0;
 			let inOrder = true;
 			stream.each(fn(n: Int) { if n != count { inOrder = false; } count++; });
-			println(count, inOrder, stream.length());
+			println(count, inOrder, stream.len());
 			return 0;
 		}`,
 		"send 1, got 1, sent 1, send 2, got 2, sent 2, send 3, got 3, sent 3",

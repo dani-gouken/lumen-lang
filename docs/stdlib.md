@@ -366,7 +366,7 @@ println(names[0]);
 
 **Methods that change the list**
 
-They change the array the list holds, as the functions of [`std.arrays`](#stdarrays) that change an array do. As there, do not take items out of a list inside a `for ... in` over that same list: the loop counted them before it started. Loop over `names.toArray()`, or use `while` with `names.size()`.
+They change the array the list holds, as the functions of [`std.arrays`](#stdarrays) that change an array do. As there, do not take items out of a list inside a `for ... in` over that same list: the loop counted them before it started. Loop over `names.toArray()`, or use `while` with `names.len()`.
 
 | Method | Does |
 |--------|------|
@@ -382,7 +382,7 @@ They change the array the list holds, as the functions of [`std.arrays`](#stdarr
 
 | Method | Result |
 |--------|--------|
-| `size()`, `isEmpty()` | |
+| `len()`, `isEmpty()` | |
 | `get(index) -> T?` | The item there, or `null` |
 | `first() -> T?`, `last() -> T?` | |
 | `find(wanted) -> T?`, `findIndex(wanted) -> Int?` | |
@@ -429,7 +429,7 @@ println(ages.get("nobody") ?? 0);
 | `update(key, start, change)` | Sets the key to what a function makes of its value, or of `start` if it has none. Counting: `counts.update(word, 0, n -> n + 1)` |
 | `has(key) -> Bool` | |
 | `remove(key) -> Bool` | Removes a key; whether it was there |
-| `size()`, `isEmpty()` | |
+| `len()`, `isEmpty()` | |
 | `keys() -> [String]` | The keys, in the order they were first set |
 | `sortedKeys() -> [String]` | In alphabetical order |
 | `entries() -> [(String, V)]` | Each key with its value: `for (name, age) in ages.entries() { ... }` |
@@ -926,7 +926,7 @@ date.replace("on 2026-10-13", "$3/$2/$1")           // on 13/10/2026
 | `table.column(name) -> [String]?`, `cell(row, name) -> String?` | |
 | `table.records() -> [Dict<String>]` | Each row as a dictionary from column to value |
 | `table.where(wanted) -> Table` | The rows a function accepts |
-| `table.write()`, `size()`, `header`, `rows` | |
+| `table.write()`, `len()`, `header`, `rows` | |
 
 ---
 
@@ -940,7 +940,7 @@ Values without repeats. A set tells its items apart by a text worked out from ea
 | `set.of(texts)`, `set.ofNumbers(numbers)` | From an array |
 | `set.by(key)` | Of anything, given how to tell two apart: `set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; })` |
 | `add(item) -> Bool`, `addAll(items)`, `remove(item) -> Bool`, `has(item)` | `add` says whether the item was new |
-| `size()`, `isEmpty()`, `items()`, `copy()` | Items come in the order they were first added |
+| `len()`, `isEmpty()`, `items()`, `copy()` | Items come in the order they were first added |
 | `union(other)`, `intersection(other)`, `difference(other)`, `filter(wanted)` | New sets |
 | `isSubsetOf(other)`, `a == b` | Two sets are equal when they hold the same items, in whatever order |
 | `for item in set` | Goes through the items |
@@ -1172,7 +1172,7 @@ One task runs at a time, until it waits: for a task, a channel, `time.sleep`, th
 | `task.pause()`, `task.current()` | Lets the others have a turn; the number of the task that asks |
 | `task.channel<T>(capacity) -> Channel<T>` | Capacity 0: a send waits for its receive |
 | `channel.send(value)`, `receive() -> T?`, `close()` | `receive` gives `null` once closed and empty |
-| `channel.each(action)`, `drain()`, `length()`, `isClosed()` | |
+| `channel.each(action)`, `drain()`, `len()`, `isClosed()` | |
 
 A task that stops does not stop the program: whoever waits for it gets the failure. If nobody ever does, the failure ends the program once the other tasks are done. Tasks that all wait for each other end it with error `R0009`.
 

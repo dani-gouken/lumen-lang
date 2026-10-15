@@ -26,7 +26,6 @@ import std.dict;
 import std.dict.{Dict};
 import std.hash;
 import std.io;
-import std.result.{Result};
 
 pub const FILE = "lumen.lock";
 

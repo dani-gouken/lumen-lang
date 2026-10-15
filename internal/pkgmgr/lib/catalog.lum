@@ -5,7 +5,6 @@
 import manifest.{Manifest};
 import std.semver;
 import std.semver.{Version};
-import std.result.{Result};
 
 // Where the files of one version are.
 pub struct Source {

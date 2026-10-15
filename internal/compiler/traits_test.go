@@ -458,14 +458,14 @@ func TestStructsInBracketsAndLoops(t *testing.T) {
 		names[1] = "grace";
 		names.add("alan");
 		for name in names { print(name, ""); }
-		println(names[0], names[2], first(names), names.size());
+		println(names[0], names[2], first(names), names.len());
 
 		let ages = dict.empty<Int>();
 		ages["ada"] = 36;
 		ages["bob"] = 41;
 		ages["ada"] = (ages["ada"] ?? 0) + 1;
 		for name in ages { print(name, ages[name], ""); }
-		println(ages["nobody"], ages.size());
+		println(ages["nobody"], ages.len());
 
 		let seen = set.of(["x", "y", "x"]);
 		for item in seen { print(item, ""); }
@@ -533,7 +533,7 @@ func TestMethodsAsValuesAndFieldDefaults(t *testing.T) {
 		// What a literal leaves out has the value the struct gives it
 		let plain = Config { name: "a" };
 		let custom = Config { name: "b", port: 1, tags: ["x"], owner: "ada", retry: Retry { times: 9 } };
-		println(plain.host, plain.port, plain.tags, plain.retry, plain.owner, plain.headers.size());
+		println(plain.host, plain.port, plain.tags, plain.retry, plain.owner, plain.headers.len());
 		println(custom.host, custom.port, custom.tags, custom.retry, custom.owner);
 
 		// Each literal gets a value of its own
@@ -541,7 +541,7 @@ func TestMethodsAsValuesAndFieldDefaults(t *testing.T) {
 		plain.headers.set("k", "v");
 		plain.retry.times = 0;
 		let fresh = Config { name: "c" };
-		println(plain.tags, fresh.tags, fresh.headers.size(), fresh.retry.times);
+		println(plain.tags, fresh.tags, fresh.headers.len(), fresh.retry.times);
 
 		let shelf = Shelf<Int> { };
 		shelf.items.push(4);
@@ -784,11 +784,17 @@ func TestMethodsOfBuiltinTypesNeedNoImport(t *testing.T) {
 		}
 	}
 
-	// The name of a module is only known where it is imported
+	// The name of a module of the library is known without its import,
+	// unless the file has something of its own by that name
 	errs = errors.NewHandler()
 	Compile("fn main() { println(arrays.range(0, 3).len()); }", "test.lum", errs)
-	if !errs.HasErrors() || !strings.Contains(errs.Diagnostics[0].Message, "arrays") {
-		t.Errorf("expected the module to be unknown without its import, got %v", errs.Diagnostics)
+	if errs.HasErrors() {
+		t.Errorf("expected the module to be imported implicitly, got %v", errs.Diagnostics)
+	}
+	errs = errors.NewHandler()
+	Compile("fn arrays() -> Int { return 1; }\nfn main() { println(arrays.range(0, 3).len()); }", "test.lum", errs)
+	if !errs.HasErrors() {
+		t.Error("expected the function of the file to hide the module")
 	}
 }
 

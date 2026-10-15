@@ -54,7 +54,7 @@ fn main() -> Int {
 
     table.sort((a, b) -> a.times > b.times);
 
-    println(words.len(), "words,", counts.size(), "different");
+    println(words.len(), "words,", counts.len(), "different");
     println();
 
     for row in table.slice(0, 6).toArray() {

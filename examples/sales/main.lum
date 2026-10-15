@@ -229,7 +229,7 @@ fn report(table: Table, source: String, output: String?) -> Int {
 
     if flawed.len() > 0 {
         println("");
-        println("${format.plural(flawed.len(), "row", "rows")} left out of ${table.size()}");
+        println("${format.plural(flawed.len(), "row", "rows")} left out of ${table.len()}");
 
         for line in flawed {
             println("  " + line);

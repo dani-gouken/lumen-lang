@@ -16,7 +16,6 @@ import std.path;
 import std.strings;
 import std.arrays;
 import std.format;
-import std.result.{Result};
 
 const usage = """
     Usage: lumen fmt [--check] [file.lum | folder]...

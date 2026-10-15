@@ -6,7 +6,6 @@
 // closures kept in arrays, optionals and loops that remove as they go.
 
 import std.arrays;
-import std.result.{Result};
 import std.strings;
 
 // --- A stack machine ---
