@@ -169,7 +169,7 @@ CALL r_func argc
    - Save all current registers
 2. Create new register file for callee
 3. Copy arguments from r(func_reg+1)..r(func_reg+argc) to callee's r0..r(argc-1)
-4. Initialize remaining registers to Null
+4. Leave the remaining registers as they are: until the function writes one, it holds what an earlier call left there, or null. Code must write a register before reading it, as the compiler's always does; the machine only makes sure that whatever is there is safe to hold (see [memory-management.md](memory-management.md#gc-roots))
 5. Jump to function address
 6. Increment frame counter
 

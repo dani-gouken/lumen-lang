@@ -533,6 +533,11 @@ func (vm *VM) markTasks() {
 			vm.markObject(&c.function.header)
 		}
 		vm.markStack(c.stk, c.base+len(c.regs))
+		if c.stk != vm.stk {
+			// Where the task whose turn it is stopped last is not where
+			// it is now
+			clearAbove(c.stk, c.base+len(c.regs))
+		}
 		for i := 0; i < c.frameCount; i++ {
 			if fn := c.frames[i].function; fn != nil {
 				vm.markObject(&fn.header)

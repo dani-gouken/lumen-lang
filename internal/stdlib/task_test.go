@@ -626,3 +626,78 @@ func TestClientAsksSeveralServersAtOnce(t *testing.T) {
 		t.Errorf("expected the requests to overlap, they took %v", took)
 	}
 }
+
+// A task that waits deep inside its calls holds values in the registers of
+// each of them, while the others run, return and collect many times: the
+// registers a call leaves behind are cleared by the collector, those of a
+// task that waits are not.
+func TestTasksWaitingDeepInsideTheirCalls(t *testing.T) {
+	out, err, machine := program(t, taskImports+`
+		struct Leaf { depth: Int; label: String; }
+
+		// Each level holds a text and a struct of its own across the pause
+		// at the bottom, and checks them on the way back up
+		fn descend(worker: Int, depth: Int) -> Int {
+			let label = "w${worker} d${depth}";
+			let leaf = Leaf { depth: depth, label: label + "!" };
+			let below = 0;
+
+			if depth == 0 {
+				task.pause();
+			} else {
+				below = descend(worker, depth - 1);
+			}
+
+			if leaf.label != label + "!" || leaf.depth != depth {
+				panic("level ${depth} of worker ${worker} was spoiled");
+			}
+
+			return below + depth;
+		}
+
+		// What churns: calls that leave texts and arrays in their registers
+		fn churn(rounds: Int) -> Int {
+			let total = 0;
+
+			for round in 0..rounds {
+				let parts: [String] = [];
+
+				for i in 0..20 {
+					parts.push("part ${round}.${i}");
+				}
+
+				total += parts.join("").len() % 7;
+			}
+
+			return total;
+		}
+
+		fn main() -> Int {
+			let workers: [Task<Int>] = [];
+
+			for worker in 0..8 {
+				workers.push(task.start(fn() -> Int {
+					let sum = 0;
+
+					for round in 0..10 {
+						sum += descend(worker, 30 + worker);
+						sum += churn(30);
+					}
+
+					return sum;
+				}));
+			}
+
+			println(task.all(workers).map(sums -> sums.len()));
+			return 0;
+		}`, 2<<20)
+	if err != nil {
+		t.Fatalf("runtime error: %v\nafter printing:\n%s", err, out)
+	}
+	if out != "Ok(8)\n" {
+		t.Errorf("unexpected output: %q", out)
+	}
+	if machine.Collections() < 10 {
+		t.Errorf("expected the heap to be collected many times, got %d", machine.Collections())
+	}
+}

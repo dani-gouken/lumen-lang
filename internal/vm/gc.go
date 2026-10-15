@@ -24,6 +24,7 @@ func (vm *VM) markRoots() {
 	// The registers of the task whose turn it is: those of every call in
 	// progress, which are the stack up to the end of the innermost call
 	vm.markStack(vm.stk, vm.base+len(vm.regs))
+	clearAbove(vm.stk, vm.base+len(vm.regs))
 	for i := 0; i < len(vm.regs); i++ {
 		vm.markValue(vm.regs[i])
 	}
@@ -88,6 +89,28 @@ func (vm *VM) markStack(stack *regStack, top int) {
 	for _, upval := range stack.open {
 		vm.markObject(&upval.header)
 	}
+}
+
+// clearAbove makes null what calls that returned left on a stack above
+// its top, which is not marked and may be freed: a call that takes those
+// registers again finds nothing freed in them, and the collector does not
+// follow it. A call does not clear its registers (see enter): every value
+// below top was marked by each collection since it was written there, or
+// made null by one.
+//
+// top must be where the calls of the stack end now: that of the task
+// whose turn it is, or that of another task where it stopped.
+func clearAbove(stack *regStack, top int) {
+	if stack == nil {
+		return
+	}
+	if used := min(stack.used, len(stack.vals)); used > top {
+		left := stack.vals[top:used]
+		for i := range left {
+			left[i] = valueNull
+		}
+	}
+	stack.used = top
 }
 
 // markValue marks the object a value points at, if it does.

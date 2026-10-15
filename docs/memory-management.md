@@ -260,6 +260,15 @@ Objects reachable from these locations are never collected:
 3. **Pins** - values a native function is working with, and what a protected call returned until the program takes it
 4. **Caches** - the function objects made once (see `NEWFUNC`), the texts of one character
 
+A call does not clear its registers, so those of a new call may still hold
+what a call that returned left there. A collection marks a stack only up to
+the end of its innermost call and makes null what lies above it, up to the
+highest register used since the last collection. Every value below the end
+was then marked by each collection since it was written, or made null by
+one: a call that takes registers again never holds an object that was freed.
+The end is that of the task whose turn it is, where it is now, and that of
+each other task where it stopped.
+
 ### What is counted
 
 Every object counts against the limit for its own size plus what it holds

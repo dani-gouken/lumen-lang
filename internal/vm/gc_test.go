@@ -279,3 +279,94 @@ func TestGCKeepsWhatAClosureHeldAsAValueCaptured(t *testing.T) {
 		t.Errorf("expected the array, the closure, its variable and the text to be kept, got %d objects", got)
 	}
 }
+
+// A call does not clear its registers. What a call that returned left
+// above the top is made null by the next collection, which frees it: a
+// call that takes those registers later, and has the heap collected
+// before it writes them, must not lead the collector to what was freed.
+func TestRegistersLeftByACallAreNotFollowedOnceFreed(t *testing.T) {
+	chunk := NewChunk()
+	chunk.Code = []Instr{
+		// main
+		NewInstr(OpCALLK, 1, 0, 1), // leave()
+		NewInstr(OpGC, 0, 0, 0),    // frees what leave left
+		NewInstr(OpCALLK, 1, 0, 2), // reads()
+		NewInstr(OpLOADNULL, 0, 0, 0),
+		NewInstr(OpRET, 0, 0, 0),
+		// leave: three arrays in its registers, and nothing returned
+		NewInstr(OpNEWARRAY, 1, 4, 0),
+		NewInstr(OpNEWARRAY, 2, 4, 0),
+		NewInstr(OpNEWARRAY, 3, 4, 0),
+		NewInstr(OpLOADNULL, 0, 0, 0),
+		NewInstr(OpRET, 0, 0, 0),
+		// reads: the same registers, collected before anything is written
+		NewInstr(OpGC, 0, 0, 0),
+		NewInstr(OpLOADNULL, 0, 0, 0),
+		NewInstr(OpRET, 0, 0, 0),
+	}
+	chunk.Prototypes = []FunctionPrototype{
+		{Name: "main", CodeStart: 0, CodeSize: 5, RegisterCount: 2},
+		{Name: "leave", CodeStart: 5, CodeSize: 5, RegisterCount: 4},
+		{Name: "reads", CodeStart: 10, CodeSize: 3, RegisterCount: 4},
+	}
+	if err := Verify(chunk); err != nil {
+		t.Fatalf("does not verify: %v", err)
+	}
+
+	machine := NewVM()
+	var freed []*ObjHeader
+	machine.heap.onFree = func(header *ObjHeader) {
+		if header.Type == ObjTypeArray {
+			freed = append(freed, header)
+		}
+	}
+	if _, err := machine.Exec(chunk); err != nil {
+		t.Fatalf("execution failed: %v", err)
+	}
+
+	if len(freed) != 3 {
+		t.Fatalf("expected the three arrays to be freed, %d were", len(freed))
+	}
+	// A freed object is off the list of objects, so nothing unmarks it: one
+	// marked is one the collector was led to after it was freed
+	for _, header := range freed {
+		if header.Marked {
+			t.Errorf("a freed array was marked by a later collection")
+		}
+	}
+}
+
+// The registers of a task that does not have the turn are cleared above
+// where it stopped; those of the task that has it, above where it is,
+// not where it stopped the last time.
+func TestEachStackIsClearedAboveItsOwnTop(t *testing.T) {
+	running := newRegStack(16)
+	waiting := newRegStack(16)
+	for i := 0; i < 16; i++ {
+		running.vals[i] = NewInt(int64(i))
+		waiting.vals[i] = NewInt(int64(i))
+	}
+	running.used, waiting.used = 16, 16
+
+	clearAbove(running, 12)
+	clearAbove(waiting, 5)
+	for i, v := range running.vals {
+		if held := i < 12; held != (v != valueNull) {
+			t.Errorf("running stack: register %d is %s", i, v)
+		}
+	}
+	for i, v := range waiting.vals {
+		if held := i < 5; held != (v != valueNull) {
+			t.Errorf("waiting stack: register %d is %s", i, v)
+		}
+	}
+	if running.used != 12 || waiting.used != 5 {
+		t.Errorf("expected what is used to be the tops, got %d and %d", running.used, waiting.used)
+	}
+
+	// What was never used is not looked at again
+	clearAbove(waiting, 3)
+	if waiting.vals[3] != valueNull || waiting.vals[2] == valueNull {
+		t.Errorf("expected the registers from 3 to be cleared, and those below kept")
+	}
+}

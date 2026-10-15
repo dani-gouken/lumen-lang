@@ -14,6 +14,11 @@ import "fmt"
 type regStack struct {
 	vals []Value
 
+	// used is the most registers the calls have taken since the collector
+	// last looked: those above the top may still hold what a call that
+	// returned left there (see markStack)
+	used int
+
 	// The upvalues that name a register of this stack, from the lowest
 	// register to the highest. Calls return from the top, so the ones to
 	// close are always at the end.
@@ -72,11 +77,13 @@ func (vm *VM) enter(fn *FunctionObj, args []Value) error {
 	})
 	vm.frameCount++
 
-	// Every register is given a value: what an earlier call left there is
-	// not to be taken for something this one holds
+	// The registers besides the arguments keep what an earlier call left
+	// there: the code of a function writes a register before it reads it.
+	// What is left is a value the collector keeps, or null (see markStack)
 	regs := stack.vals[base:top:top]
-	for i := copy(regs, args); i < len(regs); i++ {
-		regs[i] = valueNull
+	copy(regs, args)
+	if top > stack.used {
+		stack.used = top
 	}
 
 	vm.currentFunction = fn
