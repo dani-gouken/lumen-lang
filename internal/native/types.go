@@ -225,7 +225,7 @@ func result(instr vm.Instr, kinds []kind, consts []vm.Value, returns []kind) kin
 	case vm.OpTONUM:
 		// A Float, or a failure
 		return floatKind
-	case vm.OpTOINT, vm.OpBAND, vm.OpBOR, vm.OpBXOR, vm.OpSHL, vm.OpSHR:
+	case vm.OpTOINT, vm.OpBAND, vm.OpBOR, vm.OpBXOR, vm.OpSHL, vm.OpSHR, vm.OpARRLEN:
 		// An Int, or a failure
 		return intKind
 	}

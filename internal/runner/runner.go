@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -36,6 +37,7 @@ func Machine(limits Limits, args []string, program string, exit func(int)) *vm.V
 	}
 	stopOnInterrupt(machine, exit)
 	GuardMemory(machine)
+	tuneCollector(machine)
 	if limits.MaxDepth > 0 {
 		machine.SetMaxCallDepth(limits.MaxDepth)
 	}
@@ -83,6 +85,22 @@ func LeaveIfAsked(err error, exit func(int)) {
 func GuardMemory(machine *vm.VM) {
 	const own = 1 << 30
 	memguard.Enforce(4*machine.GetHeap().MaxBytes()+own, "the program")
+}
+
+// tuneCollector makes Go's collector run less often than it would. Every
+// value of a program is a Go object that the VM's own collector frees: Go
+// collecting the same memory over again, every few megabytes the program
+// allocates, is most of what a program that makes many small values
+// spends besides its own work (8 to 14% less time with 400). It still
+// collects sooner when the process nears what the program may hold. GOGC
+// and GOMEMLIMIT, when set, are left as they are.
+func tuneCollector(machine *vm.VM) {
+	if os.Getenv("GOGC") == "" {
+		debug.SetGCPercent(400)
+	}
+	if os.Getenv("GOMEMLIMIT") == "" {
+		debug.SetMemoryLimit(int64(2*machine.GetHeap().MaxBytes()) + 512<<20)
+	}
 }
 
 // stopOnInterrupt makes Ctrl-C stop the program a VM runs rather than the

@@ -220,6 +220,13 @@ func (w *writer) typed() bool {
 	case vm.OpNOP:
 		return w.frameless
 
+	case vm.OpGETFIELD, vm.OpSETFIELD, vm.OpGETINDEX, vm.OpSETELEM, vm.OpARRLEN:
+		if w.frameless {
+			return false
+		}
+		w.heap()
+		return true
+
 	case vm.OpJMP:
 		if !w.frameless {
 			return false
@@ -318,4 +325,76 @@ func (w *writer) arithmetic(dest int, x, y operand) bool {
 		w.store(dest, floatKind, "math.Mod("+a+", "+b+")")
 	}
 	return true
+}
+
+// heap writes the instructions on fields and elements with the common
+// case where they are: a field where the instruction found it last, an
+// element of an array within its length. Anything else, failures
+// included, is left to the function that does the instruction the loop's
+// way.
+func (w *writer) heap() {
+	in := w.instr
+	A, B, C := int(in.A), int(in.B), int(in.C)
+	instr := fmt.Sprintf("Instr{Op: %d, A: %d, B: %d, C: %d}", in.Op, in.A, in.B, in.C)
+	// slow is the other way: the registers that are Go variables given to
+	// the VM first, the one written taken back after
+	slow := func(call string) {
+		w.line("} else {")
+		at := w.pc - w.start
+		next := vm.Instr{}
+		if at+1 < len(w.code) {
+			next = w.code[at+1]
+		}
+		for _, k := range reads(in, next) {
+			if w.local[k] {
+				w.line("r[%d] = %s", k, w.boxed(k))
+			}
+		}
+		w.at()
+		w.line("if err := %s; err != nil { return NewNull(), err }", call)
+		if dest, ok := writes(in); ok && w.local[dest] {
+			w.line("%s = intOf(r[%d])", w.name(dest), dest)
+		}
+		w.line("}")
+	}
+	// index is how an instruction reads an index: the test that it is an
+	// Int, and its value
+	index := func(k int) (string, string) {
+		switch {
+		case w.local[k]:
+			return "true", fmt.Sprintf("int(%s)", w.name(k))
+		case w.kinds[k] == intKind:
+			return "true", fmt.Sprintf("int(intOf(r[%d]))", k)
+		}
+		return fmt.Sprintf("r[%d].IsInt()", k), fmt.Sprintf("int(intOf(r[%d]))", k)
+	}
+
+	switch in.Op {
+	case vm.OpGETFIELD:
+		w.line("if t, known := header(r[%d]), &kept.fields[%d]; t != nil && t.Type == ObjTypeObject && (*ObjectObj)(unsafe.Pointer(t)).shape == known.shape && known.slot >= 0 {", B, w.pc)
+		w.line("r[%d] = (*ObjectObj)(unsafe.Pointer(t)).slots[known.slot]", A)
+		slow(fmt.Sprintf("vm.compiledGETFIELD(kept, %d, %s)", w.pc, instr))
+
+	case vm.OpSETFIELD:
+		w.line("if t, known := header(r[%d]), &kept.fields[%d]; t != nil && t.Type == ObjTypeObject && !t.Frozen && (*ObjectObj)(unsafe.Pointer(t)).shape == known.shape && known.next == nil {", A, w.pc)
+		w.line("(*ObjectObj)(unsafe.Pointer(t)).slots[known.slot] = %s", w.boxed(C))
+		slow(fmt.Sprintf("vm.compiledSETFIELD(kept, %d, %s)", w.pc, instr))
+
+	case vm.OpGETINDEX:
+		isInt, at := index(C)
+		w.line("if t := header(r[%d]); t != nil && t.Type == ObjTypeArray && %s && uint(%s) < uint(len((*ArrayObj)(unsafe.Pointer(t)).elements)) {", B, isInt, at)
+		w.line("r[%d] = (*ArrayObj)(unsafe.Pointer(t)).elements[%s]", A, at)
+		slow(fmt.Sprintf("vm.compiledGETINDEX(%s)", instr))
+
+	case vm.OpSETELEM:
+		isInt, at := index(B)
+		w.line("if t := header(r[%d]); t != nil && t.Type == ObjTypeArray && !t.Frozen && %s && uint(%s) < uint(len((*ArrayObj)(unsafe.Pointer(t)).elements)) {", A, isInt, at)
+		w.line("(*ArrayObj)(unsafe.Pointer(t)).elements[%s] = %s", at, w.boxed(C))
+		slow(fmt.Sprintf("vm.compiledSETELEM(%s)", instr))
+
+	case vm.OpARRLEN:
+		w.line("if t := header(r[%d]); t != nil && t.Type == ObjTypeArray {", B)
+		w.store(A, intKind, fmt.Sprintf("int64(len((*ArrayObj)(unsafe.Pointer(t)).elements))"))
+		slow(fmt.Sprintf("vm.compiledARRLEN(%s)", instr))
+	}
 }

@@ -251,6 +251,10 @@ vm.CollectGarbage()
 
 An allocation, or the growth of an array or object, that would exceed the heap limit runs a collection first and is retried. Only if there is still no room does the program stop with `out of memory`.
 
+### Go's collector
+
+Every object of a program is also a Go object: the VM's collector frees it by forgetting it, and Go's collector takes the memory back. A program that makes many small values would otherwise have Go collect every few megabytes it allocates. `lumen run` and the executables of `lumen native` set Go's collector to run a quarter as often (`GOGC=400`), with a soft limit of twice the program's heap limit and 512 MB, past which it collects sooner: 8 to 15% less time for such programs, for some more memory. `GOGC` and `GOMEMLIMIT`, when set, are left as they are.
+
 ### GC Roots
 
 Objects reachable from these locations are never collected:

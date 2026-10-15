@@ -1,0 +1,142 @@
+// Fields and elements, read and written by compiled code the short way,
+// and every way that is not short: what fails, a string instead of an
+// array, a constant, a method that goes too deep.
+import std.result.{attempt};
+
+const PRIMES = [2, 3, 5, 7];
+
+struct Point {
+    x: Int;
+    y: Int;
+}
+
+impl Point {
+    fn moved(dx: Int, steps: Int) -> Point {
+        let p = Point { x: self.x, y: self.y };
+
+        for i in 0..steps {
+            p.x = p.x + dx;
+            p.y = p.y + i;
+        }
+
+        return p;
+    }
+
+    fn deeper(n: Int) -> Int {
+        if n == 0 {
+            return self.x;
+        }
+
+        return self.deeper(n - 1) + 1;
+    }
+}
+
+trait Shape {
+    fn area() -> Int;
+}
+
+struct Square {
+    side: Int;
+}
+
+impl Shape for Square {
+    fn area() -> Int {
+        return self.side * self.side;
+    }
+}
+
+struct Strip {
+    cells: [Int];
+}
+
+impl Shape for Strip {
+    fn area() -> Int {
+        let total = 0;
+
+        for i in 0..self.cells.len() {
+            total += self.cells[i];
+        }
+
+        return total;
+    }
+}
+
+fn sumTo(items: [Int], n: Int) -> Int {
+    let total = 0;
+
+    for i in 0..n {
+        total += items[i];
+    }
+
+    return total;
+}
+
+fn letters(text: String) -> String {
+    let out = "";
+
+    for i in 0..text.len() {
+        if i % 2 == 0 {
+            out = out + text[i];
+        }
+    }
+
+    return out;
+}
+
+fn report(name: String, job: fn() -> Int) {
+    match attempt(job) {
+        case Result.Ok(n): {
+            println(name, "gave", n);
+        }
+
+        case Result.Err(failure): {
+            println(
+                name,
+                "failed:",
+                failure.message,
+                "with",
+                failure.stack.len(),
+                "calls in progress",
+            );
+
+            println(failure.trace());
+        }
+    }
+}
+
+fn main() -> Int {
+    let p = Point { x: 1, y: 2 }.moved(3, 10);
+    println(p.x, p.y);
+
+    let shapes: [Shape] = [Square { side: 4 }, Strip { cells: [1, 2, 3, 4] }, Square { side: 7 }];
+    let areas = shapes.map(s -> s.area());
+    println(areas, letters("compiled code"), "héllo wörld".len(), letters("héllo wörld"));
+
+    let grid = [0, 0, 0, 0, 0, 0, 0, 0];
+
+    for i in 0..grid.len() {
+        grid[i] = i * i;
+    }
+
+    println(grid, sumTo(grid, 8));
+    report("an index past the end", () -> sumTo(grid, 9));
+
+    // An array grown by push has room past its end, which is not its own
+    let grown: [Int] = [];
+
+    for i in 0..5 {
+        grown.push(i * 10);
+    }
+
+    report("an index past the end of a grown array", () -> sumTo(grown, 6));
+
+    report("a write into a constant", fn() -> Int {
+        let primes = PRIMES;
+        primes[1] = 4;
+        return primes[1];
+    });
+
+    report("a method that goes too deep", () -> Point { x: 0, y: 0 }.deeper(20000));
+    report("a method within the limit", () -> Point { x: 5, y: 0 }.deeper(5000));
+    return 0;
+}

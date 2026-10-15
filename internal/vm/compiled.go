@@ -382,16 +382,7 @@ func (vm *VM) compiledCALL(instr Instr) error {
 		if vm.interrupted.Load() || vm.outOfSteps() {
 			return vm.stopped()
 		}
-		if err := vm.enter(funcObj, args); err != nil {
-			return err
-		}
-		result, err := vm.compiledCall()
-		if err != nil {
-			return err
-		}
-		vm.leave()
-		vm.regs[0] = result
-		return nil
+		return vm.callFound(funcObj, funcReg+1, funcReg+1+nargs)
 	case ObjTypeExternFunction:
 		pinned := len(vm.pinned)
 		retVal, err := vm.callExtern((*ExternFunctionObj)(unsafe.Pointer(callee)), args)
@@ -414,7 +405,29 @@ func (vm *VM) compiledCALLM(kept *chunkCache, pc int, instr Instr) error {
 	if err != nil {
 		return err
 	}
-	if err := vm.enter(funcObj, vm.regs[first:last:last]); err != nil {
+	return vm.callFound(funcObj, first, last)
+}
+
+// callFound calls, from compiled code, a function found when the program
+// runs (a closure, a method), with the arguments in its registers from
+// first to last, and leaves the result in r0. A compiled function of the
+// same chunk is called the short way, as CALLK calls one.
+func (vm *VM) callFound(fn *FunctionObj, first, last int) error {
+	if fn.chunk == vm.chunk {
+		if compiled := compiledOf(fn); compiled != nil {
+			if err := vm.enterCompiledCall(fn, first, last); err != nil {
+				return err
+			}
+			result, err := compiled(vm)
+			if err != nil {
+				return err
+			}
+			vm.leaveCompiledCall()
+			vm.regs[0] = result
+			return nil
+		}
+	}
+	if err := vm.enter(fn, vm.regs[first:last:last]); err != nil {
 		return err
 	}
 	result, err := vm.compiledCall()
