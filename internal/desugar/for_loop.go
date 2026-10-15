@@ -251,10 +251,28 @@ func (d *Desugarer) desugarForStmt(forStmt *ast.ForStmt) ast.Stmt {
 //
 // Both ends are worked out once, before the first iteration. With a
 // position, `for n, i in low..high`, n is how far i is from where it began.
+//
+// A body that leaves i as it is, and lets no function keep it, cannot tell
+// i from the number the loop counts with: the loop then counts with i
+// itself, and adds one after each iteration, `continue` or not:
+//
+//	{
+//	  let i: Int = low;
+//	  let __len_N: Int = high;
+//	  while i < __len_N { body } update { i = i + 1; }
+//	}
 func (d *Desugarer) desugarRangeLoop(forStmt *ast.ForStmt, numbers *ast.RangeExpr) ast.Stmt {
 	pos := forStmt.Position()
 	at := ast.BaseNode{Pos: pos}
 	intType := func() *ast.Type { return &ast.Type{BaseNode: at, Kind: ast.TypeBasic, Name: "Int"} }
+
+	if forStmt.Index == nil {
+		body := d.desugarBlockStmt(forStmt.Body)
+		if !changesOrKeeps(body, forStmt.Var) {
+			return d.countWith(forStmt, numbers, body)
+		}
+	}
+
 	iterVar, endVar := d.generateIterVar(), d.generateLenVar()
 	iter := func() ast.Expr { return d.createIdent(iterVar, pos) }
 
@@ -296,6 +314,72 @@ func (d *Desugarer) desugarRangeLoop(forStmt *ast.ForStmt, numbers *ast.RangeExp
 	block := d.wrapInBlock(stmts, pos)
 	d.info.Mapping[forStmt] = block
 	return block
+}
+
+// countWith is a loop over numbers that counts with its variable.
+func (d *Desugarer) countWith(forStmt *ast.ForStmt, numbers *ast.RangeExpr, body *ast.BlockStmt) ast.Stmt {
+	pos := forStmt.Position()
+	at := ast.BaseNode{Pos: pos}
+	intType := func() *ast.Type { return &ast.Type{BaseNode: at, Kind: ast.TypeBasic, Name: "Int"} }
+	endVar := d.generateLenVar()
+	variable := func() ast.Expr { return d.createIdent(forStmt.Var, pos) }
+
+	before := "<"
+	if numbers.Inclusive {
+		before = "<="
+	}
+	block := d.wrapInBlock([]ast.Stmt{
+		&ast.LetStmt{BaseNode: at, Name: forStmt.Var, Type: intType(), Value: d.desugarExpr(numbers.Low)},
+		&ast.LetStmt{BaseNode: at, Name: endVar, Type: intType(), Value: d.desugarExpr(numbers.High)},
+		&ast.WhileStmt{
+			BaseNode: at,
+			Cond:     d.createBinaryExpr(variable(), before, d.createIdent(endVar, pos), pos),
+			Body:     body,
+			Update: &ast.ExprStmt{BaseNode: at, Expr: &ast.BinaryExpr{
+				BaseNode: at,
+				Left:     variable(),
+				Op:       "=",
+				Right:    d.createBinaryExpr(variable(), "+", d.createIntLiteral("1", pos), pos),
+			}},
+		},
+	}, pos)
+	d.info.Mapping[forStmt] = block
+	return block
+}
+
+// changesOrKeeps reports whether a loop body may assign to the variable
+// of that name, or hand it to a function made inside it, which would keep
+// it beyond the iteration. A deferred statement counts too. It looks at
+// names only, so a variable of the same name declared inside counts as
+// well: a no is certain, a yes may be too careful.
+func changesOrKeeps(body *ast.BlockStmt, name string) bool {
+	found := false
+	mentions := func(node ast.Node) bool {
+		seen := false
+		ast.Walk(node, func(e ast.Expr) {
+			if id, ok := e.(*ast.Ident); ok && id.Name == name {
+				seen = true
+			}
+		}, func(ast.Stmt) {})
+		return seen
+	}
+	ast.Walk(body, func(e ast.Expr) {
+		switch e := e.(type) {
+		case *ast.BinaryExpr:
+			if id, ok := e.Left.(*ast.Ident); ok && id.Name == name && ast.IsAssignment(e.Op) {
+				found = true
+			}
+		case *ast.FnExpr:
+			if !found && mentions(e) {
+				found = true
+			}
+		}
+	}, func(s ast.Stmt) {
+		if deferred, ok := s.(*ast.DeferStmt); ok && !found && mentions(deferred) {
+			found = true
+		}
+	})
+	return found
 }
 
 // typeToASTType converts a types.Type to an ast.Type. It returns nil for a

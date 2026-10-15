@@ -103,6 +103,9 @@ func (a *Analyzer) visitStmt(stmt ast.Stmt, scope *functionScope) {
 	case *ast.WhileStmt:
 		a.visitExpr(s.Cond, scope)
 		a.visitStmt(s.Body, scope)
+		if s.Update != nil {
+			a.visitStmt(s.Update, scope)
+		}
 	case *ast.ForStmt:
 		// For-in loop: for x in iterable { ... }
 		// Loop variable is local

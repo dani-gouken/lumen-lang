@@ -119,6 +119,9 @@ func Walk(node Node, visitExpr func(Expr), visitStmt func(Stmt)) {
 		case *WhileStmt:
 			walkExpr(s.Cond)
 			walkStmt(s.Body)
+			if s.Update != nil {
+				walkStmt(s.Update)
+			}
 		case *ForStmt:
 			walkExpr(s.Iterable)
 			walkStmt(s.Body)

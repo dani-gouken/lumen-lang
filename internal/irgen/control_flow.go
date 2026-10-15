@@ -97,19 +97,36 @@ func (fc *FunctionCompiler) compileWhileStmt(stmt *ast.WhileStmt) {
 	fc.compileCondition(stmt.Cond, bodyBlock, exitBlock)
 	fc.builder.PlaceBefore(bodyBlock, made)
 
+	// An iteration goes on at the update, if there is one, `continue`
+	// included
+	next := condBlock
+	var updateBlock *ir.BasicBlock
+	if stmt.Update != nil {
+		updateBlock = fc.builder.NewBlock()
+		next = updateBlock
+	}
+
 	// Push loop context
-	loop := fc.newLoop(exitBlock, condBlock)
+	loop := fc.newLoop(exitBlock, next)
 
 	// Body block
 	fc.builder.SetBlock(bodyBlock)
 	fc.compileStmt(stmt.Body)
 	if !fc.blockEndsWithTerminator() {
 		fc.endIteration(loop)
-		fc.builder.CreateJmp(condBlock)
+		fc.builder.CreateJmp(next)
 	}
 
 	// Pop loop context
 	fc.loopStack = fc.loopStack[:len(fc.loopStack)-1]
+
+	// The update comes after the body, which falls into it
+	if updateBlock != nil {
+		fc.builder.PlaceLast(updateBlock)
+		fc.builder.SetBlock(updateBlock)
+		fc.compileStmt(stmt.Update)
+		fc.builder.CreateJmp(condBlock)
+	}
 
 	// Exit block
 	// What follows the loop comes after the loop: it was made first, to

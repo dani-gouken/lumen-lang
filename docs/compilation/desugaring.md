@@ -145,6 +145,37 @@ An iterable whose static type is `Any` (for example a value read from a generic
 container) is accepted as well; whether it really is an array or a string is
 checked when the loop runs.
 
+**Over numbers**, `for i in low..high`, nothing is read from a collection.
+When the body cannot tell `i` from the number the loop counts with (no
+function made in it reads `i`, no deferred statement does, nothing assigns
+to it), the loop counts with `i` itself, and adds one after each iteration:
+
+```rust
+// Before
+for i in low..high {
+    body
+}
+
+// After
+{
+    let i = low;
+    let __len_N = high;
+    while i < __len_N { body } update { i = i + 1; }
+}
+```
+
+The update is part of the `while` the desugarer makes (`WhileStmt.Update`;
+source has no form of it): it runs after the body and after a `continue`,
+before the condition is asked again. A turn of `for i in 0..n { total += i; }`
+is four instructions: the test, the sum, the increment, the jump back.
+
+Otherwise, and with a position (`for n, i in low..high`), the loop keeps a
+counter of its own and copies it into `i` at the start of each iteration, as
+for arrays: each iteration then has an `i` of its own for the functions made
+in it to keep. The check looks at names only, so a variable of the same name
+inside the body counts too: a loop is never wrongly made to count with `i`,
+and may keep a counter it did not need.
+
 **Implementation Details**:
 - Generate unique variable names for iterator and length (`__iter_N`, `__len_N`)
 - Wrap the entire transformation in a block to ensure proper scoping
