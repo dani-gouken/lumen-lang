@@ -6,6 +6,7 @@ import (
 
 	"github.com/dani-gouken/lumen/internal/ast"
 	"github.com/dani-gouken/lumen/internal/errors"
+	"github.com/dani-gouken/lumen/internal/parser"
 	"github.com/dani-gouken/lumen/internal/token"
 )
 
@@ -268,5 +269,52 @@ func TestPatternMatchingLiteral(t *testing.T) {
 
 	if errs.HasErrors() {
 		t.Errorf("Expected no errors for literal pattern, but got: %v", errs.Diagnostics)
+	}
+}
+
+// A name alone in the `${}` of a text may have been meant as those
+// characters: what is undefined there says how to write them.
+func TestResolveSuggestionInsertion(t *testing.T) {
+	cases := []struct {
+		name       string
+		line       string
+		suggestion string
+		literally  bool
+	}{
+		{"a name alone", `println("cost: ${price}");`, `write \${price}`, true},
+		{"a name alone, with a guess", `let prise = 1; println("${price}");`, `Did you mean 'prise'? To write ${price} itself`, true},
+		{"a name in a longer expression", `let total = 1; println("${total + price}");`, "", false},
+		{"a name with a call", `println("${price()}");`, "", false},
+		{"a name outside a text", `println(price);`, "", false},
+		{"two insertions, the second wrong", `let a = 1; println("${a} and ${price}");`, `write \${price}`, true},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			src := "fn main() -> Void {\n    " + tt.line + "\n}\n"
+			errs := errors.NewHandler()
+			prog := parser.Parse(src, "test.lum", errs)
+			if errs.HasErrors() {
+				t.Fatalf("test source does not parse: %s", errs.Diagnostics[0].Message)
+			}
+			resolver := NewResolver(errs)
+			resolver.SetSourceLines(parser.SourceLines(src))
+			resolver.Resolve(prog)
+
+			var found *errors.Diagnostic
+			for i, d := range errs.Diagnostics {
+				if strings.Contains(d.Message, "'price'") {
+					found = &errs.Diagnostics[i]
+				}
+			}
+			if found == nil {
+				t.Fatalf("expected an error about 'price', got %v", errs.Diagnostics)
+			}
+			if got := strings.Contains(found.Suggestion, `\${`); got != tt.literally {
+				t.Errorf("suggests writing \\${: %v, want %v (%q)", got, tt.literally, found.Suggestion)
+			}
+			if tt.suggestion != "" && !strings.Contains(found.Suggestion, tt.suggestion) {
+				t.Errorf("suggestion %q does not contain %q", found.Suggestion, tt.suggestion)
+			}
+		})
 	}
 }

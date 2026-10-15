@@ -687,11 +687,28 @@ func (r *Resolver) reportUndefined(what, name string, tok token.Token) {
 	} else if similar != "" {
 		suggestion = fmt.Sprintf("Did you mean '%s'?", similar)
 	}
+	if what == "undefined identifier" && r.aloneInInsertion(tok) {
+		// "cost: ${price}" may be a text that means the characters
+		literally := fmt.Sprintf("To write ${%s} itself in the text, write \\${%s}", name, name)
+		if suggestion == "" {
+			suggestion = literally
+		} else {
+			suggestion += " " + literally
+		}
+	}
 	if suggestion != "" {
 		r.errs.ReportErrorWithSuggestion(ErrUndefined, msg, suggestion, tok, r.sourceLines)
 	} else {
 		r.errs.ReportErrorFromToken(ErrUndefined, msg, tok, r.sourceLines)
 	}
+}
+
+// aloneInInsertion reports whether a name is all there is between the
+// `${` and the `}` of a text.
+func (r *Resolver) aloneInInsertion(tok token.Token) bool {
+	line := r.sourceLines[tok.Pos.Line]
+	start, end := tok.Pos.Col-1, tok.Pos.Col-1+len(tok.Literal)
+	return start >= 2 && end < len(line) && line[start-2:start] == "${" && line[end] == '}'
 }
 
 // isLibraryModule reports whether a name is that of a module of the
