@@ -38,7 +38,7 @@ func TestBuiltProgramsAreSmallAndSayTheSame(t *testing.T) {
 		// Fails three calls down: in a closure, called by the library,
 		// with a cleanup on the way out
 		"failing.lum": `
-			import std.arrays;
+			// map, a method of arrays, needs no import
 
 			struct Reading { sensor: String; values: [Int]; }
 

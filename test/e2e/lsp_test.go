@@ -173,6 +173,11 @@ func (e *editor) diagnostics(uri string) []string {
 		out := []string{}
 		for _, item := range params["diagnostics"].([]any) {
 			d := item.(map[string]any)
+			if d["code"] == "E8010" || d["code"] == "E1004" {
+				// The program imports a module only to ask about it, and
+				// edits leave names unused: what is asked here is the rest
+				continue
+			}
 			start, end := at(d["range"], "start"), at(d["range"], "end")
 			out = append(out, fmt.Sprintf("%d:%d-%d %v %v [%v]", start[0], start[1], end[1], d["code"], d["message"], d["severity"]))
 		}

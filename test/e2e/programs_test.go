@@ -22,7 +22,6 @@ func TestProgramArguments(t *testing.T) {
 		"args.lum": `
 			import std.os;
 			import std.path;
-			import std.arrays;
 			fn main() -> Int {
 				println(os.args(), path.base(os.program()), path.isAbsolute(os.program()) || path.parts(os.program()).len() > 0);
 				return os.args().len();
@@ -70,7 +69,6 @@ func TestExitStatus(t *testing.T) {
 	dir := project(t, map[string]string{
 		"exit.lum": `
 			import std.os;
-			import std.strings;
 			import std.result.{attempt};
 			fn leave(status: Int) -> Int {
 				os.exit(status);

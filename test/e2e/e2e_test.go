@@ -513,7 +513,7 @@ func TestLargeProgram(t *testing.T) {
 	const count = 500
 
 	var sb strings.Builder
-	sb.WriteString("import std.arrays;\n\ntrait Step {\n    fn apply(n: Int) -> Int;\n    fn label() -> String;\n}\n\n")
+	sb.WriteString("trait Step {\n    fn apply(n: Int) -> Int;\n    fn label() -> String;\n}\n\n")
 	for i := 0; i < count; i++ {
 		fmt.Fprintf(&sb, "struct Step%d { amount%d: Int; }\n", i, i)
 		fmt.Fprintf(&sb, "impl Step for Step%d {\n", i)
@@ -913,8 +913,6 @@ func TestStandardLibrary(t *testing.T) {
 	dir := project(t, map[string]string{
 		"greet.lum": `
 import std.io;
-import std.strings;
-import std.arrays;
 
 fn main() -> Int {
     let name = io.ask("Who are you? ");
@@ -981,7 +979,7 @@ fn main() -> Int {
 	notes := filepath.Join(dir, "notes.txt")
 	files := project(t, map[string]string{
 		"save.lum": "import std.io;\nfn main() -> Int {\n    if io.appendFile(\"" + notes + "\", \"a line\\n\").isOk() { return 0; }\n    return 1;\n}\n",
-		"load.lum": "import std.io;\nimport std.strings;\nimport std.arrays;\nfn main() -> Int {\n    println(io.readFileLines(\"" + notes + "\").orElse([]).len());\n    return 0;\n}\n",
+		"load.lum": "import std.io;\nimport std.strings;\nfn main() -> Int {\n    println(io.readFileLines(\"" + notes + "\").orElse([]).len());\n    return 0;\n}\n",
 	})
 	for i := 0; i < 3; i++ {
 		if res := runLumenIn(t, files, "", "run", "save.lum"); res.exit != 0 {

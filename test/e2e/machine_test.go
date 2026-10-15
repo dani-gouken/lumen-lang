@@ -168,7 +168,6 @@ func TestInterruptedFromTheKeyboard(t *testing.T) {
 func TestALimitedHeapIsEnough(t *testing.T) {
 	dir := project(t, map[string]string{
 		"churn.lum": `
-			import std.arrays;
 			import std.strings;
 
 			struct Reading { sensor: String; value: Int; }

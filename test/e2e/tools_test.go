@@ -246,7 +246,7 @@ fn testAPriceIsRead() {
     test.equal(prices[2], 5);
 }
 `
-	priceModule = `import std.arrays;
+	priceModule = `// sum, a method of arrays, needs no import
 
 pub fn total(prices: [Int]) -> Int {
     return prices.sum();
