@@ -1725,3 +1725,84 @@ func TestStringInterpolationErrors(t *testing.T) {
 		t.Errorf("expected an out-of-bounds error on line 3, got %v", err)
 	}
 }
+
+// After an if, what every way through it ends with still holds: a value
+// filled in when it was missing is there, whichever branch ran.
+func TestNarrowingSurvivesTheBranchesOfAnIf(t *testing.T) {
+	expectOutput(t, `
+		import std.dict;
+		import std.dict.{Dict};
+
+		struct Cache { known: Dict<[Int]>; loads: Int = 0; }
+
+		impl Cache {
+			// The usual lazy lookup: load what is not there yet
+			fn get(name: String) -> [Int] {
+				let found = self.known.get(name);
+
+				if found == null {
+					self.loads++;
+					found = [name.len(), self.loads];
+					self.known.set(name, found);
+				}
+
+				return found;
+			}
+		}
+
+		fn label(n: Int, verbose: Bool) -> String {
+			let text: String? = null;
+
+			if n > 100 {
+				text = "large";
+			} else if n > 10 {
+				text = "medium";
+			} else {
+				text = "small";
+			}
+
+			if verbose {
+				text = text + " (" + toString(n) + ")";
+			}
+
+			return text.upper();
+		}
+
+		fn first(items: [Int]) -> Int {
+			let best = items.first();
+
+			if best != null {
+				println("found", best);
+			} else {
+				best = -1;
+			}
+
+			return best + 0;
+		}
+	`, `
+		let cache = Cache { known: dict.empty<[Int]>() };
+		println(cache.get("ada"), cache.get("ada"), cache.get("grace"), cache.loads);
+		println(label(500, false), label(50, true), label(5, false));
+		println(first([7, 8]), first([]));
+	`, `[3, 1] [3, 1] [5, 2] 2
+LARGE MEDIUM (50) SMALL
+found 7
+7 -1
+`)
+
+	// A way through that can leave the value null keeps it optional
+	refused := []string{
+		"let x: Int? = null; if c { x = 1; } println(x + 1);",
+		"let x: Int? = 4; if c { x = null; } println(x + 1);",
+		"let x: Int? = null; if c { x = 1; } else if !c { x = 2; } println(x + 1);",
+		"let x: Int? = null; if x == null { println(1); } println(x + 1);",
+		"let x: Int? = null; if c { x = 1; } else { x = null; } println(x + 1);",
+	}
+	for _, body := range refused {
+		errs := errors.NewHandler()
+		Compile("fn main() -> Int {\nlet c = true;\n"+body+"\nreturn 0;\n}\n", "test.lum", errs)
+		if !errs.HasErrors() || errs.Diagnostics[0].Code != "E2017" {
+			t.Errorf("%s: expected E2017, got %v", body, errs.Diagnostics)
+		}
+	}
+}

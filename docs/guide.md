@@ -613,6 +613,17 @@ if shape is Square { println(shape.side); }
 
 Null tests work on fields as well: after `if node.next == null { return; }`, `node.next` is a `Node`.
 
+What every way through an `if` ends with holds after it. A value filled in when it is missing is there afterwards, whichever branch ran:
+
+```rust
+let found = cache.get(name);       // [Int]?
+if found == null {
+    found = load(name);            // [Int]
+    cache.set(name, found);
+}
+return found;                      // [Int]: either it was there, or it is now
+```
+
 Three operators save most of those tests:
 
 ```rust

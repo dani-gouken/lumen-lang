@@ -12,6 +12,7 @@ import (
 //
 //	if user != null { user.name }          // user: User
 //	if user == null { return; }  user.name // user: User from here on
+//	if user == null { user = guest; }  user.name   // every way through gives a User
 //	while node != null { node = node.next; }
 //	if node.next != null { node.next.value }
 //	if value is Int { value + 1 }

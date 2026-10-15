@@ -722,9 +722,19 @@ func (c *Checker) checkStmt(stmt ast.Stmt) {
 }
 
 func (c *Checker) checkBlockStmt(s *ast.BlockStmt) {
+	c.checkBlockEnding(s)
+}
+
+// checkBlockEnding checks a block, and returns what is known about
+// variables at its end, before that is forgotten: for the branches of an
+// if, where what every branch ends with still holds after it.
+func (c *Checker) checkBlockEnding(s *ast.BlockStmt) (ending map[*resolve.Symbol]Type) {
 	// What a block learns about variables ends with the block
 	state := c.flowSnapshot()
-	defer c.flowRestore(state)
+	defer func() {
+		ending = copyVarFacts(c.narrowed)
+		c.flowRestore(state)
+	}()
 
 	warned := false
 	for i, stmt := range s.Stmts {
@@ -739,6 +749,7 @@ func (c *Checker) checkBlockStmt(s *ast.BlockStmt) {
 				s.Stmts[i+1].Token(), c.sourceLines)
 		}
 	}
+	return nil
 }
 
 func (c *Checker) checkLetStmt(s *ast.LetStmt) {
@@ -809,30 +820,79 @@ func (c *Checker) checkIfStmt(s *ast.IfStmt) {
 	if s.Else != nil {
 		branches = 2
 	}
+	thenExits := exits(s.Then)
+	elseExits := s.Else != nil && exits(s.Else)
+
+	// What is known about variables at the end of each way through the
+	// if that carries on after it
+	var ends []map[*resolve.Symbol]Type
 	c.withBranches(branches, func(i int) facts {
 		if i == 0 {
 			return whenTrue
 		}
 		return whenFalse
 	}, func(i int) {
+		ending := c.narrowed
 		if i == 0 {
-			c.checkBlockStmt(s.Then)
+			ending = c.checkBlockEnding(s.Then)
 		} else if elseBlock, ok := s.Else.(*ast.BlockStmt); ok {
-			c.checkBlockStmt(elseBlock)
+			ending = c.checkBlockEnding(elseBlock)
 		} else if elseIf, ok := s.Else.(*ast.IfStmt); ok {
 			c.checkIfStmt(elseIf)
+			ending = c.narrowed
+		}
+		if (i == 0 && !thenExits) || (i == 1 && !elseExits) {
+			ends = append(ends, copyVarFacts(ending))
 		}
 	})
+	if s.Else == nil {
+		// Without an else, the condition was false
+		skipped := copyVarFacts(before.facts.vars)
+		for sym, typ := range whenFalse.vars {
+			skipped[sym] = typ
+		}
+		ends = append(ends, skipped)
+	}
 
 	// When one branch never continues, the code after the if is only
 	// reached through the other one: `if x == null { return; }` leaves x
 	// non-null from here on.
-	thenExits := exits(s.Then)
-	elseExits := s.Else != nil && exits(s.Else)
 	if thenExits && !elseExits {
 		c.narrowAfter(whenFalse, before)
 	} else if elseExits && !thenExits {
 		c.narrowAfter(whenTrue, before)
+	}
+
+	// What every way through says still holds: after
+	// `if x == null { x = load(); }`, x is not null
+	c.narrowToCommon(ends)
+}
+
+func copyVarFacts(vars map[*resolve.Symbol]Type) map[*resolve.Symbol]Type {
+	copied := make(map[*resolve.Symbol]Type, len(vars))
+	for sym, typ := range vars {
+		copied[sym] = typ
+	}
+	return copied
+}
+
+// narrowToCommon adds what each of the ways that meet here knows about a
+// variable, when they all know the same.
+func (c *Checker) narrowToCommon(ends []map[*resolve.Symbol]Type) {
+	if len(ends) == 0 {
+		return
+	}
+	for sym, typ := range ends[0] {
+		common := true
+		for _, other := range ends[1:] {
+			if known, ok := other[sym]; !ok || !known.Equals(typ) {
+				common = false
+				break
+			}
+		}
+		if common {
+			c.narrowed[sym] = typ
+		}
 	}
 }
 
