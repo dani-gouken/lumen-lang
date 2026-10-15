@@ -1876,6 +1876,13 @@ func (p *Parser) parsePrimary() ast.Expr {
 		// A match where a value is expected gives the value of its case
 		return &ast.MatchExpr{BaseNode: base(tok), Match: p.parseMatch(true)}
 
+	case token.INT_TYPE, token.FLOAT_TYPE, token.STRING_TYPE, token.BOOL_TYPE:
+		// String.upper: a method of a builtin type, as a function
+		if p.peekAt(1).Type == token.DOT {
+			p.next()
+			return &ast.Ident{BaseNode: base(tok), Name: tok.Literal}
+		}
+
 	case token.IF:
 		// An if where a value is expected gives the value of its branch
 		return p.parseIfExpr()

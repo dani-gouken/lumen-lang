@@ -113,6 +113,47 @@ func (d *Desugarer) methodValue(member *ast.MemberExpr, signature *types.Functio
 	return fn
 }
 
+// typeMethod writes a method of a type used as a value as the function
+// that calls it on its first argument: `Point.plus` is
+// `fn(self: Point, other: Point) -> Point { return self.plus(other); }`.
+func (d *Desugarer) typeMethod(member *ast.MemberExpr, signature *types.FunctionType) ast.Expr {
+	at := member.BaseNode
+	self := d.typeInfo.Types[member]
+	whole, ok := self.(*types.FunctionType)
+	if !ok || len(whole.Params) == 0 {
+		d.reportMissingTypeInfo(member, "method of a type used as a value")
+		return member
+	}
+	fn := &ast.FnExpr{BaseNode: at}
+	var args []ast.Expr
+	for i, param := range whole.Params {
+		paramType := types.TypeToAST(param, at)
+		if paramType == nil {
+			d.reportMissingTypeInfo(member, "method of a type used as a value")
+			return member
+		}
+		name := fmt.Sprintf("__arg%d", i)
+		fn.Params = append(fn.Params, &ast.Param{BaseNode: at, Name: name, Type: paramType})
+		if i > 0 {
+			args = append(args, &ast.Ident{BaseNode: at, Name: name})
+		}
+	}
+
+	call := d.call(&ast.Ident{BaseNode: at, Name: "__arg0"}, member.Name, at, args...)
+	fn.Body = &ast.BlockStmt{BaseNode: at}
+	if signature.ReturnType == nil || signature.ReturnType.Equals(types.Void) {
+		fn.Body.Stmts = []ast.Stmt{&ast.ExprStmt{BaseNode: at, Expr: call}}
+		return fn
+	}
+	fn.ReturnType = types.TypeToAST(signature.ReturnType, at)
+	if fn.ReturnType == nil {
+		d.reportMissingTypeInfo(member, "method of a type used as a value")
+		return member
+	}
+	fn.Body.Stmts = []ast.Stmt{&ast.ReturnStmt{BaseNode: at, Value: call}}
+	return fn
+}
+
 // structDecl finds the declaration of a struct.
 func (d *Desugarer) structDecl(name string) *ast.StructDecl {
 	if d.structs == nil {

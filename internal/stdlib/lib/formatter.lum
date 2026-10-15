@@ -2226,6 +2226,13 @@ impl Parser {
                 return self.take();
             }
 
+            case "Int" | "Float" | "String" | "Bool": {
+                // String.upper: a method of the type, as a function
+                if self.ahead(1).text == "." {
+                    return self.take();
+                }
+            }
+
             case "match": {
                 let doc = self.matching(true);
                 self.shape = Shape.Choice;

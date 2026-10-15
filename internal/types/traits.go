@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/dani-gouken/lumen/internal/ast"
+	"github.com/dani-gouken/lumen/internal/resolve"
 	"github.com/dani-gouken/lumen/internal/token"
 )
 
@@ -496,6 +497,85 @@ func (c *Checker) methodValue(e *ast.MemberExpr, recv *StructType, decl *ast.FnD
 	}
 	c.info.MethodValues[e] = ft
 	return ft
+}
+
+// typeNamed returns the type an expression names, when it is the name of
+// a struct, of an enum or of a builtin type that has methods: the Point of
+// Point.norm.
+func (c *Checker) typeNamed(expr ast.Expr) Type {
+	ident, ok := expr.(*ast.Ident)
+	if !ok {
+		return nil
+	}
+	switch ident.Name {
+	case "Int":
+		return Int
+	case "Float":
+		return Float
+	case "String":
+		return String
+	case "Bool":
+		return Bool
+	}
+	sym := c.table.Defs[ident]
+	if sym == nil || (sym.Kind != resolve.SymbolStruct && sym.Kind != resolve.SymbolEnum && sym.Kind != resolve.SymbolTrait) {
+		// self, in a method, is a value
+		return nil
+	}
+	switch decl := sym.Decl.(type) {
+	case *ast.StructDecl:
+		return c.resolveType(&ast.Type{BaseNode: ident.BaseNode, Kind: ast.TypeBasic, Name: decl.Name})
+	case *ast.EnumDecl:
+		return enumType(decl, nil)
+	case *ast.TraitDecl:
+		// Shape.area: whatever implements the trait
+		return c.resolveType(&ast.Type{BaseNode: ident.BaseNode, Kind: ast.TypeBasic, Name: decl.Name})
+	}
+	return nil
+}
+
+// isTypeMethod reports whether an expression is `Type.method`: a method of
+// a struct, a trait, a builtin type, or an enum that has no variant of
+// that name.
+func (c *Checker) isTypeMethod(member *ast.MemberExpr) bool {
+	self := c.typeNamed(member.Expr)
+	if self == nil {
+		return false
+	}
+	if decl, _ := c.enumOf(member.Expr); decl != nil && findVariant(decl, member.Name) != nil {
+		return false
+	}
+	return c.methodDecl(self, member.Name) != nil
+}
+
+// methodOfType types `Type.method`, the method as a function that takes
+// the value first: Point.plus is a fn(Point, Point) -> Point, and
+// names.map(String.upper) gives each name in capitals.
+func (c *Checker) methodOfType(e *ast.MemberExpr, self Type) Type {
+	decl := c.methodDecl(self, e.Name)
+	if decl == nil {
+		c.errorf(e.Token(), ErrUnknownMethod, "%s has no method '%s'", describe(self), e.Name)
+		return Unknown
+	}
+	if st, ok := self.(*StructType); ok && len(st.TypeArgs) > 0 {
+		c.errorfWithSuggestion(e.Token(), ErrUnknownMethod,
+			fmt.Sprintf("Write the function, with the type: fn(value: %s<...>) -> ... { return value.%s(); }", displayName(st.Name), e.Name),
+			"the methods of a generic type are used as values on a value of it, not on the type")
+		return Unknown
+	}
+	if len(decl.TypeParams) > 0 {
+		c.errorfWithSuggestion(e.Token(), ErrUnknownField,
+			fmt.Sprintf("Wrap the call in a function that says the types: fn(...) -> ... { return value.%s<...>(...); }", e.Name),
+			"method '%s' has type parameters of its own, and cannot be used as a value without them", e.Name)
+		return Unknown
+	}
+	c.checkMethodVisible(self, e)
+	ft, ok := c.methodType(self, e.Name, nil)
+	if !ok {
+		return Unknown
+	}
+	c.info.TypeMethods[e] = ft
+	return &FunctionType{Params: append([]Type{self}, ft.Params...), ReturnType: ft.ReturnType}
 }
 
 // isPlace reports whether an expression is a variable or a path of

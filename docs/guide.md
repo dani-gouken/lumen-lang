@@ -475,7 +475,11 @@ impl Add for Money { fn plus(other: Money) -> Money { ... } }   // gives Money t
 let total = price + tax;
 
 let lookup = ages.get;                                      // a method as a value
+let names = lines.map(String.trim);                         // a method of a type: fn(String) -> String
+let sorted = items.sorted(Item.cheaper);                    // fn(Item, Item) -> Bool, the value first
 ```
+
+A method named by its type, `String.trim`, `Point.plus`, `Shape.area` for a trait, is a function that takes the value first and the method's arguments after it; `Point.norm(p)` is `p.norm()`. A method of a value, `ages.get`, is a function of the method's arguments, called on that value.
 
 The traits of `std.ops` give a struct the syntax of the builtin types: `==` and `<`, `+ - * /`, `for item in it`, `it[key]`, and how it reads in `println` and `"${...}"`.
 

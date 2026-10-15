@@ -624,6 +624,11 @@ func (r *Resolver) visitFnExpr(e *ast.FnExpr) {
 }
 
 func (r *Resolver) resolveIdent(id *ast.Ident) {
+	switch id.Name {
+	case "Int", "Float", "String", "Bool":
+		// String.upper: the type, whose method is named
+		return
+	}
 	if id.Name == ast.EnumToFind {
 		// The enum of a variant written alone, which the type checker
 		// finds

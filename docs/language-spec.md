@@ -138,6 +138,9 @@ Full description: [enums.md](enums.md).
 - A field and a method may share a name; `value.name` reads the field and `value.name(...)` calls the method. A method cannot be used as a value without calling it.
 - A parameter typed with a trait accepts exactly the structs that implement it (checked at the call), and only the trait's methods can be called on it. Which struct's method runs is decided at runtime.
 
+### Methods of a type as values
+- `Type.method`, where `Type` is a struct, an enum, a trait or `Int`, `Float`, `String`, `Bool`, is a function value whose first parameter is the type and the rest are the method's: `Point.plus: fn(Point, Point) -> Point`. Calling it, `Point.plus(a, b)`, is `a.plus(b)`. On an enum a variant of that name comes first. A method with type parameters of its own, or one of a generic type, cannot be named so.
+
 ### Closures
 - A function expression captures the variables it uses **by reference**: it sees later assignments made by the enclosing function, and its own assignments are visible outside. A captured variable lives on after the enclosing function returns.
 - Each iteration of a loop has its own variables: closures created in different iterations keep the values of their own iteration, including the loop's variables (`for i, item in items`). Within one iteration a closure and the loop body still share them. A variable declared outside the loop is shared by all of them.

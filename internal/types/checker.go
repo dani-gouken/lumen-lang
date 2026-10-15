@@ -1390,7 +1390,11 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 	c.expected = nil
 
 	var result Type
-	if member, ok := e.Func.(*ast.MemberExpr); ok && c.isVariantRef(member) {
+	member, ok := e.Func.(*ast.MemberExpr)
+	if ok && c.isTypeMethod(member) {
+		// Point.norm(p): the method of the type, called on p
+		result = c.callValue(e, c.checkMemberExpr(member))
+	} else if ok && c.isVariantRef(member) {
 		// Shape.Circle(2.0): a value of an enum, not a method call
 		return c.checkVariant(member, e, expected)
 	} else if ok {
@@ -1492,10 +1496,17 @@ func (c *Checker) checkStructInitExpr(e *ast.StructInitExpr) Type {
 // checkMemberExpr types `expr.name` where it is not being called: the
 // length of an array or string, or a struct field.
 func (c *Checker) checkMemberExpr(e *ast.MemberExpr) Type {
+	if decl, _ := c.enumOf(e.Expr); decl != nil && findVariant(decl, e.Name) == nil && c.methodDecl(enumType(decl, nil), e.Name) != nil {
+		// Color.name: a method of the enum, not a variant
+		return c.methodOfType(e, enumType(decl, nil))
+	}
 	if c.isVariantRef(e) {
 		expected := c.expected
 		c.expected = nil
 		return c.checkVariant(e, nil, expected)
+	}
+	if self := c.typeNamed(e.Expr); self != nil {
+		return c.methodOfType(e, self)
 	}
 	recv := c.checkExpr(e.Expr)
 

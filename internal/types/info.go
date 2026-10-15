@@ -28,10 +28,11 @@ type Info struct {
 	// What an operator, a loop or an index stands for when its subject is
 	// a struct that implements the trait behind it (see traits.go). The
 	// desugarer writes the method calls.
-	OperatorMethods map[*ast.BinaryExpr]string // a + b: the method to call on a
-	Iterations      map[*ast.ForStmt]Type      // for x in a: the type of x, when a is an Iterable
-	IndexReads      map[*ast.IndexExpr]bool    // a[k], when a is an Indexed
-	IndexWrites     map[*ast.BinaryExpr]bool   // a[k] = v, when a is an IndexedSet
+	OperatorMethods map[*ast.BinaryExpr]string        // a + b: the method to call on a
+	Iterations      map[*ast.ForStmt]Type             // for x in a: the type of x, when a is an Iterable
+	IndexReads      map[*ast.IndexExpr]bool           // a[k], when a is an Indexed
+	TypeMethods     map[*ast.MemberExpr]*FunctionType // Point.norm: the method, without the value it is called on
+	IndexWrites     map[*ast.BinaryExpr]bool          // a[k] = v, when a is an IndexedSet
 
 	// MethodValues maps each method used as a value, `users.get` without
 	// a call, to the type of the function it stands for.
@@ -64,6 +65,7 @@ func NewInfo() *Info {
 		OperatorMethods: make(map[*ast.BinaryExpr]string),
 		Iterations:      make(map[*ast.ForStmt]Type),
 		IndexReads:      make(map[*ast.IndexExpr]bool),
+		TypeMethods:     make(map[*ast.MemberExpr]*FunctionType),
 		IndexWrites:     make(map[*ast.BinaryExpr]bool),
 		MethodValues:    make(map[*ast.MemberExpr]*FunctionType),
 		NarrowedNames:   make(map[*ast.BindingPattern]Type),

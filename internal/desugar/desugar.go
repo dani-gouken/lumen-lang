@@ -337,6 +337,16 @@ func (d *Desugarer) desugarExprAsWritten(expr ast.Expr) ast.Expr {
 		if decl, variant := d.variantOf(expr.Func); decl != nil {
 			return d.lowerVariantCall(expr, decl, variant)
 		}
+		if member, ok := expr.Func.(*ast.MemberExpr); ok && len(expr.Args) > 0 {
+			if _, typeMethod := d.typeInfo.TypeMethods[member]; typeMethod {
+				// Point.norm(p) is p.norm()
+				var rest []ast.Expr
+				for _, arg := range expr.Args[1:] {
+					rest = append(rest, d.desugarExpr(arg))
+				}
+				return d.call(d.desugarExpr(expr.Args[0]), member.Name, expr.BaseNode, rest...)
+			}
+		}
 		return d.desugarCallExpr(expr)
 	case *ast.MemberExpr:
 		if decl, variant := d.variantOf(expr); decl != nil {
@@ -344,6 +354,9 @@ func (d *Desugarer) desugarExprAsWritten(expr ast.Expr) ast.Expr {
 		}
 		if signature, ok := d.typeInfo.MethodValues[expr]; ok {
 			return d.methodValue(expr, signature)
+		}
+		if signature, ok := d.typeInfo.TypeMethods[expr]; ok {
+			return d.typeMethod(expr, signature)
 		}
 		return d.desugarMemberExpr(expr)
 	case *ast.IndexExpr:
