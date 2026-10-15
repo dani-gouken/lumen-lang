@@ -60,7 +60,7 @@ Full description: [enums.md](enums.md).
 - The value is made of literals, operators and other constants; nothing else (`E2032`). It is worked out when the program is compiled.
 - Constants may be declared in any order and refer to each other, but not, through each other, to themselves (`E2031`).
 - A constant cannot be assigned (`E2022`). A local variable or a parameter of the same name hides it.
-- Only numbers, texts, booleans and `null` can be constants: there are no constant arrays or structs, and no variables outside functions.
+- A constant can also be a struct, an array or a value of an enum made of constants: it is made once, the first time it is used, and is read-only with all it holds. A variable outside functions is a `let` (see Variables outside functions).
 
 ### Behaviors (Traits)
 - Definition:
@@ -373,7 +373,7 @@ known defects are inventoried in [missing.md](missing.md).
 | `match` on literals, `default` | Supported | |
 | `match` as a value: `let x = match v { case 1: "one"; default: "many"; };` | Supported | Complete over an enum, or with a `default` |
 | Conditions and several patterns: `case Shape.Circle(r) if r > 1.0:`, `case 1 \| 2:` | Supported | A case with several patterns names nothing |
-| Ranges: `for i in 0..10`, `0..=10`, `case 1..10:` | Supported | Not a value: `arrays.range` makes the array |
+| Ranges: `for i in 0..10`, `0..=10`, `case 1..10:`, `let r = 0..10;` | Supported | A range kept as a value is a `Range` of `std.ops`; between brackets it takes a part of an array or a text |
 | `defer` | Supported | Runs when its block is left, also by a failure |
 | `match` on types (`case Int:`), `value is Type` | Supported | Narrows the tested variable or field |
 | Enums: variants with values, generic enums, methods and traits on them | Supported | See [enums.md](enums.md) |
@@ -381,17 +381,16 @@ known defects are inventoried in [missing.md](missing.md).
 | `match` on structs by their fields, `case null:`, names shared by `\|` | Supported | |
 | One variant: `if value is Shape.Circle(r) { ... }`, in `if`, `else if`, `while`, with `&&` | Supported | Names live in the guarded block and the rest of the `&&`; none under `!` or `\|\|` (`E1003`) |
 | Constants at the top level | Supported | Numbers, texts and booleans, known when the program is compiled |
-| Modules: `import`, `pub`, several files | Supported | Packages are folders named in `lumen.json`; no installer |
+| Modules: `import`, `pub`, several files | Supported | The modules of the library need no import; packages come from git with `lumen require` ([packages.md](packages.md)) |
 | Standard library (`std.math`, `std.strings`, `std.arrays`, `std.list`, `std.dict`, `std.option`, `std.result`, `std.io`, `std.time`, `std.random`) | Supported | Built into the compiler; see [stdlib.md](stdlib.md) |
-| `extern fn` | Supported | Only for functions built into the runtime; no loading of shared libraries |
+| `extern fn` | Supported | Functions built into the runtime, and of C libraries (`extern "raylib" fn`, [ffi.md](ffi.md)) |
 | Generic structs and their methods | Supported | `impl<T> Box<T> { ... }`; methods may add their own: `fn map<U>(...)` |
 | "All paths return" check, unreachable code | Supported | Unreachable code is a warning |
 
 **Static typing.** Method calls, trait-typed values, optionals, generic calls
 and struct fields are all checked at compile time; `Any` is an explicit type
 the programmer writes, not something the checker falls back on. What the
-checker still does not do is listed in [missing.md](missing.md): inference
-from the expected type, and the deliberate limits of flow typing.
+checker still does not do is listed in [missing.md](missing.md).
 
 **Size limits** come from 16-bit bytecode operands: 65536 registers per
 function, 65536 distinct constants and 65536 functions per program. Exceeding

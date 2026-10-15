@@ -239,7 +239,7 @@ Not there yet:
 - ⚠️ Several processors at once: tasks take turns on one
 - ⚠️ Renaming and finding uses in the editor
 
-What works is listed in the [implementation status table](docs/language-spec.md#13-implementation-status); what does not, with the way it fails today, in [docs/missing.md](docs/missing.md).
+What works is listed in the [implementation status table](docs/language-spec.md#13-implementation-status); what does not yet, and what is left out on purpose, in [docs/missing.md](docs/missing.md).
 
 ## Repository Structure
 

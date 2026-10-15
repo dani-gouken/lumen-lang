@@ -1001,13 +1001,9 @@ All of it is in [errors.md](errors.md).
 
 ## Not Supported Yet
 
-These are rejected with a clear error rather than miscompiled:
-
-*   variables outside functions (constants are allowed)
-
 Things to be aware of:
 
 *   **What is known about a field ends at a call that may change a field.** `println`, and functions that only read, are fine; after calling something that assigns a field, or a function value, the field has to be tested again or copied into a local first. A variable that a lambda assigns is not narrowed at all, and inside a lambda only what is known about variables that are never assigned again carries over.
 *   **A type argument nothing determines has to be written**: `let xs = none();` gives no clue, so write `none<Int>()` or `let xs: [Int] = none();`.
 
-The status table in the [language spec](language-spec.md#13-implementation-status) lists what works; [missing.md](missing.md) is the full inventory of what does not.
+The status table in the [language spec](language-spec.md#13-implementation-status) lists what works; [missing.md](missing.md) lists what does not yet, and what is left out on purpose.

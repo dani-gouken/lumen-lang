@@ -518,7 +518,7 @@ detector.
 Tasks of one program do not run on several processors. That would take a
 collector that stops every thread at a safe point, allocation and objects
 safe to use from two threads at once, and none of it is there; see
-[missing.md](missing.md#3-runtime-and-vm).
+[missing.md](missing.md#runtime).
 
 ### What the process holds
 
