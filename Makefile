@@ -35,7 +35,7 @@ test-unit:
 
 test-e2e:
 	@echo "Running end-to-end tests..."
-	@$(GO) test -timeout $(TEST_TIMEOUT) ./test/e2e ./test/fuzz ./test/bench
+	@$(GO) test -timeout $(TEST_TIMEOUT) ./test/e2e ./test/fuzz ./test/bench ./test/native
 
 # The race detector also checks every conversion of a number into a
 # pointer, which is how the VM keeps its objects in its values (see

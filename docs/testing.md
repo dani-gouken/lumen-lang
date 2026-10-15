@@ -9,6 +9,7 @@ Lumen uses a pragmatic, three-level testing approach focused on **concise, high-
 | 1. Unit | One package at a time | `internal/*/..._test.go` | `make test-unit` |
 | 2. Toolchain | The assembler/disassembler/VM commands on `.lasm` files | `test/integration/test.sh` | `make test-integration` |
 | 3. End-to-end | `lumen run`/`compile`/`dump` on real `.lum` programs | `test/e2e/` | `make test-e2e` |
+| 4. Native | Every program of the examples, `test/e2e/cases` and the benchmarks compiled with `lumen native`, compared with `lumen run`; the command itself | `test/native/` | `make test-e2e` |
 
 ## Testing Levels
 

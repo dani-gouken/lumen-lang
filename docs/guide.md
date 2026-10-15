@@ -33,6 +33,7 @@ Every program needs a `main` function without parameters. If it returns an `Int`
 | `lumen run file.lum` | Compile and run. `run` takes bytecode (`.lc`) and assembly (`.lasm`) the same way |
 | `lumen file.lum` | The same; also what a file that starts with `#!/usr/bin/env lumen` is run with (see below) |
 | `lumen compile file.lum` | Compile to bytecode, `file.lc` in the current folder (`-o` names it), run later with `lumen run file.lc`: it does what the source does, and ends with the status the source ends with |
+| `lumen native file.lum` | Make an executable of the program, its functions compiled to machine code through Go: about twice as fast, and runs without `lumen` ([native.md](native.md)) |
 | `lumen dump file.lum` | Print the bytecode a `.lum` or `.lc` is, as a listing; `--ir` prints the intermediate representation instead |
 | `lumen repl` | Type Lumen in a line at a time ([repl.md](repl.md)) |
 | `lumen check [--json] file.lum` | Compile without running and say what is wrong; `--json` for a CI step, an editor or an agent |

@@ -68,6 +68,11 @@ type VM struct {
 	// What is kept for each chunk that has code running (see chunkCache)
 	caches map[*Chunk]*chunkCache
 
+	// What compiled functions read of caches: the chunk asked about last,
+	// and what is kept for it (see keptNow)
+	keptChunk *Chunk
+	keptNow   *chunkCache
+
 	gray []*ObjHeader // Objects marked, whose contents are still to be (see gc.go)
 
 	// Use from several threads (see threads.go)

@@ -25,6 +25,11 @@ type Chunk struct {
 	DebugInfo   map[int]*DebugInfo  // Map from instruction index to debug info
 	Breakpoints []int               // Instruction pointers marked with ;BREAK in source
 	// NOTE: RegisterCount and ArgCount removed - now per-function in Prototypes
+
+	// Compiled holds, by prototype, the functions compiled to Go, nil for
+	// one that runs as bytecode (see compiled.go). It is set by a program
+	// lumen native made, and is not part of a bytecode file.
+	Compiled []CompiledFunc
 }
 
 // NewChunk creates a new empty chunk.

@@ -11,10 +11,9 @@ import (
 	"strings"
 	"unsafe"
 
-	"os/signal"
 	"runtime/pprof"
-	"time"
 
+	lumen "github.com/dani-gouken/lumen"
 	"github.com/dani-gouken/lumen/internal/asm"
 	"github.com/dani-gouken/lumen/internal/compiler"
 	"github.com/dani-gouken/lumen/internal/debugger"
@@ -22,10 +21,11 @@ import (
 	"github.com/dani-gouken/lumen/internal/formatter"
 	_ "github.com/dani-gouken/lumen/internal/inspect" // The natives of std.compiler
 	"github.com/dani-gouken/lumen/internal/lsp"
-	"github.com/dani-gouken/lumen/internal/memguard"
+	"github.com/dani-gouken/lumen/internal/native"
 	"github.com/dani-gouken/lumen/internal/pkgmgr"
 	"github.com/dani-gouken/lumen/internal/project"
 	"github.com/dani-gouken/lumen/internal/repl"
+	"github.com/dani-gouken/lumen/internal/runner"
 	"github.com/dani-gouken/lumen/internal/testrun"
 	"github.com/dani-gouken/lumen/internal/vm"
 )
@@ -198,27 +198,6 @@ func parseOptions(args []string) []string {
 	return rest
 }
 
-// newVM creates a virtual machine with the limits from the command line
-// and the project file.
-func newVM() *vm.VM {
-	var machine *vm.VM
-	if heapMB > 0 {
-		machine = vm.NewVMWithHeapSize(uint64(heapMB) * 1024 * 1024)
-	} else {
-		machine = vm.NewVM()
-	}
-	stopOnInterrupt(machine)
-	guardMemory(machine)
-	if maxDepth > 0 {
-		machine.SetMaxCallDepth(maxDepth)
-	}
-	if len(os.Args) > 3 {
-		machine.SetArgs(os.Args[3:])
-	}
-	machine.SetProgram(programFile)
-	return machine
-}
-
 // A program runs on the thread lumen started on, and stays there: a
 // library that opens a window wants every call about it made from the main
 // thread of the process (macOS allows no other), and a function of a C
@@ -270,6 +249,14 @@ func main() {
 
 	case "dump":
 		cmdDump(os.Args[2:])
+
+	case "native":
+		args, output := outputOption(os.Args[2:])
+		if len(args) > 1 {
+			fmt.Println("Usage: lumen native [file.lum | project folder] [-o executable]")
+			exit(1)
+		}
+		cmdNative(sourceFile(firstOf(args), "Usage: lumen native [file.lum | project folder] [-o executable]"), output)
 
 	case "debug":
 		cmdDebug(sourceFile(argument(2), "Usage: lumen debug [file.lum | file.lc | file.lasm | project folder]"))
@@ -395,7 +382,7 @@ func loadProgram(inputFile string) *vm.Chunk {
 
 // commands are the first words lumen understands. A file of that name is
 // run with lumen run.
-var commands = append([]string{"run", "compile", "assemble", "dump", "debug", "repl", "lsp", "fmt", "test", "check", "version"}, pkgmgr.Commands...)
+var commands = append([]string{"run", "compile", "native", "assemble", "dump", "debug", "repl", "lsp", "fmt", "test", "check", "version"}, pkgmgr.Commands...)
 
 // isProgram reports whether a first argument names a program to run
 // rather than a command: a .lum, .lc or .lasm file, or any file that is not
@@ -418,6 +405,7 @@ func printHelp() {
 	fmt.Println("  lumen run <file> [args]    Run a program: .lum source, .lc bytecode or .lasm assembly")
 	fmt.Println("  lumen <file.lum> [args]    The same as lumen run: what #!/usr/bin/env lumen runs")
 	fmt.Println("  lumen compile <file.lum>   Compile to bytecode, file.lc; -o names it, --strip makes it smaller")
+	fmt.Println("  lumen native <file.lum>    Compile to an executable, through Go; -o names it")
 	fmt.Println("  lumen assemble <file.lasm> Assemble to bytecode, file.lc; -o names it")
 	fmt.Println("  lumen dump <file> [--ir]   Print what a .lum or .lc is as bytecode; --ir, the intermediate form")
 	fmt.Println("  lumen debug <file>         Step through a .lum, .lc or .lasm program")
@@ -475,51 +463,23 @@ func compileSource(inputFile string) *compiler.Result {
 	return result
 }
 
+// newVM creates a virtual machine with the limits from the command line
+// and the project file, and what follows the file as the program's
+// arguments.
+func newVM() *vm.VM {
+	var args []string
+	if len(os.Args) > 3 {
+		args = os.Args[3:]
+	}
+	return runner.Machine(runner.Limits{HeapMB: heapMB, MaxDepth: maxDepth}, args, programFile, exit)
+}
+
 // leaveIfAsked ends the process with the status the program asked for, if
 // the run ended by a call of std.os.exit and not by a failure. A program
 // stopped from the keyboard ends as the shell expects, having said where
 // it was.
 func leaveIfAsked(err error) {
-	if status, asked := vm.ExitCode(err); asked {
-		exit(status & 0xFF)
-	}
-	if vm.IsInterrupted(err) {
-		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
-		exit(interruptedStatus)
-	}
-}
-
-// guardMemory ends the process if it comes to hold far more than the
-// program may. The VM refuses a program more values than its limit; this
-// is for what that count does not cover, and would otherwise only stop
-// when the machine has no memory left: several times the limit, and room
-// for lumen itself.
-func guardMemory(machine *vm.VM) {
-	const own = 1 << 30
-	memguard.Enforce(4*machine.GetHeap().MaxBytes()+own, "the program")
-}
-
-// interruptedStatus is what a process stopped by Ctrl-C ends with: 128
-// plus the number of the signal.
-const interruptedStatus = 130
-
-// stopOnInterrupt makes Ctrl-C stop the program a VM runs rather than the
-// process: the program ends with an error that says where it was, which
-// is what one wants to know of a program that would not end. A program
-// that does not get to it, because it waits for something that does not
-// come, is ended the plain way a moment later; so is one interrupted twice.
-func stopOnInterrupt(machine *vm.VM) {
-	signals := make(chan os.Signal, 2)
-	signal.Notify(signals, os.Interrupt)
-	go func() {
-		<-signals
-		machine.Interrupt()
-		select {
-		case <-signals:
-		case <-time.After(2 * time.Second):
-		}
-		exit(interruptedStatus)
-	}()
+	runner.LeaveIfAsked(err, exit)
 }
 
 // programFile is the file being run, for the program to find what comes
@@ -533,18 +493,11 @@ func cmdRun(inputFile string) {
 	chunk := loadProgram(inputFile)
 
 	result, err := newVM().Exec(chunk)
-	if err != nil {
-		leaveIfAsked(err)
-		fmt.Fprint(os.Stderr, strings.TrimRight(err.Error(), "\n")+"\n")
-		exit(1)
-	}
-	if showResult {
+	if err == nil && showResult {
 		fmt.Printf("Result: %s\n", formatValue(result))
 		return
 	}
-	if result.IsInt() {
-		exit(int(result.AsInt() & 0xFF))
-	}
+	runner.Finish(result, err, exit)
 }
 
 // cmdRepl runs the REPL. Started inside a project it imports what the
@@ -569,7 +522,7 @@ func cmdRepl() {
 	machine := repl.NewMachine(heapMB, maxDepth)
 	opts.Machine = func() *vm.VM {
 		m := machine()
-		guardMemory(m)
+		runner.GuardMemory(m)
 		return m
 	}
 	exit(repl.Run(opts))
@@ -849,6 +802,51 @@ func cmdCompile(inputFile, outputFile string) {
 		fatal(err)
 	}
 	fmt.Printf("Compiled %s -> %s\n", inputFile, outputFile)
+}
+
+// cmdNative makes an executable of a program: its functions compiled to
+// Go, built with the runtime's own source and the go command, which is
+// downloaded the first time if the machine has none.
+func cmdNative(inputFile, outputFile string) {
+	chunk := compileSource(inputFile).Chunk
+	if strip {
+		chunk = chunk.Stripped()
+	}
+	if outputFile == "" {
+		outputFile = executableName(inputFile)
+	}
+
+	const name = "Program"
+	generated := native.Generate(native.Program{Name: name, Chunk: chunk})
+	main, err := native.Main(name, chunk, runner.Limits{HeapMB: heapMB, MaxDepth: maxDepth})
+	if err != nil {
+		fatal(err)
+	}
+	root, err := native.Unpack(lumen.RuntimeSource)
+	if err != nil {
+		fatal(fmt.Errorf("cannot unpack the runtime: %v", err))
+	}
+	goCommand, err := native.FindGo(func(what string) { fmt.Println(what) })
+	if err != nil {
+		fatal(err)
+	}
+	if err := (native.Source{Root: root, Go: goCommand}).Build(generated.Source, main, outputFile); err != nil {
+		fatal(err)
+	}
+	fmt.Printf("Built %s -> %s (%d of %d functions compiled to Go)\n", inputFile, outputFile, generated.Compiled, generated.Total)
+}
+
+// executableName is what lumen native calls the executable of a program
+// when not told: the project's name, or the file's, in the current folder.
+func executableName(inputFile string) string {
+	name := strings.TrimSuffix(filepath.Base(inputFile), ".lum")
+	if cfg, err := project.Find(filepath.Dir(inputFile)); err == nil && cfg != nil && cfg.Name != "" {
+		name = cfg.Name
+	}
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	return name
 }
 
 // cmdDump prints what a program is as bytecode, or with --ir the

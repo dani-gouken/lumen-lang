@@ -322,6 +322,7 @@ func (vm *VM) Exec(chunk *Chunk) (result Value, err error) {
 	vm.handlers, vm.pending = nil, nil
 	vm.steps = 0
 	vm.caches = map[*Chunk]*chunkCache{}
+	vm.keptChunk, vm.keptNow = nil, nil
 
 	// The program starts as one task, main
 	vm.sched.stop()
@@ -366,6 +367,19 @@ func sameValue(a, b Value) bool {
 		return true
 	}
 	return valuesEqual(a, b)
+}
+
+// mulInts multiplies two Ints, and reports whether the product is one.
+// Both fit in 48 bits, so their product can exceed 64; two that fit in 32
+// cannot, which is nearly always, and only the others are divided back to
+// find out.
+func mulInts(x, y int64) (int64, bool) {
+	product := x * y
+	small := uint64(x+1<<31) < 1<<32 && uint64(y+1<<31) < 1<<32
+	if !small && x != 0 && product/x != y {
+		return 0, false
+	}
+	return product, product >= MinInt && product <= MaxInt
 }
 
 func bothInts(a, b Value) bool {
@@ -598,6 +612,10 @@ func (vm *VM) callExtern(externObj *ExternFunctionObj, args []Value) (Value, err
 // A failure does not always end it: a call in progress that left a handler
 // goes on there first (see handlers.go).
 func (vm *VM) run(base int) (Value, error) {
+	// A function compiled to Go runs as Go: it has no handlers to go on at
+	if result, err, compiled := vm.enterCompiled(); compiled {
+		return result, err
+	}
 	for {
 		result, err := vm.execute(base)
 		if err == nil || !vm.handle(base, err) {
@@ -729,11 +747,8 @@ func (vm *VM) execute(base int) (Value, error) {
 				b = cur.consts[instr.C]
 			}
 			if bothInts(a, b) {
-				// Both operands fit in 48 bits, so their product can exceed
-				// 64; dividing back detects that as well
-				x, y := intOf(a), intOf(b)
-				product := x * y
-				if (x != 0 && product/x != y) || product < MinInt || product > MaxInt {
+				product, fits := mulInts(intOf(a), intOf(b))
+				if !fits {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
 				cur.regs[instr.A] = NewInt(product)
@@ -999,6 +1014,22 @@ func (vm *VM) execute(base int) (Value, error) {
 				if err := vm.enter(funcObj, args); err != nil {
 					return NewNull(), err
 				}
+				if vm.chunk.Compiled != nil {
+					// A function compiled to Go is called as Go
+					if result, err, compiled := vm.enterCompiled(); compiled {
+						if err != nil {
+							return NewNull(), err
+						}
+						vm.leave()
+						if vm.chunk != cur.chunk {
+							cur = vm.running()
+						}
+						cur.regs = vm.regs
+						cur.regs[0] = result
+						ip = vm.ip + 1
+						continue
+					}
+				}
 				if vm.chunk != cur.chunk {
 					cur = vm.running()
 				}
@@ -1049,6 +1080,22 @@ func (vm *VM) execute(base int) (Value, error) {
 			last := first + int(instr.B)
 			if err := vm.enter((*FunctionObj)(unsafe.Pointer(header(callee))), cur.regs[first:last:last]); err != nil {
 				return NewNull(), err
+			}
+			if vm.chunk.Compiled != nil {
+				// A function compiled to Go is called as Go
+				if result, err, compiled := vm.enterCompiled(); compiled {
+					if err != nil {
+						return NewNull(), err
+					}
+					vm.leave()
+					if vm.chunk != cur.chunk {
+						cur = vm.running()
+					}
+					cur.regs = vm.regs
+					cur.regs[0] = result
+					ip = vm.ip + 1
+					continue
+				}
 			}
 			cur.regs = vm.regs
 			ip = vm.ip
@@ -1296,6 +1343,22 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 			if err := vm.enter(funcObj, cur.regs[first:last:last]); err != nil {
 				return NewNull(), err
+			}
+			if vm.chunk.Compiled != nil {
+				// A function compiled to Go is called as Go
+				if result, err, compiled := vm.enterCompiled(); compiled {
+					if err != nil {
+						return NewNull(), err
+					}
+					vm.leave()
+					if vm.chunk != cur.chunk {
+						cur = vm.running()
+					}
+					cur.regs = vm.regs
+					cur.regs[0] = result
+					ip = vm.ip + 1
+					continue
+				}
 			}
 			cur.regs = vm.regs
 			ip = vm.ip

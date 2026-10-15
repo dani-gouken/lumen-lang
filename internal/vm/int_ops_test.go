@@ -223,3 +223,26 @@ func TestArrayAndObjectHelpers(t *testing.T) {
 		t.Fatalf("expected final HASFIELD to be false, got %v", val)
 	}
 }
+
+// mulInts says what dividing back said, for products on either side of
+// every limit it takes a short way around.
+func TestMulIntsAgreesWithDividingBack(t *testing.T) {
+	edges := []int64{0, 1, -1, 2, -2, 3, 1 << 15, 1<<31 - 1, 1 << 31, 1<<31 + 1, -(1 << 31), -(1 << 31) - 1, -(1 << 31) + 1,
+		1 << 32, 1<<32 + 7, 1 << 40, 1<<47 - 1, -(1 << 47), MaxInt, MinInt, MaxInt / 3, MinInt / 7, 3037000499, 3037000500, -3037000500, 46341, 16777216}
+	for _, x := range edges {
+		for _, y := range edges {
+			for _, sign := range []int64{1, -1} {
+				a, b := x, y*sign
+				if b < MinInt || b > MaxInt {
+					continue
+				}
+				product := a * b
+				want := !(a != 0 && product/a != b) && product >= MinInt && product <= MaxInt
+				got, fits := mulInts(a, b)
+				if fits != want || (fits && got != product) {
+					t.Errorf("%d * %d: got %d, %v; dividing back says %v", a, b, got, fits, want)
+				}
+			}
+		}
+	}
+}
