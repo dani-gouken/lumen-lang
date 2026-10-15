@@ -1282,7 +1282,7 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 
 	if left.Equals(Float) && right.Equals(Float) {
 		switch e.Op {
-		case "+", "-", "*", "/":
+		case "+", "-", "*", "/", "%":
 			return Float
 		case "<", "<=", ">", ">=":
 			return Bool
@@ -1292,7 +1292,7 @@ func (c *Checker) checkBinaryExpr(e *ast.BinaryExpr) Type {
 	// A whole number with a Float: worked out as Floats
 	if isNumber(left) && isNumber(right) && !left.Equals(right) {
 		switch e.Op {
-		case "+", "-", "*", "/":
+		case "+", "-", "*", "/", "%":
 			return Float
 		case "<", "<=", ">", ">=":
 			return Bool

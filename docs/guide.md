@@ -129,6 +129,8 @@ count++;                    // count += 1; a statement, not an expression
 
 Most keywords can also be names: `case`, `match`, `in`, `as`, `defer`, `import`, `pub`, `extern`, `struct`, `enum`, `trait` and `impl`. Which one a word is depends on what is around it, so `for case in cases { println(case.name); }` and `let match = pattern.find(text);` read as they look. The words that start a statement or a value (`if`, `while`, `for`, `return`, `let`, `fn`, `true`...) are only ever keywords.
 
+`%` gives the remainder for `Int`s and `Float`s alike: `7.5 % 2.0` is `1.5`, with the sign of the number divided. A text can hold any character by its number, `"caf\u{e9}"`, `"\u{1F600}"`.
+
 A whole number is taken for a `Float` wherever one is expected, and the two work together as `Float`s: `1 + 2.5` is `3.5`, `let half: Float = 1;` holds `1.0`, `16.sqrt()` is fine. Between two whole numbers nothing changes: `7 / 2` is `3`. The other way is never implicit: a `Float` becomes an `Int` through `floor`, `round` and their like, which say how the fraction is lost.
 
 An `Int` holds 48 bits, from -140737488355328 to 140737488355327. Arithmetic that leaves this range stops the program with `integer overflow`; it never wraps around.

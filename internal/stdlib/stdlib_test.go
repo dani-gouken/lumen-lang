@@ -919,3 +919,15 @@ func TestArraysReduce(t *testing.T) {
 		"3",
 	)
 }
+
+// % works on Floats as on Ints, its sign that of the number divided, and
+// on a whole number with a Float as on two Floats.
+func TestFloatRemainder(t *testing.T) {
+	expect(t, "", `
+		let angle = 370.5;
+		angle %= 360.0;
+		println(7.5 % 2.0, -7.5 % 2.0, 7 % 2.5, 7.5 % 2, angle);
+	`,
+		"1.5 -1.5 2 1.5 10.5",
+	)
+}

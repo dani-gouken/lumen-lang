@@ -236,3 +236,26 @@ func TestLexerInterpolationPositions(t *testing.T) {
 		}
 	}
 }
+
+// \u{...} writes a character by its number, in hexadecimal; anything else
+// after \u says how it is written.
+func TestLexUnicodeEscapes(t *testing.T) {
+	good := map[string]string{
+		`"caf\u{e9}"`:      "café",
+		`"\u{1F600}!"`:     "😀!",
+		`"\u{41}\u{042}"`:  "AB",
+		`"""a\u{20AC}b"""`: "a€b",
+	}
+	for src, want := range good {
+		toks := NewLexer(src, "t.lum").Tokenize()
+		if toks[0].Type != token.STRING || toks[0].Literal != want {
+			t.Errorf("%s: got %v %q, want %q", src, toks[0].Type, toks[0].Literal, want)
+		}
+	}
+	for _, src := range []string{`"\u00e9"`, `"\u{}"`, `"\u{1234567}"`, `"\u{D800}"`, `"\u{110000}"`, `"\u{zz}"`} {
+		toks := NewLexer(src, "t.lum").Tokenize()
+		if toks[0].Type != token.ILLEGAL || !strings.Contains(toks[0].Literal, `\u`) {
+			t.Errorf("%s: expected an error about \\u, got %v %q", src, toks[0].Type, toks[0].Literal)
+		}
+	}
+}

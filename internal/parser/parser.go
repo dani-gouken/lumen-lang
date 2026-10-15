@@ -159,7 +159,7 @@ func lexicalSuggestion(msg string) string {
 	case strings.HasPrefix(msg, "unterminated block comment"):
 		return "Add a closing '*/'"
 	case strings.HasPrefix(msg, "invalid escape"):
-		return "Valid escapes are \\n, \\t, \\r, \\0, \\\\, \\\" and \\$"
+		return "Valid escapes are \\n, \\t, \\r, \\0, \\\\, \\\", \\$ and \\u{1F600}"
 	case strings.HasPrefix(msg, "unterminated '${'"):
 		return "Close the expression with '}'; to write a dollar sign followed by a brace, escape it: \\${"
 	case strings.HasPrefix(msg, "nothing between"):

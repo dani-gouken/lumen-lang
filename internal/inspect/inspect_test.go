@@ -93,7 +93,7 @@ func TestDescribe(t *testing.T) {
 		{23, 26, "fn Point.sum() -> Int", "Both coordinates added.", "main.lum", [2]int{11, 8}, [2]int{26, 29}},
 		// A function of the library, named through its module: one name
 		{23, 40, "fn Int.abs() -> Int", "", "<std>/math.lum", [2]int{222, 12}, [2]int{40, 43}},
-		{24, 24, "fn map<U>(convert: fn(T) -> U) -> [U]", "What the function makes of each item, in the same order.", "<std>/arrays.lum", [2]int{783, 12}, [2]int{24, 27}},
+		{24, 24, "fn map<U>(convert: fn(T) -> U) -> [U]", "What the function makes of each item, in the same order.", "<std>/arrays.lum", [2]int{799, 12}, [2]int{24, 27}},
 		// A struct where a value of it is made
 		{22, 14, "struct Point {\n    x: Int;\n    y: Int;\n}", "A place on the grid.", "main.lum", [2]int{7, 8}, [2]int{13, 18}},
 		// Variables: a let, a parameter of a short function, a constant

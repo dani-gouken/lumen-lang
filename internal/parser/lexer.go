@@ -345,6 +345,13 @@ func (l *Lexer) lexString(start token.Position) token.Token {
 			sb.WriteRune(0)
 		case '\\', '"', '$':
 			sb.WriteRune(esc)
+		case 'u':
+			// \u{1F600}: a character by its number, in hexadecimal
+			r, problem := l.unicodeEscape()
+			if problem != "" {
+				return token.NewToken(token.ILLEGAL, problem, start, l.position())
+			}
+			sb.WriteRune(r)
 		default:
 			return token.NewToken(token.ILLEGAL, "invalid escape sequence '\\"+string(esc)+"'", start, l.position())
 		}
@@ -400,6 +407,45 @@ func closingIndent(last *string) string {
 	}
 	*last = (*last)[:at]
 	return indent
+}
+
+// unicodeEscape reads what follows \u in a text: {, one to six
+// hexadecimal digits, }. It gives the character, or what is wrong.
+func (l *Lexer) unicodeEscape() (rune, string) {
+	const form = "write a character by its number as \\u{e9} or \\u{1F600}"
+	if l.pos >= len(l.src) || l.peek(0) != '{' {
+		return 0, "invalid escape sequence '\\u': " + form
+	}
+	l.advance()
+	digits := 0
+	var value rune
+	for l.pos < len(l.src) && l.peek(0) != '}' {
+		c := l.advance()
+		var d rune
+		switch {
+		case c >= '0' && c <= '9':
+			d = c - '0'
+		case c >= 'a' && c <= 'f':
+			d = c - 'a' + 10
+		case c >= 'A' && c <= 'F':
+			d = c - 'A' + 10
+		default:
+			return 0, "invalid escape sequence '\\u': " + form
+		}
+		value = value*16 + d
+		digits++
+		if digits > 6 {
+			return 0, "invalid escape sequence '\\u': at most six digits, " + form
+		}
+	}
+	if l.pos >= len(l.src) || digits == 0 {
+		return 0, "invalid escape sequence '\\u': " + form
+	}
+	l.advance()
+	if value > 0x10FFFF || (value >= 0xD800 && value <= 0xDFFF) {
+		return 0, "invalid escape sequence '\\u': no character has that number"
+	}
+	return value, ""
 }
 
 // unindented turns the marked line ends of a text into real ones, taking

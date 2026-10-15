@@ -595,7 +595,7 @@ func TestCheckRejectsInvalidPrograms(t *testing.T) {
 		{"a number and a text", `fn main() -> Int { return 1 + "2"; }`, "operator + not defined for types int and string"},
 		{"a Float is not taken for a whole number", `fn main() -> Int { let n: Int = 2.0; return n; }`, "cannot assign type float to int"},
 		{"nor where an index is expected", `fn main() -> Int { let xs = [1]; return xs[0.0]; }`, "float"},
-		{"a remainder of a Float", `fn main() -> Float { return 7.5 % 2; }`, "operator % not defined"},
+		{"a remainder of a text", `fn main() -> Int { let r = "a" % 2; return 0; }`, "operator % not defined"},
 	}
 
 	for _, tt := range tests {
