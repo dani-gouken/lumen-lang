@@ -159,6 +159,10 @@ Before a function's instructions are written, `shorten` (in `function.go`) decid
 | A call of `__is` with a descriptor naming one struct or variant (`{Shape.Circle}`), which is what a case of a `match` on an enum is | `JNTYPE value name else` when a branch reads it, `ISTYPE dest value name` otherwise | `NEWSTR` of the descriptor, `MOV`, a call of the host function, `JMPIFNOT` |
 | Three or more such tests of one value in a row, each going on to the next when it fails: a `match` on an enum | `SWITCH value count else`, then one `CASE name target` word per type: one jump to the case of the value's type | a `JNTYPE` per case, tried in order |
 | Adding or subtracting a number in 0..65535 | `ADDI dest a k`, `SUBI dest a k` | `LOADI`, then `ADD` or `SUB` |
+| Any other number, Int or Float, that is only an operand of `+ - * / %` | `ADDK dest a k`, `SUBK`, `MULK`, `DIVK`, `MODK`, with the number among the constants | `LOADK`, then the operation |
+| The same number on the left of `+` or `*`, where the order makes no difference (the types make the other operand a number, so `+` is not joining texts) | `ADDK`, `MULK` with the operands the other way round | `LOADK`, then the operation |
+| A test against such a number, read only by the branch after it | `JNLTK a k else`, `JNLEK`, `JNGTK`, `JNGEK`, `JNEQK`, `JNNEK` | `LOADK`, the test, `JMPIFNOT` |
+| A call of `std.math.toFloat` (`n.toFloat()`), the host function | `TONUM dest n` | the arguments moved into the window, `CALLX` |
 | A result that the next instruction only moves into a variable (`total = total + n`) | written to the variable | the operation into a temporary, then `MOV` |
 | The first argument of a function that calls nothing | stays in `r0` | `MOV home r0` on entry |
 

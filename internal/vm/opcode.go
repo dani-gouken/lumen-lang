@@ -149,10 +149,28 @@ const (
 	// words, one CASE per type.
 	OpSWITCH // A = the value, B = how many cases follow, C = where to go on if it is none of them
 	OpCASE   // After SWITCH: A = the constant of a type's name, B = where to go on for a value of it
+
+	// Arithmetic with a number that is a constant of the chunk, an Int of
+	// any size or a Float: A = dest, B = register, C = the constant. Each
+	// is the operation with the constant loaded into a register first.
+	OpADDK
+	OpSUBK
+	OpMULK
+	OpDIVK
+	OpMODK
+
+	// Tests that jump, against such a constant: A = register, B = the
+	// constant, C = where to go on unless the test of A against B holds.
+	OpJNLTK
+	OpJNLEK
+	OpJNGTK
+	OpJNGEK
+	OpJNEQK
+	OpJNNEK
 )
 
 // LastOp is the highest opcode there is.
-const LastOp = OpCASE
+const LastOp = OpJNNEK
 
 // MaxOperand is the largest value an instruction operand can hold. It bounds
 // what one operand can index: registers per function, constants, functions
@@ -294,7 +312,8 @@ func (i Instr) String() string {
 		return formatInstr("CALLK", i.A, i.B, i.C)
 	case OpCALLX:
 		return formatInstr("CALLX", i.A, i.B, i.C)
-	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI, OpONCE, OpISTYPE, OpJNTYPE, OpGETMETHOD, OpCALLM, OpSWITCH, OpCASE:
+	case OpJNLT, OpJNLE, OpJNEQ, OpJNNE, OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI, OpADDI, OpSUBI, OpONCE, OpISTYPE, OpJNTYPE, OpGETMETHOD, OpCALLM, OpSWITCH, OpCASE,
+		OpADDK, OpSUBK, OpMULK, OpDIVK, OpMODK, OpJNLTK, OpJNLEK, OpJNGTK, OpJNGEK, OpJNEQK, OpJNNEK:
 		return formatInstr(shortNames[i.Op], i.A, i.B, i.C)
 	case OpGC:
 		return "GC"
@@ -335,6 +354,8 @@ var shortNames = map[OpCode]string{
 	OpISTYPE: "ISTYPE", OpJNTYPE: "JNTYPE",
 	OpGETMETHOD: "GETMETHOD", OpCALLM: "CALLM",
 	OpSWITCH: "SWITCH", OpCASE: "CASE",
+	OpADDK: "ADDK", OpSUBK: "SUBK", OpMULK: "MULK", OpDIVK: "DIVK", OpMODK: "MODK",
+	OpJNLTK: "JNLTK", OpJNLEK: "JNLEK", OpJNGTK: "JNGTK", OpJNGEK: "JNGEK", OpJNEQK: "JNEQK", OpJNNEK: "JNNEK",
 }
 
 // ShortName returns the name of one of those instructions, and whether op

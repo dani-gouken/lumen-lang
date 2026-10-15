@@ -57,6 +57,7 @@ type funcGen struct {
 	inSwitch map[*ir.Instruction]bool            // The branches further down a run
 	fields   map[*ir.Instruction]uint16          // A struct or enum value being made -> how many fields it is given
 	constant map[*ir.Instruction]bool            // Values of an enum that hold nothing and are never given anything
+	builtin  map[*ir.Instruction]vm.OpCode       // A call of a host function an instruction does the work of
 }
 
 // fixup is a jump whose target is filled in once all blocks are placed.
@@ -85,10 +86,27 @@ type directCall struct {
 	index uint16
 }
 
-// smallOperand is a number written in an instruction instead of a register.
+// builtins is the host functions of one argument an instruction does
+// exactly the work of, failures included. They are pure: a program that
+// may compute may call them (see sandbox.Permitted).
+var builtins = map[string]vm.OpCode{
+	"std.math.toFloat": vm.OpTONUM,
+}
+
+// smallOperand is a number written in an instruction instead of a
+// register: the number itself, or a number of any size that is a constant
+// of the chunk (pooled).
 type smallOperand struct {
 	operand int // Which operand of the IR instruction it replaces
 	value   uint16
+	pooled  bool
+	number  vm.Value // The constant, when pooled
+}
+
+// withConstant is the arithmetic that takes a number of the chunk's
+// constants in place of its second register.
+var withConstant = map[ir.OpType]vm.OpCode{
+	ir.OpAdd: vm.OpADDK, ir.OpSub: vm.OpSUBK, ir.OpMul: vm.OpMULK, ir.OpDiv: vm.OpDIVK, ir.OpMod: vm.OpMODK,
 }
 
 func newFuncGen(g *Generator, fn *ir.Function) *funcGen {
@@ -472,6 +490,16 @@ var againstSmall = map[ir.OpType][2]vm.OpCode{
 	ir.OpNeq: {vm.OpJNNEI, vm.OpJNNEI},
 }
 
+// againstConstant is the same against a number of the chunk's constants.
+var againstConstant = map[ir.OpType][2]vm.OpCode{
+	ir.OpLt:  {vm.OpJNLTK, vm.OpJNGTK},
+	ir.OpLte: {vm.OpJNLEK, vm.OpJNGEK},
+	ir.OpGt:  {vm.OpJNGTK, vm.OpJNLTK},
+	ir.OpGte: {vm.OpJNGEK, vm.OpJNLEK},
+	ir.OpEq:  {vm.OpJNEQK, vm.OpJNEQK},
+	ir.OpNeq: {vm.OpJNNEK, vm.OpJNNEK},
+}
+
 // shorten decides, before any instruction is written, where one
 // instruction can do the work of several:
 //
@@ -482,7 +510,10 @@ var againstSmall = map[ir.OpType][2]vm.OpCode{
 //   - a test whose only use is the branch after it becomes the branch
 //     (JNLT and the like);
 //   - a small number that is only an operand of an addition, a
-//     subtraction or such a test is written in the instruction.
+//     subtraction or such a test is written in the instruction;
+//   - any other number that is only an operand of arithmetic or of such
+//     a test is read from the chunk's constants by the instruction
+//     (ADDK, JNLTK and the like), instead of being loaded first.
 //
 // Each concerns a temporary: a value written once and read once, in the
 // block it was made in. Nothing else can depend on how it is produced.
@@ -500,6 +531,7 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 	f.inSwitch = make(map[*ir.Instruction]bool)
 	f.fields = make(map[*ir.Instruction]uint16)
 	f.constant = make(map[*ir.Instruction]bool)
+	f.builtin = make(map[*ir.Instruction]vm.OpCode)
 	for id, u := range uses {
 		if isTemp(id) && u.reads == 0 {
 			f.unread[id] = true
@@ -531,6 +563,41 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 		}
 		return uint16(n), u, true
 	}
+	// pooledNumber is the same for any Int or Float, read from the
+	// chunk's constants: a number too large for an operand, or a Float
+	pooledNumber := func(v ir.Value) (smallOperand, *usage, bool) {
+		u := once(v)
+		if u == nil || u.defInstr.Op != ir.OpMov || len(u.defInstr.Operands) != 1 {
+			return smallOperand{}, nil, false
+		}
+		c, ok := u.defInstr.Operands[0].(ir.Constant)
+		if !ok {
+			return smallOperand{}, nil, false
+		}
+		switch c.Type {
+		case "Int":
+			if n, ok := toInt64(c.Val); ok && n >= vm.MinInt && n <= vm.MaxInt {
+				return smallOperand{pooled: true, number: vm.NewInt(n)}, u, true
+			}
+		case "Float":
+			if x, ok := c.Val.(float64); ok {
+				return smallOperand{pooled: true, number: vm.NewNumber(x)}, u, true
+			}
+		}
+		return smallOperand{}, nil, false
+	}
+	// takeConstant writes a number into instr in place of its operand
+	// `operand`, if that is a number used for nothing else
+	takeConstant := func(instr *ir.Instruction, operand int) bool {
+		k, u, ok := pooledNumber(instr.Operands[operand])
+		if !ok {
+			return false
+		}
+		f.folded[u.defInstr] = true
+		k.operand = operand
+		f.small[instr] = k
+		return true
+	}
 
 	for _, bb := range f.blocks {
 		instrs := body(bb)
@@ -541,21 +608,34 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 					f.typeTest[instr] = name
 					continue
 				}
+				if op, u, ok := f.builtinOf(instr, once); ok {
+					f.builtin[instr] = op
+					f.folded[u.defInstr] = true
+					continue
+				}
 				f.shortenCall(instr, idx, instrs, uses, isTemp, once)
 
 			case ir.OpNewStruct, ir.OpNewVariant:
 				f.measure(instr, idx, instrs, uses)
 
-			case ir.OpAdd, ir.OpSub:
+			case ir.OpAdd, ir.OpSub, ir.OpMul, ir.OpDiv, ir.OpMod:
 				if len(instr.Operands) != 2 {
 					continue
 				}
-				if n, u, ok := smallNumber(instr.Operands[1]); ok {
+				// A number on the left is taken the other way round where
+				// that is the same: n + 1 is 1 + n, n * 2 is 2 * n. The types
+				// make the other operand a number too, so + is not joining
+				// texts here
+				swaps := instr.Op == ir.OpAdd || instr.Op == ir.OpMul
+				isSum := instr.Op == ir.OpAdd || instr.Op == ir.OpSub
+				if n, u, ok := smallNumber(instr.Operands[1]); ok && isSum {
 					f.folded[u.defInstr] = true
 					f.small[instr] = smallOperand{operand: 1, value: n}
 				} else if n, u, ok := smallNumber(instr.Operands[0]); ok && instr.Op == ir.OpAdd {
 					f.folded[u.defInstr] = true
 					f.small[instr] = smallOperand{operand: 0, value: n}
+				} else if !takeConstant(instr, 1) && swaps {
+					takeConstant(instr, 0)
 				}
 
 			case ir.OpBr:
@@ -588,6 +668,8 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 				} else if n, u, ok := smallNumber(test.Operands[0]); ok {
 					f.folded[u.defInstr] = true
 					f.small[test] = smallOperand{operand: 0, value: n}
+				} else if !takeConstant(test, 1) {
+					takeConstant(test, 0)
 				}
 			}
 		}
@@ -596,6 +678,28 @@ func (f *funcGen) shorten(uses map[int]*usage, isTemp func(int) bool) {
 		f.findSwitches()
 	}
 	f.writeStraight(uses, isTemp)
+}
+
+// builtinOf returns the instruction that does the work of a call, if it
+// calls one of the builtins by its name, and how the name was given.
+func (f *funcGen) builtinOf(call *ir.Instruction, once func(ir.Value) *usage) (vm.OpCode, *usage, bool) {
+	if len(call.Operands) != 2 {
+		return 0, nil, false
+	}
+	u := once(call.Operands[0])
+	if u == nil || u.defInstr.Op != ir.OpMov || len(u.defInstr.Operands) != 1 {
+		return 0, nil, false
+	}
+	c, ok := u.defInstr.Operands[0].(ir.Constant)
+	if !ok || c.Type != "FuncRef" {
+		return 0, nil, false
+	}
+	name, _ := c.Val.(string)
+	op, ok := builtins[name]
+	if _, inProgram := f.g.protoIndex[name]; !ok || inProgram || !f.g.externs[name] {
+		return 0, nil, false
+	}
+	return op, u, true
 }
 
 // direct is the operations that read what they work on before they write
@@ -954,8 +1058,11 @@ func (f *funcGen) emitTest(test *ir.Instruction, otherwise *ir.BasicBlock) {
 		f.emit(vm.OpJNTYPE, f.reg(test.Operands[1]), f.g.stringConstant(name, f.pos), 0)
 	} else if small, ok := f.small[test]; ok {
 		// With the number on the left the test reads the other way round
-		op := againstSmall[test.Op][1-small.operand]
-		f.emit(op, f.reg(test.Operands[1-small.operand]), small.value, 0)
+		op, value := againstSmall[test.Op][1-small.operand], small.value
+		if small.pooled {
+			op, value = againstConstant[test.Op][1-small.operand], f.g.constant(small.number, f.pos)
+		}
+		f.emit(op, f.reg(test.Operands[1-small.operand]), value, 0)
 	} else {
 		how := fusable[test.Op]
 		a, b := f.reg(test.Operands[0]), f.reg(test.Operands[1])
@@ -1007,11 +1114,14 @@ func (f *funcGen) generateInstr(instr *ir.Instruction, next *ir.BasicBlock) {
 			return
 		}
 		if small, ok := f.small[instr]; ok {
-			op = vm.OpADDI
+			op, value := vm.OpADDI, small.value
 			if instr.Op == ir.OpSub {
 				op = vm.OpSUBI
 			}
-			f.emit(op, f.dest(instr), f.reg(instr.Operands[1-small.operand]), small.value)
+			if small.pooled {
+				op, value = withConstant[instr.Op], f.g.constant(small.number, f.pos)
+			}
+			f.emit(op, f.dest(instr), f.reg(instr.Operands[1-small.operand]), value)
 			return
 		}
 		f.emit(op, f.dest(instr), f.reg(instr.Operands[0]), f.reg(instr.Operands[1]))
@@ -1253,6 +1363,12 @@ func (f *funcGen) generateCall(instr *ir.Instruction) {
 	if name, ok := f.typeTest[instr]; ok {
 		// Whether a value is of one type is asked of the value
 		f.emit(vm.OpISTYPE, f.dest(instr), f.reg(instr.Operands[1]), f.g.stringConstant(name, f.pos))
+		return
+	}
+	if op, ok := f.builtin[instr]; ok {
+		if instr.Dest != nil && !f.unread[instr.Dest.ID] {
+			f.emit(op, f.dest(instr), f.reg(instr.Operands[1]), 0)
+		}
 		return
 	}
 

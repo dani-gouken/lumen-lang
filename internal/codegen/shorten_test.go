@@ -316,10 +316,11 @@ func TestALoopIsThreeInstructions(t *testing.T) {
 // A function that lies past what an operand can address is written with
 // long jumps, and does the same.
 func TestAFunctionFarIntoTheProgramUsesLongJumps(t *testing.T) {
-	// filler: 30000 statements, so that what follows it starts beyond 65535
+	// filler: 68000 additions of a constant, one instruction each (ADDK),
+	// so that what follows it starts beyond 65535
 	filler := ir.NewBuilder("filler")
 	acc := filler.CreateMov(intConst(100000))
-	for i := 0; i < 34000; i++ {
+	for i := 0; i < 68000; i++ {
 		filler.Emit(ir.OpAdd, acc, acc, filler.CreateMov(intConst(100000)))
 	}
 	filler.CreateRet(acc)
@@ -367,6 +368,7 @@ func TestAFunctionFarIntoTheProgramUsesLongJumps(t *testing.T) {
 	// What needs no address is used all the same
 	expectCount(t, chunk, "countTo", 1, vm.OpCALLK)
 	expectCount(t, chunk, "countTo", 1, vm.OpADDI)
+	expectCount(t, chunk, "filler", 68000, vm.OpADDK)
 	if err := vm.Verify(chunk); err != nil {
 		t.Errorf("does not verify: %v", err)
 	}
@@ -697,4 +699,200 @@ func TestResultsAreWrittenStraightToTheirVariable(t *testing.T) {
 	// The two results that only go to total need no move; the one read
 	// again afterwards is moved
 	expectCount(t, chunk, "main", 1, vm.OpMOV)
+}
+
+func floatConst(x float64) ir.Constant { return ir.Constant{Val: x, Type: "Float"} }
+
+// unary makes "fn name(x) { return <what make does with x>; }".
+func unary(name string, make func(b *ir.Builder, x *ir.Register) *ir.Register) *ir.Function {
+	b := ir.NewBuilder(name)
+	x := b.AddParam()
+	b.CreateRet(make(b, x))
+	return b.Func
+}
+
+// Any number that is only an operand of arithmetic is read from the
+// constants by the instruction: no register is loaded with it first.
+func TestNumbersOfAnySizeAreReadByTheArithmetic(t *testing.T) {
+	// mixed(x) = ((x * 100000 + 70000) / 3 - 123456) % 1000003
+	mixed := unary("mixed", func(b *ir.Builder, x *ir.Register) *ir.Register {
+		v := b.NewRegister()
+		b.Emit(ir.OpMul, v, x, b.CreateMov(intConst(100000)))
+		v = b.CreateAdd(v, b.CreateMov(intConst(70000)))
+		w := b.NewRegister()
+		b.Emit(ir.OpDiv, w, v, b.CreateMov(intConst(3)))
+		w = b.CreateSub(w, b.CreateMov(intConst(123456)))
+		r := b.NewRegister()
+		b.Emit(ir.OpMod, r, w, b.CreateMov(intConst(1000003)))
+		return r
+	})
+	main := ir.NewBuilder("main")
+	main.CreateRet(main.CreateCall(main.CreateMov(funcRef("mixed")), main.CreateMov(intConst(7))))
+
+	chunk := generate(t, main.Func, mixed)
+	expectInt(t, run(t, chunk), 133210)
+	for _, op := range []vm.OpCode{vm.OpMULK, vm.OpADDK, vm.OpDIVK, vm.OpSUBK, vm.OpMODK} {
+		expectCount(t, chunk, "mixed", 1, op)
+	}
+	expectCount(t, chunk, "mixed", 0, vm.OpLOADK, vm.OpLOADI, vm.OpMUL, vm.OpADD, vm.OpDIV, vm.OpSUB, vm.OpMOD)
+	if err := vm.Verify(chunk); err != nil {
+		t.Errorf("does not verify: %v", err)
+	}
+}
+
+// A number on the left is read the same way only where the operation
+// gives the same the other way round.
+func TestANumberOnTheLeftIsTakenWhereOrderDoesNotMatter(t *testing.T) {
+	left := func(name string, op ir.OpType, k ir.Constant) *ir.Function {
+		return unary(name, func(b *ir.Builder, x *ir.Register) *ir.Register {
+			r := b.NewRegister()
+			b.Emit(op, r, b.CreateMov(k), x)
+			return r
+		})
+	}
+	main := ir.NewBuilder("main")
+	call := func(name string, n int64) *ir.Register {
+		return main.CreateCall(main.CreateMov(funcRef(name)), main.CreateMov(intConst(n)))
+	}
+	// 100005 + 99995 + 20000 + 210000
+	sum := main.CreateAdd(call("plus", 5), call("minus", 5))
+	sum = main.CreateAdd(sum, call("over", 5))
+	main.CreateRet(main.CreateAdd(sum, call("times", 70000)))
+
+	chunk := generate(t, main.Func,
+		left("plus", ir.OpAdd, intConst(100000)), left("minus", ir.OpSub, intConst(100000)),
+		left("over", ir.OpDiv, intConst(100000)), left("times", ir.OpMul, intConst(3)))
+	expectInt(t, run(t, chunk), 430000)
+
+	expectCount(t, chunk, "plus", 1, vm.OpADDK)
+	expectCount(t, chunk, "times", 1, vm.OpMULK)
+	// 100000 - x is not x - 100000, nor 100000 / x x / 100000
+	expectCount(t, chunk, "minus", 0, vm.OpSUBK)
+	expectCount(t, chunk, "minus", 1, vm.OpSUB)
+	expectCount(t, chunk, "over", 0, vm.OpDIVK)
+	expectCount(t, chunk, "over", 1, vm.OpDIV)
+	for _, name := range []string{"plus", "times"} {
+		expectCount(t, chunk, name, 0, vm.OpLOADK, vm.OpLOADI)
+	}
+}
+
+// A number read twice is loaded once, and read from its register.
+func TestANumberReadTwiceStaysInARegister(t *testing.T) {
+	twice := unary("twice", func(b *ir.Builder, x *ir.Register) *ir.Register {
+		k := b.CreateMov(intConst(100000))
+		v := b.CreateAdd(x, k)
+		r := b.NewRegister()
+		b.Emit(ir.OpMul, r, v, k)
+		return r
+	})
+	main := ir.NewBuilder("main")
+	main.CreateRet(main.CreateCall(main.CreateMov(funcRef("twice")), main.CreateMov(intConst(2))))
+
+	chunk := generate(t, main.Func, twice)
+	expectInt(t, run(t, chunk), 10000200000)
+	expectCount(t, chunk, "twice", 1, vm.OpLOADK)
+	expectCount(t, chunk, "twice", 0, vm.OpADDK, vm.OpMULK)
+}
+
+// A test against a Float or a large Int jumps on the constant itself,
+// whichever side the number is on.
+func TestTestsAgainstANumberOfAnySize(t *testing.T) {
+	test := func(name string, op ir.OpType, numberLeft bool, k ir.Constant) *ir.Function {
+		b := ir.NewBuilder(name)
+		x := b.AddParam()
+		yes, no := b.NewBlock(), b.NewBlock()
+		cond := b.NewRegister()
+		if numberLeft {
+			b.Emit(op, cond, b.CreateMov(k), x)
+		} else {
+			b.Emit(op, cond, x, b.CreateMov(k))
+		}
+		b.CreateBr(cond, yes, no)
+		b.SetBlock(yes)
+		b.CreateRet(b.CreateMov(intConst(1)))
+		b.SetBlock(no)
+		b.CreateRet(b.CreateMov(intConst(0)))
+		return b.Func
+	}
+	main := ir.NewBuilder("main")
+	total := main.CreateMov(intConst(0))
+	for _, c := range []struct {
+		name   string
+		arg    int64
+		weight int64
+	}{
+		// Each that holds counts its weight: 1 + 10 + 100 + 1000
+		{"below", 2, 1}, {"above", 3, 10}, {"equal", 70000, 100}, {"differs", 3, 1000},
+		{"below", 3, 10000}, {"above", 2, 10000}, {"equal", 70001, 10000}, {"differs", 70000, 10000},
+	} {
+		got := main.CreateCall(main.CreateMov(funcRef(c.name)), main.CreateMov(intConst(c.arg)))
+		weighted := main.NewRegister()
+		main.Emit(ir.OpMul, weighted, got, main.CreateMov(intConst(c.weight)))
+		total = main.CreateAdd(total, weighted)
+	}
+	main.CreateRet(total)
+
+	chunk := generate(t, main.Func,
+		test("below", ir.OpLt, false, floatConst(2.5)), // x < 2.5
+		test("above", ir.OpLt, true, floatConst(2.5)),  // 2.5 < x
+		test("equal", ir.OpEq, true, intConst(70000)),  // 70000 == x
+		test("differs", ir.OpNeq, false, intConst(70000)))
+	expectInt(t, run(t, chunk), 1111)
+
+	expectCount(t, chunk, "below", 1, vm.OpJNLTK)
+	expectCount(t, chunk, "above", 1, vm.OpJNGTK)
+	expectCount(t, chunk, "equal", 1, vm.OpJNEQK)
+	expectCount(t, chunk, "differs", 1, vm.OpJNNEK)
+	for _, name := range []string{"below", "above", "equal", "differs"} {
+		expectCount(t, chunk, name, 0, vm.OpLOADK, vm.OpLT, vm.OpEQ, vm.OpNE, vm.OpJMPIFNOT)
+	}
+	if err := vm.Verify(chunk); err != nil {
+		t.Errorf("does not verify: %v", err)
+	}
+}
+
+// A call of a host function that an instruction does the work of is that
+// instruction; one of a function of the program of the same name is not.
+func TestHostFunctionsDoneByAnInstruction(t *testing.T) {
+	toFloat := func(b *ir.Builder, n int64) *ir.Register {
+		return b.CreateCall(b.CreateMov(funcRef("std.math.toFloat")), b.CreateMov(intConst(n)))
+	}
+	compile := func(fns ...*ir.Function) *vm.Chunk {
+		errs := errors.NewHandler()
+		chunk := NewGenerator(&ir.Program{Functions: fns}, []string{"std.math.toFloat", "print"}, errs).Generate()
+		if errs.HasErrors() {
+			t.Fatalf("%v", errs.Diagnostics)
+		}
+		return chunk
+	}
+
+	// main: toFloat(8) for nothing; return toFloat(7) * 2.5 >= 17.5 ? 1 : 0,
+	// with the Float compared, so that an Int would not do
+	main := ir.NewBuilder("main")
+	toFloat(main, 8)
+	product := main.NewRegister()
+	main.Emit(ir.OpMul, product, toFloat(main, 7), main.CreateMov(floatConst(2.5)))
+	whole := main.NewRegister()
+	main.Emit(ir.OpEq, whole, product, main.CreateMov(floatConst(17.5)))
+	main.CreateRet(whole)
+
+	chunk := compile(main.Func)
+	if got := run(t, chunk); got != vm.NewBool(true) {
+		t.Errorf("expected true, got %s", vm.FormatValue(got))
+	}
+	// The call whose result nothing reads is not made at all: TONUM fails
+	// for nothing an Int argument can be
+	expectCount(t, chunk, "main", 1, vm.OpTONUM)
+	expectCount(t, chunk, "main", 0, vm.OpCALLX, vm.OpCALL, vm.OpNEWEXFUNC)
+
+	// A program that has a function of that name calls it
+	own := unary("std.math.toFloat", func(b *ir.Builder, x *ir.Register) *ir.Register {
+		return b.CreateAdd(x, b.CreateMov(intConst(1)))
+	})
+	main = ir.NewBuilder("main")
+	main.CreateRet(toFloat(main, 7))
+	chunk = compile(main.Func, own)
+	expectInt(t, run(t, chunk), 8)
+	expectCount(t, chunk, "main", 0, vm.OpTONUM)
+	expectCount(t, chunk, "main", 1, vm.OpCALLK)
 }

@@ -478,6 +478,12 @@ func isOfType(v Value, known *fieldCache, name string) bool {
 
 // testAgainst is a test that jumps, against a small number, on a value
 // that is not an Int: what the comparison it stands for would do.
+// againstConstant is the test against a small number that each test
+// against a constant does: the same, with the number elsewhere.
+var againstConstant = map[OpCode]OpCode{
+	OpJNLTK: OpJNLTI, OpJNLEK: OpJNLEI, OpJNGTK: OpJNGTI, OpJNGEK: OpJNGEI, OpJNEQK: OpJNEQI, OpJNNEK: OpJNNEI,
+}
+
 func (vm *VM) testAgainst(op OpCode, a, k Value) (bool, error) {
 	switch op {
 	case OpJNEQI:
@@ -645,8 +651,13 @@ func (vm *VM) execute(base int) (Value, error) {
 		case OpLOADI:
 			regs[instr.A] = NewInt(int64(instr.B))
 
-		case OpADD:
-			a, b := regs[instr.B], regs[instr.C]
+		case OpADD, OpADDK:
+			a, b := regs[instr.B], Value(0)
+			if instr.Op == OpADD {
+				b = regs[instr.C]
+			} else {
+				b = consts[instr.C]
+			}
 			if bothInts(a, b) {
 				sum := intOf(a) + intOf(b)
 				if sum < MinInt || sum > MaxInt {
@@ -664,8 +675,13 @@ func (vm *VM) execute(base int) (Value, error) {
 				vm.collectIfNeeded()
 			}
 
-		case OpSUB:
-			a, b := regs[instr.B], regs[instr.C]
+		case OpSUB, OpSUBK:
+			a, b := regs[instr.B], Value(0)
+			if instr.Op == OpSUB {
+				b = regs[instr.C]
+			} else {
+				b = consts[instr.C]
+			}
 			if bothInts(a, b) {
 				diff := intOf(a) - intOf(b)
 				if diff < MinInt || diff > MaxInt {
@@ -678,8 +694,13 @@ func (vm *VM) execute(base int) (Value, error) {
 				return NewNull(), vm.arithmeticError("SUB", "-", a, b)
 			}
 
-		case OpMUL:
-			a, b := regs[instr.B], regs[instr.C]
+		case OpMUL, OpMULK:
+			a, b := regs[instr.B], Value(0)
+			if instr.Op == OpMUL {
+				b = regs[instr.C]
+			} else {
+				b = consts[instr.C]
+			}
 			if bothInts(a, b) {
 				// Both operands fit in 48 bits, so their product can exceed
 				// 64; dividing back detects that as well
@@ -695,8 +716,13 @@ func (vm *VM) execute(base int) (Value, error) {
 				return NewNull(), vm.arithmeticError("MUL", "*", a, b)
 			}
 
-		case OpDIV:
-			a, b := regs[instr.B], regs[instr.C]
+		case OpDIV, OpDIVK:
+			a, b := regs[instr.B], Value(0)
+			if instr.Op == OpDIV {
+				b = regs[instr.C]
+			} else {
+				b = consts[instr.C]
+			}
 			if bothInts(a, b) {
 				if intOf(b) == 0 {
 					return NewNull(), vm.runtimeError("division by zero")
@@ -713,8 +739,13 @@ func (vm *VM) execute(base int) (Value, error) {
 				return NewNull(), vm.arithmeticError("DIV", "/", a, b)
 			}
 
-		case OpMOD:
-			a, b := regs[instr.B], regs[instr.C]
+		case OpMOD, OpMODK:
+			a, b := regs[instr.B], Value(0)
+			if instr.Op == OpMOD {
+				b = regs[instr.C]
+			} else {
+				b = consts[instr.C]
+			}
 			if bothInts(a, b) {
 				if intOf(b) == 0 {
 					return NewNull(), vm.runtimeError("division by zero")
@@ -1115,6 +1146,54 @@ func (vm *VM) execute(base int) (Value, error) {
 				}
 			} else {
 				result, err := vm.testAgainst(instr.Op, a, NewInt(int64(instr.B)))
+				if err != nil {
+					return NewNull(), err
+				}
+				holds = result
+			}
+			if !holds {
+				target := int(instr.C)
+				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
+					return NewNull(), vm.stopped()
+				}
+				ip = target
+				continue
+			}
+
+		case OpJNLTK, OpJNLEK, OpJNGTK, OpJNGEK, OpJNEQK, OpJNNEK:
+			// The same against a constant: go on at C unless the test of A
+			// against the number B holds
+			a, k := regs[instr.A], consts[instr.B]
+			holds := false
+			if bothInts(a, k) {
+				n, m := intOf(a), intOf(k)
+				switch instr.Op {
+				case OpJNLTK:
+					holds = n < m
+				case OpJNLEK:
+					holds = n <= m
+				case OpJNGTK:
+					holds = n > m
+				case OpJNGEK:
+					holds = n >= m
+				case OpJNEQK:
+					holds = n == m
+				default:
+					holds = n != m
+				}
+			} else if x, y, ok := numbers(a, k); ok && instr.Op <= OpJNGEK {
+				switch instr.Op {
+				case OpJNLTK:
+					holds = x < y
+				case OpJNLEK:
+					holds = x <= y
+				case OpJNGTK:
+					holds = x > y
+				default:
+					holds = x >= y
+				}
+			} else {
+				result, err := vm.testAgainst(againstConstant[instr.Op], a, k)
 				if err != nil {
 					return NewNull(), err
 				}

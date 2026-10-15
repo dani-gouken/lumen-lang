@@ -487,3 +487,148 @@ func TestIntsAndFloatsAreWorkedOutTogether(t *testing.T) {
 		t.Errorf("expected a Float and null to be refused")
 	}
 }
+
+// numbersAndOthers is what an operand of arithmetic can hold, numbers at
+// their limits first.
+func numbersAndOthers() []Value {
+	nan := NewNumber(0).AsNumber()
+	return []Value{
+		NewInt(0), NewInt(1), NewInt(-1), NewInt(7), NewInt(-7), NewInt(1000003), NewInt(-1000003),
+		NewInt(65535), NewInt(65536), NewInt(MaxInt), NewInt(MinInt), NewInt(MaxInt / 2),
+		NewNumber(0), NewNumber(-0.5), NewNumber(2.5), NewNumber(7), NewNumber(1e300), NewNumber(nan / nan),
+		NewBool(true), NewNull(),
+	}
+}
+
+func TestArithmeticWithAConstant(t *testing.T) {
+	values := numbersAndOthers()
+	// The constants are the numbers among them: what the compiler writes
+	var constants []int
+	for i, v := range values {
+		if v.IsInt() || v.IsNumber() {
+			constants = append(constants, i)
+		}
+	}
+	ops := map[OpCode]OpCode{OpADD: OpADDK, OpSUB: OpSUBK, OpMUL: OpMULK, OpDIV: OpDIVK, OpMOD: OpMODK}
+	for long, short := range ops {
+		for i, a := range values {
+			for _, k := range constants {
+				// r1 = a; r2 = k; r0 = r1 op r2
+				longCode := []Instr{
+					NewInstr(OpLOADK, 1, uint16(i), 0), NewInstr(OpLOADK, 2, uint16(k), 0),
+					NewInstr(long, 0, 1, 2), NewInstr(OpRET, 0, 0, 0),
+				}
+				shortCode := []Instr{
+					NewInstr(OpLOADK, 1, uint16(i), 0),
+					NewInstr(short, 0, 1, uint16(k)), NewInstr(OpRET, 0, 0, 0),
+				}
+				name := NewInstr(long, 0, 0, 0).String() + " of " + a.String() + " and the constant " + values[k].String()
+				both(t, name, values, longCode, shortCode)
+			}
+		}
+	}
+
+	// A text and a constant do not add up, the short way either
+	both(t, "a text plus a constant", []Value{NewInt(70000)},
+		[]Instr{NewInstr(OpNEWSTR, 1, 0, 0), NewInstr(OpLOADK, 2, 0, 0), NewInstr(OpADD, 0, 1, 2), NewInstr(OpRET, 0, 0, 0)},
+		[]Instr{NewInstr(OpNEWSTR, 1, 0, 0), NewInstr(OpADDK, 0, 1, 0), NewInstr(OpRET, 0, 0, 0)})
+
+	// The result may go to the register the operand came from, as in
+	// `total = total * 31`
+	both(t, "into its own operand", []Value{NewInt(12), NewNumber(0.5)},
+		[]Instr{NewInstr(OpLOADK, 1, 0, 0), NewInstr(OpLOADK, 2, 1, 0), NewInstr(OpMUL, 1, 1, 2), NewInstr(OpRET, 1, 0, 0)},
+		[]Instr{NewInstr(OpLOADK, 1, 0, 0), NewInstr(OpMULK, 1, 1, 1), NewInstr(OpRET, 1, 0, 0)})
+}
+
+func TestTestsAgainstAConstant(t *testing.T) {
+	values := numbersAndOthers()
+	var constants []int
+	for i, v := range values {
+		if v.IsInt() || v.IsNumber() {
+			constants = append(constants, i)
+		}
+	}
+	tests := map[OpCode]OpCode{
+		OpLT: OpJNLTK, OpLE: OpJNLEK, OpGT: OpJNGTK, OpGE: OpJNGEK, OpEQ: OpJNEQK, OpNE: OpJNNEK,
+	}
+	tail := []Instr{
+		NewInstr(OpLOADI, 0, 1, 0), NewInstr(OpRET, 0, 0, 0),
+		NewInstr(OpLOADI, 0, 2, 0), NewInstr(OpRET, 0, 0, 0),
+	}
+	for long, short := range tests {
+		for i, a := range values {
+			for _, k := range constants {
+				// r1 = a; r2 = k; test; jump: 1 if it holds, else 2
+				longCode := append([]Instr{
+					NewInstr(OpLOADK, 1, uint16(i), 0), NewInstr(OpLOADK, 2, uint16(k), 0),
+					NewInstr(long, 3, 1, 2), NewInstr(OpJMPIFNOT, 3, 6, 0),
+				}, tail...)
+				shortCode := append([]Instr{
+					NewInstr(OpLOADK, 1, uint16(i), 0), NewInstr(OpNOP, 0, 0, 0), NewInstr(OpNOP, 0, 0, 0),
+					NewInstr(short, 1, uint16(k), 6),
+				}, tail...)
+				name := NewInstr(long, 0, 0, 0).String() + " of " + a.String() + " and the constant " + values[k].String()
+				both(t, name, values, longCode, shortCode)
+			}
+		}
+	}
+}
+
+// A loop that jumps back on a test against a constant can be stopped, as
+// one that jumps back any other way can.
+func TestATestAgainstAConstantThatLoopsCanBeStopped(t *testing.T) {
+	chunk := NewChunk()
+	chunk.Constants = []Value{NewInt(100000)}
+	chunk.Code = []Instr{
+		NewInstr(OpLOADI, 1, 0, 0),
+		NewInstr(OpNOP, 0, 0, 0),
+		NewInstr(OpJNEQK, 1, 0, 1), // back unless r1 is 100000: forever
+		NewInstr(OpRET, 1, 0, 0),
+	}
+	chunk.Prototypes = []FunctionPrototype{{Name: "main", CodeSize: len(chunk.Code), RegisterCount: 2}}
+	machine := NewVM()
+	machine.SetStepLimit(1000)
+	_, err := machine.Exec(chunk)
+	if failure, ok := err.(*RuntimeError); !ok || failure.Kind != KindBudget {
+		t.Fatalf("expected the loop to run out of steps, got %v", err)
+	}
+}
+
+func TestConstantsOfInstructionsAreCheckedWithTheChunk(t *testing.T) {
+	cases := []struct {
+		name string
+		code Instr
+		want string
+	}{
+		{"a constant that is not there", NewInstr(OpADDK, 2, 1, 3), "constant 3 of 3"},
+		{"a constant that is not a number", NewInstr(OpMULK, 2, 1, 2), "constant 2 is not a number"},
+		{"a result into a register that is not there", NewInstr(OpDIVK, 9, 1, 0), "register r9"},
+		{"a test against a constant that is not there", NewInstr(OpJNLTK, 1, 7, 3), "constant 7 of 3"},
+		{"a test against a constant that is not a number", NewInstr(OpJNEQK, 1, 2, 3), "constant 2 is not a number"},
+		{"a test that jumps out of the function", NewInstr(OpJNGEK, 1, 0, 9), "jump to 9"},
+	}
+	program := func(at Instr) *Chunk {
+		chunk := NewChunk()
+		chunk.Constants = []Value{NewInt(70000), NewNumber(0.5), NewBool(true)}
+		chunk.Code = []Instr{
+			NewInstr(OpLOADI, 1, 3, 0),
+			at,
+			NewInstr(OpMODK, 2, 1, 1),
+			NewInstr(OpRET, 2, 0, 0),
+		}
+		chunk.Prototypes = []FunctionPrototype{{Name: "main", CodeSize: len(chunk.Code), RegisterCount: 3}}
+		return chunk
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if err := Verify(program(c.code)); err == nil || !strings.Contains(err.Error(), c.want) {
+				t.Errorf("expected an error with %q, got %v", c.want, err)
+			}
+		})
+	}
+	for _, fine := range []Instr{NewInstr(OpSUBK, 2, 1, 0), NewInstr(OpJNLEK, 1, 1, 3)} {
+		if err := Verify(program(fine)); err != nil {
+			t.Errorf("%v is refused: %v", fine, err)
+		}
+	}
+}

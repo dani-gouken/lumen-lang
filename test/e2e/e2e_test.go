@@ -558,9 +558,9 @@ func TestLargeProgram(t *testing.T) {
 	if !regexp.MustCompile(fmt.Sprintf(`CALLK r\d+ \d+ step%d\n`, count-1)).Match(text) {
 		t.Errorf("expected the listing to refer to step%d by name", count-1)
 	}
-	// Constant indexes past 255 are printed in full
-	if !regexp.MustCompile(`LOADK r\d+ \d{4}\b`).Match(text) {
-		t.Error("expected the listing to load a constant with a four-digit index")
+	// Constant indexes past 255 are printed in full, loaded or added
+	if !regexp.MustCompile(`(LOADK r\d+|ADDK r\d+ r\d+) \d{4}\b`).Match(text) {
+		t.Error("expected the listing to use a constant with a four-digit index")
 	}
 }
 

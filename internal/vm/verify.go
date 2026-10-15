@@ -181,6 +181,19 @@ func verifyFunction(chunk *Chunk, proto *FunctionPrototype) error {
 		case OpADDI, OpSUBI:
 			err = v.registers(instr.A, instr.B)
 
+		case OpADDK, OpSUBK, OpMULK, OpDIVK, OpMODK:
+			if err = v.registers(instr.A, instr.B); err == nil {
+				err = v.number(instr.C)
+			}
+
+		case OpJNLTK, OpJNLEK, OpJNGTK, OpJNGEK, OpJNEQK, OpJNNEK:
+			if err = v.registers(instr.A); err == nil {
+				err = v.number(instr.B)
+			}
+			if err == nil {
+				err = jump(ip, int(instr.C))
+			}
+
 		case OpSWITCH:
 			if err = v.registers(instr.A); err == nil {
 				err = jump(ip, int(instr.C))
@@ -327,6 +340,18 @@ func (v *verifier) calledFunction(instr Instr) error {
 func (v *verifier) constant(index uint16) error {
 	if int(index) >= len(v.chunk.Constants) {
 		return fmt.Errorf("constant %d of %d", index, len(v.chunk.Constants))
+	}
+	return nil
+}
+
+// number checks a constant an instruction takes as a number: it must be
+// an Int or a Float, which the instruction is written for.
+func (v *verifier) number(index uint16) error {
+	if err := v.constant(index); err != nil {
+		return err
+	}
+	if k := v.chunk.Constants[index]; !k.IsInt() && !k.IsNumber() {
+		return fmt.Errorf("constant %d is not a number", index)
 	}
 	return nil
 }

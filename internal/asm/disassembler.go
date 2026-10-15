@@ -362,9 +362,13 @@ func FormatInstruction(instr vm.Instr, chunk *vm.Chunk) string {
 		name, _ := vm.ShortName(instr.Op)
 		return fmt.Sprintf("%s r%d %d %d", name, instr.A, instr.B, instr.C)
 
-	case vm.OpADDI, vm.OpSUBI:
+	case vm.OpADDI, vm.OpSUBI, vm.OpADDK, vm.OpSUBK, vm.OpMULK, vm.OpDIVK, vm.OpMODK:
 		name, _ := vm.ShortName(instr.Op)
 		return fmt.Sprintf("%s r%d r%d %d", name, instr.A, instr.B, instr.C)
+
+	case vm.OpJNLTK, vm.OpJNLEK, vm.OpJNGTK, vm.OpJNGEK, vm.OpJNEQK, vm.OpJNNEK:
+		name, _ := vm.ShortName(instr.Op)
+		return fmt.Sprintf("%s r%d %d %d", name, instr.A, instr.B, instr.C)
 
 	case vm.OpSWITCH:
 		return fmt.Sprintf("SWITCH r%d %d %d", instr.A, instr.B, instr.C)
