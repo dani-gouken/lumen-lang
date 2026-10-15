@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -497,7 +498,7 @@ func TestParseErrors(t *testing.T) {
 	}{
 		{"missing semicolon", "fn main() -> Int {\n  let x = 1\n  return x;\n}", ErrMissingSemicolon, "expected ';'", 2},
 		{"missing expression", "fn main() -> Int {\n  let x = ;\n}", ErrUnexpectedToken, "expected expression", 2},
-		{"bad declaration", "let x = 1;", ErrUnexpectedToken, "expected declaration", 1},
+		{"bad declaration", "pub let x = 1;", ErrUnexpectedToken, "expected declaration", 1},
 		{"unclosed block", "fn main() -> Int {\n  return 1;", ErrUnexpectedToken, "expected '}'", 2},
 		{"invalid assignment target", "fn main() -> Int {\n  1 + 2 = 3;\n}", ErrInvalidAssign, "invalid assignment target", 2},
 		{"duplicate field", "fn main() -> Int {\n  let p = P { x: 1, x: 2 };\n}", ErrDuplicateField, "duplicate field 'x'", 2},
@@ -513,7 +514,7 @@ func TestParseErrors(t *testing.T) {
 		{"constant without a value", "const LIMIT;", ErrUnexpectedToken, "expected '=', found ';'", 1},
 		{"constant without a name", "const = 3;", ErrUnexpectedToken, "expected constant name", 1},
 		{"constant without semicolon", "const A = 1\nconst B = 2;", ErrMissingSemicolon, "expected ';'", 1},
-		{"variable at the top level", "let total = 0;", ErrUnexpectedToken, "expected declaration, found 'let'", 1},
+		{"a brace too many", "fn main() {}\n}", ErrUnexpectedToken, "expected declaration or statement, found '}'", 2},
 		{"pattern that is an operation", "fn f(s: S) -> Int {\n  match s {\n    case S.A(x + 1): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
 		{"pattern that is an array", "fn f(s: S) -> Int {\n  match s {\n    case S.A([1]): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
 		{"pattern that is a generic call", "fn f(s: S) -> Int {\n  match s {\n    case S.A(g<Int>()): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
@@ -630,6 +631,82 @@ fn last() -> Int {
 	first := prog.Decls[0].(*ast.FnDecl)
 	if len(first.Body.Stmts) != 3 {
 		t.Errorf("expected 3 statements in first(), got %d", len(first.Body.Stmts))
+	}
+}
+
+func TestParseScript(t *testing.T) {
+	// Statements and declarations take turns; the statements keep their
+	// order, and where each starts as written
+	src := `#!/usr/bin/env lumen
+import std.strings;
+
+let names = ["ada", "grace"];
+const LIMIT = 2;
+
+fn greet(name: String) -> String {
+    return "hi ${name}";
+}
+
+(names).len();
+for name in names {
+    println(greet(name));
+}
+let (first, second) = (names[0], names[1]);
+fn() {
+    println(first);
+}();
+total = 1;
+`
+	prog := parseOK(t, src)
+	if len(prog.Imports) != 1 || len(prog.Decls) != 2 {
+		t.Fatalf("expected 1 import and 2 declarations, got %d and %d", len(prog.Imports), len(prog.Decls))
+	}
+	var kinds []string
+	for _, stmt := range prog.Stmts {
+		kinds = append(kinds, strings.TrimPrefix(fmt.Sprintf("%T", stmt), "*ast."))
+	}
+	// The tuple is a let of its own and one for each name
+	want := "LetStmt,ExprStmt,ForStmt,LetStmt,LetStmt,LetStmt,ExprStmt,ExprStmt"
+	if strings.Join(kinds, ",") != want {
+		t.Errorf("expected the statements %s, got %s", want, strings.Join(kinds, ","))
+	}
+	var starts []string
+	for _, pos := range prog.StmtStarts {
+		starts = append(starts, fmt.Sprintf("%d:%d", pos.Line, pos.Col))
+	}
+	if got := strings.Join(starts, " "); got != "4:1 11:1 12:1 15:1 16:1 19:1" {
+		t.Errorf("expected the statements to start at their first token, got %s", got)
+	}
+	if fn := prog.Decls[1].(*ast.FnDecl); fn.Name != "greet" {
+		t.Errorf("expected `fn greet` to stay a declaration, got %s", fn.Name)
+	}
+}
+
+func TestParseScriptErrorRecovery(t *testing.T) {
+	// A broken statement costs one error; the statements and declarations
+	// after it are still read
+	src := `let a = ;
+println(a);
+fn broken( {
+println("after");
+struct S { x: Int; }
+}
+let b = 2
+let c = 3;
+`
+	errs := errors.NewHandler()
+	prog := Parse(src, "test.lum", errs)
+	var got []string
+	for _, d := range errs.Diagnostics {
+		got = append(got, fmt.Sprintf("%d %s", d.Pos.Line, d.Code))
+	}
+	want := []string{"1 E0001", "3 E0001", "6 E0001", "7 E0003"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("expected the diagnostics %v, got %v", want, got)
+	}
+	// A missing ';' is said, and the statement kept
+	if len(prog.Stmts) != 4 || len(prog.Decls) != 1 {
+		t.Errorf("expected println(a), println(\"after\"), let b, let c and the struct to survive, got %d statements and %d declarations", len(prog.Stmts), len(prog.Decls))
 	}
 }
 

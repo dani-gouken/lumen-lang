@@ -1,0 +1,9 @@
+October
+  rent         950.00
+  food         169.05  over by 19.05
+  transport     30.00
+  fun           60.50  over by 10.50
+  other         15.90
+  total       1225.45
+left out:
+  line 7: 'abc' is not an amount

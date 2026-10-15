@@ -44,7 +44,31 @@ Every program needs a `main` function without parameters. If it returns an `Int`
 
 Exit codes: `0` on success (or the `Int` returned by `main`), `1` for a compile error, a runtime error or a usage error. Diagnostics go to stderr, program output to stdout.
 
-**Scripts.** A file whose first line is `#!/usr/bin/env lumen` runs on its own once it may be executed (`chmod +x`), with or without `.lum` at the end of its name: `./deploy staging` is `lumen run deploy staging`. The line is a comment to Lumen, and `lumen fmt` keeps it. [`std.sh`](stdlib.md#stdsh) runs the commands a script is made of.
+**Scripts.** A program need not have a `main`: statements written outside any function run in the order they are written, with the declarations around them known everywhere. `return 2;` ends the script with that exit code.
+
+```lumen
+#!/usr/bin/env lumen
+import std.os;
+
+let names = os.args();
+
+if names.isEmpty() {
+    println("usage: greet name...");
+    return 2;
+}
+
+for name in names {
+    println(greeting(name));
+}
+
+fn greeting(name: String) -> String {
+    return "hello ${name}";
+}
+```
+
+The variables of the script belong to it: a function does not see them (`names` cannot be used inside `greeting`), it is given what it needs. Only the program's entry file runs statements; a module that has some is `E8007`.
+
+A file whose first line is `#!/usr/bin/env lumen` runs on its own once it may be executed (`chmod +x`), with or without `.lum` at the end of its name: `./deploy staging` is `lumen run deploy staging`. The line is a comment to Lumen, and `lumen fmt` keeps it. [`std.sh`](stdlib.md#stdsh) runs the commands a script is made of.
 
 ```bash
 chmod +x deploy

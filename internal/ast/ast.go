@@ -72,6 +72,16 @@ type Program struct {
 	Imports []*ImportDecl
 	Decls   []Decl
 
+	// Stmts are the statements written outside any function, in the order
+	// they are written: a script. Module loading makes them the body of
+	// the program's main (see modules.Load); only the entry file may have
+	// them.
+	Stmts []Stmt
+
+	// StmtStarts are where the statements of the script start, as written:
+	// at their first token, which the position of a statement need not be
+	StmtStarts []token.Position
+
 	// Externs are the functions declared with `extern fn`: they have a
 	// signature and no body, the runtime provides them. The parser leaves
 	// them among Decls; module loading moves them here, so that later
@@ -95,6 +105,9 @@ func (p *Program) String() string {
 	}
 	for _, decl := range p.Decls {
 		sb.WriteString(decl.String() + "\n\n")
+	}
+	for _, stmt := range p.Stmts {
+		sb.WriteString(stmt.String() + "\n")
 	}
 	return sb.String()
 }
@@ -265,6 +278,10 @@ type FnDecl struct {
 
 	// Extern marks a function the runtime provides: `extern fn name(...);`
 	Extern bool
+
+	// Script marks the main made of the statements a file has outside any
+	// function (see Program.Stmts)
+	Script bool
 
 	// Library is where a function of a C library is to be found:
 	// `extern "raylib" fn InitWindow(...);`. Symbol is its name there,

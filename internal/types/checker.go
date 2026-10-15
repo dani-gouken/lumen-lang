@@ -236,7 +236,8 @@ func (c *Checker) checkFnDecl(d *ast.FnDecl) {
 	c.checkBlockStmt(d.Body)
 	c.flowRestore(outer)
 
-	if d.ReturnType != nil && !alwaysReturns(d.Body) {
+	// A script that reaches its end exits with 0
+	if d.ReturnType != nil && !d.Script && !alwaysReturns(d.Body) {
 		if returnType := c.resolveType(d.ReturnType); !returnType.Equals(Void) && !isUnknown(returnType) {
 			what := "function"
 			if d.Name != "" {

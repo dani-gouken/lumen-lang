@@ -119,7 +119,7 @@ Full description: [enums.md](enums.md).
 ## 5. Functions
 - Form: `fn add(a: Int, b: Int) -> Int { return a + b; }`.
 - Return type required (`Void` allowed). In `-> T`, all paths return `T`; in `-> Void`, `return;` only.
-- Entry point convention: `fn main() -> Int { ... }`.
+- Entry point convention: `fn main() -> Int { ... }`, or statements outside any function (a script, see §11).
 - Generics: `fn map<T, U>(xs: [T], f: fn(T) -> U) -> [U] { ... }`; instantiate with `map<Int, String>(nums, toStr)`. `name<...>` is read as type arguments only when the closing `>` is followed by `(` or `{`; otherwise `<` is the comparison operator.
 - Variadic arguments: `fn printf(fmt: String, args: ...Any) -> Void { ... }`. The last parameter can be prefixed with `...` to accept zero or more arguments of that type. Inside the function the parameter is an array (`args.len()`, `for a in args`). Arguments are packed when the function is called by its name; a variadic function called through a variable receives its arguments as written.
 - Generic Variadic: `fn collect<T>(items: ...T) -> [T] { ... }`.
@@ -150,7 +150,7 @@ Full description: [modules.md](modules.md).
 - A local variable hides a module of the same name.
 - `extern fn name(params) -> Type;` declares a function without a body, provided by the runtime under its full name (module path and name). Only the functions of the standard library exist there today.
 - The package `std` is the [standard library](stdlib.md), built into the compiler: `import std.strings;`.
-- The program starts in the `main` of the entry file, which cannot itself be imported.
+- The program starts in the `main` of the entry file, which cannot itself be imported. Only the entry file may have statements outside a function: in a module they are `E8007`.
 - A project file, [`lumen.json`](project.md), can name the entry file, move the folder paths start at (`root`), and name folders of modules outside it (`packages`). It is not part of the language: a program means the same with or without it, given the same files at the same module paths.
 
 ## 7. Type Rules (grab bag)
@@ -206,6 +206,9 @@ Values print as `42`, `2.5`, `true`, `null`, the text of a string, `[1, 2]` for 
 
 ## 11. Program Entry and Exit
 - Execution starts at `fn main()`, which takes no parameters (`E6006` otherwise).
+- A script has no `main`: the statements written outside any function in the entry file are its main, and run in the order they are written. Declarations may come before, between or after them, and are known everywhere. A file has a `main` or statements outside a function, not both (`E8007`).
+- The variables of a script are those of its main: a closure made in the script sees them, a function or a method does not (`E1001`, which says so). What a function needs is passed to it, or declared with `const`.
+- A script stops at a `return;`. When one of its returns gives a value, it is an `Int`, the exit code; reaching the end of the script exits with 0.
 - When `main` returns an `Int`, `lumen run` uses it as the process exit code (low 8 bits). Any other result exits with 0.
 - A runtime error prints the message with the source location and exits with 1.
 - Two limits end a runaway program with an error rather than letting it take the machine down: calls may nest 10000 deep (`--max-depth=N`), and the program may hold 256 MB at once (`--heap-mb=N`).

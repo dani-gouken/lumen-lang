@@ -543,7 +543,7 @@ func TestEnumAndConstantErrors(t *testing.T) {
 		{"constant in a circle", "const A = B;\nconst B = A;\nfn main() -> Int { return A; }", "E2031", "is defined in terms of itself"},
 		{"constant from a call", "fn f() -> Int { return 1; }\nconst A = f();\nfn main() -> Int { return A; }", "E2032", "has to be known when the program is compiled"},
 		{"constant assigned", "const A = 1;\nfn main() -> Int { A = 2; return A; }", "E2022", "cannot assign to constant 'A'"},
-		{"variable outside a function", "let total = 0;\nfn main() -> Int { return total; }", "E0001", "expected declaration, found 'let'"},
+		{"variable outside a function, beside main", "let total = 0;\nfn main() -> Int { return total; }", "E8007", "cannot run in a file that has a main"},
 		{"constant declared twice", "const A = 1;\nconst A = 2;\nfn main() -> Int { return A; }", "E1002", "'A' is already declared"},
 		{"constant and function of one name", "const size = 1;\nfn size() -> Int { return 1; }\nfn main() -> Int { return 0; }", "E1002", "'size' is already declared"},
 		{"enum and struct of one name", "enum T { A }\nstruct T { x: Int; }\nfn main() -> Int { return 0; }", "E1002", "'T' is already declared"},

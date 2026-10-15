@@ -340,6 +340,7 @@ func TestTestCommandProblems(t *testing.T) {
 		"d_test.lum": "import std.os;\nfn testLeaves() {\n    os.exit(3);\n}\n",
 		"e_test.lum": "fn helper() {}\n",
 		"f_test.lum": "fn testBroken() {\n    let a = ;\n}\n",
+		"g_test.lum": "fn testIt() {}\nprintln(\"a script\");\n",
 	})
 	res := runLumenIn(t, dir, "", "test")
 	if res.exit != 1 {
@@ -347,7 +348,8 @@ func TestTestCommandProblems(t *testing.T) {
 	}
 	for _, want := range []string{
 		"a_test.lum:3:",
-		"b_test.lum: a test file has no main: lumen test writes the one that runs its tests",
+		"b_test.lum: a test file has no main, nor statements outside a function: lumen test writes the main that runs its tests",
+		"g_test.lum: a test file has no main, nor statements outside a function",
 		"d_test.lum: a test ended the program with os.exit(3): the tests after it did not run",
 		"f_test.lum:2:",
 	} {
@@ -355,7 +357,7 @@ func TestTestCommandProblems(t *testing.T) {
 			t.Errorf("expected %q in stderr:\n%s", want, res.stderr)
 		}
 	}
-	for _, want := range []string{"c_test.lum\n  ok    fine\n1 passed\n", "\n1 test in 1 file: 1 passed; 4 files did not run\n"} {
+	for _, want := range []string{"c_test.lum\n  ok    fine\n1 passed\n", "\n1 test in 1 file: 1 passed; 5 files did not run\n"} {
 		if !strings.Contains(res.stdout, want) {
 			t.Errorf("expected %q in stdout:\n%s", want, res.stdout)
 		}

@@ -88,10 +88,12 @@ func Find(paths []string) ([]string, error) {
 }
 
 // Tests lists the tests a source file declares, in the order it does, and
-// says whether it has a main of its own. A file that does not parse has
-// none: compiling it is what says why.
+// says whether it has a main of its own, written as one or as statements
+// outside any function. A file that does not parse has none: compiling it
+// is what says why.
 func Tests(src string) (tests []Test, hasMain bool) {
 	prog := parser.Parse(src, "", errors.NewHandler())
+	hasMain = len(prog.Stmts) > 0
 	for _, decl := range prog.Decls {
 		fn, ok := decl.(*ast.FnDecl)
 		if !ok || fn.Extern {

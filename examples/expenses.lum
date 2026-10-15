@@ -1,0 +1,145 @@
+#!/usr/bin/env lumen
+// A month of expenses, totalled by category against a budget: a script,
+// with no main. Its statements run from the top; the types and functions
+// they use may be declared anywhere in the file.
+import std.csv;
+import std.dict;
+import std.dict.{Dict};
+import std.result.{Result};
+import std.strings;
+
+const MONTH = """date,category,amount,note
+2026-10-01,rent,950.00,October
+2026-10-02,food,64.20,market
+2026-10-04,transport,30.00,monthly pass
+2026-10-09,food,23.75,bakery and cheese
+2026-10-12,fun,48.00,concert
+2026-10-15,food,abc,lost receipt
+2026-10-18,books,15.90,second hand
+2026-10-21,food,81.10,market
+2026-10-27,fun,12.50,cinema
+""";
+
+let rows = match csv.parse(MONTH) {
+    case Result.Ok(rows): rows;
+
+    case Result.Err(problem): {
+        println("the expenses are not CSV: ${problem.describe()}");
+        return 1;
+    }
+};
+
+let spent = dict.empty<Int>();
+let problems: [String] = [];
+
+// The first row names the columns
+for i, row in rows.slice(1, rows.len()) {
+    match expense(row) {
+        case Result.Ok(item): {
+            spent.update(item.category.name(), 0, total -> total + item.cents);
+        }
+
+        case Result.Err(why): {
+            problems.push("line ${i + 2}: ${why}");
+        }
+    }
+}
+
+println("October");
+let overall = 0;
+
+for category in [Category.Rent, Category.Food, Category.Transport, Category.Fun, Category.Other] {
+    let cents = spent.getOr(category.name(), 0);
+    overall += cents;
+
+    if cents == 0 {
+        continue;
+    }
+
+    let line = "  ${category.name().padRight(10)}${money(cents).padLeft(9)}";
+    let budget = category.budget();
+
+    if cents > budget {
+        line += "  over by ${money(cents - budget)}";
+    }
+
+    println(line);
+}
+
+println("  ${"total".padRight(10)}${money(overall).padLeft(9)}");
+
+if !problems.isEmpty() {
+    println("left out:");
+
+    for problem in problems {
+        println("  ${problem}");
+    }
+}
+
+// --- What the script is made of ---
+
+enum Category { Rent, Food, Transport, Fun, Other }
+
+impl Category {
+    fn name() -> String {
+        return match self {
+            case Category.Rent: "rent";
+            case Category.Food: "food";
+            case Category.Transport: "transport";
+            case Category.Fun: "fun";
+            case Category.Other: "other";
+        };
+    }
+
+    // What a month allows, in cents
+    fn budget() -> Int {
+        return match self {
+            case Category.Rent: 95000;
+            case Category.Food: 15000;
+            case Category.Transport: 4000;
+            case Category.Fun: 5000;
+            case Category.Other: 3000;
+        };
+    }
+}
+
+struct Expense {
+    category: Category;
+    cents: Int;
+}
+
+fn category(word: String) -> Category {
+    return match word {
+        case "rent": Category.Rent;
+        case "food": Category.Food;
+        case "transport": Category.Transport;
+        case "fun": Category.Fun;
+        default: Category.Other;
+    };
+}
+
+// 64.20 is 6420 cents
+fn expense(row: [String]) -> Result<Expense, String> {
+    if row.len() != 4 {
+        return Result.Err("expected 4 values, found ${row.len()}");
+    }
+
+    let parts = row[2].split(".");
+    let whole = parts[0].parseInt();
+    let fraction: Int? = 0;
+
+    if parts.len() == 2 {
+        fraction = parts[1].parseInt();
+    }
+
+    if whole == null || fraction == null {
+        return Result.Err("'${row[2]}' is not an amount");
+    }
+
+    return Result.Ok(Expense { category: category(row[1]), cents: whole * 100 + fraction });
+}
+
+fn money(cents: Int) -> String {
+    let fraction = "${cents % 100}".padLeft(2).replace(" ", "0");
+    return "${cents / 100}.${fraction}";
+}

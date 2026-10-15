@@ -21,7 +21,7 @@ var commands = []command{
 	{name: ":vars", short: ":v", help: "The variables, with their types and values"},
 	{name: ":decls", short: ":d", help: "What is declared: functions, types, constants, imports"},
 	{name: ":type", short: ":t", args: "<expression>", help: "The type of an expression, without running it"},
-	{name: ":load", short: ":l", args: "<file.lum>", help: "Take the declarations of a file (its main is left out)"},
+	{name: ":load", short: ":l", args: "<file.lum>", help: "Take the declarations of a file (its main is left out) and run its statements"},
 	{name: ":forget", short: ":f", args: "<name>", help: "Forget a variable or a declaration"},
 	{name: ":reset", help: "Forget everything and start again"},
 	{name: ":quit", short: ":q", help: "Leave (also Ctrl-D)"},

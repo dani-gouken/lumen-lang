@@ -23,6 +23,7 @@ import (
 	_ "github.com/dani-gouken/lumen/internal/inspect" // The natives of std.compiler
 	"github.com/dani-gouken/lumen/internal/lsp"
 	"github.com/dani-gouken/lumen/internal/memguard"
+	"github.com/dani-gouken/lumen/internal/pkgmgr"
 	"github.com/dani-gouken/lumen/internal/project"
 	"github.com/dani-gouken/lumen/internal/repl"
 	"github.com/dani-gouken/lumen/internal/testrun"
@@ -122,6 +123,9 @@ func projectOptions(inputFile string) compiler.Options {
 	if maxDepth == 0 {
 		maxDepth = cfg.MaxDepth
 	}
+	if err := cfg.CheckInstalled(); err != nil {
+		fatal(err)
+	}
 	return compiler.Options{Root: cfg.RootDir(), Packages: cfg.PackageDirs()}
 }
 
@@ -149,7 +153,7 @@ func parseOptions(args []string) []string {
 		}
 		isOurs := name == "--heap-mb" || name == "--max-depth" || name == "--cpuprofile" || arg == "--strip"
 		// fmt and test have options of their own, which they read themselves
-		ofTool := len(rest) >= 2 && (rest[1] == "fmt" || rest[1] == "test" || rest[1] == "check")
+		ofTool := len(rest) >= 2 && (rest[1] == "fmt" || rest[1] == "test" || rest[1] == "check" || slices.Contains(pkgmgr.Commands, rest[1]))
 		if !strings.HasPrefix(arg, "--") || ((afterFile || ofTool) && !isOurs) {
 			rest = append(rest, arg)
 			continue
@@ -262,6 +266,9 @@ func main() {
 	case "fmt":
 		cmdFmt()
 
+	case "install", "update", "require", "remove", "show":
+		cmdPackages()
+
 	case "test":
 		cmdTest(os.Args[2:])
 
@@ -316,7 +323,7 @@ func main() {
 
 // commands are the first words lumen understands. A file of that name is
 // run with lumen run.
-var commands = []string{"run", "build", "ir", "repl", "lsp", "fmt", "test", "check", "version", "asm", "disasm", "exec", "runasm", "lumdbg"}
+var commands = append([]string{"run", "build", "ir", "repl", "lsp", "fmt", "test", "check", "version", "asm", "disasm", "exec", "runasm", "lumdbg"}, pkgmgr.Commands...)
 
 // isProgram reports whether a first argument names a program to run
 // rather than a command: a .lum or .lc file, or any file that is not
@@ -508,8 +515,14 @@ func cmdRepl() {
 // command as its arguments, and returns the status it ended with: what
 // its main returned, or 1 if it failed.
 func runTool(source, file string) int {
+	return runToolWith(source, file, compiler.Options{}, os.Args[2:])
+}
+
+// runToolWith is runTool for a program of several modules, whose files
+// opts says how to read, given the arguments it gets.
+func runToolWith(source, file string, opts compiler.Options, args []string) int {
 	errs := errors.NewHandler()
-	result := compiler.Compile(source, file, errs)
+	result := compiler.CompileOptions(source, file, opts, errs)
 	if errs.HasErrors() {
 		for _, d := range errs.Diagnostics {
 			fmt.Fprintln(os.Stderr, d.String())
@@ -518,7 +531,7 @@ func runTool(source, file string) int {
 	}
 	programFile = file
 	machine := newVM()
-	machine.SetArgs(os.Args[2:])
+	machine.SetArgs(args)
 	value, err := machine.Exec(result.Chunk)
 	if err != nil {
 		leaveIfAsked(err)
@@ -538,6 +551,13 @@ func runTool(source, file string) int {
 func cmdLsp() {
 	runTool(lsp.Source, lsp.File)
 	exit(1)
+}
+
+// cmdPackages runs the package manager, a Lumen program too, with the
+// command as its first argument: lumen install, update, require, remove,
+// show.
+func cmdPackages() {
+	exit(runToolWith(pkgmgr.Source, pkgmgr.File, pkgmgr.Options(), os.Args[1:]))
 }
 
 // cmdFmt runs the formatter: a Lumen program too.
@@ -666,7 +686,7 @@ func cmdTest(args []string) {
 		src := string(data)
 		found, hasMain := testrun.Tests(src)
 		if hasMain {
-			fmt.Fprintf(os.Stderr, "%s: a test file has no main: lumen test writes the one that runs its tests\n", file)
+			fmt.Fprintf(os.Stderr, "%s: a test file has no main, nor statements outside a function: lumen test writes the main that runs its tests\n", file)
 			broken++
 			continue
 		}

@@ -42,6 +42,7 @@ const (
 	ErrNameConflict   = "E8004" // Import clashes with another name in scope
 	ErrNotAValue      = "E8005" // Module or type used where a value is expected, or the reverse
 	ErrInvalidImport  = "E8006" // Import that cannot work: the entry file, a re-exported module
+	ErrStatements     = "E8007" // Statements outside a function where they cannot run
 )
 
 // Extension is the suffix of Lumen source files.
@@ -203,6 +204,7 @@ func (l *loader) parse(name, file, src string) *module {
 		importedTypes:  make(map[string]*item),
 	}
 	l.order = append(l.order, m)
+	l.script(m)
 
 	declare := func(table map[string]*item, declName, kind string, pub bool) {
 		if _, dup := table[declName]; dup {
@@ -233,6 +235,67 @@ func (l *loader) parse(name, file, src string) *module {
 	}
 	l.importsResult(m, src)
 	return m
+}
+
+// script makes the statements written outside any function in the entry
+// file its main, which runs them in the order they are written. A file
+// that is run as a script needs no main; one that has a main of its own
+// keeps every statement inside a function, and so does a module, which
+// is not run. The main returns an Int, the exit code, when a statement of
+// the script returns a value.
+func (l *loader) script(m *module) {
+	stmts := m.prog.Stmts
+	m.prog.Stmts = nil
+	if len(stmts) == 0 {
+		return
+	}
+	first := stmts[0].Token()
+	if m.name != "" {
+		l.report(first, ErrStatements, "Put them in a function, and call it from the program",
+			"statements outside a function only run in the program's entry file, not in %s", m.display())
+		return
+	}
+	for _, decl := range m.prog.Decls {
+		if fn, ok := decl.(*ast.FnDecl); ok && fn.Name == "main" && !fn.Extern {
+			l.report(first, ErrStatements, "Move them into main, or leave main out: the statements are then what runs",
+				"statements outside a function cannot run in a file that has a main")
+			return
+		}
+	}
+	main := &ast.FnDecl{BaseNode: ast.BaseNode{Pos: first.Pos, Tok: first}, Name: "main", Script: true,
+		Body: &ast.BlockStmt{BaseNode: ast.BaseNode{Pos: first.Pos, Tok: first}, Stmts: stmts}}
+	if at := returnsValue(stmts); at != nil {
+		// A script that reaches its end succeeded: the checker does not
+		// ask it for a return there
+		where := ast.BaseNode{Pos: at.Pos, Tok: at.Tok}
+		main.ReturnType = &ast.Type{BaseNode: where, Kind: ast.TypeBasic, Name: "Int"}
+	}
+	m.prog.Decls = append(m.prog.Decls, main)
+}
+
+// returnsValue finds a `return value;` of the script itself: anywhere in
+// its statements, in a block, a loop or a match that gives a value, but
+// not in the functions it makes, whose returns are their own.
+func returnsValue(stmts []ast.Stmt) *ast.ReturnStmt {
+	body := &ast.BlockStmt{Stmts: stmts}
+	theirs := map[*ast.ReturnStmt]bool{}
+	ast.Walk(body, func(expr ast.Expr) {
+		if fn, ok := expr.(*ast.FnExpr); ok && fn.Body != nil {
+			ast.Walk(fn.Body, func(ast.Expr) {}, func(stmt ast.Stmt) {
+				if ret, ok := stmt.(*ast.ReturnStmt); ok {
+					theirs[ret] = true
+				}
+			})
+		}
+	}, func(ast.Stmt) {})
+
+	var found *ast.ReturnStmt
+	ast.Walk(body, func(ast.Expr) {}, func(stmt ast.Stmt) {
+		if ret, ok := stmt.(*ast.ReturnStmt); ok && found == nil && ret.Value != nil && !theirs[ret] {
+			found = ret
+		}
+	})
+	return found
 }
 
 // qualify returns the program-wide name of a declaration of the module.

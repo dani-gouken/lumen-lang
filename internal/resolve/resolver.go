@@ -25,6 +25,12 @@ type Resolver struct {
 
 	// Inside a pattern that is not the first of its case
 	namesNothing bool
+
+	// The variables a script declares outside any function, which its
+	// functions do not see; inScript is set while its statements are
+	// resolved
+	scriptVars map[string]bool
+	inScript   bool
 }
 
 func NewResolver(errs *errors.Handler) *Resolver {
@@ -67,6 +73,14 @@ func (r *Resolver) resolveTopLevel(prog *ast.Program) {
 		switch d := decl.(type) {
 		case *ast.FnDecl:
 			r.declare(d.Name, SymbolFunc, d)
+			if d.Script {
+				r.scriptVars = map[string]bool{}
+				for _, stmt := range d.Body.Stmts {
+					if let, ok := stmt.(*ast.LetStmt); ok {
+						r.scriptVars[let.Name] = true
+					}
+				}
+			}
 		case *ast.ConstDecl:
 			// A constant is used like a variable that is never assigned
 			r.declare(d.Name, SymbolVar, d)
@@ -124,6 +138,9 @@ func (r *Resolver) visitFnDecl(d *ast.FnDecl) {
 	// Create new scope for function
 	r.pushScope(d)
 	defer r.popScope()
+	inScript := r.inScript
+	r.inScript = d.Script
+	defer func() { r.inScript = inScript }()
 
 	// Register type parameters
 	for _, tp := range d.TypeParams {
@@ -660,7 +677,10 @@ func (r *Resolver) reportUndefined(what, name string, tok token.Token) {
 	// A name the library offers exactly is a surer guess than one spelt
 	// nearly the same, except for a value: a misspelt variable is likelier
 	// than a function of the library called without its module
-	if what == "undefined identifier" && isLibraryModule(name) {
+	if what == "undefined identifier" && r.scriptVars[name] && !r.inScript {
+		msg = fmt.Sprintf("%s '%s': a variable of the script, which a function does not see", what, name)
+		suggestion = fmt.Sprintf("Pass %s to the function, or declare it with const if it never changes", name)
+	} else if what == "undefined identifier" && isLibraryModule(name) {
 		suggestion = fmt.Sprintf("'%s' is a module of the library: import %s.%s;", name, stdlib.Package, name)
 	} else if modules := stdlib.Declaring(name); len(modules) > 0 && (what != "undefined identifier" || similar == "") {
 		suggestion = importSuggestion(name, modules)

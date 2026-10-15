@@ -78,6 +78,108 @@ func TestScripts(t *testing.T) {
 	}
 }
 
+// tally is a script without a main: its statements run as written, and a
+// return gives the status it leaves with.
+const tally = `#!/usr/bin/env lumen
+import std.io;
+import std.os;
+import std.strings;
+
+// Counts the words given, and fails when there are none
+let words = os.args();
+
+if words.isEmpty() {
+    io.printError("usage: tally word...\n");
+    return 2;
+}
+
+let counts = Counts {};
+
+for word in words {
+    counts.add(word.lower());
+}
+
+println(counts.describe());
+
+struct Counts {
+    seen: [String] = [];
+    times: [Int] = [];
+}
+
+impl Counts {
+    fn add(word: String) {
+        for i, known in self.seen {
+            if known == word {
+                self.times[i] += 1;
+                return;
+            }
+        }
+
+        self.seen.push(word);
+        self.times.push(1);
+    }
+
+    fn describe() -> String {
+        let parts: [String] = [];
+
+        for i, word in self.seen {
+            parts.push("${word}=${self.times[i]}");
+        }
+
+        return parts.join(" ");
+    }
+}
+`
+
+func TestScriptsWithoutMain(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("#! lines are for Unix")
+	}
+	// The REPL runs what it takes in a main of its own, which returns
+	// nothing: a script for it leaves without a status
+	session := strings.Replace(tally, "    return 2;\n", "", 1)
+	dir := project(t, map[string]string{"tally": tally, "tally.lum": tally, "session.lum": session})
+	if err := os.Chmod(filepath.Join(dir, "tally"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Dir(lumen) + string(os.PathListSeparator) + os.Getenv("PATH")
+	run := func(input string, args ...string) (string, string, int) {
+		var stdout, stderr strings.Builder
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir, cmd.Stdout, cmd.Stderr = dir, &stdout, &stderr
+		cmd.Env = append(os.Environ(), "PATH="+path)
+		cmd.Stdin = strings.NewReader(input)
+		cmd.Run()
+		return stdout.String(), stderr.String(), cmd.ProcessState.ExitCode()
+	}
+
+	for _, args := range [][]string{{"./tally"}, {lumen, "run", "tally"}} {
+		if out, errs, status := run("", append(args, "Go", "lumen", "go", "GO")...); out != "go=3 lumen=1\n" || status != 0 {
+			t.Errorf("%v: expected the counts and the status 0, got %q (%d)\n%s", args, out, status, errs)
+		}
+		if out, errs, status := run("", args...); out != "" || !strings.Contains(errs, "usage: tally word...") || status != 2 {
+			t.Errorf("%v: expected the usage and the status 2, got %q %q (%d)", args, out, errs, status)
+		}
+	}
+
+	// It is formatted already, and checks clean
+	if out, errs, status := run("", lumen, "fmt", "--check", "tally.lum"); status != 0 {
+		t.Errorf("expected the script to be formatted, got (%d)\n%s%s", status, out, errs)
+	}
+	if out, errs, status := run("", lumen, "check", "tally.lum"); status != 0 || out != "tally.lum: no problems\n" {
+		t.Errorf("expected the script to check clean, got %q (%d)\n%s", out, status, errs)
+	}
+
+	// The REPL takes the declarations and runs the statements, whose
+	// variables then stay at hand
+	out, errs, status := run(":load session.lum\ncounts.describe()\nlet more = Counts {}\nmore.add(\"x\"); more.describe()\n", lumen, "repl")
+	for _, want := range []string{"usage: tally word...", "\"\"", "\"x=1\""} {
+		if !strings.Contains(out+errs, want) {
+			t.Errorf("expected %q from the REPL (%d), got\n%s%s", want, status, out, errs)
+		}
+	}
+}
+
 // TestCheck compiles programs without running them, and says what is
 // wrong as text or as JSON, for a CI step or an agent.
 func TestCheck(t *testing.T) {

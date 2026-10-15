@@ -202,6 +202,7 @@ Names of the entry file are kept as written. This is what appears in:
 | `E8004` | An import clashes with another name in scope | `import a.util; import b.util;` |
 | `E8005` | A module or a type used as a value, or a module or function used as a type | `let m = body;` |
 | `E8006` | An import that cannot work: the entry file, or a whole module after `pub` | `pub import physics.body;` |
+| `E8007` | Statements outside a function in a module, or beside a `main` | `println("loaded");` in `physics/body.lum` |
 | `E2027` | A method that is not `pub`, called from another module | `world.keepInside(thing)` |
 | `E7002` | An `extern fn` the runtime does not provide | `extern fn launch();` |
 | `E7003` | A type C does not have, in a declaration made for a C library | `extern "c" fn abs(n: Int) -> Int32;` |

@@ -32,7 +32,7 @@ Lumen. :help says what can be typed here, Ctrl-D leaves.
 | `:vars` | The variables, with their types and values |
 | `:decls` | What is declared: functions, types, constants, imports |
 | `:type <expression>` | The type of an expression, without running it |
-| `:load <file.lum>` | Take the declarations of a file. Its `main` is left out |
+| `:load <file.lum>` | Take the declarations of a file, then run its statements outside any function, as an input of their own. Its `main` is left out. A script that returns a value cannot be run here: the session's main returns nothing |
 | `:forget <name>` | Forget a variable or a declaration |
 | `:reset` | Forget everything and start again |
 | `:quit` | Leave; so does Ctrl-D |

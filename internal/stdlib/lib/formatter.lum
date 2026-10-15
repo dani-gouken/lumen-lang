@@ -838,6 +838,18 @@ impl Parser {
 
         while self.peek().kind != Kind.End {
             let lead = self.lead();
+
+            if self.is("}") {
+                self.fail("expected a declaration or a statement");
+            }
+
+            // The statements of a script follow each other as in a block
+            if !self.atDeclaration() {
+                rows.add(lead, self.statement(), rows.kind != "statement");
+                rows.kind = "statement";
+                continue;
+            }
+
             let kind = self.declarationKind();
             let doc = self.declaration();
 
@@ -849,6 +861,16 @@ impl Parser {
 
         rows.close(self.lead());
         return layout.concat(rows.docs);
+    }
+
+    // Whether a declaration starts here, rather than a statement of a
+    // script: `fn name` declares a function, `fn(` makes one.
+    fn atDeclaration() -> Bool {
+        return match self.peek().text {
+            case "pub" | "import" | "const" | "extern" | "struct" | "enum" | "trait" | "impl": true;
+            case "fn": self.ahead(1).kind == Kind.Name;
+            default: false;
+        };
     }
 
     fn declarationKind() -> String {

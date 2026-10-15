@@ -811,6 +811,11 @@ func (s *Session) parseEntry(text string) (*entry, bool) {
 		}
 		return nil, true
 	}
+	if len(prog.StmtStarts) > 0 {
+		s.note("Error: [%d]:%d: declarations and statements are typed as inputs of their own: declare first, then run",
+			number, prog.StmtStarts[0].Line)
+		return nil, true
+	}
 
 	e := &entry{text: text, lines: strings.Count(text, "\n") + 1}
 	add := func(node ast.Node, kind, name, key string) {
@@ -987,7 +992,8 @@ func (s *Session) Forget(name string) (found, gone bool) {
 }
 
 // Load takes the declarations of a file as an input. Its main, if it has
-// one, is left out: the session is what runs.
+// one, is left out: the session is what runs. The statements of a script
+// are run after, as an input of their own.
 func (s *Session) Load(path string) Outcome {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -995,10 +1001,20 @@ func (s *Session) Load(path string) Outcome {
 		return Outcome{Failed: true}
 	}
 	text := strings.TrimRight(string(data), " \t\r\n")
+	if strings.HasPrefix(text, "#!") {
+		// For the system, and a comment only where a file starts
+		end := strings.IndexByte(text+"\n", '\n')
+		text = blank(text[:end]) + text[end:]
+	}
 
 	// Find main by parsing the file as it is, and blank it out
 	prog := parser.Parse(text, path, errors.NewHandler())
-	var starts []int
+	var starts, stmts []int
+	for _, pos := range prog.StmtStarts {
+		from, _ := offsetOf(text, pos.Line, pos.Col)
+		stmts = append(stmts, from)
+	}
+	starts = append(starts, stmts...)
 	main := -1
 	nodes := make([]ast.Node, 0, len(prog.Imports)+len(prog.Decls))
 	for _, imp := range prog.Imports {
@@ -1027,8 +1043,26 @@ func (s *Session) Load(path string) Outcome {
 		text = text[:main] + blank(text[main:end]) + text[end:]
 		s.note("note: the main of %s is left out; call what it calls", filepath.Base(path))
 	}
-	if strings.TrimSpace(text) == "" {
+
+	// The statements go from the declarations into a text of their own,
+	// each on the line it was written on
+	sort.Ints(starts)
+	script := blank(text)
+	for _, from := range stmts {
+		end := len(text)
+		if i := sort.SearchInts(starts, from+1); i < len(starts) {
+			end = starts[i]
+		}
+		script = script[:from] + text[from:end] + script[end:]
+		text = text[:from] + blank(text[from:end]) + text[end:]
+	}
+	if strings.TrimSpace(text) != "" {
+		if out := s.declare(text); out.Failed || strings.TrimSpace(script) == "" {
+			return out
+		}
+	}
+	if strings.TrimSpace(script) == "" {
 		return Outcome{}
 	}
-	return s.declare(text)
+	return s.run(script)
 }

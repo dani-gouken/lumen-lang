@@ -217,9 +217,28 @@ func (p *Parser) parseProgram() *ast.Program {
 	return prog
 }
 
-// parseTopLevel parses one import or declaration, recovering to the next
-// top-level keyword on error so that several errors can be reported.
+// parseTopLevel parses one import, declaration or statement, recovering
+// on error so that several errors can be reported: to the next top-level
+// keyword after a declaration, past the ';' after a statement.
 func (p *Parser) parseTopLevel(prog *ast.Program) {
+	if p.at(token.RBRACE) {
+		// Not the start of a statement: one brace too many
+		p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken, "expected declaration or statement, found '}'",
+			"Nothing is open here for it to close", p.cur(), p.sourceLines)
+		p.next()
+		return
+	}
+	if p.atStmt() {
+		prog.StmtStarts = append(prog.StmtStarts, p.cur().Pos)
+		if stmt := p.parseStmtRecovering(); stmt != nil {
+			prog.Stmts = append(prog.Stmts, stmt)
+		}
+		// What a statement that stands for several left behind
+		prog.Stmts = append(prog.Stmts, p.pendingStmts...)
+		p.pendingStmts = nil
+		return
+	}
+
 	start := p.pos
 	defer func() {
 		if r := recover(); r != nil {
@@ -245,6 +264,19 @@ func (p *Parser) parseTopLevel(prog *ast.Program) {
 		p.markPub(decl, pubTok)
 	}
 	prog.Decls = append(prog.Decls, decl)
+}
+
+// atStmt says whether what comes next at the top level is a statement,
+// one a script runs, rather than an import or a declaration. A `const`
+// there is a constant of the program; `fn name` declares a function.
+func (p *Parser) atStmt() bool {
+	switch p.cur().Type {
+	case token.PUB, token.IMPORT, token.CONST, token.EXTERN, token.STRUCT, token.ENUM, token.TRAIT, token.IMPL:
+		return false
+	case token.FN:
+		return p.peekAt(1).Type != token.IDENT
+	}
+	return true
 }
 
 // markPub records that a declaration is exported from its module.
@@ -282,6 +314,12 @@ func (p *Parser) synchronize() {
 			// `fn name` starts a declaration; `fn(` is a function type or
 			// a lambda inside the broken declaration
 			if p.peekAt(1).Type == token.IDENT {
+				return
+			}
+		case token.LET, token.IF, token.WHILE, token.FOR, token.MATCH, token.IDENT:
+			// A statement of a script starts a line; one of a function
+			// body is indented
+			if p.cur().Pos.Col == 1 {
 				return
 			}
 		}
@@ -352,10 +390,6 @@ func (p *Parser) parseDecl() ast.Decl {
 		return p.parseTraitDecl()
 	case token.IMPL:
 		return p.parseImplDecl()
-	}
-	if p.at(token.LET) {
-		p.failWith(ErrUnexpectedToken, "Outside a function only constants can be declared: const name = value;",
-			"expected declaration, found 'let'")
 	}
 	p.fail("expected declaration (fn, struct, enum, trait, impl, const, import), found %s", describe(p.cur()))
 	return nil
