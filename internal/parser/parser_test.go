@@ -68,6 +68,23 @@ func TestParseExpressionPrecedence(t *testing.T) {
 		{"!a is [String]", "(!(a is [String]))"},
 		{"a.b is Point? == true", "((a.b is Point?) == true)"},
 		{"a as Any is Int", "((a as Any) is Int)"},
+		// condition ? one : other is looser than every operator, and read
+		// from the right
+		{"a ? b : c", "(if a b else c)"},
+		{"a || b && c ? 1 : 2", "(if (a || (b && c)) 1 else 2)"},
+		{"a ?? b ? c + 1 : d * 2", "(if (a ?? b) (c + 1) else (d * 2))"},
+		{"a ? b : c ? d : e", "(if a b else (if c d else e))"},
+		{"a ? b ? c : d : e", "(if a (if b c else d) else e)"},
+		{"a ? 0..2 : 3..=4", "(if a (0..2) else (3..=4))"},
+		{"[a ? 1 : 2, f(b ? c : d)]", "[(if a 1 else 2), f((if b c else d))]"},
+		{"n > 0 ? -n : !m", "(if (n > 0) (-n) else (!m))"},
+		// The ? of a failure stays one: a choice needs its ':'
+		{"r? - 1", "((r?) - 1)"},
+		{"r?[0]", "(r?)[0]"},
+		{"f(r?, s?)", "f((r?), (s?))"},
+		{"r? > 0 ? a : b", "(if ((r?) > 0) a else b)"},
+		{"r? ? a : b", "(if (r?) a else b)"},
+		{"x? is Int", "((x?) is Int)"},
 	}
 
 	for _, tt := range tests {
@@ -514,6 +531,8 @@ func TestParseErrors(t *testing.T) {
 		{"constant without a value", "const LIMIT;", ErrUnexpectedToken, "expected '=', found ';'", 1},
 		{"constant without a name", "const = 3;", ErrUnexpectedToken, "expected constant name", 1},
 		{"constant without semicolon", "const A = 1\nconst B = 2;", ErrMissingSemicolon, "expected ';'", 1},
+		{"a choice without its other value", "fn f() -> Int {\n  return true ? 1;\n}", ErrUnexpectedToken, "expected ':' after the first value of '?', found ';'", 2},
+		{"a choice that ends early", "fn f() -> Int {\n  return true ? 1 : ;\n}", ErrUnexpectedToken, "expected expression, found ';'", 2},
 		{"a brace too many", "fn main() {}\n}", ErrUnexpectedToken, "expected declaration or statement, found '}'", 2},
 		{"pattern that is an operation", "fn f(s: S) -> Int {\n  match s {\n    case S.A(x + 1): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},
 		{"pattern that is an array", "fn f(s: S) -> Int {\n  match s {\n    case S.A([1]): { return 1; }\n  }\n}", ErrUnexpectedToken, "this cannot be matched against a value of a variant", 3},

@@ -1483,7 +1483,57 @@ func (p *Parser) parseExpr() ast.Expr {
 		p.keptRanges++
 		return &ast.RangeExpr{BaseNode: base(tok), Low: left, High: p.parseBinary(1), Inclusive: tok.Type == token.DOTDOT_EQ}
 	}
+
+	// condition ? one : other, the short if that gives a value: looser
+	// than every operator, and read from the right, so that
+	// a ? b : c ? d : e is a ? b : (c ? d : e)
+	if tok := p.cur(); tok.Type == token.QUESTION {
+		p.next()
+		expr := &ast.CondExpr{BaseNode: base(tok), Cond: left, Then: p.parseExpr()}
+		if !p.at(token.COLON) {
+			p.failWith(ErrUnexpectedToken, "Say what the value is otherwise: condition ? one : other",
+				"expected ':' after the first value of '?', found %s", describe(p.cur()))
+		}
+		p.next()
+		expr.Else = p.parseExpr()
+		return expr
+	}
 	return left
+}
+
+// choiceAhead reports whether the '?' at the current token starts the
+// two values of `condition ? one : other`, rather than leaving with the
+// failure of what comes before it (`value?`): it does when an expression
+// and a ':' follow it. Nothing is consumed.
+func (p *Parser) choiceAhead() (found bool) {
+	start, ranges, made := p.pos, p.keptRanges, p.made
+	wasSpeculating := p.speculating
+	p.speculating = true
+	defer func() {
+		p.speculating = wasSpeculating
+		p.pos, p.keptRanges, p.made = start, ranges, made
+		if r := recover(); r != nil {
+			if _, ok := r.(bailout); !ok {
+				panic(r)
+			}
+			found = false
+		}
+	}()
+
+	p.next()
+	switch next := p.cur(); next.Type {
+	case token.SEMICOLON, token.COMMA, token.RPAREN, token.RBRACKET, token.RBRACE, token.COLON, token.EOF:
+		return false
+	case token.IDENT:
+		// Nothing but `is` follows `value?`; parsing the choice says
+		// what is missing from it
+		return next.Literal != "is"
+	case token.INT, token.FLOAT, token.STRING, token.TRUE, token.FALSE, token.NULL, token.NOT, token.FN, token.IF, token.MATCH:
+		return true
+	}
+	// value? - 1, value?[0]: a value may follow, or the rest of an operation
+	p.parseExpr()
+	return p.at(token.COLON)
 }
 
 func binaryPrecedence(typ token.TokenType) int {
@@ -1608,7 +1658,11 @@ func (p *Parser) parsePostfix() ast.Expr {
 			}
 			expr = &ast.BinaryExpr{BaseNode: base(tok), Left: expr, Op: ast.SafeAccessOp, Right: access}
 		case token.QUESTION:
-			// value?: the value, or leave the function with the failure
+			// value?: the value, or leave the function with the failure.
+			// A '?' that a value and a ':' follow is a choice instead
+			if p.choiceAhead() {
+				return expr
+			}
 			p.next()
 			expr = &ast.UnaryExpr{BaseNode: base(tok), Op: ast.TryOp, Expr: expr}
 		default:

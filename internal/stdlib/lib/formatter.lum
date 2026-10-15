@@ -1724,7 +1724,77 @@ impl Parser {
             return layout.concat([low, dots, high]);
         }
 
+        // condition ? one : other, read from the right
+        if self.is("?") {
+            let question = self.take();
+            let one = self.expression();
+            let colon = self.expect(":");
+            let other = self.expression();
+            self.shape = Shape.Plain;
+            self.chained = true;
+            return chained(low, [question, colon], [one, other]);
+        }
+
         return low;
+    }
+
+    // Whether the ? here starts the two values of a choice, rather than
+    // leaving with the failure of what comes before it: a value that can
+    // only start one follows it, or a value and a ':'.
+    fn choiceAhead() -> Bool {
+        let next = self.ahead(1);
+
+        if next.kind == Kind.Number || next.kind == Kind.Text {
+            return true;
+        }
+
+        if next.kind == Kind.Name {
+            return next.text != "is";
+        }
+
+        if next.text == "!" {
+            return true;
+        }
+
+        // value? > 0: what follows is the rest of an operation
+        if next.kind == Kind.Symbol
+            && next.text != "-"
+            && next.text != "("
+            && next.text != "["
+            && next.text != "~"
+        {
+            return false;
+        }
+
+        // value? - 1 or value?[0], or a choice: the ':' says
+        let at = self.at + 1;
+        let depth = 0;
+
+        while at < self.tokens.len() {
+            let text = self.tokens[at].text;
+
+            if self.tokens[at].kind == Kind.End {
+                return false;
+            }
+
+            if text == "(" || text == "[" || text == "{" {
+                depth++;
+            } else if text == ")" || text == "]" || text == "}" {
+                if depth == 0 {
+                    return false;
+                }
+
+                depth--;
+            } else if depth == 0 && (text == ";" || text == ",") {
+                return false;
+            } else if depth == 0 && text == ":" {
+                return true;
+            }
+
+            at++;
+        }
+
+        return false;
     }
 
     // The operator at the next token, if it is one: how it is written,
@@ -1876,11 +1946,14 @@ impl Parser {
                 piece = self.arguments();
             } else if token.text == "[" {
                 piece = layout.concat([self.take(), self.nested(), self.expect("]")]);
-            } else if token.text == "?" {
+            } else if token.text == "?" && !self.choiceAhead() {
                 piece = self.take();
 
-                // value? .name is not value?.name
-                if self.peek().text.startsWith(".") || self.peek().text.startsWith("?") {
+                // value? .name is not value?.name, value? ? not value??; a
+                // choice that follows has spaces of its own
+                let apart = self.peek().text.startsWith(".") || self.peek().text.startsWith("?");
+
+                if apart && !(self.is("?") && self.choiceAhead()) {
                     piece = layout.concat([piece, space()]);
                 }
             } else if token.text == "." || token.text == "?." {

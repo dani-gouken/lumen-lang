@@ -56,14 +56,9 @@ for category in [Category.Rent, Category.Food, Category.Transport, Category.Fun,
         continue;
     }
 
-    let line = "  ${category.name().padRight(10)}${money(cents).padLeft(9)}";
     let budget = category.budget();
-
-    if cents > budget {
-        line += "  over by ${money(cents - budget)}";
-    }
-
-    println(line);
+    let mark = cents > budget ? "  over by ${money(cents - budget)}" : "";
+    println("  ${category.name().padRight(10)}${money(cents).padLeft(9)}${mark}");
 }
 
 println("  ${"total".padRight(10)}${money(overall).padLeft(9)}");
@@ -126,11 +121,7 @@ fn expense(row: [String]) -> Result<Expense, String> {
 
     let parts = row[2].split(".");
     let whole = parts[0].parseInt();
-    let fraction: Int? = 0;
-
-    if parts.len() == 2 {
-        fraction = parts[1].parseInt();
-    }
+    let fraction = parts.len() == 2 ? parts[1].parseInt() : 0;
 
     if whole == null || fraction == null {
         return Result.Err("'${row[2]}' is not an amount");
