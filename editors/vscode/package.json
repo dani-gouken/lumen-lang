@@ -5,6 +5,7 @@
   "version": "0.1.0",
   "publisher": "lumen",
   "license": "MIT",
+  "icon": "icons/lum.png",
   "engines": { "vscode": "^1.75.0" },
   "categories": ["Programming Languages"],
   "main": "./extension.js",
@@ -15,6 +16,7 @@
         "id": "lumen",
         "aliases": ["Lumen", "lumen"],
         "extensions": [".lum"],
+        "icon": { "light": "./icons/lum-file-light.svg", "dark": "./icons/lum-file-dark.svg" },
         "configuration": "./language-configuration.json"
       }
     ],
@@ -31,6 +33,23 @@
       { "command": "lumen.runFileTests", "title": "Lumen: Run the tests of this file" }
     ],
     "configurationDefaults": {
+      "editor.tokenColorCustomizations": {
+        "textMateRules": [
+          {
+            "scope": [
+              "comment.line.double-slash.lumen",
+              "keyword.control.lumen",
+              "keyword.control.import.lumen",
+              "keyword.operator.word.lumen",
+              "storage.type.lumen",
+              "storage.type.function.lumen",
+              "storage.modifier.lumen",
+              "variable.language.self.lumen"
+            ],
+            "settings": { "fontStyle": "italic" }
+          }
+        ]
+      },
       "[lumen]": {
         "editor.defaultFormatter": "lumen.lumen",
         "editor.tabSize": 4,
