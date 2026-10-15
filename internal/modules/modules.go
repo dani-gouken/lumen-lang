@@ -43,6 +43,7 @@ const (
 	ErrInvalidImport  = "E8006" // Import that cannot work: the entry file, a re-exported module
 	ErrStatements     = "E8007" // Statements outside a function where they cannot run
 	ErrVariantNames   = "E8008" // A variant built or matched by names, which it does not have
+	ErrHiddenType     = "E8009" // A pub declaration uses a type other modules cannot name
 )
 
 // Extension is the suffix of Lumen source files.

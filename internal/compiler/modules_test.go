@@ -1175,3 +1175,27 @@ func TestModuleVariables(t *testing.T) {
 		"main.lum": `import ids; fn main() -> Int { return 0; }`,
 	}, "E8007", "ids.lum", "statements outside a function only run in the program's entry file")
 }
+
+// A pub function or method of a module may not use a type of the module
+// that other modules cannot name; one that is not pub may.
+func TestPubUsesOnlyPubTypes(t *testing.T) {
+	expectModulesError(t, sources{
+		"vault.lum": "struct Secret { n: Int; }\npub fn make() -> Secret { return Secret { n: 1 }; }",
+		"main.lum":  "import vault;\nfn main() -> Int { return 0; }",
+	}, "E8009", "vault.lum", "pub function 'make' of module 'vault' uses Secret")
+
+	expectModulesError(t, sources{
+		"vault.lum": "struct Secret { n: Int; }\npub struct Box { n: Int; }\nimpl Box { pub fn open(keys: [Secret?]) -> Int { return 0; } }",
+		"main.lum":  "import vault;\nfn main() -> Int { return 0; }",
+	}, "E8009", "vault.lum", "pub method 'open' of module 'vault' uses Secret")
+
+	expectModulesOutput(t, sources{
+		"vault.lum": `
+			struct Secret { n: Int; }
+			pub struct Key { code: Int; }
+			fn hidden() -> Secret { return Secret { n: 7 }; }
+			pub fn open<T>(value: T) -> Key { return Key { code: hidden().n }; }
+		`,
+		"main.lum": "import vault;\nfn main() -> Int { println(vault.open(1).code); return 0; }",
+	}, "7\n")
+}

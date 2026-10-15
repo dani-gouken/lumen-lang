@@ -38,6 +38,9 @@ func (r *rewriter) rewrite() {
 	for _, decl := range r.m.prog.Decls {
 		switch d := decl.(type) {
 		case *ast.FnDecl:
+			if d.Pub {
+				r.exposes(d, "function '"+d.Name+"'")
+			}
 			d.Name = r.m.qualify(d.Name)
 			d.Module = r.m.name
 			r.fn(d)
@@ -83,6 +86,14 @@ func (r *rewriter) rewrite() {
 			})
 
 		case *ast.ImplDecl:
+			// The pub methods of a type others can name are theirs too
+			if owner := r.m.types[d.StructName]; d.TraitName == "" && (owner == nil || owner.pub) {
+				for _, method := range d.Methods {
+					if method.Pub {
+						r.exposes(method, "method '"+method.Name+"'")
+					}
+				}
+			}
 			if item, arrays := ast.IsArrayImpl(d.StructName); !arrays && d.StructName != ast.OptionalImpl {
 				d.StructName = r.typeName(d.StructName, d.Token())
 			} else if item != "" && r.typeItem(item) != nil {
@@ -693,6 +704,43 @@ func (r *rewriter) variantRef(e *ast.Ident) ast.Expr {
 		}
 	}
 	return &ast.MemberExpr{BaseNode: e.BaseNode, Expr: enum, Name: e.Name}
+}
+
+// exposes reports the types of the module that a pub function or method
+// hands to other modules or asks of them, and that they cannot name: a
+// caller would hold a value whose type it cannot write.
+func (r *rewriter) exposes(d *ast.FnDecl, what string) {
+	if r.m.name == "" {
+		return // The entry file is imported by nothing
+	}
+	own := make(map[string]bool)
+	for _, param := range d.TypeParams {
+		own[param] = true
+	}
+	var visit func(t *ast.Type)
+	visit = func(t *ast.Type) {
+		if t == nil {
+			return
+		}
+		if t.Kind == ast.TypeBasic && !own[t.Name] && !r.isTypeParam(t.Name) {
+			if it := r.m.types[t.Name]; it != nil && !it.pub {
+				r.report(t.Token(), ErrHiddenType, "Make "+t.Name+" pub, or the "+strings.SplitN(what, " ", 2)[0]+" private",
+					"pub %s of %s uses %s, which other modules cannot name", what, r.m.display(), t.Name)
+			}
+		}
+		for _, inner := range t.Generics {
+			visit(inner)
+		}
+		visit(t.ElemType)
+		for _, param := range t.ParamTypes {
+			visit(param)
+		}
+		visit(t.ReturnType)
+	}
+	for _, param := range d.Params {
+		visit(param.Type)
+	}
+	visit(d.ReturnType)
 }
 
 // namedVariant finds the variant a name written like a struct names, when

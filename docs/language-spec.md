@@ -160,6 +160,7 @@ Full description: [modules.md](modules.md).
 - `import physics.body.{Body, new};` brings names in directly.
 - A declaration is private to its module unless marked `pub` (`pub fn`, `pub struct`, `pub trait`). Fields are as visible as their struct. A method of a plain `impl` needs `pub fn` to be called from another module; methods that implement a trait are always visible.
 - `pub import physics.body.{Body};` exports an imported name again.
+- A `pub` function, or a `pub` method of a type other modules can name, may only use in its parameters and its result the types of its module that are `pub` (`E8009`): a caller would otherwise hold a value whose type it cannot write.
 - Modules may import each other. Nothing runs when a module is loaded.
 - A local variable hides a module of the same name.
 - `extern fn name(params) -> Type;` declares a function without a body, provided by the runtime under its full name (module path and name). Only the functions of the standard library exist there today.
