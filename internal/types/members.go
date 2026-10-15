@@ -292,6 +292,13 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 		if ft, ok := c.methodType(t, member.Name, c.methodTypeArgs(t, member, e, expected)); ok {
 			c.checkMethodVisible(t, member)
 			c.info.Types[member] = ft
+			if member.Name == "sorted" && len(e.Args) == 0 && len(ft.Params) == 1 {
+				// items.sorted(), as other languages have it
+				c.errorfWithSuggestion(e.Token(), ErrArgCount,
+					"Say which comes first: items.sorted((a, b) -> a < b); or, for texts and numbers in their order, items.sortedTexts(), items.sortedNumbers()",
+					"sorted takes the function that says which of two items comes first")
+				return t
+			}
 			return c.checkArgs(e, ft)
 		}
 		return c.noBuiltinMethod(e, member, "an array", ast.ArrayImpl, "len", "std.arrays")

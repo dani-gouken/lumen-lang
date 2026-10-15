@@ -865,3 +865,17 @@ Node(Leaf(10.50), Leaf(1.99)) (10.50, "ten")
 nothing to show [fussy 2]
 `)
 }
+
+// sorted without the function that orders says what it takes, and what
+// sorts texts and numbers in their own order.
+func TestSortedWithoutOrder(t *testing.T) {
+	errs := errors.NewHandler()
+	Compile(`fn main() -> Int { let k = ["b", "a"].sorted(); return 0; }`, "test.lum", errs)
+	if len(errs.Diagnostics) != 1 {
+		t.Fatalf("expected one diagnostic, got %v", errs.Diagnostics)
+	}
+	d := errs.Diagnostics[0]
+	if !strings.Contains(d.Message, "sorted takes the function") || !strings.Contains(d.Suggestion, "sortedTexts()") {
+		t.Errorf("got %s (%s)", d.Message, d.Suggestion)
+	}
+}
