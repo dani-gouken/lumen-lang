@@ -276,6 +276,22 @@ fn fold<T, A>(items: [T], start: A, combine: fn(A, T) -> A) -> A {
     return result;
 }
 
+// The items combined two by two, from the first: reduce([1, 2, 3], add)
+// is add(add(1, 2), 3). Null for an empty array.
+fn reduce<T>(items: [T], combine: fn(T, T) -> T) -> T? {
+    if items.len() == 0 {
+        return null;
+    }
+
+    let result = items[0];
+
+    for i in 1..items.len() {
+        result = combine(result, items[i]);
+    }
+
+    return result;
+}
+
 // Calls the function with each item.
 fn each<T>(items: [T], action: fn(T) -> Void) {
     for item in items {
@@ -793,6 +809,12 @@ impl<T> [T] {
     // replaces it by combine(value so far, item).
     pub fn fold<A>(start: A, combine: fn(A, T) -> A) -> A {
         return fold(self, start, combine);
+    }
+
+    // The items combined two by two, from the first; null when there are
+    // none: [3, 9, 4].reduce((a, b) -> a > b ? a : b) is 9.
+    pub fn reduce(combine: fn(T, T) -> T) -> T? {
+        return reduce(self, combine);
     }
 
     // Calls the function with each item.

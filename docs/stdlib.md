@@ -297,6 +297,7 @@ while i < tasks.len() {
 | `map<T, U>(items, convert) -> [U]` | What the function makes of each item |
 | `filter<T>(items, wanted) -> [T]` | The items the function accepts |
 | `fold<T, A>(items, start, combine) -> A` | One value from all the items: starts with `start`, then `combine(value so far, item)` for each |
+| `reduce<T>(items, combine) -> T?` | The items combined two by two from the first, `combine(so far, item)`; `null` for none |
 | `each<T>(items, action)` | Calls the function with each item |
 
 **Order**

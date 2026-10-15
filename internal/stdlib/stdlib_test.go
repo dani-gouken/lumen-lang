@@ -904,3 +904,18 @@ func TestSemverConstraints(t *testing.T) {
 		println(semver.constraint(" ^1.2 ").expect("").show(), semver.constraint("*").expect("").isAny(), semver.constraint("^1").expect("").isAny());
 	`, "^1.4", "^2.0", "^0.3.1", "^0.0.7", "^1.2 true false")
 }
+
+// reduce combines the items two by two, from the first, and has nothing
+// to give for an empty array.
+func TestArraysReduce(t *testing.T) {
+	expect(t, "struct Money { cents: Int; }\nimpl Money { fn plus(other: Money) -> Money { return Money { cents: self.cents + other.cents }; } }", `
+		println([3, 9, 4].reduce((a, b) -> a > b ? a : b), ["a", "b", "c"].reduce((a, b) -> a + b));
+		let none: [Int] = [];
+		println(none.reduce((a, b) -> a + b), [7].reduce((a, b) -> a * b));
+		println([Money { cents: 1 }, Money { cents: 2 }].reduce(Money.plus)?.cents);
+	`,
+		"9 abc",
+		"null 7",
+		"3",
+	)
+}
