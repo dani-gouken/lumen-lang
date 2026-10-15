@@ -1956,3 +1956,33 @@ func TestParseVariantAlone(t *testing.T) {
 		t.Errorf("expected the pattern Rect(w, h), got %s", test.Pattern)
 	}
 }
+
+// A struct literal may give a field the value of the name it has.
+func TestParseStructShorthand(t *testing.T) {
+	stmts := parseBody(t, "let p = Point { x, y: 2, z };")
+	init := stmts[0].(*ast.LetStmt).Value.(*ast.StructInitExpr)
+	if len(init.Fields) != 3 || init.Fields["x"].String() != "x" || init.Fields["z"].String() != "z" {
+		t.Errorf("got %v", init.Fields)
+	}
+	if strings.Join(init.Shorthand, ",") != "x,z" {
+		t.Errorf("shorthand: %v", init.Shorthand)
+	}
+}
+
+// After case, a struct with fields is a pattern: the fields not given a
+// pattern of their own are names.
+func TestParseStructPattern(t *testing.T) {
+	stmts := parseBody(t, "match p { case Point { x: 0, y }: { } case Dot(Point { x, y: 1 }) | Blank: { } default: { } }")
+	match := stmts[0].(*ast.MatchStmt)
+	pattern, ok := match.Cases[0].Pattern.(*ast.StructPattern)
+	if !ok || pattern.String() != "Point { x: 0, y: y }" {
+		t.Fatalf("expected a struct pattern, got %#v", match.Cases[0].Pattern)
+	}
+	if _, ok := pattern.Fields[1].Pattern.(*ast.BindingPattern); !ok {
+		t.Errorf("expected y to be a name to give, got %T", pattern.Fields[1].Pattern)
+	}
+	inner := match.Cases[1].Pattern.(*ast.VariantPattern).Args[0]
+	if s, ok := inner.(*ast.StructPattern); !ok || s.String() != "Point { x: x, y: 1 }" {
+		t.Errorf("expected a struct pattern inside the variant, got %v", inner)
+	}
+}

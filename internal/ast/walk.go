@@ -18,6 +18,10 @@ func Walk(node Node, visitExpr func(Expr), visitStmt func(Stmt)) {
 			for _, arg := range p.Args {
 				walkPattern(arg)
 			}
+		case *StructPattern:
+			for _, field := range p.Fields {
+				walkPattern(field.Pattern)
+			}
 		case *BindingPattern, *Type:
 		case Expr:
 			walkExpr(p)

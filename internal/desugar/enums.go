@@ -281,9 +281,53 @@ func (d *Desugarer) lowerPattern(subject ast.Expr, pattern *ast.VariantPattern, 
 			innerTests, innerNames := d.lowerPattern(field, a, pos)
 			tests = append(tests, innerTests...)
 			names = append(names, innerNames...)
+		case *ast.StructPattern:
+			innerTests, innerNames := d.lowerStructPattern(field, a, pos)
+			tests = append(tests, innerTests...)
+			names = append(names, innerNames...)
 		case ast.Expr:
 			tests = append(tests, &ast.BinaryExpr{BaseNode: base, Left: field, Op: "==", Right: d.desugarExpr(a)})
 		}
+	}
+	return tests, names
+}
+
+// lowerStructPattern does for `Point { x: 0, y }` what lowerPattern does
+// for a variant:
+//
+//	tests:  value.x == 0
+//	names:  let y = value.y;
+//
+// A value that is not known to be a Point (a trait, a union, Any) is
+// tested for being one first, and its fields read through a cast.
+func (d *Desugarer) lowerStructPattern(subject ast.Expr, pattern *ast.StructPattern, pos token.Position) (tests []ast.Expr, names []ast.Stmt) {
+	base := pattern.BaseNode
+	value := subject
+	if known, ok := d.typeInfo.Types[subject].(*types.StructType); !ok || known.Name != pattern.Type.Name {
+		tests = append(tests, &ast.TypeTestExpr{BaseNode: base, Expr: subject, Type: pattern.Type})
+		value = &ast.CastExpr{BaseNode: base, Expr: subject, Type: pattern.Type}
+	}
+	for _, f := range pattern.Fields {
+		field := &ast.MemberExpr{BaseNode: base, Expr: value, Name: f.Name}
+		switch a := f.Pattern.(type) {
+		case *ast.BindingPattern:
+			if !a.Ignored() {
+				names = append(names, &ast.LetStmt{BaseNode: a.BaseNode, Name: a.Name, Value: field})
+			}
+		case *ast.VariantPattern:
+			innerTests, innerNames := d.lowerPattern(field, a, pos)
+			tests = append(tests, innerTests...)
+			names = append(names, innerNames...)
+		case *ast.StructPattern:
+			innerTests, innerNames := d.lowerStructPattern(field, a, pos)
+			tests = append(tests, innerTests...)
+			names = append(names, innerNames...)
+		case ast.Expr:
+			tests = append(tests, &ast.BinaryExpr{BaseNode: base, Left: field, Op: "==", Right: d.desugarExpr(a)})
+		}
+	}
+	if len(tests) == 0 {
+		tests = append(tests, d.createBoolLiteral(true, pos))
 	}
 	return tests, names
 }

@@ -65,6 +65,12 @@ func (c *Checker) checkMatch(s *ast.MatchStmt, asValue bool, expected Type) Type
 					// With several types, which one it is stays open
 					c.learn(s.Cond, target, known)
 				}
+			case *ast.StructPattern:
+				// `case Point { x: 0, y }:` names fields; inside the case
+				// the value is that struct
+				if st := c.checkStructPattern(pattern, condType); len(patterns) == 1 && !isUnknown(st) {
+					c.learn(s.Cond, st, known)
+				}
 			case *ast.RangeExpr:
 				c.checkRangePattern(pattern, condType)
 			case ast.Expr:
@@ -197,10 +203,8 @@ func isNullPattern(matchCase *ast.MatchCase) bool {
 func (c *Checker) checkSameNames(patterns []ast.Node) {
 	namesOf := func(pattern ast.Node) map[string]*ast.BindingPattern {
 		names := make(map[string]*ast.BindingPattern)
-		if variant, ok := pattern.(*ast.VariantPattern); ok {
-			for _, binding := range variant.Bindings() {
-				names[binding.Name] = binding
-			}
+		for _, binding := range bindingsIn(pattern) {
+			names[binding.Name] = binding
 		}
 		return names
 	}

@@ -414,6 +414,13 @@ func (r *Resolver) visitPattern(pattern ast.Node) {
 			r.visitPattern(arg)
 		}
 
+	case *ast.StructPattern:
+		// `Point { x: 0, y }`: the struct is looked up, y is a new variable
+		r.visitType(p.Type)
+		for _, field := range p.Fields {
+			r.visitPattern(field.Pattern)
+		}
+
 	case *ast.BindingPattern:
 		if !p.Ignored() && !r.namesNothing {
 			r.declare(p.Name, SymbolVar, p)

@@ -200,7 +200,33 @@ match shape {
 
 `if` after the pattern adds a condition, which may use the names of the pattern. It is only asked when the pattern matched, and when it does not hold the cases below are tried. A case with a condition handles nothing for certain: the check that a match is complete does not count it, so the variant needs another case (`case Shape.Circle(_)` above).
 
-`|` between patterns makes a case run for any of them. They can be variants, literals, ranges or types (`case Int | Float:`), and name nothing (`E2029`): whichever matched, the body is the same.
+`|` between patterns makes a case run for any of them. They can be variants, structs, literals, ranges or types (`case Int | Float:`). They may name values, if every one of them names the same values with the same types: `case Add(x, _) | Sub(x, _):` has an `x` whichever matched, and a condition after them is asked of the one that did. A name that only some of them give is an error (`E2029`).
+
+### Structs, and null
+
+A struct is matched by the values of its fields, written as in a struct literal. A field given a value is compared with it; a field written alone gives its value a name; the fields left out are not looked at. Patterns nest inside each other, variants in structs and structs in variants:
+
+```rust
+match event {
+    case Click(Point { x: 0, y }): { println("the left edge, at", y); }
+    case Drag(Line { from, to: Point { x, y } }): { println("from", from, "to", x, y); }
+    default: { }
+}
+
+fn describe(figure: Figure) -> String {          // a trait
+    return match figure {
+        case Box { size: Size { width, height } } if width == height: "a square";
+        case Box { at }: "a box at ${at}";
+        default: "something else";
+    };
+}
+```
+
+A value whose type is a trait or a union is tested for the struct first; in the case it is that struct. A struct pattern whose fields are all names takes every value of the struct, which makes a match complete. After `is`, a struct pattern would read as the start of the block, so it is only written after `case`.
+
+`case null:` takes a value that is null, and the cases below it see a value that is not. A match on an optional that handles every variant still has to say what null does: a match that gives a value without `case null:` or `default` is an error, and a statement runs no case for null.
+
+The same braces build a struct with a field named like a variable: `Point { x, y }` is `Point { x: x, y: y }`.
 
 A case on a number can be a range: `case 0..10:` (10 left out), `case 90..=100:`, with `Int` or `Float` ends.
 
@@ -384,8 +410,7 @@ What tuples add is reading a value by its position, `pair.0`, and being printed 
 ## What Is Not There
 
 *   **Named values** in a variant (`Rect { width: Float, height: Float }`): values are told apart by position.
-*   **Names in a case with several patterns** (`case Shape.Circle(r) | Shape.Square(r):`): write `_`, or give each pattern its case.
-*   **Patterns on structs, arrays and optionals**: only enums are taken apart; a struct inside a variant is bound to a name and used as usual.
+*   **Patterns on arrays**: an array is bound to a name and looked at with its methods.
 *   **Names from a test that failed**: `if !(shape is Shape.Circle(r)) { return; }` does not leave `r` for what follows. The block of the `if` is where the names are.
 *   **Several patterns, ranges and literals after `is`**: `value is A.X | A.Y`, `n is 1..10`, `n is 3`. Write `||`, comparisons, `==`.
 

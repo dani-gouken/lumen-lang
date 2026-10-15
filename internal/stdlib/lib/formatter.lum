@@ -1728,9 +1728,11 @@ impl Parser {
             return self.postfixType();
         }
 
+        // A brace after a name is a struct pattern here, never a block:
+        // case Point { x: 0, y }:
         let plain = self.plain;
         let patterns = self.patterns;
-        self.plain = true;
+        self.plain = false;
         self.patterns = true;
         let doc = self.expression();
         self.plain = plain;
@@ -2310,9 +2312,15 @@ impl Parser {
         }
 
         let first = self.ahead(1);
+        let second = self.ahead(2).text;
 
+        // Point { x: 1 }, or Point { x, y } for Point { x: x, y: y }
         return first.text == "}"
-            || (first.kind == Kind.Name && !reserved(first) && self.ahead(2).text == ":");
+            || (
+                first.kind == Kind.Name
+                    && !reserved(first)
+                    && (second == ":" || second == "," || second == "}")
+            );
     }
 
     // { name: value, other: value }: the fields of a struct literal. One
@@ -2322,12 +2330,14 @@ impl Parser {
         let open = self.take();
 
         let fields = self.series("}", fn() -> Doc {
-            return layout.concat([
-                self.name("a field name"),
-                self.expect(":"),
-                space(),
-                self.nested(),
-            ]);
+            let name = self.name("a field name");
+
+            if !self.is(":") {
+                // Point { x }: the field and the name are one
+                return name;
+            }
+
+            return layout.concat([name, self.expect(":"), space(), self.nested()]);
         });
 
         return spaced(open, fields, self.expect("}"), tall);

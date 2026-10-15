@@ -1360,11 +1360,12 @@ func (p *Parser) parseCasePattern() ast.Node {
 	if typ := p.tryTypePattern(); typ != nil {
 		return typ
 	}
-	// A | here starts the next pattern: case 1 | 2:
-	saved := p.noBitOr
-	p.noBitOr = true
-	expr := p.parseHeaderExpr()
-	p.noBitOr = saved
+	// A | here starts the next pattern: case 1 | 2:. A brace is a
+	// struct pattern, case Point { x: 0, y }:, never a block
+	savedOr, savedLit := p.noBitOr, p.noStructLit
+	p.noBitOr, p.noStructLit = true, false
+	expr := p.parseExpr()
+	p.noBitOr, p.noStructLit = savedOr, savedLit
 	return p.variantPattern(p.counted(expr), true)
 }
 
@@ -2044,7 +2045,9 @@ func (p *Parser) structLitFollows() bool {
 	if p.peekAt(1).Type == token.RBRACE {
 		return true
 	}
-	return p.peekAt(1).Type == token.IDENT && p.peekAt(2).Type == token.COLON
+	// Point { x: 1 }, or Point { x, y } for Point { x: x, y: y }
+	next := p.peekAt(2).Type
+	return p.peekAt(1).Type == token.IDENT && (next == token.COLON || next == token.COMMA || next == token.RBRACE)
 }
 
 func (p *Parser) parseStructInit(nameTok token.Token, typeArgs []*ast.Type) *ast.StructInitExpr {
@@ -2063,8 +2066,13 @@ func (p *Parser) parseStructInit(nameTok token.Token, typeArgs []*ast.Type) *ast
 			p.failWith(ErrDuplicateField, "Remove one of the two initializers",
 				"duplicate field '%s' in struct literal", fieldTok.Literal)
 		}
-		p.expect(token.COLON, "':'")
-		init.Fields[fieldTok.Literal] = p.parseNestedExpr()
+		if p.accept(token.COLON) {
+			init.Fields[fieldTok.Literal] = p.parseNestedExpr()
+		} else {
+			// Point { x }: the field gets the value of the name
+			init.Fields[fieldTok.Literal] = &ast.Ident{BaseNode: base(fieldTok), Name: fieldTok.Literal}
+			init.Shorthand = append(init.Shorthand, fieldTok.Literal)
+		}
 		if !p.accept(token.COMMA) {
 			break
 		}

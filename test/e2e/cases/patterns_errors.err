@@ -1,0 +1,10 @@
+[ERROR] E2014: struct Point has no field 'z'
+patterns_errors.lum:23:14
+[ERROR] E2029: a value of type int is never equal to a string
+patterns_errors.lum:24:25
+[ERROR] E2029: a value of type Point is never a Size
+patterns_errors.lum:25:14
+[ERROR] E2029: 'b' is not named by the first pattern of the case
+patterns_errors.lum:32:31
+[ERROR] E2029: 'c' is not named by the first pattern of the case
+patterns_errors.lum:33:30

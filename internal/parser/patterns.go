@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/dani-gouken/lumen/internal/ast"
@@ -108,6 +109,26 @@ func (p *Parser) variantPattern(expr ast.Expr, top bool) ast.Node {
 		if !top && len(e.TypeArgs) == 0 {
 			return &ast.BindingPattern{BaseNode: e.BaseNode, Name: e.Name}
 		}
+	case *ast.StructInitExpr:
+		// Point { x: 0, y }: the fields compared or named
+		if e.Range != nil {
+			break
+		}
+		typ := &ast.Type{BaseNode: e.BaseNode, Kind: ast.TypeBasic, Name: e.Name, Generics: e.TypeArgs}
+		pattern := &ast.StructPattern{BaseNode: e.BaseNode, Type: typ}
+		names := make([]string, 0, len(e.Fields))
+		for name := range e.Fields {
+			names = append(names, name)
+		}
+		// In the order written: by where each value starts
+		sort.Slice(names, func(i, j int) bool {
+			a, b := e.Fields[names[i]].Position(), e.Fields[names[j]].Position()
+			return a.Line < b.Line || (a.Line == b.Line && a.Col < b.Col)
+		})
+		for _, name := range names {
+			pattern.Fields = append(pattern.Fields, &ast.FieldPattern{Name: name, Pattern: p.subPattern(e.Fields[name])})
+		}
+		return pattern
 	}
 	return expr
 }
@@ -122,7 +143,7 @@ func (p *Parser) subPattern(expr ast.Expr) ast.Node {
 		if lit, ok := e.Expr.(*ast.Literal); ok && e.Op == "-" && (lit.Kind == "int" || lit.Kind == "float") {
 			return e
 		}
-	case *ast.Ident, *ast.MemberExpr, *ast.CallExpr:
+	case *ast.Ident, *ast.MemberExpr, *ast.CallExpr, *ast.StructInitExpr:
 		if pattern := p.variantPattern(expr, false); pattern != ast.Node(expr) {
 			return pattern
 		}

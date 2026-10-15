@@ -528,6 +528,9 @@ func (c *Checker) checkVariantPattern(p *ast.VariantPattern, subject Type) (vari
 		case *ast.VariantPattern:
 			c.checkVariantPattern(a, fields[i])
 			covers = false
+		case *ast.StructPattern:
+			c.checkStructPattern(a, fields[i])
+			covers = false
 		case ast.Expr:
 			literal := c.checkExpr(a)
 			if literal != nil && fields[i] != nil && !isUnknown(fields[i]) && !c.comparable(fields[i], literal) {
@@ -579,14 +582,82 @@ func withoutNullOrNil(t Type) Type {
 // bindUnknown gives every name of a broken pattern an unknown type, so
 // that the body of the case does not add errors of its own.
 func (c *Checker) bindUnknown(p *ast.VariantPattern) {
-	for _, arg := range p.Args {
-		switch a := arg.(type) {
+	for _, binding := range p.Bindings() {
+		c.bindings[binding] = Unknown
+	}
+}
+
+// checkStructPattern checks `Point { x: 0, y }` against the type of the
+// value matched, and gives the names it binds their types. It returns the
+// struct type the value has when it matches.
+func (c *Checker) checkStructPattern(p *ast.StructPattern, subject Type) Type {
+	fail := func() Type {
+		for _, binding := range p.Bindings() {
+			c.bindings[binding] = Unknown
+		}
+		return Unknown
+	}
+
+	// The type with what the value says of its type arguments:
+	// Box { value } against a Box<Int> has an Int for its value
+	var st *StructType
+	if known, ok := withoutNullOrNil(subject).(*StructType); ok && known.Name == p.Type.Name {
+		st = known
+	} else if resolved, ok := c.resolveType(p.Type).(*StructType); ok {
+		st = resolved
+	}
+	if st == nil || c.structs[st.Name] == nil {
+		c.errorfWithSuggestion(p.Token(), ErrInvalidPattern,
+			"Name a struct before the braces: case Point { x: 0, y }:",
+			"'%s' is not a struct", p.Type.Name)
+		return fail()
+	}
+	if subject != nil && !isUnknown(subject) && !subject.Equals(Any) && !c.assignable(subject, st) && !c.assignable(st, withoutNullOrNil(subject)) {
+		c.errorf(p.Token(), ErrInvalidPattern, "a value of type %s is never a %s", describe(subject), describe(st))
+		return fail()
+	}
+
+	for _, field := range p.Fields {
+		fieldType, ok := c.fieldType(st, field.Name)
+		if !ok {
+			c.errorf(p.Token(), ErrUnknownField, "struct %s has no field '%s'", displayName(st.Name), field.Name)
+			for _, binding := range bindingsIn(field.Pattern) {
+				c.bindings[binding] = Unknown
+			}
+			continue
+		}
+		switch a := field.Pattern.(type) {
 		case *ast.BindingPattern:
-			c.bindings[a] = Unknown
+			if !a.Ignored() {
+				c.bindings[a] = fieldType
+			}
 		case *ast.VariantPattern:
-			c.bindUnknown(a)
+			c.checkVariantPattern(a, fieldType)
+		case *ast.StructPattern:
+			c.checkStructPattern(a, fieldType)
+		case ast.Expr:
+			literal := c.checkExpr(a)
+			if literal != nil && fieldType != nil && !isUnknown(fieldType) && !c.comparable(fieldType, literal) {
+				c.errorf(a.Token(), ErrInvalidPattern, "a value of type %s is never equal to a %s", fieldType, literal)
+			}
 		}
 	}
+	return st
+}
+
+// bindingsIn lists the names any pattern gives.
+func bindingsIn(pattern ast.Node) []*ast.BindingPattern {
+	switch p := pattern.(type) {
+	case *ast.BindingPattern:
+		if !p.Ignored() {
+			return []*ast.BindingPattern{p}
+		}
+	case *ast.VariantPattern:
+		return p.Bindings()
+	case *ast.StructPattern:
+		return p.Bindings()
+	}
+	return nil
 }
 
 // checkExhaustive verifies that a match on an enum value handles every
@@ -598,6 +669,19 @@ func (c *Checker) checkExhaustive(s *ast.MatchStmt, subject Type, covered [][]st
 	if subject != nil && subject.Equals(Bool) {
 		c.markBoolExhaustive(s)
 		return
+	}
+	if _, isStruct := subject.(*StructType); isStruct {
+		// case Point { x, y }: takes every Point
+		for _, matchCase := range s.Cases {
+			if matchCase.Guard != nil {
+				continue
+			}
+			for _, pattern := range matchCase.Patterns() {
+				if _, ok := pattern.(*ast.StructPattern); ok && c.takesAll(pattern, subject) {
+					s.Exhaustive = true
+				}
+			}
+		}
 	}
 	decl, _ := c.enumOfType(subject)
 	if decl == nil {
@@ -720,7 +804,7 @@ func (c *Checker) uncovered(rows [][]ast.Node, types []Type) (witness []string, 
 	// end for a type that holds itself (an Expr inside an Expr).
 	distinguishes := false
 	for _, row := range rows {
-		if !isWildcard(row[0]) {
+		if !c.takesAll(row[0], first) {
 			distinguishes = true
 		}
 	}
@@ -762,7 +846,7 @@ func (c *Checker) uncovered(rows [][]ast.Node, types []Type) (witness []string, 
 	// them all counts
 	var kept [][]ast.Node
 	for _, row := range rows {
-		if isWildcard(row[0]) {
+		if c.takesAll(row[0], first) {
 			kept = append(kept, row[1:])
 		}
 	}
@@ -804,6 +888,30 @@ func (c *Checker) patternEnum(p *ast.VariantPattern) (*ast.EnumDecl, string) {
 	}
 	decl, _ := c.enumOf(member.Expr)
 	return decl, member.Name
+}
+
+// takesAll reports whether a pattern matches every value of a type: a
+// wildcard, or the pattern of a struct of that type whose fields are all
+// taken whole, Line { from, to: Point { x, y } }.
+func (c *Checker) takesAll(p ast.Node, t Type) bool {
+	if isWildcard(p) {
+		return true
+	}
+	sp, ok := p.(*ast.StructPattern)
+	if !ok {
+		return false
+	}
+	st, ok := withoutNullOrNil(t).(*StructType)
+	if !ok || st.Name != sp.Type.Name || isOptional(t) {
+		return false
+	}
+	for _, field := range sp.Fields {
+		fieldType, _ := c.fieldType(st, field.Name)
+		if !c.takesAll(field.Pattern, fieldType) {
+			return false
+		}
+	}
+	return true
 }
 
 // isWildcard reports whether a pattern matches every value: no pattern at

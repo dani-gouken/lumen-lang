@@ -419,6 +419,13 @@ func (r *rewriter) pattern(pattern ast.Node) ast.Node {
 		}
 		return p
 
+	case *ast.StructPattern:
+		r.typ(p.Type)
+		for _, field := range p.Fields {
+			field.Pattern = r.pattern(field.Pattern)
+		}
+		return p
+
 	case *ast.BindingPattern:
 		// Option.Some(Empty): a variant without values, where it is one,
 		// rather than a new name

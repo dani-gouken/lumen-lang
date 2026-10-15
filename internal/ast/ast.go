@@ -1104,6 +1104,10 @@ type StructInitExpr struct {
 	// standard library a range kept as a value is: let r = 0..10;
 	// What is wrong with its ends is then said of a range.
 	Range *RangeExpr
+
+	// Shorthand are the fields written alone, Point { x }, whose value is
+	// the name: in a pattern they are names to give
+	Shorthand []string
 }
 
 func (e *StructInitExpr) exprNode() {}
@@ -1226,6 +1230,56 @@ func (p *VariantPattern) String() string {
 	return s + "(" + strings.Join(args, ", ") + ")"
 }
 
+// StructPattern matches a struct by the values of its fields, and names
+// them: `case Point { x: 0, y }:`. Type is the struct; each field has a
+// pattern, a *BindingPattern for a field written alone (`y` is `y: y`), a
+// literal, a *VariantPattern or another *StructPattern. The fields not
+// written are not looked at.
+type StructPattern struct {
+	BaseNode
+	Type   *Type
+	Fields []*FieldPattern
+}
+
+// FieldPattern is one field of a StructPattern.
+type FieldPattern struct {
+	Name    string
+	Pattern Node
+}
+
+func (p *StructPattern) String() string {
+	var fields []string
+	for _, field := range p.Fields {
+		fields = append(fields, field.Name+": "+field.Pattern.String())
+	}
+	return p.Type.String() + " { " + strings.Join(fields, ", ") + " }"
+}
+
+// Bindings lists the names a struct pattern gives to values, those of the
+// patterns inside it included.
+func (p *StructPattern) Bindings() []*BindingPattern {
+	var names []*BindingPattern
+	for _, field := range p.Fields {
+		names = append(names, bindingsOf(field.Pattern)...)
+	}
+	return names
+}
+
+// bindingsOf lists the names a pattern gives, whatever pattern it is.
+func bindingsOf(pattern Node) []*BindingPattern {
+	switch a := pattern.(type) {
+	case *BindingPattern:
+		if !a.Ignored() {
+			return []*BindingPattern{a}
+		}
+	case *VariantPattern:
+		return a.Bindings()
+	case *StructPattern:
+		return a.Bindings()
+	}
+	return nil
+}
+
 // BindingPattern names a value of a variant, making it a variable of the
 // case: the `w` of `case Shape.Rect(w, h):`. The name `_` matches the
 // value without naming it.
@@ -1285,14 +1339,7 @@ func PatternTests(cond Expr) []*PatternTestExpr {
 func (p *VariantPattern) Bindings() []*BindingPattern {
 	var names []*BindingPattern
 	for _, arg := range p.Args {
-		switch a := arg.(type) {
-		case *BindingPattern:
-			if !a.Ignored() {
-				names = append(names, a)
-			}
-		case *VariantPattern:
-			names = append(names, a.Bindings()...)
-		}
+		names = append(names, bindingsOf(arg)...)
 	}
 	return names
 }

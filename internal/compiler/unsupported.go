@@ -37,8 +37,8 @@ func checkBlockSupported(block *ast.BlockStmt, unsupported func(ast.Node, string
 		for _, c := range match.Cases {
 			for _, pattern := range c.Patterns() {
 				switch pattern.(type) {
-				case *ast.Literal, *ast.UnaryExpr, *ast.Type, *ast.VariantPattern, *ast.RangeExpr:
-					// Value patterns, ranges, type patterns and enum variants
+				case *ast.Literal, *ast.UnaryExpr, *ast.Type, *ast.VariantPattern, *ast.StructPattern, *ast.RangeExpr:
+					// Value patterns, ranges, type patterns, enum variants and structs
 				default:
 					unsupported(c, "this kind of match pattern is", "Match on literal values, on ranges of numbers, on types or on the variants of an enum")
 				}

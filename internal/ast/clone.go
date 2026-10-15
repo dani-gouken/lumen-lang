@@ -183,6 +183,14 @@ func (c *Cloner) node(n Node) Node {
 	case *BindingPattern:
 		copy := *v
 		return &copy
+	case *StructPattern:
+		copy := *v
+		copy.Type = c.Type(v.Type)
+		copy.Fields = make([]*FieldPattern, len(v.Fields))
+		for i, field := range v.Fields {
+			copy.Fields[i] = &FieldPattern{Name: field.Name, Pattern: c.node(field.Pattern)}
+		}
+		return &copy
 	case Stmt:
 		return c.Stmt(v)
 	case Expr:

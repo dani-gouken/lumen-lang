@@ -119,11 +119,14 @@ func (d *Desugarer) rebinds(match *ast.MatchStmt, subject ast.Expr) bool {
 	}
 	for _, caseStmt := range match.Cases {
 		for _, pattern := range caseStmt.Patterns() {
-			variant, ok := pattern.(*ast.VariantPattern)
-			if !ok {
-				continue
+			var bindings []*ast.BindingPattern
+			switch p := pattern.(type) {
+			case *ast.VariantPattern:
+				bindings = p.Bindings()
+			case *ast.StructPattern:
+				bindings = p.Bindings()
 			}
-			for _, binding := range variant.Bindings() {
+			for _, binding := range bindings {
 				if binding.Name == ident.Name {
 					return true
 				}
@@ -172,6 +175,12 @@ func (d *Desugarer) caseTest(subject ast.Expr, caseStmt *ast.MatchCase, pos toke
 		case *ast.VariantPattern:
 			// A variant of an enum: test for it, then name its values
 			tests, bound := d.lowerPattern(subject, pattern, pos)
+			one = d.allOf(tests, pos)
+			names = append(names, bound...)
+
+		case *ast.StructPattern:
+			// A struct, by its fields
+			tests, bound := d.lowerStructPattern(subject, pattern, pos)
 			one = d.allOf(tests, pos)
 			names = append(names, bound...)
 
@@ -228,19 +237,32 @@ func (d *Desugarer) caseTest(subject ast.Expr, caseStmt *ast.MatchCase, pos toke
 //
 // The last pattern is not tested: the case only runs when one matched.
 func (d *Desugarer) sharedNames(subject ast.Expr, patterns []ast.Node, pos token.Position) []ast.Stmt {
-	first, ok := patterns[0].(*ast.VariantPattern)
-	if !ok {
-		return nil
+	lower := func(pattern ast.Node) (tests []ast.Expr, lets []ast.Stmt, ok bool) {
+		switch p := pattern.(type) {
+		case *ast.VariantPattern:
+			tests, lets = d.lowerPattern(subject, p, pos)
+			return tests, lets, true
+		case *ast.StructPattern:
+			tests, lets = d.lowerStructPattern(subject, p, pos)
+			return tests, lets, true
+		}
+		return nil, nil, false
+	}
+	var first []*ast.BindingPattern
+	switch p := patterns[0].(type) {
+	case *ast.VariantPattern:
+		first = p.Bindings()
+	case *ast.StructPattern:
+		first = p.Bindings()
 	}
 	var out []ast.Stmt
-	for _, binding := range first.Bindings() {
+	for _, binding := range first {
 		var value ast.Expr
 		for i := len(patterns) - 1; i >= 0; i-- {
-			pattern, ok := patterns[i].(*ast.VariantPattern)
+			tests, lets, ok := lower(patterns[i])
 			if !ok {
 				continue
 			}
-			tests, lets := d.lowerPattern(subject, pattern, pos)
 			var given ast.Expr
 			for _, let := range lets {
 				if let, ok := let.(*ast.LetStmt); ok && let.Name == binding.Name {

@@ -194,8 +194,9 @@ func (d *Desugarer) validateMatchPattern(pattern ast.Node) bool {
 	case *ast.Literal, *ast.UnaryExpr, *ast.RangeExpr:
 		// Literals (including negative numbers) and ranges are always valid
 		return true
-	case *ast.Ident, *ast.VariantPattern:
-		// Identifiers are valid (variable binding or enum variant)
+	case *ast.Ident, *ast.VariantPattern, *ast.StructPattern:
+		// Identifiers are valid (variable binding or enum variant), and so
+		// are the patterns of variants and of structs
 		return true
 	case *ast.Type:
 		// Type patterns for type matching
