@@ -180,8 +180,9 @@ func CompileOptions(src, file string, opts Options, errs *errors.Handler) *Resul
 	forwardLibraryMethods(prog, typeInfo)
 
 	// The variables outside functions are made by functions of their own
-	// from here on
+	// from here on, and the calls that leave parameters out give them
 	lowerGlobals(prog, typeInfo)
+	giveDefaults(typeInfo)
 
 	// What nothing reaches of the standard library goes no further: the
 	// stages below are most of the work, and would do it for all of it

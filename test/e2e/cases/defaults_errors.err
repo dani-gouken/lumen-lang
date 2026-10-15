@@ -1,0 +1,6 @@
+[ERROR] E2001: the value of parameter 'high' is string, and the parameter is int
+defaults_errors.lum:5:47
+[ERROR] E2009: expected 1 to 3 arguments, got 0
+defaults_errors.lum:10:13
+[ERROR] E2009: expected 1 to 3 arguments, got 4
+defaults_errors.lum:11:13

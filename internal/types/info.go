@@ -32,6 +32,7 @@ type Info struct {
 	Iterations      map[*ast.ForStmt]Type             // for x in a: the type of x, when a is an Iterable
 	IndexReads      map[*ast.IndexExpr]bool           // a[k], when a is an Indexed
 	TypeMethods     map[*ast.MemberExpr]*FunctionType // Point.norm: the method, without the value it is called on
+	Defaults        map[*ast.CallExpr][]ast.Expr      // The values of the parameters a call leaves out
 	IndexWrites     map[*ast.BinaryExpr]bool          // a[k] = v, when a is an IndexedSet
 
 	// MethodValues maps each method used as a value, `users.get` without
@@ -66,6 +67,7 @@ func NewInfo() *Info {
 		Iterations:      make(map[*ast.ForStmt]Type),
 		IndexReads:      make(map[*ast.IndexExpr]bool),
 		TypeMethods:     make(map[*ast.MemberExpr]*FunctionType),
+		Defaults:        make(map[*ast.CallExpr][]ast.Expr),
 		IndexWrites:     make(map[*ast.BinaryExpr]bool),
 		MethodValues:    make(map[*ast.MemberExpr]*FunctionType),
 		NarrowedNames:   make(map[*ast.BindingPattern]Type),

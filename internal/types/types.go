@@ -2,6 +2,7 @@ package types
 
 import (
 	"fmt"
+	"github.com/dani-gouken/lumen/internal/ast"
 	"strings"
 )
 
@@ -147,6 +148,11 @@ type FunctionType struct {
 	ReturnType Type
 	TypeParams []string
 	IsVariadic bool
+
+	// Defaults are what the last parameters are when a call leaves them
+	// out, for a function declared with them; nil for a function value,
+	// which is called with all its arguments
+	Defaults []ast.Expr
 }
 
 func NewFunction(params []Type, returnType Type) *FunctionType {

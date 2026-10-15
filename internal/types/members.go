@@ -456,10 +456,18 @@ func (c *Checker) checkArgsOnly(e *ast.CallExpr) {
 // checkArgs checks the arguments of a call against a signature and returns
 // the call's type.
 func (c *Checker) checkArgs(e *ast.CallExpr, ft *FunctionType) Type {
-	// Check argument count
-	if len(e.Args) != len(ft.Params) {
+	// Check argument count; the last parameters may have values of their
+	// own, which the call is given in their place
+	required := len(ft.Params) - len(ft.Defaults)
+	if len(e.Args) < len(ft.Params) && len(e.Args) >= required && len(ft.Defaults) > 0 {
+		c.info.Defaults[e] = ft.Defaults[len(e.Args)-required:]
+	} else if len(e.Args) != len(ft.Params) {
 		if !ft.IsVariadic || len(e.Args) < len(ft.Params)-1 {
-			c.errorf(e.Token(), ErrArgCount, "expected %d arguments, got %d", len(ft.Params), len(e.Args))
+			if len(ft.Defaults) > 0 {
+				c.errorf(e.Token(), ErrArgCount, "expected %d to %d arguments, got %d", required, len(ft.Params), len(e.Args))
+			} else {
+				c.errorf(e.Token(), ErrArgCount, "expected %d arguments, got %d", len(ft.Params), len(e.Args))
+			}
 		}
 	}
 

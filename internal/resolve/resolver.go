@@ -33,6 +33,10 @@ type Resolver struct {
 	scriptVars map[string]bool
 	inScript   bool
 
+	// The parameters whose values of their own are being resolved, which
+	// may not name each other
+	params []*ast.Param
+
 	// The variable whose value is being resolved: a short function that
 	// calls it is told how to write one that may
 	defining string
@@ -239,6 +243,16 @@ func (r *Resolver) visitFnDecl(d *ast.FnDecl) {
 		r.current.Insert(tp, sym)
 	}
 	r.visitBounds(d.Bounds)
+
+	// What the parameters are when left out names what the module does,
+	// not the other parameters
+	r.params = d.Params
+	for _, param := range d.Params {
+		if param.Default != nil {
+			r.visitExpr(param.Default)
+		}
+	}
+	r.params = nil
 
 	// Register parameters
 	for _, param := range d.Params {
@@ -811,6 +825,11 @@ func (r *Resolver) reportUndefined(what, name string, tok token.Token) {
 		suggestion = importSuggestion(name, modules)
 	} else if similar != "" {
 		suggestion = fmt.Sprintf("Did you mean '%s'?", similar)
+	}
+	for _, param := range r.params {
+		if what == "undefined identifier" && param.Name == name {
+			suggestion = "The value of a parameter is made where the call is, before the parameters exist: use a constant, a literal or a call of a function"
+		}
 	}
 	if what == "undefined identifier" && name == r.defining && name != "" {
 		suggestion = fmt.Sprintf("A function sees its own name when it is written with its types: let %s = fn(n: Int) -> Int { ... %s(...) ... };", name, name)

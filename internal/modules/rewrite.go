@@ -379,6 +379,13 @@ func (r *rewriter) fn(d *ast.FnDecl) {
 }
 
 func (r *rewriter) params(params []*ast.Param) {
+	// What a parameter is when left out is written where the call is: it
+	// names what the module names, never another parameter
+	for _, param := range params {
+		if param.Default != nil {
+			param.Default = r.expr(param.Default)
+		}
+	}
 	for _, param := range params {
 		r.typ(param.Type)
 		r.declare(param.Name)

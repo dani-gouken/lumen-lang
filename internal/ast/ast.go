@@ -335,6 +335,10 @@ type Param struct {
 	BaseNode
 	Name string
 	Type *Type
+
+	// Default is what the parameter is when a call leaves it out:
+	// fn open(path: String, mode: String = "r"). Made where the call is.
+	Default Expr
 }
 
 func (p *Param) String() string {

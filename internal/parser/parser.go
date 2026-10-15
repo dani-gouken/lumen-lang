@@ -577,6 +577,15 @@ func (p *Parser) parseParams() []*ast.Param {
 		param := &ast.Param{BaseNode: base(tok), Name: tok.Literal}
 		p.expect(token.COLON, "':'")
 		param.Type = p.parseType()
+		if p.accept(token.ASSIGN) {
+			// mode: String = "r": what a call that leaves it out gives
+			param.Default = p.parseNestedExpr()
+		} else if len(params) > 0 && params[len(params)-1].Default != nil {
+			p.errs.ReportErrorWithSuggestion(ErrUnexpectedToken,
+				fmt.Sprintf("parameter '%s' has no value of its own, and comes after one that has", param.Name),
+				"Put the parameters with a value of their own last: a call leaves out the ones at the end",
+				tok, p.sourceLines)
+		}
 		params = append(params, param)
 		if !p.accept(token.COMMA) {
 			break

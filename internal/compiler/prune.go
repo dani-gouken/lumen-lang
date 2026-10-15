@@ -320,6 +320,7 @@ func (p *pruner) function(fn *ast.FnDecl) {
 	p.kept[fn] = true
 	for _, param := range fn.Params {
 		p.typ(param.Type)
+		p.expr(param.Default)
 	}
 	p.typ(fn.ReturnType)
 	for _, bounds := range fn.Bounds {

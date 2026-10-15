@@ -231,6 +231,7 @@ func (c *Checker) checkFnDecl(d *ast.FnDecl) {
 		return
 	}
 	c.recordSignature(d, d)
+	c.checkDefaults(d.Params)
 
 	// A function body may run at any later time, so it cannot rely on what
 	// is known here about outer variables that change; and what it assigns
@@ -1959,7 +1960,32 @@ func (c *Checker) resolveFnType(fn *ast.FnDecl) Type {
 	if variadic {
 		return NewVariadicFunction(params, ret)
 	}
-	return NewFunction(params, ret)
+	ft := NewFunction(params, ret)
+	for i, p := range fn.Params {
+		if p.Default != nil {
+			// The parameters from the first with a value of its own
+			for _, rest := range fn.Params[i:] {
+				ft.Defaults = append(ft.Defaults, rest.Default)
+			}
+			break
+		}
+	}
+	return ft
+}
+
+// checkDefaults checks what the parameters with a value of their own are
+// when a call leaves them out, against their types.
+func (c *Checker) checkDefaults(params []*ast.Param) {
+	for _, param := range params {
+		if param.Default == nil {
+			continue
+		}
+		want := c.resolveType(param.Type)
+		got := c.checkExprAs(param.Default, want)
+		if got != nil && want != nil && !c.assignable(want, got) {
+			c.errorf(param.Default.Token(), ErrTypeMismatch, "the value of parameter '%s' is %s, and the parameter is %s", param.Name, describe(got), describe(want))
+		}
+	}
 }
 
 // bindTypeParams brings the type parameters of a declaration into scope as

@@ -1150,7 +1150,17 @@ impl Parser {
                 return name;
             }
 
-            return layout.concat([name, self.take(), space(), self.type()]);
+            let parts = [name, self.take(), space(), self.type()];
+
+            if self.is("=") {
+                // mode: String = "r": what a call that leaves it out gives
+                parts.push(space());
+                parts.push(self.take());
+                parts.push(space());
+                parts.push(self.nested());
+            }
+
+            return layout.concat(parts);
         });
 
         return list(open, parameters, self.expect(")"));

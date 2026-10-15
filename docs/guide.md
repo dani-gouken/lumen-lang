@@ -300,10 +300,18 @@ fn first<T>(items: [T]) -> T {                       // generic
     return items[0];
 }
 
+fn page(items: [String], number: Int = 1, size: Int = 20) -> [String] {   // values of their own
+    return items[(number - 1) * size..number * size];
+}
+
 log("got", 1, 2, 3);
 first([7, 8]);               // T is inferred from the argument
 first<Int>([7, 8]);          // and can always be written out
+page(names);                 // page(names, 1, 20)
+page(names, 3);              // page(names, 3, 20)
 ```
+
+The last parameters may have values of their own, which a call that leaves them out gives them. The value is made where the call is, each time: a literal, a constant, a call of a function, but not another parameter. Methods take them too.
 
 Functions are values: they can be stored in variables, passed and returned.
 
