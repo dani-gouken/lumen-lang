@@ -659,6 +659,12 @@ fn comma() -> Doc {
 // one argument to a line, whatever the last one is.
 const headRoom = 70;
 
+// What, after an if or a match, makes it part of a value going on.
+const CONTINUING = [
+    "+", "-", "*", "/", "%", "==", "!=", "<", "<=", ">", ">=", "&&", "||", "??", "|>", "&", "|",
+    "^", "<<", ">>", ".", "?.", "?", "as", "..",
+];
+
 struct Parser {
     tokens: [Token];
     report: Report;
@@ -1580,7 +1586,9 @@ impl Parser {
             entry.push(space());
 
             if self.is("{") {
-                entry.push(self.block());
+                // Where a value is expected, as the branch of an if:
+                // statements, then the value
+                entry.push(if asValue { self.valueBlock() } else { self.block() });
 
                 if asValue && self.is(",") {
                     entry.push(self.drop());
@@ -2299,6 +2307,40 @@ impl Parser {
         return layout.concat(parts);
     }
 
+    // The if or match at the current token as a statement, when it is
+    // one: something other than the end of the braces follows it, and
+    // not an operator that would make it part of a value
+    // (if a { 1 } else { 2 } + 3). Otherwise nothing is read, and it is
+    // read again as the value of the braces.
+    fn statementBeforeValue() -> Doc? {
+        let start = self.at;
+        let plain = self.plain;
+        let patterns = self.patterns;
+
+        // Reading takes the comments off the tokens: they are put back if
+        // what was read is read again
+        let comments = self.tokens.drop(start).map(token -> token.before);
+        let read = result.attempt(() -> self.statement());
+
+        if read is Result.Ok(doc)
+            && !self.is("}")
+            && self.peek().kind != Kind.End
+            && !CONTINUING.contains(self.peek().text)
+        {
+            return doc;
+        }
+
+        for i, before in comments {
+            self.tokens[start + i].before = before;
+        }
+
+        self.at = start;
+        self.plain = plain;
+        self.patterns = patterns;
+        self.report.problem = null;
+        return null;
+    }
+
     // The branch of an if that gives a value: braces around an
     // expression, which statements may come before.
     fn valueBlock() -> Doc {
@@ -2330,14 +2372,25 @@ impl Parser {
                 }
 
                 default: {
-                    doc = self.assignment();
-
-                    if !self.assigned && self.is("}") {
-                        // The last thing in the braces, with no ';': the value
-                        value = doc;
+                    let statement = if self.is("if") || self.is("match") {
+                        self.statementBeforeValue()
                     } else {
-                        doc = layout.concat([doc, self.expect(";")]);
+                        null
+                    };
+
+                    if statement != null {
+                        doc = statement;
                         alone = false;
+                    } else {
+                        doc = self.assignment();
+
+                        if !self.assigned && self.is("}") {
+                            // The last thing in the braces, with no ';': the value
+                            value = doc;
+                        } else {
+                            doc = layout.concat([doc, self.expect(";")]);
+                            alone = false;
+                        }
                     }
                 }
             }

@@ -1747,6 +1747,46 @@ func TestParseIfExpr(t *testing.T) {
 	}
 }
 
+// In the braces of a value, an if without an else and a match are
+// statements when something follows them; the last thing is the value,
+// whatever it is.
+func TestParseStatementsBeforeAValue(t *testing.T) {
+	prog := parseOK(t, `fn f(n: Int, light: Light) -> String {
+		let v = if n > 0 {
+			if n > 100 { log("big"); } else if n > 10 { log("medium"); }
+			match light { case Light.Red: { log("stop"); } default: {} }
+			if n > 50 { n * 2 } else { n } + 1;
+			match light { case Light.Red: "red"; default: "other"; }
+		} else {
+			if n < 0 { log("negative"); }
+			if n < -10 { "very" } else { "a little" }
+		};
+		return v;
+	}`)
+	cond := prog.Decls[0].(*ast.FnDecl).Body.Stmts[0].(*ast.LetStmt).Value.(*ast.CondExpr)
+	then := cond.Then.(*ast.BlockExpr)
+	if len(then.Stmts) != 3 {
+		t.Fatalf("expected three statements before the value, got %d: %s", len(then.Stmts), then)
+	}
+	if _, ok := then.Stmts[0].(*ast.IfStmt); !ok {
+		t.Errorf("expected an if statement first, got %T", then.Stmts[0])
+	}
+	if _, ok := then.Stmts[1].(*ast.MatchStmt); !ok {
+		t.Errorf("expected a match statement second, got %T", then.Stmts[1])
+	}
+	// An if with an else that an operator follows is part of an expression
+	if stmt, ok := then.Stmts[2].(*ast.ExprStmt); !ok || stmt.Expr.String() != "((if (n > 50) (n * 2) else n) + 1)" {
+		t.Errorf("expected the if that goes on to be an expression, got %s", then.Stmts[2])
+	}
+	if _, ok := then.Value.(*ast.MatchExpr); !ok {
+		t.Errorf("expected the last match to be the value, got %T", then.Value)
+	}
+	otherwise := cond.Else.(*ast.BlockExpr)
+	if len(otherwise.Stmts) != 1 || otherwise.Value == nil || otherwise.Value.String() != "(if (n < (-10)) \"very\" else \"a little\")" {
+		t.Errorf("expected a statement and then an if as the value, got %s", otherwise)
+	}
+}
+
 func TestParseIfExprRefused(t *testing.T) {
 	cases := []struct{ name, src, msg string }{
 		{"without an else", `let v = if a { 1 };`, "an 'if' that gives a value needs an 'else'"},

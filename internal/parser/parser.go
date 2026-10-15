@@ -1213,6 +1213,13 @@ func (p *Parser) parseValueBlock() ast.Expr {
 		case token.LET, token.RETURN, token.BREAK, token.CONTINUE, token.WHILE, token.FOR, token.DEFER:
 			block.Stmts = append(block.Stmts, p.parseStmt())
 			continue
+		case token.IF, token.MATCH:
+			// An if without an else, or a match, that something follows is
+			// a statement; the last thing in the braces is the value
+			if stmt := p.tryStatementBeforeValue(); stmt != nil {
+				block.Stmts = append(block.Stmts, stmt)
+				continue
+			}
 		}
 		at := p.cur()
 		expr, assigned := p.parseExprOrAssignment()
@@ -1229,6 +1236,36 @@ func (p *Parser) parseValueBlock() ast.Expr {
 		return block.Value
 	}
 	return block
+}
+
+// tryStatementBeforeValue parses the if or match at the current token as
+// a statement, if it is one: something other than the closing brace of
+// the block follows it. Otherwise it leaves the position where it was and
+// returns nil, and the if or match is read again as the block's value.
+func (p *Parser) tryStatementBeforeValue() (stmt ast.Stmt) {
+	start := p.pos
+	wasSpeculating := p.speculating
+	p.speculating = true
+	defer func() {
+		p.speculating = wasSpeculating
+		if r := recover(); r != nil {
+			if _, ok := r.(bailout); !ok {
+				panic(r)
+			}
+			p.pos = start
+			stmt = nil
+		}
+	}()
+
+	stmt = p.parseStmt()
+	// What an operator or a dot follows was a value going on: if a { 1 } else { 2 } + 3
+	_, continues, _ := p.binaryOperator()
+	goesOn := continues > 0 || p.at(token.DOT) || p.at(token.QUESTION_DOT) || p.at(token.QUESTION) || p.at(token.AS) || p.at(token.DOTDOT)
+	if goesOn || p.at(token.RBRACE) || p.at(token.EOF) {
+		p.pos = start
+		return nil
+	}
+	return stmt
 }
 
 // parseMatchStmt parses a match statement. A `default:` case is stored with a
@@ -1278,11 +1315,18 @@ func (p *Parser) parseMatch(asValue bool) *ast.MatchStmt {
 		p.expect(token.COLON, "':'")
 
 		switch {
+		case p.at(token.LBRACE) && asValue:
+			// As the branch of an if: statements, then the value, or a
+			// block that leaves
+			body := p.parseValueBlock()
+			if block, ok := body.(*ast.BlockExpr); ok && block.Value == nil {
+				matchCase.Body = &ast.BlockStmt{BaseNode: block.BaseNode, Stmts: block.Stmts}
+			} else {
+				matchCase.Body = body
+			}
+			p.accept(token.COMMA)
 		case p.at(token.LBRACE):
 			matchCase.Body = p.parseBlock()
-			if asValue {
-				p.accept(token.COMMA)
-			}
 		case asValue:
 			matchCase.Body = p.parseExpr()
 			if !p.accept(token.COMMA) && !p.accept(token.SEMICOLON) && !p.at(token.RBRACE) {

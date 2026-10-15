@@ -540,3 +540,106 @@ func TestControlFlowErrors(t *testing.T) {
 		t.Errorf("expected E2039 for '?' in a defer, got %v", errs.Diagnostics)
 	}
 }
+
+// In the braces of a value, an if without an else and a match are
+// statements when something follows them, as anywhere else; the last
+// thing in the braces is the value, an if or a match included.
+func TestStatementsBeforeAValue(t *testing.T) {
+	expectOutput(t, `
+		enum Light { Red, Amber, Green }
+
+		fn label(n: Int, light: Light, log: [String]) -> String {
+			let text = if n > 0 {
+				if n > 100 {
+					log.push("big");
+				} else if n > 10 {
+					log.push("medium");
+				}
+
+				match light {
+					case Light.Red: { log.push("stop"); }
+					default: {}
+				}
+
+				// An if with an else that an operator follows is a value going on
+				let doubled = if n > 50 { n * 2 } else { n } + 1;
+
+				for i in 0..2 {
+					if i == 1 { log.push("twice"); }
+				}
+
+				match light {
+					case Light.Red: "red ${doubled}";
+					case Light.Amber: "amber ${doubled}";
+					case Light.Green: "green ${doubled}";
+				}
+			} else {
+				if n < -10 { log.push("very"); }
+				if n == 0 { "zero" } else { "negative" }
+			};
+
+			return text;
+		}
+	`, `
+		let log: [String] = [];
+		println(label(200, Light.Red, log), log);
+		log.clear();
+		println(label(20, Light.Green, log), log);
+		log.clear();
+		println(label(-20, Light.Amber, log), log, label(0, Light.Red, []));
+
+		// In a match that gives a value, and in a function written on the spot
+		let kinds = [1, 50, -3].map(n -> match n > 0 {
+			case true: {
+				if n > 10 { log.push("large ${n}"); }
+				"positive"
+			}
+			case false: "not";
+		});
+		println(kinds, log);
+	`, `red 401 ["big", "stop", "twice"]
+green 21 ["medium", "twice"]
+negative ["very"] zero
+["positive", "positive", "not"] ["very", "large 50"]
+`)
+}
+
+// A match on a Bool with a case for true and one for false handles every
+// value: it gives a value without a default, and a function can end on it.
+func TestMatchOnBoolIsComplete(t *testing.T) {
+	expectOutput(t, `
+		fn sign(n: Int) -> String {
+			match n >= 0 {
+				case true: { return "+"; }
+				case false: { return "-"; }
+			}
+		}
+
+		fn both(a: Bool, b: Bool) -> String {
+			return match a {
+				case true: match b { case true: "both"; case false: "a"; };
+				case false: if b { "b" } else { "none" };
+			};
+		}
+	`, `
+		println(sign(3), sign(-3), both(true, true), both(true, false), both(false, true), both(false, false));
+		let parity = [1, 2, 3].map(n -> match n % 2 == 0 { case true: "even"; case false: "odd"; });
+		println(parity);
+	`, `+ - both a b none
+["odd", "even", "odd"]
+`)
+
+	refused := []struct{ name, body string }{
+		{"one value left out", `let v = match 1 > 0 { case true: "yes"; };`},
+		{"a case with a condition", `let n = 1; let v = match n > 0 { case true if n > 5: "big"; case false: "no"; };`},
+	}
+	for _, tt := range refused {
+		t.Run(tt.name, func(t *testing.T) {
+			errs := errors.NewHandler()
+			Compile("fn main() -> Int {\n"+tt.body+"\nreturn 0;\n}\n", "test.lum", errs)
+			if !errs.HasErrors() || errs.Diagnostics[0].Code != "E2028" {
+				t.Errorf("expected E2028, got %v", errs.Diagnostics)
+			}
+		})
+	}
+}

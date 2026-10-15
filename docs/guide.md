@@ -226,7 +226,19 @@ fn area(shape: Shape) -> Float {
 }
 ```
 
-Each case is an expression, all of the same type (a `null` among them makes the whole optional), or a block that leaves: `case 0: { return null; }`, `{ continue; }`, `{ panic("..."); }`. Such a match has to give a value whatever is matched: it handles every variant of an enum, or has a `default` (`E2028`).
+Each case is an expression, all of the same type (a `null` among them makes the whole optional), or a block: statements, then the value without a `;`, as in the branch of an `if`. A block may also leave instead: `case 0: { return null; }`, `{ continue; }`, `{ panic("..."); }`. Such a match has to give a value whatever is matched: it handles every variant of an enum, both `true` and `false` of a `Bool`, or has a `default` (`E2028`).
+
+```rust
+let size = match bytes > 1024 {
+    case true: {
+        log.push("large file: ${name}");      // statements first
+        "${bytes / 1024} KB"                   // then the value
+    }
+    case false: "${bytes} B";
+};
+```
+
+In the braces of a value, an `if` without an `else`, a `match`, a loop are statements like anywhere else; what comes last, without `;`, is the value.
 
 The two ends of a range are whole numbers. Its two ends are worked out once, before the loop starts, and `..` binds looser than arithmetic: `0..count - 1`.
 

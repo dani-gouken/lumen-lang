@@ -537,6 +537,10 @@ func (c *Checker) bindUnknown(p *ast.VariantPattern) {
 // not handle one completely); it is what the warning about a case that is
 // never reached goes by.
 func (c *Checker) checkExhaustive(s *ast.MatchStmt, subject Type, covered [][]string) {
+	if subject != nil && subject.Equals(Bool) {
+		c.markBoolExhaustive(s)
+		return
+	}
 	decl, _ := c.enumOfType(subject)
 	if decl == nil {
 		return
@@ -603,6 +607,31 @@ func (c *Checker) checkExhaustive(s *ast.MatchStmt, subject Type, covered [][]st
 		"match on %s does not handle %s", matched, strings.Join(missing, ", "))
 	// Reported once: what follows the match is checked as if it were complete
 	s.Exhaustive = true
+}
+
+// markBoolExhaustive marks a match on a Bool that has a case for true and
+// one for false, without a condition, as handling every value. One that
+// does not is left alone: a statement need not handle every value, and a
+// match that gives a value says it lacks a default.
+func (c *Checker) markBoolExhaustive(s *ast.MatchStmt) {
+	var rows [][]ast.Node
+	for _, matchCase := range s.Cases {
+		if matchCase.IsDefault() {
+			rows = append(rows, []ast.Node{nil})
+			continue
+		}
+		if matchCase.Guard != nil {
+			continue
+		}
+		for _, pattern := range matchCase.Patterns() {
+			if lit, ok := pattern.(*ast.Literal); ok && lit.Kind == "bool" {
+				rows = append(rows, []ast.Node{lit})
+			}
+		}
+	}
+	if _, open := c.uncovered(rows, []Type{Bool}); !open {
+		s.Exhaustive = true
+	}
 }
 
 func typeArgsOf(t Type) []Type {
