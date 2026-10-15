@@ -9,7 +9,7 @@
 // in the order they were first set.
 
 import std.arrays;
-import std.ops.{Iterable, Indexed, IndexedSet, Equal};
+import std.ops.{Iterable, Indexed, IndexedSet, Equal, Show};
 
 // The keys and the values are two arrays, in the order the keys were set:
 // the value of keys[i] is values[i].
@@ -42,6 +42,18 @@ extern fn indexDrop(index: Any, key: String);
 // An empty dictionary. Say what it holds: dict.empty<Int>().
 pub fn empty<V>() -> Dict<V> {
     return Dict<V> {};
+}
+
+// A dictionary of the keys and values of an array of pairs; a key given
+// twice has the value given last. A literal is one: {"ada": 36}.
+pub fn of<V>(entries: [(String, V)]) -> Dict<V> {
+    let made = Dict<V> {};
+
+    for (key, value) in entries {
+        made.set(key, value);
+    }
+
+    return made;
 }
 
 // A dictionary takes brackets and loops: `ages["ada"]` is what `get`
@@ -97,6 +109,25 @@ impl<V> Equal for Dict<V> {
 
         return true;
     }
+}
+
+// A dictionary is written as its literal is: {"ada": 36, "alan": 41}.
+impl<V> Show for Dict<V> {
+    fn show() -> String {
+        let parts: [String] = [];
+
+        for (key, value) in self.entries() {
+            parts.push("${shownInside(key)}: ${shownInside(value)}");
+        }
+
+        return "{" + parts.join(", ") + "}";
+    }
+}
+
+// A value as it is written inside another: a text in quotes.
+pub fn shownInside(value: Any) -> String {
+    let inside = toString([value]);
+    return inside[1..inside.len() - 1];
 }
 
 impl<V> Dict<V> {

@@ -2242,6 +2242,14 @@ impl Parser {
                 return self.take();
             }
 
+            case "{": {
+                // {"ada": 36}: a dictionary, never a block where a value
+                // is read
+                if !self.plain {
+                    return self.entries();
+                }
+            }
+
             case "Int" | "Float" | "String" | "Bool": {
                 // String.upper: a method of the type, as a function
                 if self.ahead(1).text == "." {
@@ -2364,6 +2372,20 @@ impl Parser {
         });
 
         return spaced(open, fields, self.expect("}"), tall);
+    }
+
+    // {key: value, other: value}: the entries of a dictionary, as the
+    // fields of a struct literal are written.
+    fn entries() -> Doc {
+        let tall = self.ahead(1).newline;
+        let open = self.take();
+
+        let entries = self.series("}", fn() -> Doc {
+            let key = self.nested();
+            return layout.concat([key, self.expect(":"), space(), self.nested()]);
+        });
+
+        return spaced(open, entries, self.expect("}"), tall);
     }
 
     // [first, second]. An array of plain values fills its lines; any

@@ -1406,6 +1406,12 @@ func (c *Checker) checkCallExpr(e *ast.CallExpr) Type {
 	expected := c.expected
 	c.expected = nil
 
+	if ident, isIdent := e.Func.(*ast.Ident); isIdent && ident.Name == ast.EntriesFunction {
+		if !c.entries(e, expected) {
+			return Unknown
+		}
+	}
+
 	var result Type
 	member, ok := e.Func.(*ast.MemberExpr)
 	if ok && c.isTypeMethod(member) {

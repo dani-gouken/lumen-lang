@@ -53,6 +53,9 @@ type Parser struct {
 	// of an index, where a range may leave out its end: items[1..]
 	openRange bool
 
+	// A literal of a dictionary was read
+	entries bool
+
 	// The statements that follow the one just parsed, when it is short for
 	// several (`let (a, b) = pair;`)
 	pendingStmts []ast.Stmt
@@ -219,6 +222,7 @@ func (p *Parser) parseProgram() *ast.Program {
 	}
 	classifyPatterns(prog)
 	prog.KeepsRanges = p.keptRanges > 0
+	prog.HasEntries = p.entries
 	prog.Members = p.members
 	return prog
 }
@@ -1825,6 +1829,36 @@ func (p *Parser) parsePostfixOp(expr ast.Expr) (ast.Expr, bool) {
 	return expr, false
 }
 
+// parseEntries parses the literal of a dictionary, the keys and values of
+// its entries: {"ada": 36, "alan": 41}, {(3, 4): "seat"}, {}. It is the
+// call of ast.EntriesFunction with an array of pairs, which the type
+// checker makes a Dict or a Map.
+func (p *Parser) parseEntries() ast.Expr {
+	open := p.expect(token.LBRACE, "'{'")
+	p.entries = true
+	saved, savedOr := p.noStructLit, p.noBitOr
+	p.noStructLit, p.noBitOr = false, false
+	defer func() { p.noStructLit, p.noBitOr = saved, savedOr }()
+
+	var pairs []ast.Expr
+	for !p.at(token.RBRACE) {
+		key := p.parseExpr()
+		if !p.at(token.COLON) {
+			p.failWith(ErrUnexpectedToken, "Write each entry as key: value, as in {\"ada\": 36}",
+				"expected ':' after the key of an entry, found %s", describe(p.cur()))
+		}
+		p.next()
+		value := p.parseExpr()
+		pairs = append(pairs, p.tuple(key.Token(), []ast.Expr{key, value}))
+		if !p.accept(token.COMMA) {
+			break
+		}
+	}
+	p.expect(token.RBRACE, "'}'")
+	array := &ast.ArrayLiteralExpr{BaseNode: base(open), Elements: pairs}
+	return &ast.CallExpr{BaseNode: base(open), Func: &ast.Ident{BaseNode: base(open), Name: ast.EntriesFunction}, Args: []ast.Expr{array}}
+}
+
 // parseIndex parses what is between the brackets of an index: a value,
 // or a range, which may leave out where it starts or where it ends.
 //
@@ -1894,6 +1928,11 @@ func (p *Parser) parsePrimary() ast.Expr {
 	case token.MATCH:
 		// A match where a value is expected gives the value of its case
 		return &ast.MatchExpr{BaseNode: base(tok), Match: p.parseMatch(true)}
+
+	case token.LBRACE:
+		if !p.noStructLit {
+			return p.parseEntries()
+		}
 
 	case token.INT_TYPE, token.FLOAT_TYPE, token.STRING_TYPE, token.BOOL_TYPE:
 		// String.upper: a method of a builtin type, as a function

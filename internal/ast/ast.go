@@ -97,6 +97,10 @@ type Program struct {
 	// file: it then needs the Range of std.ops, imported or not.
 	KeepsRanges bool
 
+	// HasEntries says that the file writes a literal of a dictionary,
+	// {"ada": 36}: it then needs std.dict and std.map, imported or not.
+	HasEntries bool
+
 	// Members are the names written after a dot in the file: value.name.
 	// A method of the library among them brings its module along (see
 	// modules.MethodModules).
@@ -1092,6 +1096,11 @@ type Ident struct {
 	// has to be.
 	Candidates []string
 }
+
+// EntriesFunction is what a literal of a dictionary calls, with its
+// entries as pairs: {"ada": 36} is __entries([("ada", 36)]). The type
+// checker makes it the dict.of or the map.of it is, by its keys.
+const EntriesFunction = "__entries"
 
 // EnumToFind stands for the enum of a variant written alone that more than
 // one enum has, `Empty` with Shape.Empty and Box.Empty in scope: module

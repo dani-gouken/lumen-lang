@@ -374,6 +374,11 @@ func (p *pruner) visitExpr(expr ast.Expr) {
 	switch e := expr.(type) {
 	case *ast.Ident:
 		p.name(e.Name)
+		if e.Name == ast.EntriesFunction {
+			// A literal of a dictionary is made by one of these
+			p.name(types.DictOf)
+			p.name(types.MapOf)
+		}
 		for _, arg := range e.TypeArgs {
 			p.typ(arg)
 		}

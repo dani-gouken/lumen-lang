@@ -5,13 +5,13 @@
 //     seen.add("ada");
 //     seen.has("ada")         // true
 //
-// A set tells its items apart by a text worked out from each, its key.
-// For texts and numbers that is taken care of; for anything else, say
-// how: set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; }).
+// A set tells its items apart by a text worked out from each, its key:
+// how the item is written, unless it is told otherwise with
+// set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; }).
 
 import std.dict;
-import std.dict.{Dict};
-import std.ops.{Iterable, Equal};
+import std.dict.{Dict, shownInside};
+import std.ops.{Iterable, Equal, Show};
 
 pub struct Set<T> {
     members: Dict<T>;
@@ -21,6 +21,12 @@ pub struct Set<T> {
 // An empty set of values told apart by `key`.
 pub fn by<T>(key: fn(T) -> String) -> Set<T> {
     return Set<T> { members: dict.empty<T>(), key: key };
+}
+
+// An empty set of items told apart by how they are written:
+// set.empty<Point>().
+pub fn empty<T>() -> Set<T> {
+    return by(item -> toString(item));
 }
 
 // An empty set of texts.
@@ -33,9 +39,10 @@ pub fn numbers() -> Set<Int> {
     return by(n -> toString(n));
 }
 
-// The set of the texts of an array.
-pub fn of(items: [String]) -> Set<String> {
-    let out = texts();
+// The set of the items of an array, of any type: set.of(["a", "b"]),
+// set.of([Point { x: 1, y: 2 }]).
+pub fn of<T>(items: [T]) -> Set<T> {
+    let out = empty<T>();
     out.addAll(items);
     return out;
 }
@@ -52,6 +59,13 @@ pub fn ofNumbers(items: [Int]) -> Set<Int> {
 impl<T> Iterable<T> for Set<T> {
     fn iterate() -> [T] {
         return self.items();
+    }
+}
+
+// A set is written as its items in braces: {"a", "b"}.
+impl<T> Show for Set<T> {
+    fn show() -> String {
+        return "{" + self.items().map(item -> shownInside(item)).join(", ") + "}";
     }
 }
 

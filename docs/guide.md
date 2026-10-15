@@ -418,6 +418,17 @@ xs[(0..5).step(2)]          // [10, 30, 50]: a range kept as a value works too
 
 Positions outside the array are left out, so `xs[3..10]` is the last two and `xs[9..]` is empty. Texts are taken apart the same way, by characters: `"déjà vu"[..4]` is `"déjà"`. A part cannot be assigned to: `xs[0..2] = ...` is an error.
 
+A dictionary is written with its entries between braces. With texts for keys it is a `Dict`, with keys of any other type, numbers, tuples, enums, structs, a `Map`:
+
+```rust
+let ages = {"ada": 36, "alan": 41};        // Dict<Int>
+ages["grace"] = 85;
+let seats = {(1, 1): "ada", (1, 2): "alan"};   // Map<(Int, Int), String>
+let empty: Map<Color, Int> = {};          // an empty one needs its type
+```
+
+See [`std.dict`](stdlib.md#stddict) and [`std.map`](stdlib.md#stdmap) for what they do.
+
 What is done to an array is a method of it: see [Methods on arrays, texts and numbers](#methods-on-arrays-texts-and-numbers), and [`std.arrays`](stdlib.md#stdarrays) for all of them.
 
 An array keeps the element type it was made with. Since it is changed in place, through every name it has, an `[Int]` is never taken for an `[Int?]`, which could be given a `null`, nor an array of `Square` for an array of the trait `Shape`, which could be given a `Circle`. A function that only reads takes any array of a trait with a type parameter, and a new array of the wider type is a `map` away:
@@ -894,7 +905,8 @@ fn main() -> Int {
 | `std.strings` | `split`, `join`, `substring`, `indexOf`, `replace`, `trim`, `upper`, `parseInt`, ... |
 | `std.arrays` | `range`, `fill`, `slice`, `map`, `filter`, `fold`, `sorted`, `contains`, `sum`, ... |
 | `std.list` | `List<T>`: an array with methods (`add`, `removeAt`, `sort`, `map`, ...) |
-| `std.dict` | `Dict<V>`: values by a text key (`set`, `get`, `has`, `keys`, ...) |
+| `std.dict` | `Dict<V>`: values by a text key (`set`, `get`, `has`, `keys`, ...); `{"ada": 36}` |
+| `std.map` | `Map<K, V>`: values by a key of any type; `{(1, 2): "seat"}` |
 | `std.option` | Chaining on values that may be `null`: `map`, `then`, `mapOr`, `orElse`, ... |
 | `std.result` | `Result<T, E>` for failures with a reason; `attempt` to survive one that stops the program |
 | `std.io` | `readLine`, `readFile`, `writeFile`, `exists`, `env`, ... |

@@ -1,0 +1,223 @@
+// A map: values found by a key of any type, a number, a value of an enum,
+// a struct, a tuple, and not only a text, which is what Dict is for.
+//
+//     let seats = map.empty<(Int, Int), String>();
+//     seats.set((3, 4), "ada");
+//     seats.get((3, 4)) ?? "free"
+//
+// Two keys are the same key when they are equal, ==. Keys come back in the
+// order they were first set.
+//
+// A literal makes one: {(3, 4): "ada", (3, 5): "alan"} is a Map, and
+// {"ada": 36} a Dict.
+
+import std.dict;
+import std.dict.{Dict, shownInside};
+import std.ops.{Iterable, Indexed, IndexedSet, Equal, Show};
+
+// The entries are kept by the text of their key, which finds them in
+// about the same time however many there are; keys whose text is the same
+// share it, and are told apart by ==.
+pub struct Map<K, V> {
+    buckets: Dict<[(K, V)]>;
+    count: Int = 0;
+}
+
+// An empty map. Say what it holds: map.empty<Int, String>().
+pub fn empty<K, V>() -> Map<K, V> {
+    return Map<K, V> { buckets: dict.empty<[(K, V)]>() };
+}
+
+// A map of the keys and values of an array of pairs; a key given twice
+// has the value given last.
+pub fn of<K, V>(entries: [(K, V)]) -> Map<K, V> {
+    let made = empty<K, V>();
+
+    for (key, value) in entries {
+        made.set(key, value);
+    }
+
+    return made;
+}
+
+// `seats[(3, 4)]` is what get gives, `seats[(3, 4)] = "ada";` is set, and
+// `for key in seats` goes through the keys.
+impl<K, V> Iterable<K> for Map<K, V> {
+    fn iterate() -> [K] {
+        return self.keys();
+    }
+}
+
+impl<K, V> Indexed<K, V?> for Map<K, V> {
+    fn at(key: K) -> V? {
+        return self.get(key);
+    }
+}
+
+impl<K, V> IndexedSet<K, V> for Map<K, V> {
+    fn put(key: K, value: V) {
+        self.set(key, value);
+    }
+}
+
+// Two maps are equal when they have the same keys, with equal values,
+// whatever order the keys were set in.
+impl<K, V> Equal for Map<K, V> {
+    fn equals(other: Map<K, V>) -> Bool {
+        if self.count != other.count {
+            return false;
+        }
+
+        for (key, value) in self.entries() {
+            if !other.has(key) || other.get(key) != value {
+                return false;
+            }
+        }
+
+        return true;
+    }
+}
+
+// A map is written as its literal is: {(3, 4): "ada"}.
+impl<K, V> Show for Map<K, V> {
+    fn show() -> String {
+        let parts: [String] = [];
+
+        for (key, value) in self.entries() {
+            parts.push("${shownInside(key)}: ${shownInside(value)}");
+        }
+
+        return "{" + parts.join(", ") + "}";
+    }
+}
+
+impl<K, V> Map<K, V> {
+    pub fn len() -> Int {
+        return self.count;
+    }
+
+    pub fn isEmpty() -> Bool {
+        return self.count == 0;
+    }
+
+    // The value of a key, or null when the map does not have it.
+    pub fn get(key: K) -> V? {
+        let bucket = self.buckets.get(toString(key));
+
+        if bucket == null {
+            return null;
+        }
+
+        for (k, v) in bucket {
+            if k == key {
+                return v;
+            }
+        }
+
+        return null;
+    }
+
+    // The value of a key, or `fallback` when the map does not have it.
+    pub fn getOr(key: K, fallback: V) -> V {
+        let value = self.get(key);
+
+        if value == null {
+            return fallback;
+        }
+
+        return value;
+    }
+
+    pub fn has(key: K) -> Bool {
+        let bucket = self.buckets.get(toString(key));
+        return bucket != null && bucket.any(entry -> entry.0 == key);
+    }
+
+    // Sets the value of a key, replacing the one it had.
+    pub fn set(key: K, value: V) {
+        let text = toString(key);
+        let bucket = self.buckets.get(text);
+
+        if bucket == null {
+            self.buckets.set(text, [(key, value)]);
+            self.count++;
+            return;
+        }
+
+        for i, entry in bucket {
+            if entry.0 == key {
+                bucket[i] = (key, value);
+                return;
+            }
+        }
+
+        bucket.push((key, value));
+        self.count++;
+    }
+
+    // Gives a key the value `change` makes of the one it has, or of
+    // `start` when it has none: counts.update(word, 0, n -> n + 1).
+    pub fn update(key: K, start: V, change: fn(V) -> V) {
+        self.set(key, change(self.getOr(key, start)));
+    }
+
+    // Takes a key out, and says whether the map had it.
+    pub fn remove(key: K) -> Bool {
+        let text = toString(key);
+        let bucket = self.buckets.get(text);
+
+        if bucket == null {
+            return false;
+        }
+
+        let kept = bucket.filter(entry -> entry.0 != key);
+
+        if kept.len() == bucket.len() {
+            return false;
+        }
+
+        if kept.isEmpty() {
+            self.buckets.remove(text);
+        } else {
+            self.buckets.set(text, kept);
+        }
+
+        self.count--;
+        return true;
+    }
+
+    pub fn keys() -> [K] {
+        return self.entries().map(entry -> entry.0);
+    }
+
+    pub fn values() -> [V] {
+        return self.entries().map(entry -> entry.1);
+    }
+
+    // Each key with its value.
+    //
+    //     for (seat, name) in seats.entries() { ... }
+    pub fn entries() -> [(K, V)] {
+        let out: [(K, V)] = [];
+
+        for bucket in self.buckets.values() {
+            for entry in bucket {
+                out.push(entry);
+            }
+        }
+
+        return out;
+    }
+
+    // Calls the function with each key and its value.
+    pub fn each(action: fn(K, V) -> Void) {
+        for (key, value) in self.entries() {
+            action(key, value);
+        }
+    }
+
+    // A map of its own, with the same keys and values.
+    pub fn copy() -> Map<K, V> {
+        return of(self.entries());
+    }
+}

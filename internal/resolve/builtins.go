@@ -77,6 +77,9 @@ func Builtins() []*ast.FnDecl {
 			},
 			ReturnType: basic("Void"),
 		},
+		// What a literal of a dictionary calls, until the type checker
+		// makes it dict.of or map.of
+		{Name: ast.EntriesFunction, Params: variadicAny("entries"), ReturnType: basic("Any")},
 		// The items of an array, or the characters of a text, at the
 		// positions a range goes through: items[1..3]
 		{

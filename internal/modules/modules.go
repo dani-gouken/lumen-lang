@@ -382,6 +382,15 @@ func (l *loader) importsResult(m *module, src string) {
 	words, beforeDot := sourceWords(src)
 	l.importsImplicitly(m, words, ResultModule, ResultName, "Ok", "Err")
 	l.importsImplicitly(m, words, TemplateModule, TemplateName)
+	if m.prog.HasEntries && l.packages[stdlib.Package] != "" {
+		// What a literal of a dictionary is made with, under names no
+		// program writes
+		for _, module := range []string{"std.dict", "std.map"} {
+			if m.name != module {
+				m.prog.Imports = append(m.prog.Imports, &ast.ImportDecl{BaseNode: m.prog.BaseNode, Path: module, Alias: "__" + strings.ReplaceAll(module, ".", "_"), Implicit: true})
+			}
+		}
+	}
 	if l.packages[stdlib.Package] == "" || m.name == stdlib.Package || strings.HasPrefix(m.name, stdlib.Package+".") {
 		return
 	}
@@ -445,7 +454,7 @@ func declaresVariant(prog *ast.Program, name string) bool {
 // implicitTypes are the types of the library a file of the program can
 // name without importing them, besides Result and Template.
 var implicitTypes = []struct{ module, name string }{
-	{"std.dict", "Dict"}, {"std.list", "List"}, {"std.set", "Set"},
+	{"std.dict", "Dict"}, {"std.map", "Map"}, {"std.list", "List"}, {"std.set", "Set"},
 	{"std.ops", "Equal"}, {"std.ops", "Ordered"}, {"std.ops", "Show"},
 	{"std.ops", "Add"}, {"std.ops", "Subtract"}, {"std.ops", "Multiply"}, {"std.ops", "Divide"},
 	{"std.ops", "Iterable"}, {"std.ops", "Indexed"}, {"std.ops", "IndexedSet"},

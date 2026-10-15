@@ -25,6 +25,7 @@ A longer program using the core of it is [`examples/words.lum`](../examples/word
 | [`std.arrays`](#stdarrays) | Functions on arrays: slice, map, filter, sort, ... |
 | [`std.list`](#stdlist) | `List<T>`: an array with methods |
 | [`std.dict`](#stddict) | `Dict<V>`: values found by a text key |
+| [`std.map`](#stdmap) | `Map<K, V>`: values found by a key of any type |
 | [`std.option`](#stdoption) | Chaining steps on values that may be `null` |
 | [`std.result`](#stdresult) | `Result<T, E>`, surviving a failure with `attempt`, traces |
 | [`std.io`](#stdio) | Reading input, files, the environment |
@@ -409,11 +410,9 @@ The field `items` is the array itself, for a `for` loop: `for name in names.item
 Its keys and values are two arrays, in the order the keys were set. Up to eight keys are simply looked through, so a small dictionary is three objects and costs next to nothing to make; a program can have one per record, per scope, per request. Past eight the machine keeps an index of where each key is.
 
 ```rust
-import std.dict;
-
-let ages = dict.empty<Int>();
-ages.set("ada", 36);
-ages.set("linus", 21);
+let ages = {"ada": 36, "linus": 21};     // a literal, or:
+let more = dict.empty<Int>();
+more.set("grace", 85);
 
 let age = ages.get("ada");          // Int?
 if age != null { println(age + 1); }
@@ -422,6 +421,7 @@ println(ages.get("nobody") ?? 0);
 
 | Function / method | Result |
 |-------------------|--------|
+| `{"ada": 36}`, `dict.of(pairs) -> Dict<V>` | A dictionary of entries; a literal with texts for keys is a `Dict`, and `let d: Dict<Int> = {};` an empty one |
 | `dict.empty<V>() -> Dict<V>` | An empty dictionary. The type of the values has to be written |
 | `set(key, value)` | Sets the value of a key, replacing the one it had |
 | `get(key) -> V?` | The value, or `null` if the key has none |
@@ -436,7 +436,29 @@ println(ages.get("nobody") ?? 0);
 | `values() -> [V]` | The values, in the order of their keys |
 | `each(action)` | Calls `action(key, value)` for each |
 
-A dictionary takes brackets and loops: `ages["ada"]` is what `get` gives, a value or `null`; `ages["ada"] = 36;` is `set`; and `for name in ages { ... }` goes through the keys. Counting reads `counts[word] = (counts[word] ?? 0) + 1;`.
+A dictionary takes brackets and loops: `ages["ada"]` is what `get` gives, a value or `null`; `ages["ada"] = 36;` is `set`; and `for name in ages { ... }` goes through the keys. Counting reads `counts[word] = (counts[word] ?? 0) + 1;`. Two dictionaries are `==` when they have the same keys with equal values, and one prints as its literal: `{"ada": 36}`.
+
+## `std.map`
+
+`Map<K, V>` finds values by a key of any type: a number, a value of an enum, a struct, a tuple. Two keys are the same key when they are `==`. It has the methods of a `Dict`, with `K` for `String`, and takes brackets and loops the same way.
+
+```rust
+let seats = {(1, 1): "ada", (1, 2): "alan"};   // keys that are not texts: a Map
+seats[(2, 1)] = "grace";
+let counts = map.empty<Fruit, Int>();
+for fruit in basket { counts.update(fruit, 0, n -> n + 1); }
+let scores: Map<Player, Int> = {};
+```
+
+| Function / method | Result |
+|-------------------|--------|
+| `{key: value}`, `map.of(pairs) -> Map<K, V>` | A map of entries; a key given twice has the value given last |
+| `map.empty<K, V>() -> Map<K, V>` | An empty map |
+| `set`, `get`, `getOr`, `update`, `has`, `remove`, `len`, `isEmpty` | As for `Dict` |
+| `keys() -> [K]`, `values() -> [V]`, `entries() -> [(K, V)]`, `each(action)` | In the order the keys were first set |
+| `copy() -> Map<K, V>` | A map of its own with the same entries |
+
+A key is found by how it is written, then by `==` among the keys written the same way: finding one takes about the same time however many there are.
 
 Keys are compared exactly: `"a"` and `"A"` are two keys, and `""` is a key.
 
@@ -932,12 +954,12 @@ date.replace("on 2026-10-13", "$3/$2/$1")           // on 13/10/2026
 
 ## `std.set`
 
-Values without repeats. A set tells its items apart by a text worked out from each; for texts and numbers that is taken care of.
+Values without repeats, of any type. A set tells its items apart by how they are written, unless it is told otherwise with `set.by`. It prints as its items in braces: `{"a", "b"}`.
 
 | Function / method | Result |
 |-------------------|--------|
-| `set.texts()`, `set.numbers()` | Empty sets |
-| `set.of(texts)`, `set.ofNumbers(numbers)` | From an array |
+| `set.empty<T>()`, `set.texts()`, `set.numbers()` | Empty sets |
+| `set.of(items)` | From an array of anything: `set.of(["a", "b"])`, `set.of(points)` |
 | `set.by(key)` | Of anything, given how to tell two apart: `set.by(fn(p: Point) -> String { return "${p.x},${p.y}"; })` |
 | `add(item) -> Bool`, `addAll(items)`, `remove(item) -> Bool`, `has(item)` | `add` says whether the item was new |
 | `len()`, `isEmpty()`, `items()`, `copy()` | Items come in the order they were first added |
