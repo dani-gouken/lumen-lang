@@ -52,10 +52,62 @@ func (vm *VM) enterCompiled() (Value, error, bool) {
 // the instruction loop uses (cacheFor), whose function objects the
 // collector keeps, found once for each chunk a compiled function runs in.
 func (vm *VM) kept() *chunkCache {
-	if vm.keptChunk != vm.chunk {
-		vm.keptChunk, vm.keptNow = vm.chunk, vm.cacheFor(vm.chunk)
+	if vm.keptChunk == vm.chunk {
+		return vm.keptNow
 	}
+	return vm.keptFirst()
+}
+
+// keptFirst finds what is kept for a chunk compiled code has not run in
+// before, or not last.
+func (vm *VM) keptFirst() *chunkCache {
+	vm.keptChunk, vm.keptNow = vm.chunk, vm.cacheFor(vm.chunk)
 	return vm.keptNow
+}
+
+// enterCompiledCall enters a call that compiled code makes of a compiled
+// function of the same chunk, with the arguments in its registers from
+// first to last: what enter does, less what is the same on both sides
+// (the chunk) and what compiled code sets before it is read (the place in
+// the code). A call that goes too deep, or needs the stack to grow, is
+// entered by enter, which fails or grows it.
+func (vm *VM) enterCompiledCall(fn *FunctionObj, first, last int) error {
+	stack := vm.stk
+	base := vm.base + len(vm.regs)
+	top := base + fn.proto.RegisterCount
+	if vm.frameCount >= vm.maxCallDepth || top > len(stack.vals) {
+		return vm.enter(fn, vm.regs[first:last:last])
+	}
+	frame := CallFrame{function: vm.currentFunction, ip: vm.ip, base: vm.base, size: len(vm.regs)}
+	if n := vm.frameCount; n < len(vm.frames) {
+		vm.frames[n] = frame
+	} else {
+		vm.frames = append(vm.frames, frame)
+	}
+	vm.frameCount++
+	regs := stack.vals[base:top:top]
+	// A few arguments: copied one by one, without calling memmove
+	for i, arg := range vm.regs[first:last] {
+		regs[i] = arg
+	}
+	if top > stack.used {
+		stack.used = top
+	}
+	vm.currentFunction = fn
+	vm.base = base
+	vm.regs = regs
+	return nil
+}
+
+// leaveCompiledCall ends a call enterCompiledCall entered. The frame keeps
+// the function it held: nothing reads a frame above the calls in progress.
+func (vm *VM) leaveCompiledCall() {
+	vm.frameCount--
+	frame := &vm.frames[vm.frameCount]
+	vm.currentFunction = frame.function
+	vm.ip = frame.ip
+	vm.base = frame.base
+	vm.regs = vm.stk.vals[frame.base : frame.base+frame.size : frame.base+frame.size]
 }
 
 // The instructions a compiled function leaves to a function of its own:

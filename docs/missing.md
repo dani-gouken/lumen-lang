@@ -233,7 +233,7 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 
 ### Calls in native executables — M
 
-`lumen native` keeps Ints and Floats in Go variables, but every call still enters and leaves a frame of the virtual machine, so that the collector, tasks and traces work unchanged ([native.md](native.md)): most of what a call costs now (`fib(35)` is twice as fast as under `lumen run`, a loop of numbers five times). A call of a compiled function that cannot fail and holds nothing for the collector could skip the frame. Structs, arrays and texts stay values of the VM's heap. A native executable cannot be stepped through by `lumen debug`.
+`lumen native` keeps Ints and Floats in Go variables, but every call still enters and leaves a frame of the virtual machine, so that the collector, tasks and traces work unchanged ([native.md](native.md)): most of what a call costs now (`fib(35)` is three times as fast as under `lumen run`, a loop of numbers five times). A call of a compiled function that cannot fail and holds nothing for the collector could skip the frame. Structs, arrays and texts stay values of the VM's heap. A native executable cannot be stepped through by `lumen debug`.
 
 ### Smaller items
 

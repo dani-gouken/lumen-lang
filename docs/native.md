@@ -40,11 +40,11 @@ The first build also fetches the one Go module the runtime needs, for calling C 
 | Program | `lumen run` | native |
 |---|---|---|
 | A loop of 100 million sums, products and remainders of Ints | 2.06 s | 0.37 s (5.6×) |
-| `fib(35)`: calls | 0.89 s | 0.44 s (2×) |
-| The Lox interpreter of `examples/lox` on `fib.lox` | 0.25 s | 0.16 s (1.6×) |
+| `fib(35)`: calls | 0.88 s | 0.29 s (3×) |
+| The Lox interpreter of `examples/lox` on `fib.lox` | 0.25 s | 0.14 s (1.8×) |
 | Building texts and counting them in a dictionary | 1.71 s | 1.34 s (1.3×) |
 
-Numbers kept in Go variables gain the most. Every call still goes in and out of a frame of the virtual machine, which is most of what a call costs now; the library, making texts and dictionaries, is Go already. Building takes a second or two.
+Numbers kept in Go variables gain the most. A call of a compiled function by a compiled one goes in and out of a frame of the virtual machine the short way: the chunk is the same on both sides, and compiled code says where it is before anything can ask. The library, making texts and dictionaries, is Go already. Building takes a second or two.
 
 ## Tests
 
