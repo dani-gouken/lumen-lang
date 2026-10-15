@@ -152,6 +152,27 @@ func init() {
 			}
 			return vm.newString(abs)
 		}},
+		// The path that leads from a folder to a path, or null when there is
+		// none (another drive). A relative one starts at the current folder.
+		native{"relative", 2, func(vm *VM, args []Value) (Value, error) {
+			from, err := argString(args, 0)
+			if err != nil {
+				return NewNull(), err
+			}
+			to, err := argString(args, 1)
+			if err != nil {
+				return NewNull(), err
+			}
+			if filepath.IsAbs(from) != filepath.IsAbs(to) {
+				from, _ = filepath.Abs(from)
+				to, _ = filepath.Abs(to)
+			}
+			rel, err := filepath.Rel(from, to)
+			if err != nil {
+				return NewNull(), nil
+			}
+			return vm.newString(rel)
+		}},
 		native{"separator", 0, func(vm *VM, args []Value) (Value, error) {
 			return vm.newString(string(filepath.Separator))
 		}},
@@ -299,44 +320,67 @@ func init() {
 		// wrote and what it wrote as errors; or null if it could not be
 		// started, the reason being kept.
 		native{"execute", 3, func(vm *VM, args []Value) (Value, error) {
-			name, err := argString(args, 0)
+			return vm.runProgram(args, "", nil)
+		}},
+		// The same, in a folder ("" for the current one), with variables
+		// added to the environment, each written name=value
+		native{"executeIn", 5, func(vm *VM, args []Value) (Value, error) {
+			folder, err := argString(args, 3)
 			if err != nil {
 				return NewNull(), err
 			}
-			arguments, err := argStrings(args, 1)
+			variables, err := argStrings(args, 4)
 			if err != nil {
 				return NewNull(), err
 			}
-			input, err := argString(args, 2)
-			if err != nil {
-				return NewNull(), err
-			}
-
-			cmd := exec.Command(name, arguments...)
-			var stdout, stderr strings.Builder
-			cmd.Stdout, cmd.Stderr = &stdout, &stderr
-			if input != "" {
-				cmd.Stdin = strings.NewReader(input)
-			}
-			status := 0
-			// Other tasks go on while the program runs
-			var failed error
-			if gone := vm.blocking(func() { failed = cmd.Run() }); gone != nil {
-				return NewNull(), gone
-			}
-			if err := failed; err != nil {
-				var exit *exec.ExitError
-				if errors.Is(err, exec.ErrNotFound) {
-					return vm.refused("not found", "there is no such program")
-				}
-				if !errors.As(err, &exit) {
-					return vm.failedFile(err, NewNull())
-				}
-				status = exit.ExitCode()
-			}
-			return vm.newStringArray([]string{fmt.Sprint(status), stdout.String(), stderr.String()})
+			return vm.runProgram(args, folder, variables)
 		}},
 	)
+}
+
+// runProgram runs the program of std.os.execute and executeIn: args are the
+// program, its arguments and its input.
+func (vm *VM) runProgram(args []Value, folder string, variables []string) (Value, error) {
+	name, err := argString(args, 0)
+	if err != nil {
+		return NewNull(), err
+	}
+	arguments, err := argStrings(args, 1)
+	if err != nil {
+		return NewNull(), err
+	}
+	input, err := argString(args, 2)
+	if err != nil {
+		return NewNull(), err
+	}
+
+	cmd := exec.Command(name, arguments...)
+	cmd.Dir = folder
+	if len(variables) > 0 {
+		cmd.Env = append(os.Environ(), variables...)
+	}
+	var stdout, stderr strings.Builder
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if input != "" {
+		cmd.Stdin = strings.NewReader(input)
+	}
+	status := 0
+	// Other tasks go on while the program runs
+	var failed error
+	if gone := vm.blocking(func() { failed = cmd.Run() }); gone != nil {
+		return NewNull(), gone
+	}
+	if err := failed; err != nil {
+		var exit *exec.ExitError
+		if errors.Is(err, exec.ErrNotFound) {
+			return vm.refused("not found", "there is no such program")
+		}
+		if !errors.As(err, &exit) {
+			return vm.failedFile(err, NewNull())
+		}
+		status = exit.ExitCode()
+	}
+	return vm.newStringArray([]string{fmt.Sprint(status), stdout.String(), stderr.String()})
 }
 
 func copyFile(from, to string) error {

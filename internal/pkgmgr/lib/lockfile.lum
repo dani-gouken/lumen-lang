@@ -99,8 +99,7 @@ pub fn read(file: String) -> Result<Lock?, String> {
         }
     }
 
-    let lock: Lock? = Lock { hash: document.get("content-hash")?.text() ?? "", packages: packages };
-    return Result.Ok(lock);
+    return Result.Ok(Lock { hash: document.get("content-hash")?.text() ?? "", packages: packages });
 }
 
 fn lockedOf(item: Json, dev: Bool) -> Result<Locked, String> {

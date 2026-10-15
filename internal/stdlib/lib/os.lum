@@ -87,6 +87,61 @@ pub fn runWithInput(program: String, arguments: [String], input: String) -> Resu
     return Result.Ok(outputOf(parts));
 }
 
+// A program to run, told a part at a time where and how:
+//
+//     let output = os.command("git", ["status", "--short"])
+//         .inDir("checkout")
+//         .env("GIT_TERMINAL_PROMPT", "0")
+//         .run()?;
+pub struct Command {
+    program: String;
+    arguments: [String];
+    folder: String = "";
+    variables: [String] = [];
+    input: String = "";
+}
+
+pub fn command(program: String, arguments: [String]) -> Command {
+    return Command { program: program, arguments: arguments };
+}
+
+impl Command {
+    // Runs it in that folder instead of the current one.
+    pub fn inDir(folder: String) -> Command {
+        self.folder = folder;
+        return self;
+    }
+
+    // Gives it one more environment variable, or another value for one.
+    pub fn env(name: String, value: String) -> Command {
+        self.variables.push("${name}=${value}");
+        return self;
+    }
+
+    // Gives it a text to read as its input.
+    pub fn withInput(text: String) -> Command {
+        self.input = text;
+        return self;
+    }
+
+    // Runs it and waits for it, as os.run does.
+    pub fn run() -> Result<Output, Error> {
+        let parts = executeIn(
+            self.program,
+            self.arguments,
+            self.input,
+            self.folder,
+            self.variables,
+        );
+
+        if parts == null {
+            return Result.Err(io.failure("run", self.program));
+        }
+
+        return Result.Ok(outputOf(parts));
+    }
+}
+
 // The status, what was written, what was written as errors.
 fn outputOf(parts: [String]) -> Output {
     return Output { status: parts[0].parseInt() ?? -1, out: parts[1], err: parts[2] };
@@ -94,3 +149,11 @@ fn outputOf(parts: [String]) -> Output {
 
 extern fn variables() -> [String];
 extern fn execute(program: String, arguments: [String], input: String) -> [String]?;
+
+extern fn executeIn(
+    program: String,
+    arguments: [String],
+    input: String,
+    folder: String,
+    variables: [String],
+) -> [String]?;

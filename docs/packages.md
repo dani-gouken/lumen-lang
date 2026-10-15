@@ -109,7 +109,7 @@ Error: lumen.json requires acme/textkit, which is not installed: run lumen insta
 
 **Git.** A package is a git repository. Its versions are its tags (`v1.4.2` or `1.4.2`; tags that are not versions are ignored), its branches are `dev-<branch>`. The repository is looked for in the `repositories` of `lumen.json`: for each `git` one, its `lumen.json` on the default branch says what package it is. A name none of them has is fetched from GitHub, `https://github.com/<vendor>/<name>.git`.
 
-Any address git understands works: `https://`, `ssh://`, `git@host:team/repo.git`, a folder. Fetching is git's job, with its credentials: a private repository needs what `git clone` of it would need. git and tar have to be installed.
+Any address git understands works: `https://`, `ssh://`, `git@host:team/repo.git`, a folder. Fetching is git's job, with its credentials: a private repository needs what `git clone` of it would need. git is never left asking for a password, which nobody would see: use an SSH address (`git@host:team/repo.git`) or a credential helper for a private repository over HTTPS. git and tar have to be installed.
 
 **A folder.** `{ "type": "path", "url": "../testkit" }` uses a package where it is, without copying it: changes to it are seen at once, which is what working on a package and a project together needs. Its version is the `version` of its `lumen.json`, or, without one, it accepts every constraint (`dev-path`).
 

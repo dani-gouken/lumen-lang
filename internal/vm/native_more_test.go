@@ -193,6 +193,7 @@ func TestNativeOs(t *testing.T) {
 	s.expect(`["3", "", "bad\n"]`, "std.os.execute", "sh", []string{"-c", "echo bad >&2; exit 3"}, "")
 	s.expect(`["0", "HELLO", ""]`, "std.os.execute", "tr", []string{"a-z", "A-Z"}, "hello")
 	s.expect("null", "std.os.execute", "no-such-program-of-lumen", []string{}, "")
+	s.expect(`["0", "/\nyes\n", ""]`, "std.os.executeIn", "sh", []string{"-c", "pwd; echo $LUMEN_SAID"}, "", "/", []string{"LUMEN_SAID=yes"})
 	s.expect(`["not found", "there is no such program"]`, "std.io.problem")
 }
 

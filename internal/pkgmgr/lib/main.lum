@@ -55,6 +55,9 @@ struct Project {
 
     // Made once, so that each repository is fetched once in a run.
     found: Sources? = null;
+
+    // Whether lumen.json is new, made by this run of lumen require.
+    created: Bool = false;
 }
 
 impl Project {
@@ -111,7 +114,7 @@ fn findProject(create: Bool) -> Result<Project, String> {
 
     let here = fs.currentDir();
     say("Writing a new ${manifest.FILE}");
-    return Result.Ok(Project { dir: here, manifest: manifest.parse("{}")? });
+    return Result.Ok(Project { dir: here, manifest: manifest.parse("{}")?, created: true });
 }
 
 fn requirementsOf(project: Manifest) -> [Requirement] {
@@ -127,8 +130,7 @@ fn update(project: Project, only: [String]) -> Result<Lock, String> {
     let old = lockfile.read(project.file(lockfile.FILE))?;
     let prefer = dict.empty<String>();
 
-    let locked = old?.packages ?? [];
-    let known = set.of(locked.map(entry -> entry.name));
+    let known = set.of(old?.packages.map(locked -> locked.name) ?? []);
 
     for name in only {
         if !known.has(name)
@@ -324,8 +326,14 @@ fn require(project: Project, request: Request) -> Result<Void, String> {
         }
 
         case Result.Err(reason): {
-            say("Installation failed, reverting ${manifest.FILE} to its original content.");
-            io.writeFile(project.file(manifest.FILE), original).mapErr(error -> error.describe())?;
+            if project.created {
+                say("Installation failed, deleting ${manifest.FILE}.");
+                io.remove(project.file(manifest.FILE));
+            } else {
+                say("Installation failed, reverting ${manifest.FILE} to its original content.");
+                io.writeFile(project.file(manifest.FILE), original).mapErr(error -> error.describe())?;
+            }
+
             return Result.Err(reason);
         }
     }

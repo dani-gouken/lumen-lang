@@ -695,6 +695,7 @@ Paths taken apart and put together. Nothing here touches the disk. The separator
 | `clean(path)` | The shortest path that means the same |
 | `isAbsolute(path)`, `absolute(path)` | |
 | `matches(pattern, name) -> Bool` | `*` stands for any characters, `?` for one: `matches("*.txt", "todo.txt")` |
+| `relative(from, to) -> String?` | The path from a folder to another path: `relative("app/src", "app/lib")` is `../lib`; `null` where there is none, as between two drives |
 | `separator()` | `/`, or `\` on Windows |
 
 ---
@@ -741,8 +742,16 @@ match fs.list("notes") {
 | `environment() -> Dict<String>` | Every environment variable. One alone: `io.env` |
 | `run(program, arguments) -> Result<Output, Error>` | Runs another program and waits for it |
 | `runWithInput(program, arguments, input)` | The same, with a text for it to read |
+| `command(program, arguments) -> Command` | A program to run, told a part at a time: `.inDir(folder)`, `.env(name, value)`, `.withInput(text)`, then `.run()`, which gives what `run` gives |
 
 An `Output` has `status`, `out`, `err`, and `succeeded()`, `lines()`. A program that ran and reports a failure is not an error: look at `output.status`. The error is for a program that could not be started.
+
+```rust
+let status = os.command("git", ["status", "--short"])
+    .inDir("checkout")
+    .env("GIT_TERMINAL_PROMPT", "0")       // added to the environment it inherits
+    .run()?;
+```
 
 **Arguments on the command line.** What follows the file is for the program, except the options of `lumen` itself (`--heap-mb`, `--max-depth`). After a lone `--` everything is for the program:
 

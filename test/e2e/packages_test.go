@@ -447,6 +447,17 @@ func TestPackageErrors(t *testing.T) {
 		})
 	}
 
+	// A lumen.json that require made for a requirement that fails is not left behind
+	write(t, world, map[string]string{"fresh/readme.txt": ""})
+	release(t, filepath.Join(world, "nowhere", "acme", "old"), "v1.0.0", map[string]string{"lumen.json": `{"name": "acme/old"}`})
+	res := runLumenIn(t, filepath.Join(world, "fresh"), "", "require", "acme/old:^2.0")
+	if res.exit != 1 || !strings.Contains(res.stderr, "Installation failed, deleting lumen.json.") {
+		t.Errorf("expected the new lumen.json to be deleted: exit %d\n%s", res.exit, res.stderr)
+	}
+	if _, err := os.Stat(filepath.Join(world, "fresh", "lumen.json")); !os.IsNotExist(err) {
+		t.Errorf("expected no lumen.json left, got %v", err)
+	}
+
 	// Nothing failed half way: no lock, no vendor
 	for _, name := range []string{"lumen.lock", "vendor"} {
 		if _, err := os.Stat(filepath.Join(app, name)); !os.IsNotExist(err) {

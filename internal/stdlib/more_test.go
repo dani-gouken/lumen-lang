@@ -49,6 +49,18 @@ func TestPath(t *testing.T) {
 		"true false true",
 	)
 	expectFailure(t, "import std.path;", `println(path.matches("[", "x"));`, "std.path.matches: '[' is not a valid pattern")
+
+	// From one folder to another path
+	expect(t, "import std.path;", `
+		println(path.relative("app", "app/vendor/x"), path.relative("app/src", "app/lib"), path.relative("/a/b", "/a/b"));
+		println(path.relative("/a/b", "/c/d.txt"), path.relative("a", "../b"), path.relative(path.absolute("x"), "x/y"));
+		let back = path.relative("/srv/app", "/srv/app/vendor/acme/log");
+		println(back, path.join(["/srv/app", back ?? ""]));
+	`,
+		"vendor/x ../lib .",
+		"../../c/d.txt ../../b y",
+		"vendor/acme/log /srv/app/vendor/acme/log",
+	)
 }
 
 func TestFolders(t *testing.T) {
@@ -162,6 +174,27 @@ func TestOs(t *testing.T) {
 		`3 ["one", "two"] true false`,
 		"HELLO 0 true",
 		"cannot run no-such-program-of-lumen: there is no such program true 1",
+		"true",
+	)
+
+	// A command told where to run, with what in its environment and input
+	dir := t.TempDir()
+	t.Setenv("LUMEN_KEPT", "kept")
+	expect(t, "import std.os;\nimport std.arrays;", `
+		let out = os.command("sh", ["-c", "basename \"$(pwd)\"; echo $GREETING $LUMEN_KEPT; cat; exit 4"])
+			.inDir(`+quote(dir)+`)
+			.env("GREETING", "hello")
+			.env("GREETING", "hi")
+			.withInput("piped")
+			.run()
+			.expect("a run");
+		println(out.lines(), out.status);
+		let plain = os.command("sh", ["-c", "echo $GREETING."]).run().expect("a run");
+		println(plain.out.trim(), os.command("no-such-program-of-lumen", []).inDir("/").run().isErr());
+		println(os.command("true", []).inDir(`+quote(dir+"/missing")+`).run().isErr());
+	`,
+		`["`+filepath.Base(dir)+`", "hi kept", "piped"] 4`,
+		". true",
 		"true",
 	)
 }

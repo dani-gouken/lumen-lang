@@ -66,9 +66,12 @@ pub fn defaultUrl(name: String) -> String {
     return template.replace("{name}", name);
 }
 
-// Runs git and gives what it wrote, or what went wrong.
+// Runs git and gives what it wrote, or what went wrong. git does not
+// ask for a password: a repository that needs one fails at once, instead
+// of waiting at a prompt (and GitHub asks one for a repository that is
+// not there). Credential helpers and SSH keys work as they do for git.
 pub fn git(arguments: [String]) -> Result<String, String> {
-    match os.run("git", arguments) {
+    match os.command("git", arguments).env("GIT_TERMINAL_PROMPT", "0").run() {
         case Result.Ok(output): {
             if output.succeeded() {
                 return Result.Ok(output.out);

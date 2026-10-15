@@ -40,6 +40,11 @@ pub extern fn isAbsolute(path: String) -> Bool;
 // folder the program runs in.
 pub extern fn absolute(path: String) -> String;
 
+// The path that leads from a folder to another path, or null when there
+// is none, as between two drives: relative("app", "app/vendor/x") gives
+// "vendor/x", relative("app/src", "app/lib") gives "../lib".
+pub extern fn relative(from: String, to: String) -> String?;
+
 // Whether a name fits a pattern where * stands for any characters and ?
 // for one: path.matches("*.txt", "todo.txt").
 pub extern fn matches(pattern: String, name: String) -> Bool;
