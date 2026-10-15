@@ -606,6 +606,38 @@ func (vm *VM) run(base int) (Value, error) {
 	}
 }
 
+// running is what the instruction loop reads of the call it is in: the
+// chunk and what is kept for it, and the registers. The loop keeps it in
+// one value in memory, not in variables of its own: a variable that lives
+// from one instruction to the next and across a call somewhere in the loop
+// is written to the stack at the start of every instruction, and there
+// were eight of them.
+type running struct {
+	chunk   *Chunk
+	code    []Instr
+	consts  []Value
+	kept    *chunkCache
+	cache   []fieldCache
+	funcs   []Value
+	externs []Value
+	regs    []Value
+}
+
+// running is the state of the call in progress, for the instruction loop.
+func (vm *VM) running() running {
+	kept := vm.cacheFor(vm.chunk)
+	return running{
+		chunk:   vm.chunk,
+		code:    vm.chunk.Code,
+		consts:  vm.chunk.Constants,
+		kept:    kept,
+		cache:   kept.fields,
+		funcs:   kept.funcs,
+		externs: kept.externs,
+		regs:    vm.regs,
+	}
+}
+
 // execute is run without the handlers: it stops at the first failure.
 //
 // The loop works on its own copies of what it reads at every instruction:
@@ -615,91 +647,86 @@ func (vm *VM) run(base int) (Value, error) {
 // a call, a return, and a host function (it may call back into the
 // program, or let another task have the turn).
 func (vm *VM) execute(base int) (Value, error) {
-	chunk := vm.chunk
-	code := chunk.Code
-	consts := chunk.Constants
-	kept := vm.cacheFor(chunk)
-	cache, funcs, externs := kept.fields, kept.funcs, kept.externs
-	regs := vm.regs
+	cur := vm.running()
 	ip := vm.ip
 	hooked := vm.debugHook != nil
 
-	for ip < len(code) {
+	for ip < len(cur.code) {
 		vm.ip = ip
 		if hooked {
 			vm.debugHook(vm.Snapshot())
 		}
 
-		instr := code[ip]
+		instr := cur.code[ip]
 
 		switch instr.Op {
 		case OpNOP:
 			// Do nothing
 
 		case OpMOV:
-			regs[instr.A] = regs[instr.B]
+			cur.regs[instr.A] = cur.regs[instr.B]
 
 		case OpLOADK:
-			regs[instr.A] = consts[instr.B]
+			cur.regs[instr.A] = cur.consts[instr.B]
 
 		case OpLOADNULL:
-			regs[instr.A] = valueNull
+			cur.regs[instr.A] = valueNull
 
 		case OpLOADBOOL:
-			regs[instr.A] = NewBool(instr.B != 0)
+			cur.regs[instr.A] = NewBool(instr.B != 0)
 
 		case OpLOADI:
-			regs[instr.A] = NewInt(int64(instr.B))
+			cur.regs[instr.A] = NewInt(int64(instr.B))
 
 		case OpADD, OpADDK:
-			a, b := regs[instr.B], Value(0)
+			a, b := cur.regs[instr.B], Value(0)
 			if instr.Op == OpADD {
-				b = regs[instr.C]
+				b = cur.regs[instr.C]
 			} else {
-				b = consts[instr.C]
+				b = cur.consts[instr.C]
 			}
 			if bothInts(a, b) {
 				sum := intOf(a) + intOf(b)
 				if sum < MinInt || sum > MaxInt {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
-				regs[instr.A] = NewInt(sum)
+				cur.regs[instr.A] = NewInt(sum)
 			} else if x, y, ok := numbers(a, b); ok {
-				regs[instr.A] = NewNumber(x + y)
+				cur.regs[instr.A] = NewNumber(x + y)
 			} else {
 				str, err := vm.concatenate(a, b)
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = str
+				cur.regs[instr.A] = str
 				vm.collectIfNeeded()
 			}
 
 		case OpSUB, OpSUBK:
-			a, b := regs[instr.B], Value(0)
+			a, b := cur.regs[instr.B], Value(0)
 			if instr.Op == OpSUB {
-				b = regs[instr.C]
+				b = cur.regs[instr.C]
 			} else {
-				b = consts[instr.C]
+				b = cur.consts[instr.C]
 			}
 			if bothInts(a, b) {
 				diff := intOf(a) - intOf(b)
 				if diff < MinInt || diff > MaxInt {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
-				regs[instr.A] = NewInt(diff)
+				cur.regs[instr.A] = NewInt(diff)
 			} else if x, y, ok := numbers(a, b); ok {
-				regs[instr.A] = NewNumber(x - y)
+				cur.regs[instr.A] = NewNumber(x - y)
 			} else {
 				return NewNull(), vm.arithmeticError("SUB", "-", a, b)
 			}
 
 		case OpMUL, OpMULK:
-			a, b := regs[instr.B], Value(0)
+			a, b := cur.regs[instr.B], Value(0)
 			if instr.Op == OpMUL {
-				b = regs[instr.C]
+				b = cur.regs[instr.C]
 			} else {
-				b = consts[instr.C]
+				b = cur.consts[instr.C]
 			}
 			if bothInts(a, b) {
 				// Both operands fit in 48 bits, so their product can exceed
@@ -709,19 +736,19 @@ func (vm *VM) execute(base int) (Value, error) {
 				if (x != 0 && product/x != y) || product < MinInt || product > MaxInt {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
-				regs[instr.A] = NewInt(product)
+				cur.regs[instr.A] = NewInt(product)
 			} else if x, y, ok := numbers(a, b); ok {
-				regs[instr.A] = NewNumber(x * y)
+				cur.regs[instr.A] = NewNumber(x * y)
 			} else {
 				return NewNull(), vm.arithmeticError("MUL", "*", a, b)
 			}
 
 		case OpDIV, OpDIVK:
-			a, b := regs[instr.B], Value(0)
+			a, b := cur.regs[instr.B], Value(0)
 			if instr.Op == OpDIV {
-				b = regs[instr.C]
+				b = cur.regs[instr.C]
 			} else {
-				b = consts[instr.C]
+				b = cur.consts[instr.C]
 			}
 			if bothInts(a, b) {
 				if intOf(b) == 0 {
@@ -732,168 +759,168 @@ func (vm *VM) execute(base int) (Value, error) {
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = quotient
+				cur.regs[instr.A] = quotient
 			} else if x, y, ok := numbers(a, b); ok {
-				regs[instr.A] = NewNumber(x / y)
+				cur.regs[instr.A] = NewNumber(x / y)
 			} else {
 				return NewNull(), vm.arithmeticError("DIV", "/", a, b)
 			}
 
 		case OpMOD, OpMODK:
-			a, b := regs[instr.B], Value(0)
+			a, b := cur.regs[instr.B], Value(0)
 			if instr.Op == OpMOD {
-				b = regs[instr.C]
+				b = cur.regs[instr.C]
 			} else {
-				b = consts[instr.C]
+				b = cur.consts[instr.C]
 			}
 			if bothInts(a, b) {
 				if intOf(b) == 0 {
 					return NewNull(), vm.runtimeError("division by zero")
 				}
-				regs[instr.A] = NewInt(intOf(a) % intOf(b))
+				cur.regs[instr.A] = NewInt(intOf(a) % intOf(b))
 			} else if x, y, ok := numbers(a, b); ok {
-				regs[instr.A] = NewNumber(math.Mod(x, y))
+				cur.regs[instr.A] = NewNumber(math.Mod(x, y))
 			} else {
 				return NewNull(), vm.arithmeticError("MOD", "%", a, b)
 			}
 
 		case OpNEG:
-			a := regs[instr.B]
+			a := cur.regs[instr.B]
 			switch {
 			case a.IsInt():
 				negated, err := vm.intResult(-intOf(a))
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = negated
+				cur.regs[instr.A] = negated
 			case a.IsNumber():
-				regs[instr.A] = NewNumber(-floatOf(a))
+				cur.regs[instr.A] = NewNumber(-floatOf(a))
 			default:
 				return NewNull(), vm.runtimeError(fmt.Sprintf("NEG requires numeric operand, got: %s", a.String()))
 			}
 
 		case OpNOT:
-			a := regs[instr.B]
+			a := cur.regs[instr.B]
 			if !a.IsBool() {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("NOT requires boolean operand, got: %s", a.String()))
 			}
-			regs[instr.A] = NewBool(a != valueTrue)
+			cur.regs[instr.A] = NewBool(a != valueTrue)
 
 		case OpTOINT:
-			a := regs[instr.B]
+			a := cur.regs[instr.B]
 			switch {
 			case a.IsInt():
-				regs[instr.A] = a
+				cur.regs[instr.A] = a
 			case a.IsNumber():
 				whole, err := vm.toInt(floatOf(a))
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = whole
+				cur.regs[instr.A] = whole
 			default:
 				return NewNull(), vm.runtimeError(fmt.Sprintf("TOINT requires number or int, got: %s", a.String()))
 			}
 
 		case OpTONUM:
-			a := regs[instr.B]
+			a := cur.regs[instr.B]
 			switch {
 			case a.IsNumber():
-				regs[instr.A] = a
+				cur.regs[instr.A] = a
 			case a.IsInt():
-				regs[instr.A] = NewNumber(float64(intOf(a)))
+				cur.regs[instr.A] = NewNumber(float64(intOf(a)))
 			default:
 				return NewNull(), vm.runtimeError(fmt.Sprintf("TONUM requires int or number, got: %s", a.String()))
 			}
 
 		case OpBAND:
-			a, b := regs[instr.B], regs[instr.C]
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
 			if !bothInts(a, b) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("BAND requires integer operands, got: %s & %s", a.String(), b.String()))
 			}
-			regs[instr.A] = NewInt(intOf(a) & intOf(b))
+			cur.regs[instr.A] = NewInt(intOf(a) & intOf(b))
 
 		case OpBOR:
-			a, b := regs[instr.B], regs[instr.C]
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
 			if !bothInts(a, b) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("BOR requires integer operands, got: %s | %s", a.String(), b.String()))
 			}
-			regs[instr.A] = NewInt(intOf(a) | intOf(b))
+			cur.regs[instr.A] = NewInt(intOf(a) | intOf(b))
 
 		case OpBXOR:
-			a, b := regs[instr.B], regs[instr.C]
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
 			if !bothInts(a, b) {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("BXOR requires integer operands, got: %s ^ %s", a.String(), b.String()))
 			}
-			regs[instr.A] = NewInt(intOf(a) ^ intOf(b))
+			cur.regs[instr.A] = NewInt(intOf(a) ^ intOf(b))
 
 		case OpSHL, OpSHR:
-			shifted, err := vm.shift(instr.Op, regs[instr.B], regs[instr.C])
+			shifted, err := vm.shift(instr.Op, cur.regs[instr.B], cur.regs[instr.C])
 			if err != nil {
 				return NewNull(), err
 			}
-			regs[instr.A] = shifted
+			cur.regs[instr.A] = shifted
 
 		case OpEQ:
-			a, b := regs[instr.B], regs[instr.C]
-			regs[instr.A] = NewBool(sameValue(a, b))
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
+			cur.regs[instr.A] = NewBool(sameValue(a, b))
 
 		case OpNE:
-			a, b := regs[instr.B], regs[instr.C]
-			regs[instr.A] = NewBool(!sameValue(a, b))
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
+			cur.regs[instr.A] = NewBool(!sameValue(a, b))
 
 		case OpLT:
-			a, b := regs[instr.B], regs[instr.C]
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
 			if bothInts(a, b) {
-				regs[instr.A] = NewBool(intOf(a) < intOf(b))
+				cur.regs[instr.A] = NewBool(intOf(a) < intOf(b))
 			} else {
 				result, err := vm.compare(OpLT, a, b)
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = NewBool(result)
+				cur.regs[instr.A] = NewBool(result)
 			}
 
 		case OpLE:
-			a, b := regs[instr.B], regs[instr.C]
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
 			if bothInts(a, b) {
-				regs[instr.A] = NewBool(intOf(a) <= intOf(b))
+				cur.regs[instr.A] = NewBool(intOf(a) <= intOf(b))
 			} else {
 				result, err := vm.compare(OpLE, a, b)
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = NewBool(result)
+				cur.regs[instr.A] = NewBool(result)
 			}
 
 		case OpGT:
-			a, b := regs[instr.B], regs[instr.C]
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
 			if bothInts(a, b) {
-				regs[instr.A] = NewBool(intOf(a) > intOf(b))
+				cur.regs[instr.A] = NewBool(intOf(a) > intOf(b))
 			} else {
 				result, err := vm.compare(OpGT, a, b)
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = NewBool(result)
+				cur.regs[instr.A] = NewBool(result)
 			}
 
 		case OpGE:
-			a, b := regs[instr.B], regs[instr.C]
+			a, b := cur.regs[instr.B], cur.regs[instr.C]
 			if bothInts(a, b) {
-				regs[instr.A] = NewBool(intOf(a) >= intOf(b))
+				cur.regs[instr.A] = NewBool(intOf(a) >= intOf(b))
 			} else {
 				result, err := vm.compare(OpGE, a, b)
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = NewBool(result)
+				cur.regs[instr.A] = NewBool(result)
 			}
 
 		case OpLONG:
 			// LONG prefix: the next word is the jump, the one after its
 			// 32-bit offset, counted from the end of the three
-			jump := code[ip+1]
-			target := ip + 3 + int(DecodeOffset32(code[ip+2]))
+			jump := cur.code[ip+1]
+			target := ip + 3 + int(DecodeOffset32(cur.code[ip+2]))
 
 			taken := true
 			switch jump.Op {
@@ -904,9 +931,9 @@ func (vm *VM) execute(base int) (Value, error) {
 				continue
 			case OpJMP32:
 			case OpJMPIF32:
-				taken = regs[jump.A] == valueTrue
+				taken = cur.regs[jump.A] == valueTrue
 			case OpJMPIFNOT32:
-				taken = regs[jump.A] == valueFalse
+				taken = cur.regs[jump.A] == valueFalse
 			default:
 				return NewNull(), vm.runtimeError(fmt.Sprintf("LONG: invalid opcode %v", jump.Op))
 			}
@@ -935,7 +962,7 @@ func (vm *VM) execute(base int) (Value, error) {
 			if instr.Op == OpJMPIFNOT {
 				wanted = valueFalse
 			}
-			if regs[instr.A] == wanted {
+			if cur.regs[instr.A] == wanted {
 				target := int(instr.B)
 				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
 					return NewNull(), vm.stopped()
@@ -950,11 +977,11 @@ func (vm *VM) execute(base int) (Value, error) {
 			funcReg := int(instr.A)
 			nargs := int(instr.B)
 
-			callee := header(regs[funcReg])
+			callee := header(cur.regs[funcReg])
 			if callee == nil {
-				return NewNull(), vm.runtimeError(fmt.Sprintf("CALL requires function object in register r%d, got %v", funcReg, regs[funcReg]))
+				return NewNull(), vm.runtimeError(fmt.Sprintf("CALL requires function object in register r%d, got %v", funcReg, cur.regs[funcReg]))
 			}
-			args := regs[funcReg+1 : funcReg+1+nargs : funcReg+1+nargs]
+			args := cur.regs[funcReg+1 : funcReg+1+nargs : funcReg+1+nargs]
 
 			switch callee.Type {
 			case ObjTypeFunction:
@@ -972,13 +999,10 @@ func (vm *VM) execute(base int) (Value, error) {
 				if err := vm.enter(funcObj, args); err != nil {
 					return NewNull(), err
 				}
-				if vm.chunk != chunk {
-					chunk = vm.chunk
-					code, consts = chunk.Code, chunk.Constants
-					kept = vm.cacheFor(chunk)
-					cache, funcs, externs = kept.fields, kept.funcs, kept.externs
+				if vm.chunk != cur.chunk {
+					cur = vm.running()
 				}
-				regs = vm.regs
+				cur.regs = vm.regs
 				ip = vm.ip
 				continue
 
@@ -995,8 +1019,8 @@ func (vm *VM) execute(base int) (Value, error) {
 				// let other tasks run: the registers may have moved. With
 				// the result in r0 it is a root, and whatever the function
 				// kept alive no longer needs to be.
-				regs = vm.regs
-				regs[0] = retVal
+				cur.regs = vm.regs
+				cur.regs[0] = retVal
 				vm.pinned = vm.pinned[:pinned]
 
 				// Extern functions may allocate; collect now that the result is rooted
@@ -1010,9 +1034,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			// A function of this chunk, known by its number: A = the
 			// register before the arguments, B = nargs, C = the function.
 			// That it takes B arguments was checked with the chunk.
-			callee := funcs[instr.C]
+			callee := cur.funcs[instr.C]
 			if callee == 0 {
-				made, err := vm.functionObject(chunk, funcs, int(instr.C))
+				made, err := vm.functionObject(cur.chunk, cur.funcs, int(instr.C))
 				if err != nil {
 					return NewNull(), err
 				}
@@ -1023,54 +1047,54 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 			first := int(instr.A) + 1
 			last := first + int(instr.B)
-			if err := vm.enter((*FunctionObj)(unsafe.Pointer(header(callee))), regs[first:last:last]); err != nil {
+			if err := vm.enter((*FunctionObj)(unsafe.Pointer(header(callee))), cur.regs[first:last:last]); err != nil {
 				return NewNull(), err
 			}
-			regs = vm.regs
+			cur.regs = vm.regs
 			ip = vm.ip
 			continue
 
 		case OpCALLX:
 			// A host function known by its number: A = the register before
 			// the arguments, B = nargs, C = the host function
-			callee := externs[instr.C]
+			callee := cur.externs[instr.C]
 			if callee == 0 {
-				object, err := vm.externObject(chunk.ExternNames[instr.C])
+				object, err := vm.externObject(cur.chunk.ExternNames[instr.C])
 				if err != nil {
 					return NewNull(), err
 				}
 				callee = object
-				externs[instr.C] = callee
+				cur.externs[instr.C] = callee
 			}
 			first := int(instr.A) + 1
 			last := first + int(instr.B)
 			pinned := len(vm.pinned)
-			retVal, err := vm.callExtern((*ExternFunctionObj)(unsafe.Pointer(header(callee))), regs[first:last:last])
+			retVal, err := vm.callExtern((*ExternFunctionObj)(unsafe.Pointer(header(callee))), cur.regs[first:last:last])
 			if err != nil {
 				return NewNull(), err
 			}
-			regs = vm.regs
-			regs[0] = retVal
+			cur.regs = vm.regs
+			cur.regs[0] = retVal
 			vm.pinned = vm.pinned[:pinned]
 			vm.collectIfNeeded()
 
 		case OpONCE:
 			// The value of a constant: A = dest, B = the function that
 			// makes it, which is only run the first time
-			if kept.once != nil && kept.once[instr.B] != 0 {
-				regs[instr.A] = kept.once[instr.B]
+			if cur.kept.once != nil && cur.kept.once[instr.B] != 0 {
+				cur.regs[instr.A] = cur.kept.once[instr.B]
 				break
 			}
-			value, err := vm.once(chunk, kept, int(instr.B))
+			value, err := vm.once(cur.chunk, cur.kept, int(instr.B))
 			if err != nil {
 				return NewNull(), err
 			}
-			regs = vm.regs
-			regs[instr.A] = value
+			cur.regs = vm.regs
+			cur.regs[instr.A] = value
 
 		case OpJNLT:
 			// Go on at C unless A < B
-			a, b := regs[instr.A], regs[instr.B]
+			a, b := cur.regs[instr.A], cur.regs[instr.B]
 			holds := false
 			if bothInts(a, b) {
 				holds = intOf(a) < intOf(b)
@@ -1091,7 +1115,7 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 
 		case OpJNLE:
-			a, b := regs[instr.A], regs[instr.B]
+			a, b := cur.regs[instr.A], cur.regs[instr.B]
 			holds := false
 			if bothInts(a, b) {
 				holds = intOf(a) <= intOf(b)
@@ -1112,7 +1136,7 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 
 		case OpJNEQ, OpJNNE:
-			a, b := regs[instr.A], regs[instr.B]
+			a, b := cur.regs[instr.A], cur.regs[instr.B]
 			equal := sameValue(a, b)
 			if equal != (instr.Op == OpJNEQ) {
 				target := int(instr.C)
@@ -1126,7 +1150,7 @@ func (vm *VM) execute(base int) (Value, error) {
 		case OpJNLTI, OpJNLEI, OpJNGTI, OpJNGEI, OpJNEQI, OpJNNEI:
 			// The same against a small number: go on at C unless the test
 			// of A against B holds
-			a := regs[instr.A]
+			a := cur.regs[instr.A]
 			holds := false
 			if a.IsInt() {
 				n, k := intOf(a), int64(instr.B)
@@ -1163,7 +1187,7 @@ func (vm *VM) execute(base int) (Value, error) {
 		case OpJNLTK, OpJNLEK, OpJNGTK, OpJNGEK, OpJNEQK, OpJNNEK:
 			// The same against a constant: go on at C unless the test of A
 			// against the number B holds
-			a, k := regs[instr.A], consts[instr.B]
+			a, k := cur.regs[instr.A], cur.consts[instr.B]
 			holds := false
 			if bothInts(a, k) {
 				n, m := intOf(a), intOf(k)
@@ -1209,15 +1233,15 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 
 		case OpADDI:
-			a := regs[instr.B]
+			a := cur.regs[instr.B]
 			if a.IsInt() {
 				sum := intOf(a) + int64(instr.C)
 				if sum > MaxInt {
 					return NewNull(), vm.runtimeError("integer overflow")
 				}
-				regs[instr.A] = NewInt(sum)
+				cur.regs[instr.A] = NewInt(sum)
 			} else if a.IsNumber() {
-				regs[instr.A] = NewNumber(floatOf(a) + float64(instr.C))
+				cur.regs[instr.A] = NewNumber(floatOf(a) + float64(instr.C))
 			} else {
 				// Whatever ADD does of a value that is not a number and
 				// one that is
@@ -1225,13 +1249,13 @@ func (vm *VM) execute(base int) (Value, error) {
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = result
+				cur.regs[instr.A] = result
 			}
 
 		case OpSUBI:
-			a := regs[instr.B]
+			a := cur.regs[instr.B]
 			if a.IsNumber() {
-				regs[instr.A] = NewNumber(floatOf(a) - float64(instr.C))
+				cur.regs[instr.A] = NewNumber(floatOf(a) - float64(instr.C))
 				break
 			}
 			if !a.IsInt() {
@@ -1241,12 +1265,12 @@ func (vm *VM) execute(base int) (Value, error) {
 			if diff < MinInt {
 				return NewNull(), vm.runtimeError("integer overflow")
 			}
-			regs[instr.A] = NewInt(diff)
+			cur.regs[instr.A] = NewInt(diff)
 
 		case OpSWITCH:
 			// A = the value, B = the number of CASE words that follow,
 			// C = where to go on for a value none of them names
-			target := kept.caseOf(chunk, ip, &cache[ip], regs[instr.A])
+			target := cur.kept.caseOf(cur.chunk, ip, &cur.cache[ip], cur.regs[instr.A])
 			if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
 				return NewNull(), vm.stopped()
 			}
@@ -1254,11 +1278,11 @@ func (vm *VM) execute(base int) (Value, error) {
 			continue
 
 		case OpGETMETHOD:
-			method, err := vm.methodOf(regs[instr.B], chunk, kept, &cache[ip], instr.C)
+			method, err := vm.methodOf(cur.regs[instr.B], cur.chunk, cur.kept, &cur.cache[ip], instr.C)
 			if err != nil {
 				return NewNull(), err
 			}
-			regs[instr.A] = method
+			cur.regs[instr.A] = method
 			vm.collectIfNeeded()
 
 		case OpCALLM:
@@ -1266,23 +1290,23 @@ func (vm *VM) execute(base int) (Value, error) {
 			// register before the arguments, B = nargs, C = the name
 			first := int(instr.A) + 1
 			last := first + int(instr.B)
-			funcObj, err := vm.calledMethod(regs[first], chunk, kept, &cache[ip], instr)
+			funcObj, err := vm.calledMethod(cur.regs[first], cur.chunk, cur.kept, &cur.cache[ip], instr)
 			if err != nil {
 				return NewNull(), err
 			}
-			if err := vm.enter(funcObj, regs[first:last:last]); err != nil {
+			if err := vm.enter(funcObj, cur.regs[first:last:last]); err != nil {
 				return NewNull(), err
 			}
-			regs = vm.regs
+			cur.regs = vm.regs
 			ip = vm.ip
 			continue
 
 		case OpISTYPE:
-			regs[instr.A] = NewBool(isOfType(regs[instr.B], &cache[ip], chunk.StringPool[intOf(consts[instr.C])]))
+			cur.regs[instr.A] = NewBool(isOfType(cur.regs[instr.B], &cur.cache[ip], cur.chunk.StringPool[intOf(cur.consts[instr.C])]))
 
 		case OpJNTYPE:
 			// Go on at C unless the value is of the type
-			if !isOfType(regs[instr.A], &cache[ip], chunk.StringPool[intOf(consts[instr.B])]) {
+			if !isOfType(cur.regs[instr.A], &cur.cache[ip], cur.chunk.StringPool[intOf(cur.consts[instr.B])]) {
 				target := int(instr.C)
 				if target <= ip && (vm.interrupted.Load() || vm.outOfSteps()) {
 					return NewNull(), vm.stopped()
@@ -1309,7 +1333,7 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpRET:
 			// RET: A = register containing return value
-			retVal := regs[instr.A]
+			retVal := cur.regs[instr.A]
 
 			// Variables of this call that closures captured move into the
 			// closures: its registers are about to be someone else's
@@ -1324,14 +1348,11 @@ func (vm *VM) execute(base int) (Value, error) {
 
 			// Back to the caller, with the return value in its r0
 			vm.leave()
-			if vm.chunk != chunk {
-				chunk = vm.chunk
-				code, consts = chunk.Code, chunk.Constants
-				kept = vm.cacheFor(chunk)
-				cache, funcs, externs = kept.fields, kept.funcs, kept.externs
+			if vm.chunk != cur.chunk {
+				cur = vm.running()
 			}
-			regs = vm.regs
-			regs[0] = retVal
+			cur.regs = vm.regs
+			cur.regs[0] = retVal
 			ip = vm.ip + 1
 			continue
 
@@ -1340,32 +1361,32 @@ func (vm *VM) execute(base int) (Value, error) {
 			// Creates a function object. If the prototype specifies upvalues,
 			// they are allocated but not initialized.
 			protoIdx := int(instr.B)
-			proto := &chunk.Prototypes[protoIdx]
+			proto := &cur.chunk.Prototypes[protoIdx]
 
 			// A function that captures nothing is the same object every
 			// time; only closures need one of their own
 			if proto.UpvalueCount == 0 {
-				shared, err := vm.functionObject(chunk, funcs, protoIdx)
+				shared, err := vm.functionObject(cur.chunk, cur.funcs, protoIdx)
 				if err != nil {
 					return NewNull(), err
 				}
-				regs[instr.A] = shared
+				cur.regs[instr.A] = shared
 				vm.collectIfNeeded()
 				break
 			}
 
-			funcObj, shouldGC, err := vm.heap.AllocFunction(chunk, protoIdx, proto.UpvalueCount)
+			funcObj, shouldGC, err := vm.heap.AllocFunction(cur.chunk, protoIdx, proto.UpvalueCount)
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("function allocation failed: %v", err))
 			}
-			regs[instr.A] = valueOf(&funcObj.header)
+			cur.regs[instr.A] = valueOf(&funcObj.header)
 			if shouldGC {
 				vm.CollectGarbage()
 			}
 
 		case OpCAPLOCAL:
 			// CAPLOCAL: A = dest_func_reg, B = upvalue_idx, C = local_reg_idx
-			funcObj, err := vm.closureOperand("CAPLOCAL", regs[instr.A], int(instr.B))
+			funcObj, err := vm.closureOperand("CAPLOCAL", cur.regs[instr.A], int(instr.B))
 			if err != nil {
 				return NewNull(), err
 			}
@@ -1378,7 +1399,7 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpCAPUPVAL:
 			// CAPUPVAL: A = dest_func_reg, B = upvalue_idx, C = parent_upval_idx
-			funcObj, err := vm.closureOperand("CAPUPVAL", regs[instr.A], int(instr.B))
+			funcObj, err := vm.closureOperand("CAPUPVAL", cur.regs[instr.A], int(instr.B))
 			if err != nil {
 				return NewNull(), err
 			}
@@ -1390,11 +1411,11 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpNEWEXFUNC:
 			// NEWEXFUNC: A = dest_reg, B = extern_idx
-			object, err := vm.externObject(chunk.ExternNames[instr.B])
+			object, err := vm.externObject(cur.chunk.ExternNames[instr.B])
 			if err != nil {
 				return NewNull(), err
 			}
-			regs[instr.A] = object
+			cur.regs[instr.A] = object
 			vm.collectIfNeeded()
 
 		case OpCLOSEUP:
@@ -1416,7 +1437,7 @@ func (vm *VM) execute(base int) (Value, error) {
 			if upval == nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("LDCAP: uninitialized upvalue at index %d", instr.B))
 			}
-			regs[instr.A] = upval.Get()
+			cur.regs[instr.A] = upval.Get()
 
 		case OpSTCAP:
 			// STCAP: A = upvalue_idx, B = src_reg
@@ -1428,21 +1449,21 @@ func (vm *VM) execute(base int) (Value, error) {
 			if upval == nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("STCAP: uninitialized upvalue at index %d", instr.A))
 			}
-			upval.Set(regs[instr.B])
+			upval.Set(cur.regs[instr.B])
 
 		case OpNEWSTR:
 			// The text of a string of the pool: one object per string
-			index := intOf(consts[instr.B])
-			if made := kept.strings[index]; made != 0 {
-				regs[instr.A] = made
+			index := intOf(cur.consts[instr.B])
+			if made := cur.kept.strings[index]; made != 0 {
+				cur.regs[instr.A] = made
 				break
 			}
-			strObj, shouldGC, err := vm.heap.AllocString(chunk.StringPool[index])
+			strObj, shouldGC, err := vm.heap.AllocString(cur.chunk.StringPool[index])
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
 			}
-			regs[instr.A] = valueOf(&strObj.header)
-			kept.strings[index] = regs[instr.A]
+			cur.regs[instr.A] = valueOf(&strObj.header)
+			cur.kept.strings[index] = cur.regs[instr.A]
 			if shouldGC {
 				vm.CollectGarbage()
 			}
@@ -1453,7 +1474,7 @@ func (vm *VM) execute(base int) (Value, error) {
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("array allocation failed: %v", err))
 			}
-			regs[instr.A] = valueOf(&obj.header)
+			cur.regs[instr.A] = valueOf(&obj.header)
 			if shouldGC {
 				vm.CollectGarbage()
 			}
@@ -1461,22 +1482,22 @@ func (vm *VM) execute(base int) (Value, error) {
 		case OpNEWOBJ:
 			// Allocate a new object: A = dest. C says what it is a value of
 			// (see ObjectIsNamed); B is then the constant of the name.
-			known := &cache[ip]
+			known := &cur.cache[ip]
 			if known.shape == nil {
 				// What the values made here start as, found once
 				known.shape = vm.heap.rootShape
 				if kind := instr.C & ObjectKindMask; kind == ObjectIsNamed || kind == ObjectIsVariant {
-					known.shape = vm.heap.RootShape(chunk.StringPool[intOf(consts[instr.B])], kind == ObjectIsVariant)
+					known.shape = vm.heap.RootShape(cur.chunk.StringPool[intOf(cur.consts[instr.B])], kind == ObjectIsVariant)
 				}
 			}
 			if instr.C&ObjectIsConstant != 0 {
 				// A value that holds nothing and never will: the same one
 				// every time
-				if kept.constants == nil {
-					kept.constants = make([]Value, len(code))
+				if cur.kept.constants == nil {
+					cur.kept.constants = make([]Value, len(cur.code))
 				}
-				if kept.constants[ip] != 0 {
-					regs[instr.A] = kept.constants[ip]
+				if cur.kept.constants[ip] != 0 {
+					cur.regs[instr.A] = cur.kept.constants[ip]
 					break
 				}
 			}
@@ -1485,9 +1506,9 @@ func (vm *VM) execute(base int) (Value, error) {
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("object allocation failed: %v", err))
 			}
-			regs[instr.A] = valueOf(&obj.header)
+			cur.regs[instr.A] = valueOf(&obj.header)
 			if instr.C&ObjectIsConstant != 0 {
-				kept.constants[ip] = regs[instr.A]
+				cur.kept.constants[ip] = cur.regs[instr.A]
 			}
 			if shouldGC {
 				vm.CollectGarbage()
@@ -1495,23 +1516,23 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpGETINDEX:
 			// Get element: A = dest, B = array or string, C = index
-			indexVal := regs[instr.C]
+			indexVal := cur.regs[instr.C]
 			if !indexVal.IsInt() {
 				return NewNull(), vm.runtimeError("GETINDEX requires integer index")
 			}
 			index := int(intOf(indexVal))
 
-			target := header(regs[instr.B])
+			target := header(cur.regs[instr.B])
 			if target != nil && target.Type == ObjTypeArray {
 				elements := (*ArrayObj)(unsafe.Pointer(target)).elements
 				if index < 0 || index >= len(elements) {
 					return NewNull(), vm.runtimeError(fmt.Sprintf("index out of bounds: %d (length %d)", index, len(elements)))
 				}
-				regs[instr.A] = elements[index]
+				cur.regs[instr.A] = elements[index]
 				break
 			}
 			if target == nil || target.Type != ObjTypeString {
-				_, err := vm.arrayOperand("GETINDEX", regs[instr.B])
+				_, err := vm.arrayOperand("GETINDEX", cur.regs[instr.B])
 				return NewNull(), err
 			}
 
@@ -1527,25 +1548,25 @@ func (vm *VM) execute(base int) (Value, error) {
 				if err != nil {
 					return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
 				}
-				regs[instr.A] = value
+				cur.regs[instr.A] = value
 				break
 			}
 			value, err := vm.newString(char)
 			if err != nil {
 				return NewNull(), vm.runtimeError(fmt.Sprintf("string allocation failed: %v", err))
 			}
-			regs[instr.A] = value
+			cur.regs[instr.A] = value
 			vm.collectIfNeeded()
 
 		case OpSETINDEX:
 			// Set array element: A = array, B = index, C = value
-			indexVal := regs[instr.B]
+			indexVal := cur.regs[instr.B]
 			if !indexVal.IsInt() {
 				return NewNull(), vm.runtimeError("SETINDEX requires integer index")
 			}
 			index := int(intOf(indexVal))
 
-			arrayObj, err := vm.arrayOperand("SETINDEX", regs[instr.A])
+			arrayObj, err := vm.arrayOperand("SETINDEX", cur.regs[instr.A])
 			if err != nil {
 				return NewNull(), err
 			}
@@ -1557,19 +1578,19 @@ func (vm *VM) execute(base int) (Value, error) {
 			if arrayObj.header.Frozen {
 				return NewNull(), vm.runtimeError(errFrozen)
 			}
-			arrayObj.Set(index, regs[instr.C])
+			arrayObj.Set(index, cur.regs[instr.C])
 
 		case OpSETELEM:
 			// Replace an array element: A = array, B = index, C = value.
 			// Unlike SETINDEX it never grows the array: the index has to
 			// name an existing element. This is what `xs[i] = v` compiles to.
-			indexVal := regs[instr.B]
+			indexVal := cur.regs[instr.B]
 			if !indexVal.IsInt() {
 				return NewNull(), vm.runtimeError("SETELEM requires integer index")
 			}
 			index := int(intOf(indexVal))
 
-			arrayObj, err := vm.arrayOperand("SETELEM", regs[instr.A])
+			arrayObj, err := vm.arrayOperand("SETELEM", cur.regs[instr.A])
 			if err != nil {
 				return NewNull(), err
 			}
@@ -1579,19 +1600,19 @@ func (vm *VM) execute(base int) (Value, error) {
 			if arrayObj.header.Frozen {
 				return NewNull(), vm.runtimeError(errFrozen)
 			}
-			arrayObj.elements[index] = regs[instr.C]
+			arrayObj.elements[index] = cur.regs[instr.C]
 
 		case OpGETFIELD:
 			// Get object field: A = dest, B = object, C = const index (field name)
-			target := header(regs[instr.B])
+			target := header(cur.regs[instr.B])
 			if target == nil || target.Type != ObjTypeObject {
-				_, err := vm.objectOperand("GETFIELD", regs[instr.B])
+				_, err := vm.objectOperand("GETFIELD", cur.regs[instr.B])
 				return NewNull(), err
 			}
 			obj := (*ObjectObj)(unsafe.Pointer(target))
 
 			// The same shape as last time: the field is where it was
-			known := &cache[ip]
+			known := &cur.cache[ip]
 			if known.shape != obj.shape {
 				name, err := vm.fieldName("GETFIELD", instr.C)
 				if err != nil {
@@ -1603,16 +1624,16 @@ func (vm *VM) execute(base int) (Value, error) {
 				}
 			}
 			if known.slot >= 0 {
-				regs[instr.A] = obj.slots[known.slot]
+				cur.regs[instr.A] = obj.slots[known.slot]
 			} else {
-				regs[instr.A] = valueNull
+				cur.regs[instr.A] = valueNull
 			}
 
 		case OpSETFIELD:
 			// Set object field: A = object, B = const index (field name), C = value
-			target := header(regs[instr.A])
+			target := header(cur.regs[instr.A])
 			if target == nil || target.Type != ObjTypeObject {
-				_, err := vm.objectOperand("SETFIELD", regs[instr.A])
+				_, err := vm.objectOperand("SETFIELD", cur.regs[instr.A])
 				return NewNull(), err
 			}
 			if target.Frozen {
@@ -1620,7 +1641,7 @@ func (vm *VM) execute(base int) (Value, error) {
 			}
 			obj := (*ObjectObj)(unsafe.Pointer(target))
 
-			known := &cache[ip]
+			known := &cur.cache[ip]
 			if known.shape != obj.shape {
 				name, err := vm.fieldName("SETFIELD", instr.B)
 				if err != nil {
@@ -1635,13 +1656,13 @@ func (vm *VM) execute(base int) (Value, error) {
 				}
 			}
 			if known.next == nil {
-				obj.slots[known.slot] = regs[instr.C]
+				obj.slots[known.slot] = cur.regs[instr.C]
 				break
 			}
 
 			// A new field: the object takes the shape of those that have it
 			before := cap(obj.slots)
-			obj.slots = append(obj.slots, regs[instr.C])
+			obj.slots = append(obj.slots, cur.regs[instr.C])
 			obj.shape = known.next
 			if after := cap(obj.slots); after > before {
 				if _, err := vm.heap.grow(uint64(after-before) * valueSize); err != nil {
@@ -1652,24 +1673,24 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpARRLEN:
 			// Get length: A = dest, B = array or string.
-			target := header(regs[instr.B])
+			target := header(cur.regs[instr.B])
 			if target == nil {
-				_, err := vm.arrayOperand("ARRLEN", regs[instr.B])
+				_, err := vm.arrayOperand("ARRLEN", cur.regs[instr.B])
 				return NewNull(), err
 			}
 			switch target.Type {
 			case ObjTypeArray:
-				regs[instr.A] = NewInt(int64(len((*ArrayObj)(unsafe.Pointer(target)).elements)))
+				cur.regs[instr.A] = NewInt(int64(len((*ArrayObj)(unsafe.Pointer(target)).elements)))
 			case ObjTypeString:
-				regs[instr.A] = NewInt(int64((*StringObj)(unsafe.Pointer(target)).RuneLen()))
+				cur.regs[instr.A] = NewInt(int64((*StringObj)(unsafe.Pointer(target)).RuneLen()))
 			default:
-				_, err := vm.arrayOperand("ARRLEN", regs[instr.B])
+				_, err := vm.arrayOperand("ARRLEN", cur.regs[instr.B])
 				return NewNull(), err
 			}
 
 		case OpARRPUSH:
 			// Push value into array: A = array, B = value
-			arrayObj, err := vm.arrayOperand("ARRPUSH", regs[instr.A])
+			arrayObj, err := vm.arrayOperand("ARRPUSH", cur.regs[instr.A])
 			if err != nil {
 				return NewNull(), err
 			}
@@ -1677,7 +1698,7 @@ func (vm *VM) execute(base int) (Value, error) {
 				return NewNull(), vm.runtimeError(errFrozen)
 			}
 			before := cap(arrayObj.elements)
-			arrayObj.elements = append(arrayObj.elements, regs[instr.B])
+			arrayObj.elements = append(arrayObj.elements, cur.regs[instr.B])
 			if after := cap(arrayObj.elements); after > before {
 				if _, err := vm.heap.grow(uint64(after-before) * valueSize); err != nil {
 					return NewNull(), vm.runtimeError(err.Error())
@@ -1687,7 +1708,7 @@ func (vm *VM) execute(base int) (Value, error) {
 
 		case OpHASFIELD:
 			// Check if object has field: A = dest bool, B = object, C = const index
-			objObj, err := vm.objectOperand("HASFIELD", regs[instr.B])
+			objObj, err := vm.objectOperand("HASFIELD", cur.regs[instr.B])
 			if err != nil {
 				return NewNull(), err
 			}
@@ -1696,11 +1717,11 @@ func (vm *VM) execute(base int) (Value, error) {
 				return NewNull(), err
 			}
 			_, ok := objObj.Get(fieldName)
-			regs[instr.A] = NewBool(ok)
+			cur.regs[instr.A] = NewBool(ok)
 
 		case OpDELFIELD:
 			// Delete object field: A = dest bool, B = object, C = const index
-			objObj, err := vm.objectOperand("DELFIELD", regs[instr.B])
+			objObj, err := vm.objectOperand("DELFIELD", cur.regs[instr.B])
 			if err != nil {
 				return NewNull(), err
 			}
@@ -1711,7 +1732,7 @@ func (vm *VM) execute(base int) (Value, error) {
 			if objObj.header.Frozen {
 				return NewNull(), vm.runtimeError(errFrozen)
 			}
-			regs[instr.A] = NewBool(objObj.Delete(fieldName))
+			cur.regs[instr.A] = NewBool(objObj.Delete(fieldName))
 
 		case OpGC:
 			// Manually trigger garbage collection
