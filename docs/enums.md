@@ -55,6 +55,24 @@ A variant can be written alone when an enum the file declares, or imports by nam
 
 When two enums in scope have a variant of that name, the value says which: where a `Slot` is expected (a variable, an argument, what a function returns, the other items of an array), `Empty` is `Slot.Empty`, and in a `match` or after `is` it is a variant of the type of the value tested. Where nothing tells, the compiler says so (`E2041`) and offers both. A variable, a function, a constant or a type of the same name hides a variant: `let Empty = 3;` makes `Empty` the number.
 
+A variant may name its values, which are then given by name, in any order, and named in patterns, where the ones left out are not looked at:
+
+```rust
+enum Event {
+    Purchase { user: String, item: String, cents: Int },
+    Logout(String),
+}
+
+let e = Purchase { user: "ada", item: "lamp", cents: 4500 };
+match e {
+    case Purchase { user, cents } if cents > 1000: { println(user, "spends a lot"); }
+    case Purchase { item }: { println("sold", item); }
+    case Logout(who): { println(who, "left"); }
+}
+```
+
+The names only say which value is which: the values are still in the order declared, `Purchase("ada", "lamp", 4500)` is the same value, and it prints that way.
+
 A variant with values, not called, is the function that makes one:
 
 ```rust
@@ -409,7 +427,6 @@ What tuples add is reading a value by its position, `pair.0`, and being printed 
 
 ## What Is Not There
 
-*   **Named values** in a variant (`Rect { width: Float, height: Float }`): values are told apart by position.
 *   **Patterns on arrays**: an array is bound to a name and looked at with its methods.
 *   **Names from a test that failed**: `if !(shape is Shape.Circle(r)) { return; }` does not leave `r` for what follows. The block of the `if` is where the names are.
 *   **Several patterns, ranges and literals after `is`**: `value is A.X | A.Y`, `n is 1..10`, `n is 3`. Write `||`, comparisons, `==`.

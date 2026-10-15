@@ -1236,9 +1236,25 @@ impl Parser {
         return layout.concat(parts);
     }
 
-    // Circle(Float), or a name alone
+    // Circle(Float), Rect { width: Float, height: Float }, or a name alone
     fn variant() -> Doc {
         let name = self.name("a variant name");
+
+        if self.is("{") {
+            let tall = self.ahead(1).newline;
+            let brace = self.take();
+
+            let values = self.series("}", fn() -> Doc {
+                return layout.concat([
+                    self.name("the name of a value"),
+                    self.expect(":"),
+                    space(),
+                    self.type(),
+                ]);
+            });
+
+            return layout.concat([name, space(), spaced(brace, values, self.expect("}"), tall)]);
+        }
 
         if !self.is("(") {
             return name;

@@ -626,6 +626,25 @@ func (p *Parser) parseEnumDecl() *ast.EnumDecl {
 				}
 			}
 			p.expect(token.RPAREN, "')'")
+		} else if p.accept(token.LBRACE) {
+			// Rect { width: Float, height: Float }: values with names
+			for !p.at(token.RBRACE) {
+				fieldTok := p.expect(token.IDENT, "the name of a value")
+				for _, given := range variant.Names {
+					if given == fieldTok.Literal {
+						p.pos--
+						p.failWith(ErrDuplicateField, "Give each value its own name",
+							"'%s' names two values of %s", given, variant.Name)
+					}
+				}
+				p.expect(token.COLON, "':'")
+				variant.Names = append(variant.Names, fieldTok.Literal)
+				variant.Values = append(variant.Values, p.parseType())
+				if !p.accept(token.COMMA) && !p.accept(token.SEMICOLON) {
+					break
+				}
+			}
+			p.expect(token.RBRACE, "'}'")
 		}
 		decl.Variants = append(decl.Variants, variant)
 		if !p.accept(token.COMMA) && !p.accept(token.SEMICOLON) {

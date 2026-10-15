@@ -420,6 +420,9 @@ func (r *rewriter) pattern(pattern ast.Node) ast.Node {
 		return p
 
 	case *ast.StructPattern:
+		if pattern := r.variantByNames(p); pattern != nil {
+			return pattern
+		}
 		r.typ(p.Type)
 		for _, field := range p.Fields {
 			field.Pattern = r.pattern(field.Pattern)
@@ -633,6 +636,9 @@ func (r *rewriter) expr(expr ast.Expr) ast.Expr {
 		}
 
 	case *ast.StructInitExpr:
+		if call := r.variantLiteral(e); call != nil {
+			return call
+		}
 		e.Name = r.typeName(e.Name, e.Token())
 		r.types(e.TypeArgs)
 		// In the order of the names, so that diagnostics come out the same
@@ -682,6 +688,136 @@ func (r *rewriter) variantRef(e *ast.Ident) ast.Expr {
 		}
 	}
 	return &ast.MemberExpr{BaseNode: e.BaseNode, Expr: enum, Name: e.Name}
+}
+
+// namedVariant finds the variant a name written like a struct names, when
+// it names one: Shape.Rect, or Rect alone. The enum is given with its
+// name in the program.
+func (r *rewriter) namedVariant(name string, tok token.Token) (*item, *ast.EnumVariant) {
+	enumName, variantName, dotted := strings.Cut(name, ".")
+	var owner *item
+	if dotted {
+		owner = r.typeItem(enumName)
+		if owner == nil || owner.kind != "enum" {
+			return nil, nil
+		}
+	} else {
+		if r.typeItem(name) != nil || r.isLocal(name) || r.value(name) != nil {
+			return nil, nil
+		}
+		owners := r.variantOwners(name)
+		if len(owners) == 0 {
+			return nil, nil
+		}
+		if len(owners) > 1 {
+			var written []string
+			for _, o := range owners {
+				written = append(written, o.name+"."+name)
+			}
+			r.report(tok, ErrVariantNames, "Write which: "+strings.Join(written, " or "),
+				"'%s' is a variant of more than one enum", name)
+			return nil, nil
+		}
+		owner, variantName = owners[0], name
+	}
+	if decl := enumDeclOf(owner); decl != nil {
+		for _, variant := range decl.Variants {
+			if variant.Name == variantName {
+				return owner, variant
+			}
+		}
+	}
+	return nil, nil
+}
+
+// variantLiteral writes `Rect { width: 2.0, height: 1.0 }`, a variant
+// with named values, as the call it is, Shape.Rect(2.0, 1.0), its values
+// put in the order declared. It is nil for what is no variant.
+func (r *rewriter) variantLiteral(e *ast.StructInitExpr) ast.Expr {
+	owner, variant := r.namedVariant(e.Name, e.Token())
+	if variant == nil {
+		return nil
+	}
+	if len(variant.Names) == 0 {
+		r.report(e.Token(), ErrVariantNames, "Write its values in parentheses: "+owner.name+"."+variant.Name+"(...)",
+			"%s.%s holds its values by position, not by name", owner.name, variant.Name)
+		return nil
+	}
+	call := &ast.CallExpr{BaseNode: e.BaseNode, Func: &ast.MemberExpr{BaseNode: e.BaseNode, Expr: &ast.Ident{BaseNode: e.BaseNode, Name: owner.qualified, TypeArgs: e.TypeArgs}, Name: variant.Name}}
+	for _, name := range variant.Names {
+		value, ok := e.Fields[name]
+		if !ok {
+			r.report(e.Token(), ErrVariantNames, "Give every value of the variant",
+				"%s.%s needs a value for '%s'", owner.name, variant.Name, name)
+			continue
+		}
+		call.Args = append(call.Args, r.expr(value))
+	}
+	for name := range e.Fields {
+		if !contains(variant.Names, name) {
+			r.report(e.Fields[name].Token(), ErrVariantNames, "Its values are "+strings.Join(variant.Names, ", "),
+				"%s.%s has no value '%s'", owner.name, variant.Name, name)
+		}
+	}
+	return call
+}
+
+// variantByNames writes `case Rect { width, height: 0.0 }:` as the
+// pattern by position it is, Shape.Rect(width, 0.0), with `_` for the
+// values not named. It is nil for what is no variant.
+func (r *rewriter) variantByNames(p *ast.StructPattern) ast.Node {
+	if len(p.Type.Generics) > 0 {
+		return nil
+	}
+	owner, variant := r.namedVariant(p.Type.Name, p.Token())
+	if variant == nil {
+		return nil
+	}
+	if len(variant.Names) == 0 {
+		r.report(p.Token(), ErrVariantNames, "Write a pattern for each value in parentheses: "+owner.name+"."+variant.Name+"(...)",
+			"%s.%s holds its values by position, not by name", owner.name, variant.Name)
+		return nil
+	}
+	target := &ast.MemberExpr{BaseNode: p.BaseNode, Expr: &ast.Ident{BaseNode: p.BaseNode, Name: owner.qualified}, Name: variant.Name}
+	pattern := &ast.VariantPattern{BaseNode: p.BaseNode, Target: target, HasArgs: true}
+	for _, name := range variant.Names {
+		var arg ast.Node = &ast.BindingPattern{BaseNode: p.BaseNode, Name: "_"}
+		for _, field := range p.Fields {
+			if field.Name == name {
+				arg = r.pattern(field.Pattern)
+			}
+		}
+		pattern.Args = append(pattern.Args, arg)
+	}
+	for _, field := range p.Fields {
+		if !contains(variant.Names, field.Name) {
+			r.report(p.Token(), ErrVariantNames, "Its values are "+strings.Join(variant.Names, ", "),
+				"%s.%s has no value '%s'", owner.name, variant.Name, field.Name)
+		}
+	}
+	return pattern
+}
+
+func contains(names []string, name string) bool {
+	for _, n := range names {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
+// enumDeclOf finds the declaration of an enum.
+func enumDeclOf(it *item) *ast.EnumDecl {
+	if it == nil || it.kind != "enum" || it.module == nil {
+		return nil
+	}
+	for _, decl := range it.module.prog.Decls {
+		if enum, ok := decl.(*ast.EnumDecl); ok && (enum.Name == it.name || enum.Name == it.qualified) {
+			return enum
+		}
+	}
+	return nil
 }
 
 // variantOwners lists the enums a name of a variant is a variant of, among

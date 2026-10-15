@@ -400,9 +400,22 @@ type EnumVariant struct {
 	BaseNode
 	Name   string
 	Values []*Type
+
+	// Names are the names of the values, for a variant declared with
+	// them: Rect { width: Float, height: Float }. Its values are still
+	// in that order; the names say which is which where it is built or
+	// matched, Rect { width: 2.0, height: 1.0 }.
+	Names []string
 }
 
 func (v *EnumVariant) String() string {
+	if len(v.Names) > 0 {
+		var fields []string
+		for i, t := range v.Values {
+			fields = append(fields, v.Names[i]+": "+t.String())
+		}
+		return fmt.Sprintf("%s { %s }", v.Name, strings.Join(fields, ", "))
+	}
 	if len(v.Values) == 0 {
 		return v.Name
 	}
