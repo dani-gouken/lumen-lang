@@ -231,9 +231,9 @@ The collector is why tasks of one program cannot simply be given a thread each. 
 *   **A machine per task, sharing nothing**: a task gets a heap of its own, and what goes through a channel is copied. The collector stays as it is. Closures that capture variables of another task, which work today, would not;
 *   **One heap for all**: every thread stopped at a safe point to collect, allocation and every object safe to use from two threads. Much more work, and data races become something a program can have.
 
-### Native executables keep values in memory — M
+### Calls in native executables — M
 
-`lumen native` compiles functions to Go but keeps every value where the virtual machine has it, on its stack, so that the collector, tasks and traces work unchanged ([native.md](native.md)). An Int or a Float the types prove never holds an object could live in a Go variable instead, which Go keeps in a register: the next factor of speed for loops of numbers. A native executable cannot be stepped through by `lumen debug`.
+`lumen native` keeps Ints and Floats in Go variables, but every call still enters and leaves a frame of the virtual machine, so that the collector, tasks and traces work unchanged ([native.md](native.md)): most of what a call costs now (`fib(35)` is twice as fast as under `lumen run`, a loop of numbers five times). A call of a compiled function that cannot fail and holds nothing for the collector could skip the frame. Structs, arrays and texts stay values of the VM's heap. A native executable cannot be stepped through by `lumen debug`.
 
 ### Smaller items
 

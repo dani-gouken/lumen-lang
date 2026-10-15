@@ -1,0 +1,110 @@
+import std.result.{attempt};
+
+// Numbers that compiled code keeps in Go variables: arguments, counters,
+// sums, Floats and Ints mixed, and what fails on the way.
+
+fn power(base: Int, exponent: Int) -> Int {
+    let result = 1;
+    let left = exponent;
+
+    while left > 0 {
+        result *= base;
+        left -= 1;
+    }
+
+    return result;
+}
+
+fn mean(values: [Float]) -> Float {
+    let total = 0.0;
+
+    for v in values {
+        total += v;
+    }
+
+    return total / values.len().toFloat();
+}
+
+fn mixed(n: Int, scale: Float) -> Float {
+    let sum = 0.0;
+
+    for i in 0..n {
+        sum = sum + i.toFloat() * scale - 0.5;
+    }
+
+    return sum;
+}
+
+fn steps(n: Int) -> Int {
+    if n <= 1 {
+        return 0;
+    }
+
+    if n % 2 == 0 {
+        return 1 + steps(n / 2);
+    }
+
+    return 1 + steps(3 * n + 1);
+}
+
+fn divide(a: Int, b: Int) -> Int {
+    return a / b;
+}
+
+fn grow(start: Int) -> Int {
+    let n = start;
+
+    while true {
+        n = n * 3;
+    }
+}
+
+fn main() -> Int {
+    println(power(2, 10), power(3, 0), power(-2, 5), power(7, 1));
+    println(mean([1.5, 2.5, 3.5]), mixed(10, 0.25), mixed(0, 1.0));
+    println(steps(27), steps(1), steps(97));
+
+    // Counters a function made in the loop keeps
+    let kept: [fn() -> Int] = [];
+
+    for i in 0..3 {
+        let square = i * i;
+        kept.push(() -> square + i);
+    }
+
+    println(kept.map(f -> f()));
+
+    // Floats at their edges, compared
+    let zero = 0.0;
+    let nan = zero / zero;
+    let inf = 1.0 / zero;
+    println(nan == nan, nan < 1.0, nan != nan, inf > 1.0e308, -inf < -1.0e308, 0.0 == -0.0);
+    println(7 / 2, -7 / 2, 7 % 3, -7 % 3, 7.0 / 2.0, 2 + 0.5, 3 * 1.5, 10 - 0.25);
+
+    // What fails, failing the same way
+    let jobs = [
+        fn() -> Int {
+            return divide(1, 0);
+        },
+        fn() -> Int {
+            return grow(5);
+        },
+        fn() -> Int {
+            return power(10, 20);
+        },
+    ];
+
+    for job in jobs {
+        match attempt(job) {
+            case Result.Ok(n): {
+                println("gave", n);
+            }
+
+            case Result.Err(failure): {
+                println("failed:", failure.message);
+            }
+        }
+    }
+
+    return power(2, 3);
+}

@@ -165,7 +165,34 @@ func writeFunction(out *strings.Builder, chunk *vm.Chunk, index int, compiled []
 	out.WriteString("\t_, _, _ = r, kept, consts\n")
 	var body strings.Builder
 	w := &writer{out: &body, compiled: compiled, consts: chunk.Constants, registers: p.RegisterCount, code: code, start: p.CodeStart, prefix: prefix}
+	params, _ := signature(p.Signature, p.ArgCount)
+	returns := make([]kind, len(chunk.Prototypes))
+	for i, callee := range chunk.Prototypes {
+		_, returns[i] = signature(callee.Signature, callee.ArgCount)
+	}
+	w.kinds, w.local = registerKinds(code, p.RegisterCount, params, chunk.Constants, returns)
+	// The registers that are Go variables, declared before any label
+	for k, is := range w.local {
+		if !is {
+			continue
+		}
+		if w.kinds[k] == floatKind {
+			fmt.Fprintf(out, "\tvar f%d float64\n\t_ = f%d\n", k, k)
+		} else {
+			fmt.Fprintf(out, "\tvar i%d int64\n\t_ = i%d\n", k, k)
+		}
+	}
 	w.bounds()
+	// The arguments that are Go variables, from where the caller put them
+	for k := 0; k < p.ArgCount && k < len(w.local); k++ {
+		if w.local[k] {
+			if w.kinds[k] == floatKind {
+				w.line("f%d = floatOf(r[%d])", k, k)
+			} else {
+				w.line("i%d = intOf(r[%d])", k, k)
+			}
+		}
+	}
 	for i := 0; i < len(code); i += step(code, i) {
 		pc := p.CodeStart + i
 		if jumpedTo[pc] {
@@ -202,6 +229,8 @@ func writeFunction(out *strings.Builder, chunk *vm.Chunk, index int, compiled []
 var failing = regexp.MustCompile(`return NewNull\(\), ([^;{}\n]+?)( }|\n|;)`)
 
 type writer struct {
+	kinds     []kind
+	local     []bool
 	prefix    string
 	code      []vm.Instr
 	start     int
@@ -328,7 +357,36 @@ func (w *writer) jump(target int) string {
 	return fmt.Sprintf("{ goto L%d }", target)
 }
 
+// instruction writes one instruction: on Go's numbers if what it works on
+// is known to be numbers, as the instruction loop does it otherwise. The
+// registers that are Go variables are put in the VM's registers for what
+// is written the loop's way, and taken back from them.
 func (w *writer) instruction() {
+	if w.typed() {
+		return
+	}
+	at := w.pc - w.start
+	next := vm.Instr{}
+	if at+1 < len(w.code) {
+		next = w.code[at+1]
+	}
+	for _, k := range reads(w.instr, next) {
+		if k < len(w.local) && w.local[k] {
+			w.line("r[%d] = %s", k, w.boxed(k))
+		}
+	}
+	w.general()
+	if dest, ok := writes(w.instr); ok && dest < len(w.local) && w.local[dest] {
+		if w.kinds[dest] == floatKind {
+			w.line("f%d = floatOf(r[%d])", dest, dest)
+		} else {
+			w.line("i%d = intOf(r[%d])", dest, dest)
+		}
+	}
+}
+
+// general writes an instruction as the instruction loop does it.
+func (w *writer) general() {
 	in := w.instr
 	A, B, C := int(in.A), int(in.B), int(in.C)
 	instr := fmt.Sprintf("Instr{Op: %d, A: %d, B: %d, C: %d}", in.Op, in.A, in.B, in.C)

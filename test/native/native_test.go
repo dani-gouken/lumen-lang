@@ -56,7 +56,7 @@ var windowed = map[string]bool{"examples/raylib.lum": true}
 // compare.
 func collect(t *testing.T) []program {
 	var paths []string
-	for _, pattern := range []string{"examples/*.lum", "test/e2e/cases/*.lum", "test/bench/programs/*.lum"} {
+	for _, pattern := range []string{"examples/*.lum", "test/e2e/cases/*.lum", "test/bench/programs/*.lum", "test/native/programs/*.lum"} {
 		found, err := filepath.Glob(pattern)
 		if err != nil {
 			t.Fatal(err)

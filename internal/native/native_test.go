@@ -19,6 +19,7 @@ import (
 	"testing/fstest"
 
 	lumen "github.com/dani-gouken/lumen"
+	"github.com/dani-gouken/lumen/internal/vm"
 )
 
 // Every package of the module a native program can import, and what they
@@ -215,5 +216,83 @@ func TestFindGoUsesTheOneThere(t *testing.T) {
 	t.Setenv("LUMEN_CACHE", t.TempDir())
 	if command, err := FindGo(func(string) { t.Error("downloaded") }); err != nil || command != found {
 		t.Errorf("expected %s, got %s, %v", found, command, err)
+	}
+}
+
+func TestSignatures(t *testing.T) {
+	cases := []struct {
+		sig     string
+		args    int
+		params  []kind
+		returns kind
+	}{
+		{"fn(int)->int", 1, []kind{intKind}, intKind},
+		{"fn(int,float)->float", 2, []kind{intKind, floatKind}, floatKind},
+		{"fn(fn(int,int)->int,[int],float)->string", 3, []kind{other, other, floatKind}, other},
+		{"fn({A|B},int?,Map<int,float>)->int?", 3, []kind{other, other, other}, other},
+		{"fn(string,...int)->int", 2, []kind{other, other}, intKind},
+		{"fn()->fn(int)->int", 0, []kind{}, other},
+		{"", 2, []kind{other, other}, other},
+		// A signature that does not say as many as the function takes is
+		// not believed
+		{"fn(int)->int", 2, []kind{other, other}, intKind},
+	}
+	for _, c := range cases {
+		params, returns := signature(c.sig, c.args)
+		if len(params) != len(c.params) || returns != c.returns {
+			t.Errorf("%q: got %v -> %v", c.sig, params, returns)
+			continue
+		}
+		for i := range params {
+			if params[i] != c.params[i] {
+				t.Errorf("%q: parameter %d is %v, expected %v", c.sig, i, params[i], c.params[i])
+			}
+		}
+	}
+}
+
+func TestWhatRegistersHold(t *testing.T) {
+	in := func(op vm.OpCode, a, b, c uint16) vm.Instr { return vm.NewInstr(op, a, b, c) }
+	consts := []vm.Value{vm.NewInt(1000003), vm.NewNumber(2.5), vm.NewBool(true)}
+	code := []vm.Instr{
+		in(vm.OpLOADI, 1, 0, 0),    // 0: r1 = 0, a counter
+		in(vm.OpLOADK, 2, 1, 0),    // 1: r2 = 2.5
+		in(vm.OpJNLTK, 1, 0, 9),    // 2: while r1 < 1000003
+		in(vm.OpMULK, 3, 1, 1),     // 3: r3 = r1 * 2.5, a Float
+		in(vm.OpADD, 2, 2, 3),      // 4: r2 += r3
+		in(vm.OpADDI, 1, 1, 1),     // 5: r1 += 1
+		in(vm.OpMOV, 4, 1, 0),      // 6: r4 = r1, then a Float: either
+		in(vm.OpLOADK, 4, 1, 0),    // 7
+		in(vm.OpJMP, 2, 0, 0),      // 8
+		in(vm.OpCALLK, 5, 0, 1),    // 9: r0 = what function 1 gives
+		in(vm.OpMOV, 6, 0, 0),      // 10: r6 = r0
+		in(vm.OpLOADK, 7, 2, 0),    // 11: r7 = true
+		in(vm.OpLOADI, 8, 3, 0),    // 12: r8 = 3, captured below
+		in(vm.OpNEWFUNC, 9, 1, 0),  // 13
+		in(vm.OpCAPLOCAL, 9, 0, 8), // 14
+		in(vm.OpTONUM, 10, 7, 0),   // 15: a Float, or a failure
+		in(vm.OpRET, 2, 0, 0),      // 16
+	}
+	// A function without arguments: r0 holds what calls give, here Ints
+	kinds, local := registerKinds(code, 11, nil, consts, []kind{other, intKind})
+
+	want := map[int]kind{1: intKind, 2: floatKind, 3: floatKind, 4: other, 6: intKind, 7: other, 8: other, 10: floatKind}
+	for register, k := range want {
+		if kinds[register] != k {
+			t.Errorf("r%d holds %v, expected %v", register, kinds[register], k)
+		}
+	}
+	// r0 is never a variable: calls leave results there
+	if kinds[0] != intKind || local[0] {
+		t.Errorf("r0: %v, a variable: %v", kinds[0], local[0])
+	}
+	for _, register := range []int{1, 2, 3, 6, 10} {
+		if !local[register] {
+			t.Errorf("r%d is not a Go variable", register)
+		}
+	}
+	// A register a closure captured is not, whatever was put in it
+	if local[8] || local[4] || local[7] {
+		t.Errorf("a captured register, or one holding either kind, is a variable: %v", local)
 	}
 }
