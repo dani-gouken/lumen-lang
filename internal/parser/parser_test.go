@@ -1905,3 +1905,38 @@ func TestParseRangeWithoutEnd(t *testing.T) {
 		})
 	}
 }
+
+// value! is the value of an optional or of a Result, written after it
+// like value?, and as tight.
+func TestParseUnwrap(t *testing.T) {
+	tests := []struct {
+		src  string
+		want string
+	}{
+		{"a!", "(a!)"},
+		{"a!.b", "(a!).b"},
+		{"f(x)!.g()!", "((f(x)!).g()!)"},
+		{"a! + b!", "((a!) + (b!))"},
+		{"!a!", "(!(a!))"},
+		{"a != b", "(a != b)"},
+		{"a!?", "((a!)?)"},
+		{"items[0]![1]", "(items[0]!)[1]"},
+		{"x |> f!", "(f(x)!)"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.src, func(t *testing.T) {
+			if got := parseExprString(t, tt.src); got != tt.want {
+				t.Errorf("expected %s, got %s", tt.want, got)
+			}
+		})
+	}
+}
+
+// impl<T> T? gives every optional its methods.
+func TestParseImplForOptionals(t *testing.T) {
+	prog := parseOK(t, `impl<T> T? { fn shown() -> String { return ""; } }`)
+	impl := prog.Decls[0].(*ast.ImplDecl)
+	if impl.StructName != ast.OptionalImpl || len(impl.TypeParams) != 1 || len(impl.Methods) != 1 {
+		t.Errorf("got impl %q with %v and %d methods", impl.StructName, impl.TypeParams, len(impl.Methods))
+	}
+}

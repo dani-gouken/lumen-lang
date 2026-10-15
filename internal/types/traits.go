@@ -91,7 +91,7 @@ func IsBuiltinTypeName(name string) bool {
 	if _, arrays := ast.IsArrayImpl(name); arrays {
 		return true
 	}
-	return name == "Int" || name == "Float" || name == "String" || name == "Bool"
+	return name == "Int" || name == "Float" || name == "String" || name == "Bool" || name == ast.OptionalImpl
 }
 
 // bindBounds brings the requirements of type parameters into scope, for
@@ -291,6 +291,11 @@ func (c *Checker) methodOn(recv Type, name string) (*ast.FnDecl, map[string]Type
 			return found, nil
 		}
 		return nil, nil
+	case *UnionType:
+		// impl<T> T? { ... }: what every optional has
+		if hasNull(t) {
+			return c.methods[ast.OptionalImpl][name], nil
+		}
 	case *BehaviorType:
 		return fromTrait(t)
 	case *TypeParam:

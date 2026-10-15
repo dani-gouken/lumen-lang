@@ -1260,6 +1260,11 @@ impl Parser {
         parts.push(space());
         parts.push(self.primaryType());
 
+        if self.is("?") {
+            // impl<T> T? { ... }
+            parts.push(self.take());
+        }
+
         if self.is("for") {
             parts.push(space());
             parts.push(self.take());
@@ -2087,6 +2092,9 @@ impl Parser {
                 piece = self.arguments();
             } else if token.text == "[" {
                 piece = layout.concat([self.take(), self.index(), self.expect("]")]);
+            } else if token.text == "!" {
+                // value!: nothing else has a ! after a value
+                piece = self.take();
             } else if token.text == "?" && !self.choiceAhead() {
                 piece = self.take();
 

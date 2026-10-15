@@ -340,6 +340,13 @@ func (c *Checker) implSelfType(d *ast.ImplDecl) Type {
 	for _, name := range d.TypeParams {
 		self.TypeArgs = append(self.TypeArgs, c.resolveType(&ast.Type{Kind: ast.TypeBasic, Name: name}))
 	}
+	if d.StructName == ast.OptionalImpl {
+		// impl<T> T?: an optional of what the type parameter stands for
+		if len(self.TypeArgs) == 1 {
+			return optional(self.TypeArgs[0])
+		}
+		return Unknown
+	}
 	if item, arrays := ast.IsArrayImpl(d.StructName); arrays {
 		switch {
 		case item != "":
@@ -1342,6 +1349,9 @@ func (c *Checker) checkUnaryExpr(e *ast.UnaryExpr) Type {
 
 	if e.Op == ast.TryOp {
 		return c.checkTry(e)
+	}
+	if e.Op == ast.UnwrapOp {
+		return c.checkUnwrap(e)
 	}
 
 	operand := c.checkExpr(e.Expr)

@@ -488,7 +488,11 @@ let doubled = option.map(option.then(io.readLine(), text -> text.parseInt()), n 
 | `orElse<T>(value: T?, make: fn() -> T) -> T` | The value, or what the function makes. Unlike `value ?? fallback`, the fallback is only worked out when needed |
 | `each<T>(value: T?, action)` | Calls the function with the value, if there is one |
 | `isSome<T>(value)`, `isNone<T>(value)` | |
+| `expect<T>(value: T?, message: String) -> T` | The value, or the program stops with the message |
+| `okOr<T, E>(value: T?, failure: E) -> Result<T, E>` | `Ok` with the value, or `Err` with the failure when there is none |
 | `values<T>(items: [T?]) -> [T]` | The items of an array that are not `null` |
+
+All of them but `values` are also methods of every optional, with no import: `users.get(key).map(u -> u.name)`, `io.env("HOME").expect("HOME is not set")`. They are written `impl<T> T? { ... }`, which a program can use for methods of its own.
 
 `map` is for a step that always has an answer (`fn(Int) -> String`), `then` for one that may not (`fn(String) -> Int?`). Using `map` with the second kind would give an optional of an optional; `then` keeps it flat.
 

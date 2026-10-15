@@ -341,7 +341,7 @@ const (
 
 // MethodModules are the modules of the standard library that give the
 // builtin types their methods. Every program has them.
-var MethodModules = []string{"std.arrays", "std.strings", "std.math"}
+var MethodModules = []string{"std.arrays", "std.strings", "std.math", "std.option"}
 
 // The names of the standard library that every file can say without
 // importing them: fn load() -> Result<Config, String>, and the Template

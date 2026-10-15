@@ -67,14 +67,7 @@ func (c *Checker) inferMethodTypeArgs(recv Type, member *ast.MemberExpr, e *ast.
 	// own are left open
 	bindings := make(map[string]Type)
 	if impl := c.impls[decl]; impl != nil {
-		var args []Type
-		if structType, ok := recv.(*StructType); ok {
-			args = structType.TypeArgs
-		}
-		if array, ok := recv.(*ArrayType); ok {
-			// In `impl<T> [T]`, T is what the array holds
-			args = []Type{array.ElementType}
-		}
+		args := implTypeArgs(recv)
 		for i, name := range impl.TypeParams {
 			bindings[name] = Unknown
 			if i < len(args) {

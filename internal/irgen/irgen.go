@@ -241,6 +241,10 @@ const (
 // type of the receiver. For a static call it also returns the struct.
 func (g *IRGenerator) resolveMethod(receiver ast.Expr, name string) (dispatch, string) {
 	recvType := g.typeInfo.Types[receiver]
+	if types.IsOptional(recvType) && g.hasMethod(ast.OptionalImpl, name) {
+		// A method every optional has: impl<T> T? { ... }
+		return dispatchStatic, ast.OptionalImpl
+	}
 	if union, ok := recvType.(*types.UnionType); ok {
 		// An optional receiver: dispatch on what it is when it is not null
 		var value types.Type

@@ -289,6 +289,53 @@ func (fc *FunctionCompiler) compileTry(expr *ast.UnaryExpr) *ir.Register {
 	return dest
 }
 
+// compileUnwrap compiles `value!`: the value of an optional or of a
+// Result that succeeded, or the program stops here as a panic stops it,
+// defers run and all, saying what was missing.
+func (fc *FunctionCompiler) compileUnwrap(expr *ast.UnaryExpr) *ir.Register {
+	value := fc.compileExpr(expr.Expr)
+	fc.setPos(expr)
+
+	stopBlock := fc.builder.NewBlock()
+	goOnBlock := fc.builder.NewBlock()
+	missing := fc.builder.NewRegister()
+	how := fc.gen.typeInfo.Tries[expr]
+	isResult := how == types.TryEnd || how == types.TryEndDescribed
+	if isResult {
+		fn := fc.builder.CreateMov(ir.Constant{Val: TypeTestIntrinsic, Type: "FuncRef"})
+		desc := fc.builder.CreateMov(ir.Constant{Val: "{" + types.ResultEnum + ".Err}", Type: "String"})
+		fc.builder.Emit(ir.OpMov, missing, fc.builder.CreateCall(fn, value, desc))
+	} else {
+		null := fc.builder.CreateMov(ir.Constant{Val: nil, Type: "Null"})
+		fc.builder.Emit(ir.OpEq, missing, value, null)
+	}
+	fc.builder.CreateBr(missing, stopBlock, goOnBlock)
+
+	fc.builder.SetBlock(stopBlock)
+	var args []ir.Value
+	if isResult {
+		reason := fc.builder.NewRegister()
+		fc.builder.Emit(ir.OpGetField, reason, value, ir.Constant{Val: variantField(0), Type: "String"})
+		if how == types.TryEndDescribed {
+			reason = fc.builder.CreateCall(fc.builder.CreateGetMethod(reason, "describe"), reason)
+		}
+		args = []ir.Value{fc.builder.CreateMov(ir.Constant{Val: "'!' found a failure:", Type: "String"}), reason}
+	} else {
+		args = []ir.Value{fc.builder.CreateMov(ir.Constant{Val: "'!' found null where a value was expected", Type: "String"})}
+	}
+	fc.setPos(expr)
+	fc.builder.CreateCall(fc.builder.CreateMov(ir.Constant{Val: "panic", Type: "FuncRef"}), args...)
+	fc.builder.CreateRet(value)
+
+	fc.builder.SetBlock(goOnBlock)
+	if !isResult {
+		return value
+	}
+	dest := fc.builder.NewRegister()
+	fc.builder.Emit(ir.OpGetField, dest, value, ir.Constant{Val: variantField(0), Type: "String"})
+	return dest
+}
+
 // compileAssignment compiles `target = value` for variables, array elements
 // and struct fields.
 func (fc *FunctionCompiler) compileAssignment(expr *ast.BinaryExpr) *ir.Register {
@@ -407,6 +454,9 @@ func (fc *FunctionCompiler) compileUnaryExpr(expr *ast.UnaryExpr) *ir.Register {
 
 	if expr.Op == ast.TryOp {
 		return fc.compileTry(expr)
+	}
+	if expr.Op == ast.UnwrapOp {
+		return fc.compileUnwrap(expr)
 	}
 
 	operand := fc.compileExpr(expr.Expr)

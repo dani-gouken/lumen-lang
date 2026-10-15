@@ -660,7 +660,7 @@ func isBuiltinType(name string) bool {
 		return true
 	}
 	switch name {
-	case "Int", "Float", "String", "Bool", "Void", "Any", "Self", ast.ArrayImpl:
+	case "Int", "Float", "String", "Bool", "Void", "Any", "Self", ast.ArrayImpl, ast.OptionalImpl:
 		return true
 	}
 	return false

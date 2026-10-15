@@ -452,6 +452,11 @@ func (d *TraitDecl) String() string {
 // what the array holds. Not a name a program can write for a struct.
 const ArrayImpl = "[]"
 
+// OptionalImpl is what an impl for optionals has as the name of its
+// struct: impl<T> T? { ... } gives every optional the methods it
+// declares, T being what it holds when it is not null.
+const OptionalImpl = "?"
+
 // ArrayImplOf is the name of the struct of an impl for the arrays of one
 // type, impl [Int] { ... }: methods only those arrays have.
 func ArrayImplOf(item string) string { return "[" + item + "]" }
@@ -945,6 +950,11 @@ func TupleSource() string {
 // enclosing function with the failure, or with null.
 const TryOp = "?"
 
+// UnwrapOp is the operator of `value!`, written after its operand: the
+// value of an optional or of a Result, the program stopping with the
+// line when there is none.
+const UnwrapOp = "!!"
+
 type UnaryExpr struct {
 	BaseNode
 	Op   string
@@ -955,6 +965,9 @@ func (e *UnaryExpr) exprNode() {}
 func (e *UnaryExpr) String() string {
 	if e.Op == TryOp {
 		return fmt.Sprintf("(%s?)", e.Expr.String())
+	}
+	if e.Op == UnwrapOp {
+		return fmt.Sprintf("(%s!)", e.Expr.String())
 	}
 	return fmt.Sprintf("(%s%s)", e.Op, e.Expr.String())
 }

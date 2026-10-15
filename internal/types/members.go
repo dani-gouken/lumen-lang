@@ -157,14 +157,7 @@ func (c *Checker) methodType(recv Type, name string, typeArgs []Type) (*Function
 
 	// In `impl<T> Box<T>`, T is whatever the receiver has in that position
 	if impl := c.impls[decl]; impl != nil {
-		var args []Type
-		if structType, ok := recv.(*StructType); ok {
-			args = structType.TypeArgs
-		}
-		if array, ok := recv.(*ArrayType); ok {
-			// In `impl<T> [T]`, T is what the array holds
-			args = []Type{array.ElementType}
-		}
+		args := implTypeArgs(recv)
 		for i, param := range impl.TypeParams {
 			bindings[param] = Unknown
 			if i < len(args) {
@@ -268,8 +261,15 @@ func (c *Checker) checkMethodCall(e *ast.CallExpr, member *ast.MemberExpr, expec
 		return fail("trait %s has no method '%s'", t, member.Name)
 
 	case *UnionType:
+		if ft, ok := c.methodType(t, member.Name, c.methodTypeArgs(t, member, e, expected)); ok && hasNull(t) {
+			// A method every optional has: impl<T> T? { ... }
+			c.checkMethodVisible(t, member)
+			c.info.Types[member] = ft
+			return c.checkArgs(e, ft)
+		}
 		if hasNull(t) {
-			c.errorfWithSuggestion(member.Token(), ErrPossiblyNull, "Test it against null first, or provide a fallback with '??'",
+			c.errorfWithSuggestion(member.Token(), ErrPossiblyNull,
+				fmt.Sprintf("Test it against null first, call it only when there is a value with value?.%s(...), or say there always is one with value!.%s(...)", member.Name, member.Name),
 				"cannot call '%s' on %s: the value may be null", member.Name, t)
 			c.checkArgsOnly(e)
 			return Unknown
@@ -1019,6 +1019,26 @@ func hasNull(u *UnionType) bool {
 	return false
 }
 
+// implTypeArgs is what the type parameters of an impl stand for when its
+// method is called on a value of a type: those of the struct, in order;
+// what an array holds, for `impl<T> [T]`; what an optional holds when it
+// is not null, for `impl<T> T?`.
+func implTypeArgs(recv Type) []Type {
+	switch t := recv.(type) {
+	case *StructType:
+		return t.TypeArgs
+	case *ArrayType:
+		return []Type{t.ElementType}
+	case *UnionType:
+		if hasNull(t) {
+			if value := withoutNull(t); value != nil {
+				return []Type{value}
+			}
+		}
+	}
+	return nil
+}
+
 // optional returns the type T?, that is T | null.
 func optional(t Type) Type {
 	if t.Equals(Null) || isUnknown(t) || t.Equals(Any) {
@@ -1031,6 +1051,17 @@ func optional(t Type) Type {
 		return NewUnion(append(append([]Type{}, u.Types...), Null)...)
 	}
 	return NewUnion(t, Null)
+}
+
+// WithoutNull returns what remains of a type once null is ruled out, or
+// nil if nothing does.
+func WithoutNull(t Type) Type { return withoutNull(t) }
+
+// IsOptional reports whether a type is that of a value that may be null,
+// and something else when it is not: T?.
+func IsOptional(t Type) bool {
+	u, ok := t.(*UnionType)
+	return ok && hasNull(u) && withoutNull(u) != nil
 }
 
 // withoutNull returns what remains of a type once null is ruled out, or nil

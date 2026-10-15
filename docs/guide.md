@@ -666,6 +666,18 @@ fn port(config: Config) -> Int? {
 *   **`a ?? b`** is `a`, or `b` when `a` is null. When `b` may be null too the result may be: `a ?? b ?? 0` tries `a`, then `b`, then gives `0`.
 *   **`value?.member`** reads a field or calls a method when the value is not null, and gives null when it is. All that follows on the same chain is done with the value too: in `user?.address.city`, the city is read when there is a user. A step that may itself be null needs a `?.` of its own, as `address` above. On a value that can never be null it is an error (`E2035`): use a dot.
 *   **`value?`** after an expression gives the value, and returns `null` from the enclosing function if there is none. The function has to be one that may return null, or one that returns nothing, which it then simply ends. The same `?` passes on the failure of a [`Result`](#failures).
+*   **`value!`** gives the value where you know there is one: `users.get("ada")!`, `"42".parseInt()!`. If there is none after all, the program stops at that line, as a `panic` stops it (defers run, `attempt` catches it). It works on a `Result` too, stopping with the failure. On a value that can never be null it is an error.
+
+Every optional also has the methods of [`std.option`](stdlib.md#stdoption), with no import, for a chain of steps that may each find nothing:
+
+```rust
+let manager = users.get(name).then(user -> user.manager);        // String?
+let shout = nickname.map(n -> n.upper()) ?? "nobody";
+let port = io.env("PORT").expect("PORT is not set");             // String, or stop with that
+let user = users.get(name).okOr("no user called ${name}")?;      // as a Result, passed on
+```
+
+`map`, `then`, `filter`, `mapOr`, `or`, `orElse`, `each`, `expect`, `okOr`, `isSome` and `isNone`. A program can give optionals methods of its own the same way the library does: `impl<T> T? { fn shown() -> String { ... } }`, where `self` is a `T?`.
 
 What a test established about a variable also holds inside a function written after it, as long as nothing ever assigns the variable again:
 

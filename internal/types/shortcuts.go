@@ -144,6 +144,33 @@ func (c *Checker) checkTry(e *ast.UnaryExpr) Type {
 	return operand
 }
 
+// checkUnwrap checks `value!`: the value of an optional, or the value of a
+// Result that succeeded. When there is none the program stops there,
+// saying so, or saying why for a Result.
+func (c *Checker) checkUnwrap(e *ast.UnaryExpr) Type {
+	operand := c.checkExpr(e.Expr)
+	if operand == nil || isUnknown(operand) {
+		return Unknown
+	}
+	if result := resultType(operand); result != nil {
+		c.info.Tries[e] = TryEnd
+		if ft, ok := c.methodType(result.TypeArgs[1], "describe", nil); ok && len(ft.Params) == 0 && ft.ReturnType.Equals(String) {
+			c.info.Tries[e] = TryEndDescribed
+		}
+		return result.TypeArgs[0]
+	}
+	if nullable(operand) {
+		c.info.Tries[e] = TryOptional
+		if value := withoutNull(operand); value != nil {
+			return value
+		}
+		return Null
+	}
+	c.errorfWithSuggestion(e.Token(), ErrBadTry, "Remove the '!'",
+		"'!' is for a Result or a value that may be null, and a value of type %s is always there", describe(operand))
+	return operand
+}
+
 // TemplateStruct is the struct of the standard library that a text written
 // in the program becomes where one is expected: its parts and its values
 // kept apart (see templateOf).

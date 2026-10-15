@@ -663,6 +663,13 @@ func (p *Parser) parseImplDecl() *ast.ImplDecl {
 		decl.StructName = p.arrayImplTarget(decl)
 		return p.parseImplBody(decl)
 	}
+	if len(decl.TypeParams) == 1 && p.at(token.IDENT) && p.cur().Literal == decl.TypeParams[0] && p.peekAt(1).Type == token.QUESTION {
+		// impl<T> T? { ... }: methods for every optional
+		p.next()
+		p.next()
+		decl.StructName = ast.OptionalImpl
+		return p.parseImplBody(decl)
+	}
 
 	first := p.expectTypeName("trait or struct name")
 	// impl Source<Int> for Counter: the type arguments of a trait are
@@ -1504,7 +1511,7 @@ func (p *Parser) pipeInto(value, target ast.Expr, pipe token.Token) ast.Expr {
 		t.Args = append([]ast.Expr{value}, t.Args...)
 		return t
 	case *ast.UnaryExpr:
-		if t.Op == ast.TryOp {
+		if t.Op == ast.TryOp || t.Op == ast.UnwrapOp {
 			// The ? is asked of what the call returns, not of the function
 			t.Expr = p.pipeInto(value, t.Expr, pipe)
 			return t
@@ -1725,6 +1732,11 @@ func (p *Parser) parsePostfix() ast.Expr {
 			}
 			p.next()
 			expr = &ast.UnaryExpr{BaseNode: base(tok), Op: ast.TryOp, Expr: expr}
+		case token.NOT:
+			// value!: the value, or the program stops here. Nothing else
+			// has a '!' after a value
+			p.next()
+			expr = &ast.UnaryExpr{BaseNode: base(tok), Op: ast.UnwrapOp, Expr: expr}
 		default:
 			return expr
 		}

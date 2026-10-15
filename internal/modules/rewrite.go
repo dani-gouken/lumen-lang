@@ -74,7 +74,7 @@ func (r *rewriter) rewrite() {
 			})
 
 		case *ast.ImplDecl:
-			if item, arrays := ast.IsArrayImpl(d.StructName); !arrays {
+			if item, arrays := ast.IsArrayImpl(d.StructName); !arrays && d.StructName != ast.OptionalImpl {
 				d.StructName = r.typeName(d.StructName, d.Token())
 			} else if item != "" && r.typeItem(item) != nil {
 				// impl [Point]: the items are named in full, like any type

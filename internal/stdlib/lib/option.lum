@@ -78,6 +78,29 @@ pub fn each<T>(value: T?, action: fn(T) -> Void) {
     }
 }
 
+// The value, or the program stops with the message when there is none.
+//
+//     let port = io.env("PORT").expect("PORT is not set");
+pub fn expect<T>(value: T?, message: String) -> T {
+    if value == null {
+        panic(message);
+    }
+
+    return value;
+}
+
+// The value as a Result: Ok when there is one, Err with the failure given
+// when there is none.
+//
+//     let user = users.get(name).okOr("no user ${name}")?;
+pub fn okOr<T, E>(value: T?, failure: E) -> Result<T, E> {
+    if value == null {
+        return Result.Err(failure);
+    }
+
+    return Result.Ok(value);
+}
+
 pub fn isSome<T>(value: T?) -> Bool {
     return value != null;
 }
@@ -97,4 +120,53 @@ pub fn values<T>(items: [T?]) -> [T] {
     }
 
     return out;
+}
+
+// The same functions, as methods of every optional:
+//
+//     let name = users.get(key).map(user -> user.name) ?? "nobody";
+impl<T> T? {
+    pub fn map<U>(convert: fn(T) -> U) -> U? {
+        return map(self, convert);
+    }
+
+    pub fn then<U>(step: fn(T) -> U?) -> U? {
+        return then(self, step);
+    }
+
+    pub fn filter(wanted: fn(T) -> Bool) -> T? {
+        return filter(self, wanted);
+    }
+
+    pub fn mapOr<U>(fallback: U, convert: fn(T) -> U) -> U {
+        return mapOr(self, fallback, convert);
+    }
+
+    pub fn or(second: T?) -> T? {
+        return or(self, second);
+    }
+
+    pub fn orElse(make: fn() -> T) -> T {
+        return orElse(self, make);
+    }
+
+    pub fn each(action: fn(T) -> Void) {
+        each(self, action);
+    }
+
+    pub fn expect(message: String) -> T {
+        return expect(self, message);
+    }
+
+    pub fn okOr<E>(failure: E) -> Result<T, E> {
+        return okOr(self, failure);
+    }
+
+    pub fn isSome() -> Bool {
+        return isSome(self);
+    }
+
+    pub fn isNone() -> Bool {
+        return isNone(self);
+    }
 }

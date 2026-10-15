@@ -45,7 +45,8 @@ func forwardLibraryMethods(prog *ast.Program, info *types.Info) {
 			if forwarders[impl.StructName] == nil {
 				forwarders[impl.StructName] = make(map[string]forwarder)
 			}
-			forwarders[impl.StructName][method.Name] = forwarder{target: target, generic: impl.StructName == ast.ArrayImpl}
+			generic := impl.StructName == ast.ArrayImpl || impl.StructName == ast.OptionalImpl
+			forwarders[impl.StructName][method.Name] = forwarder{target: target, generic: generic}
 		}
 	}
 	if len(forwarders) == 0 {
@@ -70,7 +71,12 @@ func forwardLibraryMethods(prog *ast.Program, info *types.Info) {
 		// its items before that of every array
 		var keys []string
 		var items types.Type
-		if array, isArray := receiver.(*types.ArrayType); isArray {
+		if types.IsOptional(receiver) {
+			// An optional: what it holds is the function's first type
+			// argument
+			items = types.WithoutNull(receiver)
+			keys = append(keys, ast.OptionalImpl)
+		} else if array, isArray := receiver.(*types.ArrayType); isArray {
 			items = array.ElementType
 			if item := types.ImplKey(items); item != "" && item != ast.ArrayImpl {
 				keys = append(keys, ast.ArrayImplOf(item))
